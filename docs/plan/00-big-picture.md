@@ -1,0 +1,55 @@
+# Lockdown — big picture
+
+_Status: plan set v0.1, 2026-10-15. Start here. Then read the rest of `docs/plan/` in number order._
+
+## For future agent
+
+- **TL;DR:** Lockdown is a cross-platform password manager, passkey provider, and authenticator that meets the incumbents on every feature and beats them on trust. It is one of three apps in an ecosystem (with Mailbird and Synapse) that each work alone and work better together. The decisions are in `decisions.md`; the evidence is in `../research/2026-10-15/`.
+- **Where we are:** research done, fourteen decisions recorded, nothing built. The identity crate (`01-identity.md`) is the first thing to build, and Mailbird builds it.
+
+## What it is
+
+One app for every way a person signs in: passwords, passkeys, one-time codes, and TV or console activation codes, on iOS, Android, Mac, Windows, Linux, every browser, and a home server if they want one.
+
+## What it promises
+
+1. **Every way you sign in, in one place** (positioning A). The breadth a person feels in week one.
+2. **It can't betray you** (B). Designed so that a hostile server cannot read, swap, or roll back a vault, and the user can check. This is the proof behind A.
+3. **Open, fair, yours** (C). Open-source apps, a self-hosted server that runs the same code as the cloud, free export forever. This is policy, not a slogan.
+
+Tagline: **Every way you sign in. Locked down, even from us.**
+
+## What makes it different
+
+| Lockdown does | The incumbents |
+|---|---|
+| Assumes its own server is hostile and proves it (threat model from the 2026 ETH Zurich study) | Trusted the server's word for public keys; 12 attacks found on Bitwarden, 7 on LastPass, 6 on Dashlane, 2 on 1Password |
+| Wraps shared keys with hybrid post-quantum encryption from day one | Post-quantum only on the network connection, if at all |
+| Keeps a signed, verifiable history of every vault | No verifiable history anywhere |
+| Is an OS passkey provider, so "scan the QR on the laptop, approve on the phone" works for every passkey site | Same, where they ship it |
+| Approves TV and console sign-ins by scanning the screen, with a hard anti-phishing rule | Nobody |
+| Shares one identity with Mailbird and Synapse without either needing the other | Standalone |
+
+## What it is not
+
+- Not an imitation of vendors' private phone apps. Battle.net, Adobe, Discord, and all push channels are declined in favour of passkeys and codes. Steam is parked in the "maybe" backlog (D8).
+- Not a thin wedge. v1 aims for parity across the whole feature matrix (D9), which makes v1 larger and longer than a typical first release. The roadmap says what that costs.
+
+## The plan set
+
+| File | What it settles |
+|---|---|
+| `00-big-picture.md` | this page |
+| `00-ecosystem.md` | the Lockdown × Mailbird × Synapse contract |
+| `01-identity.md` | the shared identity crate, format v1 |
+| `02-model.md` | vaults, items, the crown-jewel class, manifests |
+| `03-architecture.md` | Rust core, bindings, shells, extension, server, sync |
+| `04-security.md` | threat model, key hierarchy, login, recovery, as a spec |
+| `05-self-host.md` | the single binary and the private-cloud bundle |
+| `06-roadmap.md` | phases, team, exit criteria under D9 |
+| `decisions.md` | the decision log |
+
+## Walls
+
+- No employer names, tokens, paths, data, or code in this repo.
+- Nothing here is legal advice. The Steam bridge, if it ever ships, needs US and EU counsel first.
