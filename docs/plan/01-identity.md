@@ -7,6 +7,17 @@ _Status: draft spec, 2026-10-15. Implements D3, D10, D11, D12, D13. The crate is
 - **TL;DR:** One Rust crate every ecosystem app embeds. It owns the person's identity: profile, personas, devices, keys, and the recovery kit. Any app can create it alone. Later apps find it and reuse it. Lockdown adopts it without moving or re-encrypting anything. Everything below is the on-disk and on-wire contract that makes that possible.
 - **Read with:** `00-ecosystem.md` (why), `decisions.md` D10–D13 (what was decided), the research brief §4 (the cryptography this reuses).
 
+## 0. What a person holds (read this before the key tree)
+
+The person remembers **one thing** and keeps **one piece of paper**. Everything in §3 is machinery behind that; the user never names, types, or sees those keys.
+
+| What | Who holds it | When it is used |
+|---|---|---|
+| **Master password** | the person's memory (biometrics stand in for it on enrolled devices) | unlocking, every day |
+| **Recovery kit** (Secret Key + recovery code, one printed page or PDF) | a drawer or a safe | only when every device is gone, or a brand-new device has no old device nearby |
+
+Setting up a new device normally means scanning a QR on an old one. The kit stays in the drawer. This is the 1Password model (account password + Emergency Kit) and it is the whole user-facing surface of this crate.
+
 ## 1. Jobs the crate does
 
 1. **Create** an identity with no other app present.
