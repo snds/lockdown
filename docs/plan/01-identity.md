@@ -1,6 +1,6 @@
 # Identity crate — format v1 (draft)
 
-_Status: draft spec v1.1, 2026-10-15 (reconciled with 02-model and 04-security: `account` KeyRef, per-persona `kem_pub`). Implements D3, D10, D11, D12, D13. The crate is built inside Mailbird first (`crates/core`), then extracted. Working crate name: `ecosystem-identity`; rename when the ecosystem has a name._
+_Status: draft spec v1.2 (D15, D16 settled; green-lit for Mailbird), 2026-10-15 (reconciled with 02-model and 04-security: `account` KeyRef, per-persona `kem_pub`). Implements D3, D10, D11, D12, D13. The crate is built inside Mailbird first (`crates/core`), then extracted. Working crate name: `ecosystem-identity`; rename when the ecosystem has a name._
 
 ## For future agent
 
@@ -104,10 +104,10 @@ Platform locations (the crate resolves them; apps never hardcode):
 
 | Platform | `<identity-root>` | Shared how |
 |---|---|---|
-| macOS / iOS | App Group container (`group.<ecosystem-id>`) | all ecosystem apps declare the same App Group |
-| Android | the creating app's private dir, exposed through a `ContentProvider` with signature-level permission | apps signed by the same key |
-| Windows | `%LOCALAPPDATA%\<Ecosystem>\identity` with an ACL to the ecosystem's package family | MSIX package family |
-| Linux | `$XDG_DATA_HOME/<ecosystem>/identity` | same user; peer check by process identity |
+| macOS / iOS | App Group container `group.design.snds.identity` (D15) | all ecosystem apps declare the same App Group |
+| Android | the creating app's private dir, exposed through a `ContentProvider` with signature-level permission | apps signed by the one ecosystem key (D16) |
+| Windows | `%LOCALAPPDATA%\snds\identity` with an ACL to the ecosystem's package family | MSIX package family |
+| Linux | `$XDG_DATA_HOME/snds/identity` | same user; peer check by process identity |
 
 The layout is the same on every platform. Only the root path and the sharing mechanism differ.
 
@@ -160,9 +160,12 @@ In this order, inside `crates/core`:
 4. The handshake (§6 step 3) once a second app exists to test against. Until then, a test double.
 5. Extract to its own repo when Lockdown starts consuming it.
 
-## 11. Open questions
+## 11. Settled and open
 
-- The ecosystem identifier (App Group, package family). It needs a name; the name needs a trademark check.
-- Android: `ContentProvider` with signature permission requires all apps to share a signing key. Confirm that fits the release plan.
+**Settled (D15, D16):**
+- Identifier: Apple App Group `group.design.snds.identity`; Windows `%LOCALAPPDATA%\snds\identity`; Linux `$XDG_DATA_HOME/snds/identity`. Neutral and domain-based, so a brand rename never touches it.
+- Android: all ecosystem apps share one signing key (Play App Signing); the store is shared by signature-level permission. Fallback for an app leaving the family: a bound service with a certificate-fingerprint allow-list.
+
+**Open:**
 - Whether the kit-wrapped IRK lives on the server, in the user's own backup, or both. Recommendation: both, with the server copy only usable with the kit.
 - Key transparency for device public keys lives in Lockdown's server; before Lockdown exists, device enrolment trusts the QR channel plus the short code only. State this in Mailbird's docs.
