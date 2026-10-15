@@ -5,7 +5,7 @@ _Status: draft spec v0.1, 2026-10-15. Implements D1 (layer B), D4, D5, D6, D11. 
 ## For future agent
 
 - **TL;DR:** Lockdown assumes its own server is hostile and proves it cannot read, swap, or roll back a vault. Four mechanisms carry that promise: a key tree rooted in the identity crate, OPAQUE login mixed with a Secret Key, AEAD that glues every ciphertext to its place, and two public records (a key-transparency log and a hash-chained vault manifest) checked on every sync. Everything else here keeps those four honest.
-- **Read with:** `01-identity.md` §3–§4 (the keys this doc wraps), `02-model.md` (not yet written; §2 names the vault and item layers it must use), `decisions.md`.
+- **Read with:** `01-identity.md` §3–§4 (the keys this doc wraps), `02-model.md` §2 and §8 (the vault, item and manifest detail; §2 here names the same layers), `decisions.md`.
 - **Evidence status:** the 2026 ETH Zurich / USI study (Scarlata, Torrisi, Backendal, Paterson; USENIX Security 2026; ePrint 2026/058) is confirmed. The "NDSS 2025 IPC theft paper" is **[uncertain]** and not cited. Bitwarden's "7 fixed, 3 design decisions" is **[uncertain]**.
 
 ## 1. Threat model
@@ -75,7 +75,7 @@ Every ciphertext is XChaCha20-Poly1305 with associated data (AAD): data that is 
 
 | Rule | Why |
 |---|---|
-| AAD = canonical CBOR of `{profile_id, persona_id, vault_id, item_id, field_name, schema_v, purpose}`; envelopes use the crate's own AAD (01-identity §4) | A server cannot move a password into another item or field (ETH anti-pattern 2) |
+| AAD = canonical CBOR of `{profile_id, persona_id, vault_id, item_id, version_n, field_id, kind, schema_v}` (owned by `02-model.md` §2); envelopes use the crate's own AAD (01-identity §4) | A server cannot move a password into another item or field (ETH anti-pattern 2) |
 | Empty AAD is a decode error, never a default | No unbound path exists |
 | `schema_v` is in the AAD; readers refuse a lower major than they wrote | Old formats cannot be forced back (anti-pattern 4) |
 | AAD never holds secrets; nonces are random 192-bit | AAD is readable; devices do not coordinate counters |
