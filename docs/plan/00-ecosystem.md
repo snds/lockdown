@@ -10,7 +10,10 @@ Each app works alone. Every shared feature below has a "not linked" behaviour th
 - **Persona**: a named wall (personal, work, side project). Owns accounts, devices, mailboxes, vaults.
 - **Device**: enrolled per persona, with an attested key.
 - Storage: each app keeps its own copy; linking reconciles by stable IDs, never by display name.
-- Owner of the schema: to be decided between Synapse (which already has personas), Mailbird and Lockdown. One schema, three implementations.
+- **Creation (D10):** any app can create the identity alone. On first run an app looks for an existing ecosystem install (platform app registry, known data paths, then a local handshake with attestation). If one exists, the new app piggybacks on that identity and asks nothing of the user. If none exists, it creates one with the shared crate.
+- **Adoption (D10):** when Lockdown is installed after another app, it reads the existing identity and becomes its manager (recovery kit, device enrolment, sharing, key transparency). It never moves the data, changes its storage location, or re-encrypts it. If the existing identity has no recovery kit yet, Lockdown offers to make one; that is the only new ask.
+- **One format from day one:** identity records and key envelopes come from one shared Rust crate (`ecosystem-identity`, name TBD) with a versioned on-disk format. Every app embeds the same crate. This is what makes adoption free of migration.
+- Owner of the schema: the shared crate. Lockdown is the reference implementation; Synapse and Mailbird embed it. (Resolves the earlier open question.)
 
 ## 2. Enclave-to-enclave trust (D4)
 - Each app holds its keys in the platform keystore (Secure Enclave, StrongBox, TPM).
@@ -33,6 +36,7 @@ Same model in both apps: signed manifest, capability list, risk tier (standards 
 - Mail server and DNS tooling are Mailbird scope. Lockdown supplies identity, secrets and the backup-encryption primitives.
 
 ## Open questions
-- Which product owns the identity schema (Synapse, Mailbird, or Lockdown)?
+- Detection order and what counts as a trusted existing install (signature checks per OS).
+- Whether Mailbird's existing Phase 33 note lock migrates into the shared format before or after the crate exists (it predates it).
 - Does the self-host bundle ship under one name, or as two products with a documented pairing?
 - Team and timeline given D9 (feature-complete v1).
