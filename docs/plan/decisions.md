@@ -1,0 +1,15 @@
+# Lockdown — decision log
+
+_One line per decision. Proposed by the agent, approved by Sean unless marked. Newest at the bottom._
+
+| ID | Date | Decision | Status |
+|---|---|---|---|
+| D1 | 2026-10-15 | **Positioning is all three layers at once.** A ("every way you sign in") is what a user feels; B ("can't betray you") is the proof; C ("open, fair, yours": open source, self-host, free export) is standing policy. One lead message per surface, never three slogans side by side. | Sean |
+| D2 | 2026-10-15 | **Lockdown and Mailbird form an ecosystem but each works alone.** Neither app may require the other for any core job. Value rises when both are installed. "Works alone" is a release gate for every shared feature. | Sean |
+| D3 | 2026-10-15 | **Shared profile and persona.** One identity contract (profile, personas, devices) that each app can use on its own or link to the other's. A persona in Mailbird and a persona in Lockdown can be the same persona or deliberately separate. Synapse already defines personas; the three products must share one schema, not three. | Sean (schema owner TBD) |
+| D4 | 2026-10-15 | **Secure enclaves that authenticate each other.** Each app keeps its own enclave (keystore-backed). Apps attest to each other over an authenticated local channel (code-signature or process identity, per the NDSS-style IPC lesson) and can pass scoped grants, never raw master keys. | Sean |
+| D5 | 2026-10-15 | **Shared secure notes with a Lockdown recovery path.** A note locked in Mailbird can be opened with the Lockdown master password or the Lockdown recovery kit (Secret Key + recovery code), the way 1Password's Emergency Kit works. Mechanism: Mailbird's locked-notes key is wrapped to the Lockdown identity key when the apps are linked. Mailbird keeps its own standalone lock (Phase 33) when not linked. | Sean |
+| D6 | 2026-10-15 | **Plugin ecosystem is shared doctrine.** Both apps get a plugin model with the same risk tiers, signed manifests, consent gates and kill switch defined in the research brief §2.9. First-party plugins only at first. | Sean |
+| D7 | 2026-10-15 | **Self-hosting is a value-add, not the default.** Cloud and self-host run the same server binary. A private-cloud bundle hosts Lockdown and Mailbird together. Mail server, DNS tooling and 3-2-1 backup live in Mailbird's scope; Lockdown contributes the identity, secrets and backup-encryption pieces and must itself be backup-friendly (encrypted, restorable, verifiable). | Sean |
+| D8 | 2026-10-15 | **Non-passkey vendor bridges go to a "maybe" backlog.** Steam QR approval, trade confirmations, Battle.net imports and the like are parked. Steam-style codes (plain TOTP variants) stay, because they are standard code generation. TV/console device-code activation stays under review as a standards-based feature, not a vendor bridge. | Sean |
+| D9 | 2026-10-15 | **Aim for the most feature-complete app from day one.** v1 targets parity across the full matrix, not a thin wedge. Tradeoff accepted: longer v1 and a larger team than the 6–8-engineer, 12–18-month plan in the brief; the plan set must re-estimate. | Sean |
