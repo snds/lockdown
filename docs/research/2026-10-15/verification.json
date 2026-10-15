@@ -1,0 +1,698 @@
+[
+ {
+  "cluster": "passkey-platforms",
+  "claims": [
+   {
+    "claim": "iOS 17+/18+ third-party credential provider extensions get FIDO hybrid (cross-device QR) support for free via the system; the provider does not implement BLE/tunnel itself",
+    "verdict": "confirmed",
+    "correction": "Confirmed by an Apple staff reply: the avatar text reads 'Apple Staff, Systems Engineer', posted June 2026 in Apple Developer Forums thread 829541. The research note's flag 'reply author not confirmed as Apple staff' can be dropped. Exact quote: 'All enabled credential provider extensions get Hybrid support for free through the system's implementation of Hybrid; there is no need to implement it yourself. Once your extension is enabled, it will be offered in all places that passkeys can be used across the system.' Hybrid works from iOS 17, when third-party passkey providers arrived. Thales says the iOS 17+ camera recognizes FIDO QR codes and asks the user to pick an app. Caveats: (a) only synced, backup-eligible passkeys qualify. Apple: 'A device-bound credential is not a passkey and cannot be returned as part of a credential provider extension.' (b) An app cannot emit the CTAP hybrid BLE advertisement itself. (c) WebAuthn attestation is not supported for passkeys outside a few MDM-managed contexts. A follow-up question from August 2026 (does third-party sync count as a passkey; is a device-bound key rejected at completeRegistrationRequest?) has no answer on the page.",
+    "sources": [
+     "https://developer.apple.com/forums/thread/829541 [WebFetch succeeded; staff badge checked in a second fetch]",
+     "https://thalesdocs.com/oip/fido2-sdk/fido2-sdk-hybrid-transport/fido2-sdk-hybrid-transport-ios/index.html [WebSearch summary only; WebFetch DNS failure]",
+     "https://raw.githubusercontent.com/passkeydeveloper/passkeys.dev/main/content/en/docs/reference/ios.md [curl; iOS supports both client and authenticator CDA roles]"
+    ]
+   },
+   {
+    "claim": "On Android 14+/15/16 a third-party Credential Manager provider can serve passkeys when the user scans a desktop hybrid QR code (phone-as-authenticator)",
+    "verdict": "confirmed",
+    "correction": "True for Android 14 (API 34) and later. Google's official docs do not state it outright. The Credential Manager FAQ says only that Credential Manager 'supports cross-device passkey usage through the hybrid transport', and that line is about the Android device as the client. The provider-integration guide does not mention hybrid at all. The evidence comes from third parties: (1) Thales Mobile FIDO SDK docs (a third-party provider) say hybrid authentication is 'only supported on Android 14 (API level 34) and above'. They require targetSdk 34 and the user enabling the app as a passkey provider, and say Android launches the provider app based on the passkey identifier. (2) Bitwarden's official blog (March 2026, 'Log into Windows with a Bitwarden passkey') tells users to choose the 'iPhone, iPad, or Android device' option and scan the Windows QR code with the Bitwarden mobile app. (3) 1Password's support page describes scanning the QR code on an iOS or Android device and choosing 1Password. Caveats: passkeys.dev says some Android 14 devices from a few OEMs do not support third-party passkey providers. Bluetooth must be on for the proximity check. In a January 2024 user report, scanning on Android 14 opened Google Password Manager instead of 1Password. I found nothing specific to Android 15 or 16, and no sign of a regression.",
+    "sources": [
+     "https://developer.android.com/identity/sign-in/credential-manager-faq [WebFetch succeeded]",
+     "https://developer.android.com/identity/sign-in/credential-provider [WebFetch succeeded; no mention of hybrid]",
+     "https://thalesdocs.com/oip/fido2-sdk/fido2-sdk-hybrid-transport/fido2-sdk-hybrid-transport-android/index.html [WebSearch summary; WebFetch DNS failure]",
+     "https://bitwarden.com/blog/log-into-windows-with-a-bitwarden-passkey/ [WebSearch summary]",
+     "https://support.1password.com/passkeys [WebSearch summary]",
+     "https://raw.githubusercontent.com/passkeydeveloper/passkeys.dev/main/content/en/docs/reference/android.md [curl]",
+     "https://community.bitwarden.com/t/support-for-passkey-qr-codes-cda-cross-device-authentication/67730 [WebSearch summary; user reports]"
+    ]
+   },
+   {
+    "claim": "Windows 11 third-party passkey provider plugin API went GA in the Nov 2025 update; 1Password first, Bitwarden followed",
+    "verdict": "partly",
+    "correction": "The GA part is right. Microsoft's Windows IT Pro Blog (11 Nov 2025) says the feature is generally available with the Windows November 2025 security update. A secondary source names it KB5068861; I did not confirm that number on a Microsoft page. The sequencing is wrong. Microsoft announced 1Password and Bitwarden together on the same day ('starting with 1Password and Bitwarden today, other passkey managers coming soon'). Bitwarden did not follow later. The difference was maturity: 1Password shipped stable on 11 Nov 2025 after about 6 months in beta. It needs the MSIX build and claims to be 'the first and only third-party passkey manager to offer native Windows passkey support in stable'. Bitwarden's Windows provider was beta-only at launch (install from GitHub), per its blog updated 11/11/25. Microsoft Password Manager (from Edge) was also plugged in as a provider. I could not verify when Bitwarden's Windows provider left beta. Microsoft announced the plugin model in October 2024 and first tested it in Insider builds.",
+    "sources": [
+     "https://techcommunity.microsoft.com/blog/windows-itpro-blog/-/4467572 [WebSearch summary; WebFetch DNS failure]",
+     "https://www.1password.community/announcements-52/official-release-1password-now-supports-windows-11-passkeys-23422 [WebSearch summary]",
+     "https://bitwarden.com/blog/bitwarden-launches-passkey-management/ [WebSearch summary]",
+     "https://cyberinsider.com/windows-11-integrates-native-support-for-bitwarden-and-1password/ [WebSearch summary]",
+     "https://blogs.windows.com/windowsdeveloper/2024/10/08/passkeys-on-windows-authenticate-seamlessly-with-passkey-providers/ [WebSearch listing]",
+     "https://raw.githubusercontent.com/MicrosoftDocs/windows-dev-docs/docs/hub/apps/develop/security/third-party.md [curl; 'Windows 11 supports a plugin model for passkeys', ms.date 09/29/2025]"
+    ]
+   },
+   {
+    "claim": "WebAuthn Level 3 became a W3C Recommendation on 2025-08-25 or 2026-08-25 (which?)",
+    "verdict": "confirmed",
+    "correction": "The date is 2026-08-25, not 2025. The document ID is REC-webauthn-3-20260825 (https://www.w3.org/TR/2026/REC-webauthn-3-20260825/). Timeline: CR transition request in Nov 2025, CR Snapshots on 13 Jan 2026 and 26 May 2026, implementation report on 26 June 2026, Proposed Recommendation on 20 July 2026, Recommendation on 25 Aug 2026. The status section says nothing changed in substance after the 26 May 2026 CR Snapshot. Level 2 became a Recommendation on 8 April 2021. New features go into Level 4.",
+    "sources": [
+     "https://www.w3.org/news/2026/web-authentication-an-api-for-accessing-public-key-credentials-level-3-is-now-a-w3c-recommendation/ [WebSearch summary; WebFetch DNS failure, curl proxy 403]",
+     "https://www.w3.org/news/2026/proposed-advancement-of-webauthn-3-to-w3c-recommendation/ [WebSearch summary]",
+     "https://fidoalliance.org/webauthn-level-3-is-now-a-w3c-recommendation/ [WebSearch summary]",
+     "https://www.w3.org/TR/webauthn-3/Overview.html [WebSearch summary]"
+    ]
+   },
+   {
+    "claim": "WebAuthn Signal API shipped in Chrome/Edge 132 and Safari 26; Firefox does not support it",
+    "verdict": "confirmed",
+    "correction": "Correct for desktop. Chrome 132 brought the API to desktop Chrome on macOS, Windows, Linux and ChromeOS (Chrome blog, 13 Nov 2024). Edge mirrors Chrome. WebKit's 'Features in Safari 26.0' post lists the Signal API. Firefox has no support: MDN browser-compat-data main (fetched 2026-10-15) has firefox version_added:false for signalUnknownCredential, signalAllAcceptedCredentials and signalCurrentUserDetails. Mozilla standards-positions #1075 is still unlabeled ('Unscreened'), with its latest comments in July 2026. One important precision: Chrome for Android only got the API in Chrome 144 (Chrome blog, Dec 2025), not 132. MDN's chrome_android 'mirror' entry, which implies 132, conflicts with Google's own post. Chrome docs also say desktop extension-based providers decide for themselves whether to act on signals. A September 2025 WebKit bug report (user-filed, not Apple) says the signalAllAcceptedCredentials promise never resolves.",
+    "sources": [
+     "https://raw.githubusercontent.com/mdn/browser-compat-data/main/api/PublicKeyCredential.json [curl; primary compat data]",
+     "https://developer.chrome.com/blog/passkeys-signal-api [WebSearch summary; WebFetch DNS failure]",
+     "https://developer.chrome.com/blog/signal-api-android [WebSearch summary]",
+     "https://webkit.org/blog/17333/webkit-features-in-safari-26-0/ [WebSearch summary]",
+     "https://webkit.org/blog/16993/news-from-wwdc25-web-technology-coming-this-fall-in-safari-26-beta/ [WebSearch summary]",
+     "https://github.com/mozilla/standards-positions/issues/1075 [WebFetch succeeded]",
+     "https://bugs.webkit.org/show_bug.cgi?id=298951 [WebSearch summary]"
+    ]
+   },
+   {
+    "claim": "iOS 18 conditional create / automatic passkey upgrades are available to third-party providers who opt in",
+    "verdict": "confirmed",
+    "correction": "Apple's documentation confirms it. The API is ASCredentialProviderViewController.performWithoutUserInteractionIfPossible(passkeyRegistration:): 'Perform a conditional passkey registration, if possible.' It arrived in iOS/iPadOS 18.0, Mac Catalyst 18.0, macOS 15.0 and visionOS 2.0. To opt in, a provider adds the key `SupportsConditionalPasskeyRegistration` under the `ASCredentialProviderExtensionCapabilities` dictionary in the extension's Info.plist. This settles the research note's 'verify exact keys'. Rules: the request may not show UI, and ASExtensionErrorCodeUserInteractionRequired is treated as an ordinary error. The extension sets its own conditions (Apple's examples: vault unlocked, username matches a saved password that was filled recently, no passkey for the account yet). Fulfilling the request should not remove the saved password. Chrome docs say that on iOS 18+ support 'is up to the passkey provider'. Dashlane announced support when iOS 18 launched. An Apple engineer said in the forums that iOS 18.4 loosened the requirements somewhat; I saw that only in a search summary.",
+    "sources": [
+     "https://developer.apple.com/documentation/authenticationservices/ascredentialproviderviewcontroller/performwithoutuserinteractionifpossible(passkeyregistration:) [curl of developer.apple.com tutorials/data JSON; primary]",
+     "https://developer.chrome.com/docs/identity/webauthn-conditional-create [cited in research; not re-fetched, DNS failure]",
+     "https://www.thurrott.com/?p=309017 [WebSearch summary; Dashlane iOS 18 support]",
+     "https://developer.apple.com/forums/thread/773103 [WebSearch summary]"
+    ]
+   }
+  ],
+  "new_facts": [
+   "Method: WebFetch worked for developer.apple.com forums, developer.android.com and github.com. It failed with DNS errors for w3.org, developer.chrome.com, thalesdocs.com, support.1password.com, community.bitwarden.com, heise.de, cyberinsider.com, techcommunity.microsoft.com, learn.microsoft.com, fidoalliance.org and bleepingcomputer.com. curl worked for raw.githubusercontent.com (MDN BCD, passkeys.dev source, MicrosoftDocs source) and for the developer.apple.com docs JSON. Everything else rests on WebSearch summaries.",
+   "Chrome for Android got the WebAuthn Signal API in Chrome 144 (Chrome blog, Dec 2025). On Android 14+ Chrome sends signals to all enabled passkey providers, not only Google Password Manager. This matters for a third-party Android provider.",
+   "MDN browser-compat-data (main, 2026-10-15): getClientCapabilities() shipped in Chrome 133, Firefox 135 and Safari 17.4. The three Signal API methods are Chrome 132, Safari 26, Firefox false.",
+   "Bitwarden (4 Mar 2026) added passkey sign-in to Windows itself. It needs an Entra ID-joined PC with the FIDO2 security-key Web Sign-In policy on. The user scans the Windows QR code with the Bitwarden app on iPhone, iPad or Android, which makes Bitwarden the hybrid authenticator. It works on all plans, including free.",
+   "1Password's native Windows 11 passkey support (stable, 11 Nov 2025) needs the MSIX build of 1Password for Windows. Microsoft Password Manager (Edge) is also plugged into the Windows passkey plugin model.",
+   "Persistent hybrid linking exists only between an Android authenticator and Windows 11 23H2+ (or Chrome/Edge on older Windows). iOS/iPadOS and macOS do not support it, so they need a QR scan on every use (passkeys.dev).",
+   "passkeys.dev says some Android 14 devices from a small number of OEMs do not support third-party passkey providers. Thales says only biometric and PIN authenticators are available during hybrid registration on Android.",
+   "Apple (thread 829541, June 2026): WebAuthn attestation is not supported for passkeys outside a few MDM-managed contexts, though App Attest out of band is fine. Device-bound credentials cannot be returned by a provider extension.",
+   "Mozilla standards-positions #1075 (Signal API), opened 19 Sep 2024, was still unlabeled and 'Unscreened' as of its last comments in July 2026, so there is no Firefox implementation signal."
+  ]
+ },
+ {
+  "cluster": "credential-exchange",
+  "claims": [
+   {
+    "claim": "FIDO CXF reached Proposed Standard in Aug 2025; CXP is still a working draft in 2026",
+    "verdict": "confirmed",
+    "correction": "Holds, with more precise dates. CXF v1.0 became a Proposed Standard on 2025-08-14 (cxf-v1.0-ps-20250814). Before that came a Review Draft (2025-03-13). An errata PS followed on 2026-03-09; a third-party blog calls it editorial. CXP v1.0 is still the Working Draft dated 2024-10-03, with no Review Draft or Proposed Standard. FIDO's download page lists it as a Working Draft. Third-party posts from July and October 2026 say it has not changed in about 21 months. They also say the WD states it is not meant as an implementation basis and that its implementation-requirements section is empty. Some 2026 press, for example TalkAndroid, wrongly calls CXP 'finalized'. The FIDO pages could not be fetched directly (DNS and proxy 403), so this rests on search-result summaries of the FIDO URLs and on third-party explainers.",
+    "sources": [
+     "https://fidoalliance.org/specs/cx/cxf-v1.0-ps-20250814.html",
+     "https://fidoalliance.org/specs/cx/cxf-v1.0-ps-errata-20260309.html",
+     "https://fidoalliance.org/specs/cx/cxf-v1.0-rd-20250313.html",
+     "https://fidoalliance.org/download-credential-exchange-specifications/",
+     "https://fidoalliance.org/specs/cx/cxp-v1.0-wd-20241003.html",
+     "https://www.1password.community/developers-blog-53/portability-without-compromise-1password-helps-author-a-new-standard-for-secure-credential-transfer-23166",
+     "https://www.youngju.dev/blog/2026-07-16-passkey-credential-exchange-half-shipped.en"
+    ]
+   },
+   {
+    "claim": "iOS/macOS 26 ship OS-mediated credential import/export (ASCredentialExportManager/ImportManager) and Apple Passwords, 1Password, Bitwarden, Dashlane participate",
+    "verdict": "partly",
+    "correction": "The API part holds. ASCredentialExportManager and ASCredentialImportManager are available from iOS/iPadOS/macOS/Mac Catalyst/visionOS 26.0. Both need a credential provider extension with SupportsCredentialExchange=true and SupportedCredentialExchangeVersions set; 1.0 is the only version. The participation claim is mainly true for iOS only. Bitwarden was the first third-party manager, on iOS 26 in September 2025 (release of Sept 23). Dashlane followed around the same time. 1Password lagged. Late-2025 forum users did not see it as a target in Apple Passwords' export list. By February 2026, 1Password staff said import from Apple Passwords works on iPhone and iPad but not on macOS. A June 2026 post says export/import works in practice only on iOS, with no major third-party importer shipped for macOS. So 'macOS 26 + 1Password, Bitwarden, Dashlane' is overstated: macOS 26 has the API but has little or no third-party participation.",
+    "sources": [
+     "https://developer.apple.com/documentation/authenticationservices/ascredentialexportmanager.md",
+     "https://developer.apple.com/documentation/authenticationservices/ascredentialimportmanager.md",
+     "https://sixcolors.com/post/2025/09/export-keys-securely-from-passwords-to-third-party-managers/",
+     "https://bitwarden.com/blog/security-vendors-join-forces-to-make-passkeys-more-portable-for-everyone/",
+     "https://support.dashlane.com/hc/articles/32779418812050",
+     "https://www.1password.community/1password-at-home-31/feature-request-support-importing-exporting-with-apple-passwords-23279",
+     "https://www.1password.community/1password-at-home-31/request-support-apple-passwords-passkey-transfer-export-destination-24029",
+     "https://danfabulich.medium.com/you-can-export-import-passkeys-now-but-only-on-ios-3b90cddf5fe6"
+    ]
+   },
+   {
+    "claim": "Android (Google Play Services) shipped credential exchange in 2026 and Google Password Manager can export to 1Password/Bitwarden/Dashlane (Sept 2026 switch-manager flow)",
+    "verdict": "confirmed",
+    "correction": "Holds, with details. The Play services v26.21 changelog (June 1, 2026) added Google Password Manager import/export of passwords and passkeys via the Credential Exchange standard, rolling out gradually. Google's blog post 'Switching password managers is easy and safe on Android' (September 10, 2026) launched the same-device switch flow. Launch partners were Google Password Manager, 1Password, Bitwarden and Dashlane, with more promised. The flow starts as an import in the receiving app, and the user then approves in the source app. Minimum OS varies by source. The Credentials Transfer API (androidx.credentials:providerevents) supports Android 8 (API 26)+. Bitwarden and 1Password require Android 14+ plus Play services 26.21+, and Dashlane is reported at Android 10+. One outlet (The Blaze) said 1Password passkey transfer was still pending at launch while others list all four, so 1Password passkey timing is in conflict. CSV export/import remains available.",
+    "sources": [
+     "https://blog.google/products-and-platforms/platforms/android/switch-password-managers/",
+     "https://9to5google.com/2026/09/10/android-passkey-password-transfer/",
+     "https://www.androidauthority.com/google-password-manager-import-export-support-3673351/",
+     "https://www.droid-life.com/2026/06/02/google-play-services-for-june-now-rolling-out/",
+     "https://developer.android.com/identity/sign-in/credential-transfer",
+     "https://www.androidpolice.com/passkeys-credential-transfer-android/",
+     "https://www.techrepublic.com/article/news-transfer-passwords-passkeys-android-managers/",
+     "https://www.theblaze.com/tech/google-passkeys-transfer-tool",
+     "https://bitwarden.com/blog/security-vendors-join-forces-to-make-passkeys-more-portable-for-everyone/"
+    ]
+   },
+   {
+    "claim": "Wi-Fi items and counter-based passkeys do not transfer via credential exchange",
+    "verdict": "partly",
+    "correction": "Too absolute. Wi-Fi is not excluded by the standard. CXF defines a Wi-Fi credential type: Android's androidx CredentialTypes includes Wi-Fi, and 1Password's CXF explainer lists Wi-Fi among item types. Whether Wi-Fi moves depends on each app. At the Android launch, apps reportedly moved only passwords and passkeys, though TalkAndroid claims Wi-Fi moves when both apps support it. Apple documents that Wi-Fi passwords are excluded from its CSV/Safari export, along with group-shared and Sign in with Apple passwords. No Apple page was found confirming that Wi-Fi is excluded from the iOS 26 'Export Data to Another App' flow, so that part is unverified. The counter limit comes only from Bitwarden's blog: passkeys that rely on a hidden signature counter cannot be moved via CXP. No FIDO, Apple or Google primary source confirms it. Apple-platform passkeys always report signCount 0, so iCloud Keychain passkeys are not counter-based in the first place.",
+    "sources": [
+     "https://bitwarden.com/blog/security-vendors-join-forces-to-make-passkeys-more-portable-for-everyone/",
+     "https://developer.android.com/reference/androidx/credentials/providerevents/transfer/CredentialTypes",
+     "https://www.1password.community/developers-blog-53/portability-without-compromise-1password-helps-author-a-new-standard-for-secure-credential-transfer-23166",
+     "https://support.apple.com/guide/iphone/export-passwords-iphf28f2e93e/ios",
+     "https://tech-ish.com/2026/09/12/google-password-manager-1password-bitwarden-and-dashlane-can-now-hand-your-logins-to-each-other/",
+     "https://www.talkandroid.com/531166-android-password-manager-transfer/",
+     "https://developer.apple.com/forums/thread/712079"
+    ]
+   }
+  ],
+  "new_facts": [
+   "Method note: WebFetch failed on every URL tried (getaddrinfo ENOTFOUND), and curl through the proxy got 'CONNECT tunnel failed, 403'. All verdicts rest on WebSearch result summaries, which include summaries of primary Apple, Android, Google and FIDO pages.",
+   "Shipping deployments on both iOS 26 and Android are OS-mediated, same-device, app-to-app transfers carrying CXF-shaped data. None uses the HPKE remote CXP wire protocol. Vendors (Bitwarden, Dashlane) still market it as 'CXP'.",
+   "Apple API detail: the credential provider extension must set SupportsCredentialExchange=true and list SupportedCredentialExchangeVersions (only '1.0'). Export starts with requestExport(for:) and exportCredentials(_:), which shows a system picker. Import uses importCredentials(token:). ASImportableItem and ASImportableCollection mirror CXF Item and Collection, and ASImportableCredential has BasicAuthentication, Passkey and TOTP cases (TOTP secret is Base32).",
+   "Other iOS 26 participants beyond the four named: Google Chrome for iOS ships the exporter, Microsoft Edge the importer, and Keeper imports via 'Export Data to Another App'.",
+   "An Apple Developer Forums thread (March 2026) reports that a correctly entitled third-party manager did not appear in Apple Passwords' export list; only Chrome showed up. Eligibility rules for appearing in that list are undocumented.",
+   "1Password iOS 8.12.36 fixed Credential Exchange imports failing on malformed passkeys. 1Password's 1PUX export excludes passkeys. 1Password is not an export destination in Passwords on macOS (staff, February 2026).",
+   "Microsoft Password Manager reportedly could not export passkeys as of June 2026 (Medium, single source).",
+   "Android Credentials Transfer API: androidx.credentials:providerevents (sample version 1.0.0-alpha06, still alpha). ProviderEventsManager.registerExport() declares a source, importCredentials() opens the provider selector, and clearExport() removes registrations. The API supports Android 8 (API 26)+, and it is same-device only.",
+   "Bitwarden's portability blog was updated on July 23, 2026 to cover Android: it requires Android 14+ and Play services 26.21+, and the flow is import-initiated.",
+   "Dashlane's help article still listed 1Password as the only Android participant after the September 2026 launch, so it is stale against the four-partner launch list.",
+   "Google Password Manager keeps CSV import/export alongside Credential Exchange. Claims that CSV and JSON export are 'retired' are unconfirmed.",
+   "Apple's documented export exclusions (CSV/Safari route): Wi-Fi passwords, passwords shared to a group unless you created the group, and Sign in with Apple account passwords."
+  ]
+ },
+ {
+  "cluster": "steam",
+  "claims": [
+   {
+    "claim": "Steam QR login uses IAuthenticationService BeginAuthSessionViaQR with a challenge URL like https://s.team/q/<version>/<client_id>, approved by the mobile authenticator via UpdateAuthSessionWithMobileConfirmation signed with the shared_secret",
+    "verdict": "confirmed",
+    "correction": "Confirmed from source code in two independent implementations. Details: the signature is HMAC-SHA256 keyed with the shared_secret, computed over 18 bytes: version (uint16 little-endian), client_id (uint64 LE) and the approving account's steamid (uint64 LE). Both libraries parse the QR with the regex ^https?://s.team/q/(\\d+)/(\\d+)(\\?|$). The approver usually calls IAuthenticationService/GetAuthSessionInfo first to show the requesting device and location (including a locationMismatch flag). The same call with confirm=false denies the login. The approver needs a valid access token for the account as well as the shared_secret.",
+    "sources": [
+     "https://raw.githubusercontent.com/DoctorMcKay/node-steam-session/master/src/LoginApprover.ts (steam-session v1.9.4; decodeQrUrl + createHmac('sha256', sharedSecret))",
+     "https://raw.githubusercontent.com/DoctorMcKay/node-steam-session/master/src/AuthenticationClient.ts (apiInterface 'Authentication', methods BeginAuthSessionViaQR, GetAuthSessionInfo, UpdateAuthSessionWithMobileConfirmation)",
+     "https://github.com/dyc3/steamguard-cli/blob/master/steamguard/src/approver.rs (build_signature(&account.shared_secret, steam_id, &challenge); git clone, HEAD 2026-09-22)"
+    ]
+   },
+   {
+    "claim": "Third-party authenticators get Steam secrets either by adding an authenticator (ITwoFactorService/AddAuthenticator + FinalizeAddAuthenticator) or by importing an SDA maFile containing shared_secret and identity_secret",
+    "verdict": "partly",
+    "correction": "The two paths are real, but the list is incomplete. (1) Enroll: ITwoFactorService/AddAuthenticator, then FinalizeAddAuthenticator. Steam confirms this by SMS or email; steamguard-cli's AccountLinkConfirmType has SMS=1 and Email=3. (2) Import: SDA maFiles, WinAuth exports, and backups of the official Steam app's v2 JSON (usually from rooted Android). steamguard-cli reads all three formats. (3) A third path is missing from the claim. Transfer: ITwoFactorService/RemoveAuthenticatorViaChallengeStart, then RemoveAuthenticatorViaChallengeContinue with an SMS code. This creates new secrets on the new device and invalidates the old phone. Since about 2025-02-07 it needs a phone number on the account. One correction to the research report: an maFile stores shared_secret and identity_secret (base64) as their own JSON fields, beside the otpauth uri. You do not have to pull them out of the uri. An encrypted SDA maFile needs SDA's passkey to decrypt; you do not have to turn encryption off.",
+    "sources": [
+     "https://github.com/dyc3/steamguard-cli/blob/master/steamguard/src/steamapi/twofactor.rs (SERVICE_NAME = ITwoFactorService; AddAuthenticator, FinalizeAddAuthenticator, RemoveAuthenticatorViaChallengeStart/Continue)",
+     "https://github.com/dyc3/steamguard-cli/blob/master/steamguard/src/accountlinker.rs (transfer_start/transfer_finish doc comment, 'As of 2025-02-07 ... requires a phone number')",
+     "https://github.com/dyc3/steamguard-cli/blob/master/src/accountmanager/legacy.rs, steamv2.rs, winauth.rs (maFile and import schemas)"
+    ]
+   },
+   {
+    "claim": "Moving/adding a Steam mobile authenticator triggers a 15-day trade/market hold (or other hold length in 2026?)",
+    "verdict": "partly",
+    "correction": "Too broad. The hold length depends on how the authenticator changes. (a) Removing or revoking it, including with the R##### revocation code, blocks trading and the Community Market for 15 days. (b) 'Move authenticator' to a new device by SMS gives about a 2-day hold. steamguard-cli's setup prompt has said '[T] Transfer authenticator ... (2 day trade ban)' since 2023-12-08, and third-party 2026 guides agree. (c) Importing existing secrets (SDA, WinAuth or Steam-app maFile) gives no hold, because Steam sees no change. (d) Newly adding an authenticator does not clear existing holds. Trades and listings made in the first 7 days can still be held up to 15 days. So a password manager that imports secrets avoids the 15-day hold, and one that uses the transfer flow gets about 2 days. I could not reach the official Steam Support FAQ (help.steampowered.com failed DNS in WebFetch and returned 403 through the proxy). The 2-day figure therefore rests on steamguard-cli source and community or third-party guides, not on Valve's own page.",
+    "sources": [
+     "https://github.com/dyc3/steamguard-cli/blob/master/src/commands/setup.rs lines 61-68 (15 day for revocation, 2 day for transfer, no trade ban for SDA/WinAuth import; added in PR #354, 2023-12-08)",
+     "WebSearch summaries: https://steamcommunity.com/discussions/forum/8/2860219962100338908/ ; https://authenticator-2fa.com/how-to-move-steam-authenticator-to-new-phone/ ; https://skintrain.gg/en/blog/steam-trade-hold-15-days",
+     "https://dev.doctormckay.com/topic/761-copying-mafile-format-for-multiple-accounts/ (cited in research report)"
+    ]
+   },
+   {
+    "claim": "steamguard-cli (dyc3) is actively maintained in 2025-2026 and supports QR login approval and trade confirmations",
+    "verdict": "confirmed",
+    "correction": "Release tags: v0.16.0 (2025-02-12), v0.17.0 (2025-03-21), v0.17.1 (2025-06-28), v0.18.0/v0.18.1 (2026-06-04), v0.18.2/v0.18.3 (2026-07-11), v0.18.4 (2026-07-14). The newest master commit is 2026-09-22 (fix #521, string Steam IDs in SDA imports). The maintainer is Carson McManus (dyc3). Several recent PRs were written by an automation bot ('pullfrog[bot]'). The README lists 'Respond to trade, market or any other confirmations' and 'QR code logins for quickly logging into Steam on a new device'. The code has a qr-login subcommand and an approver in the steamguard crate. The README still calls the tool 'effectively in beta'.",
+    "sources": [
+     "git clone https://github.com/dyc3/steamguard-cli (git log and tags read 2026-10-15)",
+     "https://raw.githubusercontent.com/dyc3/steamguard-cli/master/README.md",
+     "https://raw.githubusercontent.com/dyc3/steamguard-cli/master/Cargo.toml (version 0.18.4)"
+    ]
+   },
+   {
+    "claim": "Steam 5-character TOTP is supported in Bitwarden (steam:// prefix), KeePassXC, Aegis, Ente Auth; 2FAS support status?",
+    "verdict": "confirmed",
+    "correction": "All five support it, 2FAS included, which the research report had left unconfirmed. Bitwarden: the sdk-internal totp.rs strips the 'steam://' prefix and has a TotpAlgorithm::Steam. Making codes needs Premium or a paid org, though anyone can store the key. KeePassXC: core/Totp.cpp has a 'steam' encoder (5 digits, short name 'S') and the dialog offers 'Steam\u00ae settings'. Aegis: SteamInfo, type id 'steam', 5 digits. Ente Auth: code.dart has Type.steam (uri host 'steam', steamDigits=5) and totp_util uses the steam_totp package. 2FAS: Android has Service.AuthType.STEAM and iOS has tokenType .steam. 2FAS's own support article 'How to add a STEAM Guard token?' says to enter the secret by hand with Type = STEAM. 2FAS can also import Steam entries from Aegis, Authenticator Pro and Bitwarden steam:// exports. 2FAuth supports it too.",
+    "sources": [
+     "https://github.com/bitwarden/sdk-internal/blob/main/crates/bitwarden-vault/src/totp.rs (key.strip_prefix(\"steam://\"), STEAM_CHARS)",
+     "https://github.com/keepassxreboot/keepassxc/blob/develop/src/core/Totp.cpp and src/gui/TotpSetupDialog.ui",
+     "https://github.com/beemdevelopment/Aegis/blob/master/app/src/main/java/com/beemdevelopment/aegis/otp/SteamInfo.java",
+     "https://github.com/ente-io/ente/blob/main/mobile/apps/auth/lib/models/code.dart and lib/utils/totp_util.dart",
+     "git clone twofas/2fas-android (AddServiceManualViewModel.kt, BitwardenImporter.kt; HEAD 2026-10-06) and twofas/2fas-ios (TokensModuleInteractor.swift)",
+     "https://2fas.com/support/2fas-mobile-app/how-to-add-a-steam-guard-token/ (WebSearch summary)",
+     "https://bitwarden.com/help/integrated-authenticator/ (WebSearch summary)"
+    ]
+   },
+   {
+    "claim": "Valve has not taken legal/ban action against third-party Steam authenticators",
+    "verdict": "unverifiable",
+    "correction": "There is no evidence of legal action, but you cannot prove a negative, and I found no data on account bans. In the github/dmca repo, Valve's notices target leaked or decompiled game code and assets: 2018-06-21 (CS:GO Panorama, SteamDatabase), 2020-04-24 (TF2 leak reposts), 2024-01-10 (TF2 assets in s&box), 2025-01-17 (SourceEngine2007, 229-repo network) and 2025-10-17 (Half-Life 1 / GoldSrc source). None targets SDA, steamguard-cli, WinAuth or other authenticators. The 2026-06-30 'steam-game-idler' notice came from that tool's own author, not Valve. Both SDA and steamguard-cli are still live on GitHub. This check matched notice file names only, not their full text. WebSearch found no reports of Valve banning accounts for using these tools, and no 2026 crackdown. Valve does keep changing the confirmation endpoint. steamguard-cli shipped fixes in July 2026 for confirmation rate-limit errors (#510), added an Accept-Language header (#511) and switched to a Chrome 118 user agent (#512). That points to technical friction or anti-automation tuning, not legal action. The Steam Subscriber Agreement wording was not checked directly.",
+    "sources": [
+     "git clone https://github.com/github/dmca (file listing grep for valve/steam; notices read via git show)",
+     "git clone https://github.com/Jessecar96/SteamDesktopAuthenticator (last commit 2024-10-20, v1.0.15)",
+     "https://github.com/dyc3/steamguard-cli commits 2026-07-11/12 (#510, #511, #512)",
+     "WebSearch summaries (no ban/DMCA reports found): https://securityboulevard.com/2018/02/fake-steam-desktop-authenticator-steals-account-details"
+    ]
+   }
+  ],
+  "new_facts": [
+   "Method note: WebFetch failed (getaddrinfo ENOTFOUND help.steampowered.com), and curl to every non-GitHub host was refused by the proxy (403). Verification therefore used raw.githubusercontent.com and git clones as primary sources, plus WebSearch result summaries for Steam Support, Bitwarden help and the 2FAS support page.",
+   "Licensing matters for reuse in a password manager: the steamguard Rust crate (v0.18.4) is MIT OR Apache-2.0, while the steamguard-cli binary is GPL-3.0-or-later. A product can embed the crate without GPL obligations.",
+   "The Steam Guard code alphabet is the 26-character set '23456789BCDFGHJKMNPQRTVWXY'. Codes are 5 characters, built with HMAC-SHA1 and a 30-second step (KeePassXC Totp.cpp and Bitwarden sdk-internal totp.rs both hard-code it).",
+   "A third way to get secrets is the authenticator transfer: ITwoFactorService/RemoveAuthenticatorViaChallengeStart, then ...Continue with an SMS code and generate_new_token=true, version=2. It mints new shared_secret and identity_secret on the new device, needs a phone number on the account (since about 2025-02-07), and costs about a 2-day trade hold, versus 15 days for revocation.",
+   "steamguard-cli can import SDA maFiles, WinAuth exports and backups of the official Steam mobile app's v2 JSON (fields steamid, shared_secret, identity_secret, secret_1, revocation_code, uri, steamguard_scheme '2'). Import causes no trade hold.",
+   "Interop bug fixed 2026-09-02 in steamguard-cli (#516): the QR code it exports for Bitwarden/KeePassXC must carry the secret in Base32, not Base64. maFile shared_secret is base64 and steam:// / otpauth URIs expect base32, so the importer must convert.",
+   "Valve's CS2 'Trade Protection' launched around July 2025 (per third-party reports; Valve's own post was not retrieved). Items received in trades are protected for 7 days and the trade can be reversed. Reversing undoes all trades from the last 7 days in supported games and triggers a 30-day trade/market cooldown. This is a separate system from the authenticator-based holds.",
+   "Bitwarden stores Steam keys on any plan, but generating TOTP codes in Bitwarden requires Premium or a paid organization.",
+   "Steam Desktop Authenticator (Jessecar96) last committed 2024-10-20 (v1.0.15) and is far less active than steamguard-cli. Fake SDA builds spreading credential-stealing malware were reported in 2018, a supply-chain risk to note in import UX.",
+   "When steamguard-cli links a new authenticator, Steam can confirm by SMS or by email (AccountLinkConfirmType SMS=1, Email=3), so a phone number is not strictly required for a fresh add.",
+   "node-steam-session (DoctorMcKay) v1.9.4 has a LoginApprover class (approveAuthSession / getAuthSessionInfo) that implements QR-login approval in Node and needs only the access token plus shared_secret."
+  ]
+ },
+ {
+  "cluster": "battlenet-adobe",
+  "claims": [
+   {
+    "claim": "In 2026 it is still possible to extract a Battle.net authenticator TOTP secret (e.g., via the bna Python tool or an SSO-token based method); current state of tooling.",
+    "verdict": "confirmed",
+    "correction": "Still possible as of 2026, but the working mechanism is the manual SSO-token flow, not the bna tool by itself. The documented method (python-bna GitHub issues #41/#42) is: grab an 'ST=' SSO token from the Battle.net login page, POST it to oauth.battle.net/oauth/sso for a bearer token, then call authenticator-rest-api.bnet-identity.blizzard.net to read an existing authenticator's serial+restore codes and its deviceSecret (or create a new authenticator), then convert the hex secret to base32 as an 8-digit TOTP. Users report this working as recently as 10 Sep 2026 ('still works great on 10-09-2026', issue #42) and Jan 2025 (issue #41), with scattered 401/blank-response failures. The bna PyPI package's own README says it is 'impossible (without knowing the secret) to import an existing authenticator', so bna manages/creates authenticators but does not itself scrape an existing one; its latest release is 5.1.0 (11 Feb 2022), not 4.0.1 as a report draft cited. WinAuth, the legacy desktop route, is declared end-of-life by its maintainer. So: the report's 'fragile / possibly closed by the app merge / uncertain' hedge is too pessimistic \u2014 the SSO-token path is live and in active use in 2026; what is dead is the old serial/restore UI inside the merged app, not the extraction itself.",
+    "sources": [
+     "https://github.com/jleclanche/python-bna/issues/42",
+     "https://github.com/jleclanche/python-bna/issues/41",
+     "https://github.com/jleclanche/python-bna",
+     "https://pypi.org/project/bna/"
+    ]
+   },
+   {
+    "claim": "Battle.net 'Approve this login' push protocol has no public reverse-engineered implementation.",
+    "verdict": "confirmed",
+    "correction": "Supported by absence of evidence rather than proof of a negative: searches for a public/open-source reimplementation of Blizzard's one-touch 'approve this login' push returned only TOTP-secret-extraction tooling and code generators (bna, WinAuth), plus a 2016 Medium decompile of the now-retired standalone app. The standalone Battle.net Authenticator app was retired 5 Jan 2024 and its approve/deny push was folded into the Battle.net mobile app, so even the old decompile predates the current flow. No OSS replicating the current push channel was found.",
+    "sources": [
+     "https://medium.com/@scottmeschke/android-decompile-deepdive-battle-net-authenticator-dc1b1b65964",
+     "https://www.apkmirror.com/apk/blizzard-entertainment-inc/battle-net-mobile-authenticator",
+     "https://warcraft.wiki.gg/wiki/Battle.net_Authenticator"
+    ]
+   },
+   {
+    "claim": "Adobe accounts support passkeys (helpx passkeys overview), and whether Adobe supports third-party TOTP authenticator apps in 2026.",
+    "verdict": "partly",
+    "correction": "Passkeys: confirmed. Adobe publishes a 'Passkeys overview' and setup/sign-in help pages; requirements are Windows 10 / macOS Ventura / ChromeOS 109+ / iOS 16 / Android 9+, a FIDO2 USB key is allowed, multiple passkeys per account are allowed, and the overview page was last updated 25 Feb 2026. Third-party TOTP: largely refuted for 2026 \u2014 community feature-request and complaint threads (posts dated Sep and Nov 2025) consistently report that the third-party/authenticator-app TOTP option has been removed from Adobe account security settings, leaving only the Adobe Account Access app, email, and SMS; users report cancelling subscriptions over it. A conflicting, unverified user claim says TOTP is 'technically implemented but hidden' for accounts that already had it. Adobe's own Account Access help page says Adobe Authenticator is no longer downloadable and only one authenticator app can be used at a time. There is no official Adobe statement confirming the removal or its timing. Net: passkeys yes; standard third-party TOTP effectively unavailable/hidden in 2026.",
+    "sources": [
+     "https://helpx.adobe.com/account/individual/sign-in-and-security/sign-in-methods/passkeys-overview.html",
+     "https://helpx.adobe.com/manage-account/using/set-up-a-passkey.html",
+     "https://community.adobe.com/t5/creative-cloud-desktop-ideas/third-party-authenticator-apps/idc-p/14357562",
+     "https://helpx.adobe.com/x-productkb/global/about-adobe-authenticator-app.html"
+    ]
+   },
+   {
+    "claim": "Adobe Account Access push protocol has no public reimplementation.",
+    "verdict": "confirmed",
+    "correction": "Supported by absence of evidence: no reverse-engineering write-up or open-source project for the Adobe Account Access push-approval protocol was found. All results were official Adobe help pages, app-store listings, and user forum posts about push notifications not arriving. Adobe documents only the user-facing behaviour (a push is sent on sign-in; approve in the app, or 'Enter code' manually).",
+    "sources": [
+     "https://helpx.adobe.com/account-billing-next/manage-account/protect-your-account/set-up-account-access-app.html",
+     "https://helpx.adobe.com/manage-account/using/passwordless-sign-in-adobe.html"
+    ]
+   },
+   {
+    "claim": "Discord QR login remote-auth gateway has been reverse-engineered (open-source clients exist).",
+    "verdict": "confirmed",
+    "correction": "Multiple open-source implementations of the desktop side of Discord's QR 'remote authentication' flow exist: Discord-QR-Auth-Client (Python; not archived, no deprecation notice), the remoteauthclient PyPI package, the mautrix-discord 'remoteauth' Go package (used by the mautrix Discord bridge, which documents QR login as its recommended method), and the abaddon client (behind a build flag). Caveat: the protocol is undocumented and has changed over time \u2014 a discord.js-selfbot issue notes Discord added a new endpoint \u2014 so these clients require ongoing maintenance and are ToS-violating. These implement the computer side (display QR, receive the resulting token); the phone-side approval remains the official Discord app.",
+    "sources": [
+     "https://github.com/malmeloo/Discord-QR-Auth-Client",
+     "https://pypi.org/project/remoteauthclient",
+     "https://beta.pkg.go.dev/go.mau.fi/mautrix-discord/remoteauth"
+    ]
+   },
+   {
+    "claim": "PlayStation (Feb 2024) and Nintendo support passkeys; Epic, EA, Ubisoft, Riot, Rockstar, Roblox, Twitch support standard TOTP authenticator apps; GOG 2FA type in 2026.",
+    "verdict": "partly",
+    "correction": "Nearly all assertions hold, with refinements. PASSKEYS: PlayStation launched passkey sign-in ~21 Feb 2024 for PS5/PS4/web/mobile (confirmed). Nintendo launched passkeys Sept 2023 (up to 10 per account) and separately offers TOTP 2-step verification (confirmed). TOTP: Epic, EA (email/app/SMS), Ubisoft, Rockstar Social Club (explicitly allows third-party apps) all support standard authenticator-app TOTP (confirmed). Riot \u2014 refinement: the claim is correct for the CURRENT MFA system (Riot Mobile app, authenticator app such as Google/Microsoft/Duo, or email), but Riot's older 2FA was email-code-only, which is why some sources and the prior research draft call it email-based; the authenticator-app option is the newer MFA. Twitch \u2014 refinement: authenticator-app TOTP is supported but gated behind a required phone number (SMS must be set up first). Roblox: standard authenticator-app 2FA is well-documented but was not freshly re-verified with a primary source this session (carried from prior research). GOG \u2014 resolves the report's 'uncertain': in 2026 GOG uses email-code 2FA by default AND supports TOTP authenticator apps (Google/Microsoft Authenticator); you must disable the email method before enabling the app, and backup codes are issued. So GOG is NOT email-only as a 2019-era source suggested.",
+    "sources": [
+     "https://www.playstation.com/passkey/",
+     "https://9to5mac.com/2023/09/21/nintendo-adds-passkey-support/",
+     "https://help.ea.com/help/account/ea-two-factor-authentication/",
+     "https://support-valorant.riotgames.com/hc/articles/4415709691667",
+     "https://www.gtaboom.com/Protect_Your_Rockstar_Social_Club_Account_With_2-Step_Authentication",
+     "https://www.gog.com/en/news/you_can_now_use_authenticator_apps_to_keep_your_gog_account_secure",
+     "https://www.pcgamer.com/twitch-password-reset-2fa-two-factor"
+    ]
+   }
+  ],
+  "new_facts": [
+   "python-bna latest PyPI release is 5.1.0 (11 Feb 2022); WinAuth is declared end-of-life by its maintainer \u2014 so despite low release activity, the Battle.net secret-extraction technique remains in use via the manual SSO-token/curl method, not via actively-released tooling.",
+   "The Battle.net SSO-token extraction method (oauth.battle.net/oauth/sso -> authenticator-rest-api.bnet-identity.blizzard.net) was reported working by users as recently as 10 Sep 2026 and Jan 2025 on python-bna GitHub issues #41/#42, with occasional 401/empty-response failures \u2014 it is live, not closed.",
+   "Blizzard retired the standalone Battle.net Authenticator app on 5 Jan 2024; the one-touch approve/deny push now lives only inside the unified Battle.net mobile app (functionality merged ~Apr 2023 per Warcraft Wiki).",
+   "Adobe's 'Passkeys overview' helpx page was last updated 25 Feb 2026; Adobe passkeys accept device PIN/biometrics or a FIDO2 USB key and allow multiple passkeys per account.",
+   "Community reports (Sep/Nov 2025) say Adobe removed the third-party/authenticator-app TOTP option from account security settings, leaving only Adobe Account Access, email, and SMS; no official Adobe statement confirms this, and a conflicting unverified claim says TOTP is 'hidden' for accounts that never enabled it.",
+   "Open-source Discord remote-auth (QR login) clients include Discord-QR-Auth-Client (Python), remoteauthclient (PyPI), mautrix-discord's remoteauth (Go), and abaddon; the protocol is undocumented and has changed (a new endpoint was added), so they need maintenance.",
+   "GOG supports TOTP authenticator apps in addition to default email-code 2FA; the email method must be disabled before enabling the authenticator app, and backup codes are issued \u2014 this resolves the report's 'GOG uncertain' flag.",
+   "Riot now offers MFA via three methods (Riot Mobile app, a TOTP authenticator app like Google/Microsoft/Duo, or email), an upgrade from its earlier email-code-only 2FA \u2014 reconciling conflicting sources.",
+   "Twitch requires a verified phone number (SMS) before an authenticator app can be added as a second factor; TOTP is therefore supported but phone-number-gated.",
+   "PlayStation passkey sign-in was announced ~21 Feb 2024 for PS5/PS4/web/mobile; Nintendo launched passkeys in Sept 2023 (up to 10 per account) and separately offers TOTP 2-step verification.",
+   "No public/open-source reimplementation was found for either the Battle.net mobile push-approval protocol or the Adobe Account Access push protocol; community effort for both vendors is confined to TOTP-secret extraction (Blizzard) or passkeys (Adobe)."
+  ]
+ },
+ {
+  "cluster": "1password (method: WebSearch result summaries only. WebFetch failed with DNS ENOTFOUND for tidbits.com, 1password.com, 1password.community, 1password.dev, releases.1password.com and marektoth.com. A curl fallback was refused by the egress proxy (403) for support.1password.com, kb.cert.org and marektoth.com. No primary page was read in full.)",
+  "claims": [
+   {
+    "claim": "1Password Individual rose to $47.88/yr and Families to $71.88/yr for renewals after March 27 2026",
+    "verdict": "confirmed",
+    "correction": "Correct, and the date is 'on or after' March 27, 2026, applied at each subscriber's first renewal after that date. Individual annual went from $35.88 to $47.88 (+33%). Families annual went from $59.88 to $71.88 (+20%). Monthly figures differ by source because some quote the annual price per month and others the monthly-billed price. TidBITS gives annual-equivalent prices of $2.99 to $3.99 (Individual) and $4.99/$5.99 to $6.99 (Families). Monthly billing is $3.99 to $4.99 (Individual, per AlternativeTo) and about $6.95 to $7.99 (Families, per Ubergizmo and a 1Password support reply quoted on Privacy Guides). In Europe and some other regions the account owner must accept the new price, or the subscription is cancelled (TechRadar, Ubergizmo). The euro Individual price went from 31.80 to 43.80 EUR a year (ITdaily). Ubergizmo's '$71.98' for Families is a typo.",
+    "sources": [
+     "https://alternativeto.net/news/2026/2/1password-to-raise-subscription-prices-for-individual-and-family-plans-by-up-to-33-",
+     "https://9to5google.com/2026/02/24/1passwords-annual-subscription-plans-are-getting-a-price-hike-next-month/",
+     "https://www.techradar.com/pro/security/1password-is-getting-more-expensive-soon-says-change-is-despite-the-fact-pricing-has-remained-largely-unchanged-for-many-years",
+     "https://itdaily.com/news/business/1password-increases-subscription-prices/",
+     "https://www.ubergizmo.com/2026/02/1password-price-increase/",
+     "https://discuss.privacyguides.net/t/1password-price-increase/35844",
+     "https://mjtsai.com/blog/2026/03/09/1passwords-price-hike/",
+     "https://tidbits.com/2026/02/25/should-1passwords-price-hike-push-you-to-apples-passwords/ (search summary only; fetch failed)"
+    ]
+   },
+   {
+    "claim": "1Password unlock-with-passkey remains beta / new Individual accounts only in 2026",
+    "verdict": "unverifiable",
+    "correction": "No 2026 source was found either way. The latest official statement found is a staff reply (1P_Dave) on November 21, 2025. It says the beta 'gave us a lot of valuable feedback' and that 'more work is still needed' before release to a general audience, and that the beta is still open to new testers. Earlier staff replies confirm the new-Individual-accounts-only limit (October 2024) and testing of a passkey stored on a YubiKey (January 2025). The dossier dates the staff statements to 'January and July 2025'; the latest datable one is November 21, 2025. Saying it is still beta in late 2025 is supported. Saying so for 2026 is an inference.",
+    "sources": [
+     "https://www.1password.community/1password-at-home-31/unlock-1password-with-passkey-23536",
+     "https://1password.com/blog/unlock-1password-individual-passkey-beta",
+     "https://www.1password.community/1password-at-home-31/do-i-need-to-create-a-new-account-for-the-passkey-unlock-beta-20610",
+     "https://www.1password.community/1password-at-home-31/feature-request-unlock-1password-with-a-yubikey-5530/index2.html"
+    ]
+   },
+   {
+    "claim": "1Password Environments (mounted .env, no plaintext on disk) reached GA in Aug 2026",
+    "verdict": "partly",
+    "correction": "The month is wrong, and 'GA' is not the official wording. 1Password launched Environments together with Developer Watchtower in the week of July 28, 2026: a blog post 'Secure developer secrets with 1Password' (July 28) and a community post on July 30 saying 'this week, we launched'. Neither post says 'generally available'. A July 2026 press release reportedly calls it generally available in the Enterprise Password Manager, but I could not read it directly. The developer docs page for the local .env file is still labeled Beta. Local .env mounts work only on Mac and Linux. In May 2026 1Password said it was 'scoping' a Windows solution, so the Windows conflict in the dossier resolves to: managing Environments works on Windows, mounting a local .env does not. The 'no plaintext on disk' part is confirmed. The mount is a UNIX named pipe (FIFO), the contents are 'never written to disk', reading it triggers an authorization prompt that lasts until 1Password locks, and any process can read it while unlocked. The public beta was announced October 29, 2025 (Mac and Linux). CLI 2.41.0 (October 12, 2026) made `op run --environment` GA. The Environments MCP Server is still beta: it shipped for OpenAI Codex on May 20, 2026 and on the Cursor Marketplace on July 30, 2026.",
+    "sources": [
+     "https://1password.com/blog/secure-developer-secrets-with-1password",
+     "https://www.1password.community/announcements-52/secure-your-developer-secrets-with-1password-25176",
+     "https://1password.com/blog/1password-environments-env-files-public-beta",
+     "https://www.1password.dev/environments/local-env-file",
+     "https://flaviocopes.com/1password-environments/",
+     "https://releases.1password.com/developers/cli/",
+     "https://1password.com/press/2026/july/privileged-access",
+     "https://1password.com/blog/the-1password-environments-mcp-server-is-now-on-cursor-marketplace",
+     "https://atmarkit.itmedia.co.jp/ait/articles/2606/30/news074.html"
+    ]
+   },
+   {
+    "claim": "1Password for Claude / Agentic Mode launched July 2026; Secure Agentic Autofill with Browserbase Oct 2025",
+    "verdict": "confirmed",
+    "correction": "Exact dates: 1Password for Claude and Agentic Mode in the browser extension were announced and shipped on July 16, 2026. It is available now on Mac for Individual, Family and Business plans. Each request needs biometric approval, access is limited to the session and to the approved items, and Agentic Mode is meant to work with agents other than Claude. The partnership with Anthropic was first announced in March 2026. Secure Agentic Autofill with Browserbase was announced and began rolling out on October 8, 2025, as early access in the Enterprise Password Manager, working with Browserbase Director. Approvals happen on the desktop or mobile app, credentials travel over a Noise-framework E2EE channel, and detailed audit logs are 'planned'. A 1Password community post says early access was open to all 1Password customers who use Browserbase.",
+    "sources": [
+     "https://www.bnnbloomberg.ca/press-releases/2026/07/16/1password-and-anthropic-bring-secure-credential-access-to-claude-letting-an-ai-agent-use-approved-credentials-without-exposing-the-secret-to-the-model/",
+     "https://www.techrepublic.com/article/news-1password-claude-passwordless-sign-in-ai-agents/",
+     "https://www.androidauthority.com/1password-for-claude-passwords-3688897/",
+     "https://aiweekly.co/fr/alerts/1password-laisse-claude-se-connecter-sans-voir-vos-mots-de-passe",
+     "https://1password.com/press/2025/oct/browserbase-ai-security-partnership",
+     "https://siliconangle.com/2025/10/08/1password-tackles-ai-credential-risks-new-agentic-autofill-integration-browserbase/",
+     "https://www.1password.dev/agentic-autofill",
+     "https://www.1password.community/announcements-52/securing-ai-driven-browser-workflows-with-browserbase-and-1password-23182"
+    ]
+   },
+   {
+    "claim": "1Password native macOS AutoFill credential-provider public beta May 2026; Universal sign-in Sept 2026",
+    "verdict": "partly",
+    "correction": "Both dates are correct, but the dossier's 'still beta' framing is out of date. The public beta was announced May 26, 2026, for Mac beta 8.12.22+ on macOS 14+ with Apple silicon. Native macOS AutoFill reached general availability on the stable channel on August 11, 2026, in 1Password for Mac 8.12.32+ (community announcement 'macOS AutoFill is now available to everyone!'). That settles the dossier's conflict: it is production, not beta. One-time codes through the Passwords API are still 'planned for a future release'. The Safari extension still handles cards, addresses and other item types. Stable 8.12.38 (September 29, 2026) extended AutoFill to more places, such as Finder server connections. Universal sign-in became available to everyone on September 3, 2026. On September 10 a staff reply said it was temporarily turned off for business accounts, which went back to the classic experience. On September 29 staff said a Firefox version was in progress. The 8.12.36 version and September 8 date come from a third-party tutorial and Wikipedia's stable-version listing; I did not see them in official notes. The 1Password 7 retirement is also clarified: starting May 2027, 1Password 7 will stop syncing for membership accounts but can still be opened read-only. That settles the dossier's 'already retired' conflict as false.",
+    "sources": [
+     "https://www.1password.community/1password-at-home-31/macos-autofill-is-now-in-public-beta-24649",
+     "https://www.1password.community/announcements-52/may-2026-at-1password-native-macos-autofill-a-new-developer-site-and-more-24666",
+     "https://piunikaweb.com/2026/05/27/1password-native-macos-autofill-public-beta/",
+     "https://www.1password.community/announcements-52/macos-autofill-is-now-available-to-everyone-25254",
+     "https://releases.1password.com/mac/stable/",
+     "https://www.1password.community/announcements-52/september-2026-at-1password-universal-sign-in-for-everyone-retiring-1password-7-and-a-quick-access-change-on-macos-25734",
+     "https://www.1password.community/1password-at-work-58/feedback-universal-sign-in-a-new-autofill-experience-25394/index4.html",
+     "https://www.1password.community/announcements-52/psa-1password-7-is-being-retired-upgrade-to-1password-8-25448",
+     "https://tech-insider.org/ca/1password-universal-sign-on-passkey-setup-2026/"
+    ]
+   },
+   {
+    "claim": "1Password declined to fully patch the DEF CON 33 (Aug 2025) DOM-based extension clickjacking; current status in 2026",
+    "verdict": "confirmed",
+    "correction": "Confirmed, but the dossier leaves out that 1Password shipped an opt-in mitigation. 1Password classed the Bugcrowd report as 'out-of-scope/informative'. CISO Jacob DePriest said 'there's no comprehensive technical fix that browser extensions can deliver on their own.' On August 20, 2025, 1Password released 8.11.7, recommending 8.11.7.2, with an opt-in 'Ask before filling' prompt for logins, identities and other non-credential items. It is under Settings > Security & privacy, and admins may manage it for Business accounts. Credit cards already required confirmation. The 1Password advisory says identity items can be filled on any site, while logins fill only on the sites set in the item. The prompt is not on by default, so the default setup is still exposed. Status in 2026: Marek T\u00f3th's blog post (August 9, 2025, updated January 14, 2026) still lists 1Password as not fixed. Wikipedia, citing T\u00f3th, says 8.11.8.40 'remains vulnerable'. I found no 1Password fix or new advisory in 2026 through October 15, 2026. A Privacy Guides thread calls 8.11.7 a 'partial first fix'.",
+    "sources": [
+     "https://bleepingcomputer.com/news/security/major-password-managers-can-leak-logins-in-clickjacking-attacks",
+     "https://1password.com/blog/clickjacking-what-it-means-for-1password-users",
+     "https://support.1password.com/kb/202508",
+     "https://releases.1password.com/b5x/stable/8.11.7/",
+     "https://support.1password.com/autofill-confirmation/",
+     "https://marektoth.com/blog/dom-based-extension-clickjacking/",
+     "https://en.wikipedia.org/wiki/1Password",
+     "https://thehackernews.com/2025/08/dom-based-extension-clickjacking.html",
+     "https://discuss.privacyguides.net/t/zero-day-clickjacking-vulnerabilities-in-major-password-managers/30278",
+     "https://kb.cert.org/vuls/id/516608"
+    ]
+   }
+  ],
+  "new_facts": [
+   "Native macOS AutoFill reached GA on 1Password's stable channel on August 11, 2026 (Mac 8.12.32+). The dossier still calls it beta, and its 'official posts still say beta' note is wrong. One-time codes through the Passwords API are still pending.",
+   "Universal sign-in rolled out to everyone on September 3, 2026, but on September 10, 2026 it was temporarily turned off for business accounts, which went back to the classic autofill. A Firefox version was still 'in progress' on September 29, 2026.",
+   "1Password 7 retirement: outreach started September 1, 2026. Starting May 2027, 1Password 7 stops syncing for membership accounts but stays usable read-only. It was not already retired as of October 2026.",
+   "Environments and Developer Watchtower launched in the week of July 28, 2026, not August. Local .env mounts are a UNIX named pipe (FIFO) and work only on Mac and Linux, with Windows still being scoped as of May 2026. The local-env docs still carry a Beta label. Flavio Copes reports a limit of 10 enabled local mounts per device.",
+   "1Password CLI 2.41.0 (October 12, 2026) made `op run --environment` generally available. Windows desktop 8.12.38 added programmatic access options for the CLI and SDKs.",
+   "The 1Password Environments MCP Server shipped for OpenAI Codex on May 20, 2026 and on the Cursor Marketplace on July 30, 2026. It is still beta, cannot return secret values to the client by design, and EPM admins can turn it on or off.",
+   "The price rise requires opt-in consent in Europe and some other regions, or the subscription is cancelled at renewal. The euro Individual price went from 31.80 to 43.80 EUR a year. The Families monthly-billed price is about $6.95 to $7.99; the $5.99/$6.99 figures are the annual price per month.",
+   "The 1Password clickjacking mitigation is 8.11.7 (August 20, 2025; 8.11.7.2 recommended), which adds opt-in 'Ask before filling' for logins, identities and other items. It is off by default. As of T\u00f3th's January 14, 2026 update, 1Password is still listed as not fixed.",
+   "Possible conflict for the Bitwarden cluster: the dossier lists Bitwarden as patched in 2025.8.0, and Bitwarden told BleepingComputer it was fixed. But one search summary says T\u00f3th's January 14, 2026 update still lists Bitwarden among the unfixed vendors. That may be the original August 2025 list being repeated, so check it against marektoth.com directly.",
+   "1Password for Claude was available on day one on Mac for Individual, Family and Business plans. The 1Password\u2013Anthropic partnership was first announced in March 2026, alongside the Unified Access launch."
+  ]
+ },
+ {
+  "cluster": "bitwarden-proton-vaultwarden",
+  "claims": [
+   {
+    "claim": "Bitwarden Premium rose from $10 to $19.80/yr in early 2026 with more features (5GB, phishing blocker); CEO change Feb 2026",
+    "verdict": "confirmed",
+    "correction": "Announced 2026-01-21 (Business Wire release 20260121289564), not 01-22. Premium went from $10/yr to $19.80/yr, which is $1.65/mo billed annually. Families went from $40/yr to $47.88/yr ($3.99/mo, up to 6 users). The added features are attachment storage five times larger (1 GB to 5 GB), up to 10 security keys, vault health alerts, password coaching, and the phishing blocker. Existing subscribers got 15 days' notice and a one-time 25% loyalty discount on their first renewal. CEO: Michael Crandell moved to an advisory role in Feb 2026, and Mike (Michael) Sullivan, formerly CEO of Acquia and InsightSoftware, replaced him. The Feb date and the lack of an official announcement come only from secondary sources (It's FOSS, WebProNews, Linuxiac). Sullivan's role as CEO is confirmed first-party by the bitwarden.com blog post 'My first 100 days at Bitwarden', whose author page says 'from the CEO'. Caution: one tech-insider.org article claims the free plan 'lost' TOTP, attachments and emergency access. Those were already Premium features [background], so treat that source as unreliable.",
+    "sources": [
+     "https://www.businesswire.com/news/home/20260121289564/en/Bitwarden-Enhances-Premium-and-Families-Plans-With-Proactive-Security-Protections-for-All-Users",
+     "https://bitwarden.com/resources/january-2026-spotlight-enhanced-premium-plan/",
+     "https://pricingsaas.com/companies/bitwarden/diffs/2026Q1",
+     "https://chipp.in/security-privacy/no-more-10-plan-bitwarden-hikes-prices-to-fund-proactive-defense-features",
+     "https://itsfoss.com/news/bitwarden-quiet-changes/",
+     "https://www.webpronews.com/bitwardens-quiet-shift-free-tier-rhetoric-fades-as-veteran-leaders-exit",
+     "https://bitwarden.com/blog/my-first-100-days-at-bitwarden/",
+     "(method: WebSearch summaries only; bitwarden.com WebFetch failed with DNS)"
+    ]
+   },
+   {
+    "claim": "Bitwarden supports vault unlock with PRF passkeys in web + Chromium extensions; mobile PRF unlock status",
+    "verdict": "confirmed",
+    "correction": "There are two separate features. (a) Log in with a PRF passkey, which also decrypts the vault, reached Chromium extensions (Chrome, Edge, Brave) on 2025-11-19 (Help Net Security). (b) 'Unlock with passkeys' (unlocking a vault that is already logged in) shipped in release 2026.1.1 (Jan 2026). It went to the web app first and to Chromium extensions the same week. Bitwarden's help page still lists only 'the browser extension in Chromium-based browsers and the web app'. On macOS it needs a Chromium browser, and it needs a PRF-capable authenticator. Mobile: not supported. The help page leaves out the iOS and Android apps, and the GitHub release notes for iOS and Android Password Manager through 2026.9.1 (2026-10-02/05) mention no passkey login or unlock and no PRF. Desktop and Safari/Firefox extensions are also not listed. Forum posts from about Feb 2026 say Firefox Nightly and Safari gained PRF, but there is no official Bitwarden support for them yet.",
+    "sources": [
+     "https://www.helpnetsecurity.com/2025/11/19/bitwarden-browser-extensions/",
+     "https://community.bitwarden.com/t/unlock-your-bitwarden-account-using-passkeys/93574",
+     "https://community.bitwarden.com/t/you-can-now-unlock-your-vault-with-a-passkey/93556",
+     "https://bitwarden.com/help/login-with-passkeys/",
+     "https://github.com/bitwarden/android/releases",
+     "https://github.com/bitwarden/ios/releases",
+     "(method: WebSearch summaries for Bitwarden pages; GitHub release pages fetched directly)"
+    ]
+   },
+   {
+    "claim": "Proton Pass SSH agent: shipped or not as of Oct 2026",
+    "verdict": "refuted",
+    "correction": "It has shipped; the report's 'not confirmed shipped' is out of date. CLI: pass-cli includes an ssh-agent. The oldest changelog entry, 1.3.0 (2025-12-16), already says 'Allow ssh-agent to create identities based on imported keys', and 1.9.0 (2026-03-23) added 'ssh-agent daemon' to run it in the background. Proton Support on X (2026-03-02, decoded from the status ID) said the agent was available through the CLI and that desktop support was in progress. Desktop app: the Proton Pass desktop CHANGELOG lists 'Support SSH agent' under 1.39.0. Its changelog commit is dated 2026-08-10, and the 1.39.1 note calls 1.39 a 'beta on macOS'. Version 1.40.0 (changelog commit 2026-09-02) adds 'Fix SSH agent not clearing keys...' and 'Add SSH instructions for Git on Windows'. Proton's support page says the agent is in the desktop app under Settings \u2192 General ('Use Proton Pass as SSH agent'). It is available on all paid plans except Pass Essentials. The changelogs do not confirm the biometric-per-use prompts or Git commit signing from the roadmap. Linux desktop parity is unclear: a UserVoice thread from 2026-08-21 asks about it.",
+    "sources": [
+     "https://github.com/ProtonMail/WebClients/blob/main/applications/pass-desktop/CHANGELOG.md",
+     "https://github.com/ProtonMail/WebClients/commits/main/applications/pass-desktop/CHANGELOG.md",
+     "https://github.com/protonpass/pass-cli/blob/main/CHANGELOG.md",
+     "https://proton.me/support/ssh-agent",
+     "https://x.com/ProtonSupport/status/2028377614176391471",
+     "https://www.neowin.net/news/proton-pass-is-getting-folders-an-ssh-agent-and-other-features-later-this-year/",
+     "(method: GitHub pages fetched directly; proton.me only via WebSearch summaries because of a DNS failure)"
+    ]
+   },
+   {
+    "claim": "Proton Pass CLI (pass-cli) GA Dec 2025 with Personal Access Tokens",
+    "verdict": "partly",
+    "correction": "The GA month is right, but PATs came later. The beta launched about 2025-11-25 for Visionary only (Privacy Guides, CyberInsider). It left beta in Dec 2025 for Pass Plus, Family, Professional and all bundles: the AlternativeTo article URL is dated 2025/12 and the changelog begins at 1.3.0 on 2025-12-16. The exact date 2025-12-11 is UNVERIFIED. At launch, login used Proton app passwords, not PATs. 'Personal Access Token support' arrived in pass-cli 1.10.0 on 2026-04-08. 'Agent mode' with required reasons followed in 2.1.0 (2026-05-20). Proton then announced 'AI access tokens' on about 2026-05-21: vault-scoped, read-only, 1 hour to 1 year expiry, every request logged. PAT login is `pass-cli login --pat`, and tokens have the form pst_<token>::<key>.",
+    "sources": [
+     "https://github.com/protonpass/pass-cli/blob/main/CHANGELOG.md",
+     "https://www.privacyguides.org/news/2025/11/25/proton-launches-beta-access-for-proton-pass-cli/",
+     "https://cyberinsider.com/proton-pass-cli-debuts-for-encrypted-vault-access-in-the-terminal/",
+     "https://alternativeto.net/news/2025/12/proton-pass-cli-officially-launches-for-secure-automation-workflows",
+     "https://www.helpnetsecurity.com/2026/05/22/proton-pass-adds-monitored-credential-sharing-for-ai-agents/",
+     "https://www.itsecurityguru.org/2026/05/21/proton-launches-credential-tokens-to-tackle-ai-agent-security-gap/",
+     "https://varlock.dev/plugins/proton-pass/",
+     "(method: pass-cli CHANGELOG fetched from GitHub; the rest via WebSearch summaries)"
+    ]
+   },
+   {
+    "claim": "Vaultwarden added OIDC SSO in 1.35.0 (~Dec 2025) and still lacks login-with-passkey and new-device verification",
+    "verdict": "confirmed",
+    "correction": "1.35.0 was released 2025-12-27 (the GitHub page shows '27 Dec' alongside web vault 2025.12.0). Its notable change is 'Implemented support for SSO with OpenID Connect' (PR #3899). The SSO wiki says 'A master password will still be required and not controlled by the SSO', so there is no TDE or Key Connector equivalent. As of Oct 2026 the wiki still lists 'Login with Passkeys' (PR #5929) and 'New Device Login Protection' as not yet supported. PR #5929 is still an open draft; it was opened 2025-06-04 and last commented on 2026-09-30. No release from 1.35.x through 1.37.4 (2026-10-05) adds either feature. The only related items are 2FA remember-token changes and a WebAuthn related-origins flag.",
+    "sources": [
+     "https://github.com/dani-garcia/vaultwarden/releases/tag/1.35.0",
+     "https://github.com/dani-garcia/vaultwarden/releases",
+     "https://github.com/dani-garcia/vaultwarden/wiki",
+     "https://github.com/dani-garcia/vaultwarden/wiki/Enabling-SSO-support-using-OpenId-Connect",
+     "https://github.com/dani-garcia/vaultwarden/pull/5929",
+     "(method: all GitHub pages fetched directly)"
+    ]
+   },
+   {
+    "claim": "Bitwarden Authenticator app has (or lacks) independent sync and two-way sync with the Bitwarden vault in 2026",
+    "verdict": "partly",
+    "correction": "Both halves are true, so the report's 'unclear' should be resolved as follows. HAS: opt-in, on-device sync with the Bitwarden Password Manager app. You turn it on in Password Manager under Settings \u2192 Account security \u2192 'Allow authenticator syncing', separately for each account. Both apps must be on the same device, running iOS or Android 12+. Bitwarden's blog editor's note (July 2025) calls this 'bi-directional sync'. In practice, vault TOTPs appear in Authenticator labelled by account email and are edited or deleted in the vault. Local codes can be pushed into the vault with long-press \u2192 'Copy to Bitwarden vault', after which they sync. LACKS: independent cloud sync between Authenticator instances. Local-only codes are stored on the device and backed up only through iCloud or Google device backup. Forum staff say independent cloud backup is 'planned'. The claim of CXP import/export for the Authenticator app remains UNVERIFIED; no source was found. With Vaultwarden, the sync works only inconsistently through untested feature flags (vaultwarden discussion #6090, 2025).",
+    "sources": [
+     "https://bitwarden.com/help/totp-sync/",
+     "https://bitwarden.com/blog/bitwarden-just-launched-a-new-authenticator-app-heres-what-it-means-to-users/",
+     "https://bitwarden.com/help/bitwarden-authenticator/",
+     "https://community.bitwarden.com/t/sync-between-two-or-more-instances-of-the-authenticator-app-independent-of-the-bw-password-manager-vault/68330",
+     "https://community.bitwarden.com/t/allow-editing-and-removing-entries/89581",
+     "https://github.com/dani-garcia/vaultwarden/discussions/6090",
+     "(method: WebSearch summaries for bitwarden.com and community pages because WebFetch hit DNS failures; the GitHub discussion was fetched directly)"
+    ]
+   }
+  ],
+  "new_facts": [
+   "Bitwarden's CFO also changed: Stephen Morrison left in April 2026 and Michael Shenkman (ex-InVision) replaced him. Mary Writz was appointed Chief Product Officer in Sept 2026 (Business Wire via TechIntelPro).",
+   "Bitwarden Families plan: $47.88/yr ($3.99/mo) for up to 6 users, up from $40/yr, effective with the Jan 2026 change.",
+   "Proton Pass 'AI access tokens' launched around 2026-05-21. They are scoped to dedicated vaults, read-only for agents, expire between 1 hour and 1 year, can be revoked, and log every request with a required reason. They are included on Pass Plus, Family, Professional and Proton Workspace.",
+   "pass-cli latest is 2.4.2 (2026-10-01). Version 2.4.0 (Sept 2026) added folder sharing, and on 2026-09-30 the CLI moved onto Proton's shared SDK and Web SDK (commit 'feat: Move to SDK + Web SDK').",
+   "Proton Pass desktop 1.40.0 (Sept 2026) made biometric unlock available on all plans and added Pass Monitor breach checks behind a feature flag. Desktop 1.42.0 (changelog commit 2026-10-07) imports folders from Bitwarden (gradual rollout), and 1.39.0 imports Bitwarden autofill matching rules.",
+   "Vaultwarden 1.35.0 was its first release to use immutable releases with release attestation, and it added support for mobile apps at version 2026.1.0+. The latest release is 1.37.4 (2026-10-05).",
+   "Vaultwarden 'login with passkey' work is spread across several PRs: #5929 (draft), #7297 and #6820 (closed) and #7370 (open). PR #7728 (Sept 2026) is only an iOS Autofill FIDO2 JSON fix and does not implement PRF.",
+   "A third-party macOS app, 'Pass Quick Access', adds a system-wide panel and an SSH agent UI on top of Proton's official pass-cli. It is not affiliated with Proton.",
+   "Method note: WebFetch failed with DNS errors for proton.me, bitwarden.com, community.bitwarden.com, alternativeto.net, codeberg.org, en.wikipedia.org and protonpass.github.io. github.com was reachable and was used as the primary source for Vaultwarden, the Proton Pass desktop and CLI changelogs, and the Bitwarden mobile release notes."
+  ]
+ },
+ {
+  "cluster": "apple-google-ms",
+  "claims": [
+   {
+    "claim": "iOS 27 Passwords app can automatically change weak/compromised passwords using Apple Intelligence; shipped in 27.0 or delayed",
+    "verdict": "partly",
+    "correction": "Announced at WWDC on June 8, 2026, but it did NOT ship in iOS 27.0. iOS 27 was released publicly on September 14, 2026. On about September 11, 2026, Apple updated its iOS 27, iPadOS 27 and macOS 27 pages to say the feature, along with Messages suggestions, will come in a 'future software update'. Reddit users had already seen it removed in iOS 27 beta 5. Apple has not committed to iOS 27.1. MacRumors and Gotechtor only speculate that 27.1 could carry it, because the iPhone Duo reportedly ships October 23 with 27.1. As of 2026-10-15 I found no report that 27.1 has shipped with it. The Passwords app still flags weak and compromised passwords in 27.0; only the automatic change is missing. Report 04 says 'Apple iOS 27 now does AI-driven bulk changes', which is wrong as of today and should say 'announced, delayed past 27.0'. As announced, the feature uses Apple Intelligence plus Safari, starts with one tap from the Security tab, shows a Live Activity and works only on supported sites. Method: every WebFetch hit DNS errors (macrumors.com, 9to5mac.com, gotechtor.com) and curl got a 403, so this rests on WebSearch result summaries.",
+    "sources": [
+     "https://www.macrumors.com/2026/09/11/ios-27-delayed-features/",
+     "https://9to5mac.com/2026/09/11/apple-says-two-ios-27-features-arent-coming-until-a-future-software-update/",
+     "https://www.ithinkdiff.com/apple-delays-messages-suggestions-password-autofix-ios-27/",
+     "https://www.gotechtor.com/ios-27-delayed-features-apple-intelligence-passwords-messages/",
+     "https://www.idropnews.com/news/ios-27-official-release-delayed-features/268418/",
+     "https://www.apfelpatient.com/news/ios-27-is-missing-two-features-at-launch",
+     "https://www.macrumors.com/2026/06/08/apple-passwords-can-now-automatically-fix-passwords-with-agentic-ai/",
+     "https://9to5mac.com/2026/06/08/ios-27s-passwords-app-can-change-your-passwords-for-you-automatically/"
+    ]
+   },
+   {
+    "claim": "Apple Passwords lacks credit cards, secure notes, attachments, custom fields; has TOTP codes, Wi-Fi, shared groups, password history (iOS 26)",
+    "verdict": "confirmed",
+    "correction": "Broadly correct, with nuances. (a) Credit cards are still not items in the Passwords app. In iOS 26, though, Wallet lets you enter full card details by hand, and system AutoFill gained a Credit Card option, so card storage now lives in Wallet and Safari AutoFill rather than being missing from the system. (b) Each login has a free-text Notes field, but there is no standalone secure-note item type. No attachments or custom fields per the 2026 PanicVault comparison and older reviews. (c) TOTP verification codes and Wi-Fi sharing are confirmed by Apple Support. (d) Shared groups need iOS 17 / macOS 14 or later. Only the owner can add or remove members. An item can belong to only one group. Leaving a group does not revoke access to what was already shared. (e) Password history ('View History') arrived in iOS 26 / macOS Tahoe 26 with a clear option, and the button only appears once more than one version exists. I found nothing showing that iOS 27 adds secure notes or cards. Method: WebSearch summaries only.",
+    "sources": [
+     "https://support.apple.com/en-us/120758",
+     "https://support.apple.com/en-au/guide/passwords/mchlc00a3602/mac",
+     "https://9to5mac.com/2026/02/25/ios-26-has-made-apple-passwords-the-only-password-manager-i-need/",
+     "https://9to5mac.com/2025/11/06/ios-26-passwords-app-has-convenient-new-feature/",
+     "https://bgr.com/1927662/ios-26-passwords-app-new-feature-login-history/",
+     "https://www.panicvault.org/apple/apple-passwords-app-comparison/",
+     "https://mjtsai.com/blog/2025/12/08/apple-passwords-adds-history/"
+    ]
+   },
+   {
+    "claim": "Google Password Manager has no built-in TOTP generator; passkeys sync with GPM PIN; Gemini change-password feature",
+    "verdict": "partly",
+    "correction": "PIN: confirmed. GPM passkeys are end-to-end encrypted and unlocked on new devices with a Google Password Manager PIN or an Android screen lock. Desktop sync covers Windows, macOS and Linux since September 2024. iOS support came in January 2025 via Chrome on iOS 17+ set as the AutoFill provider. Gemini: NOT a shipped feature. It is a hidden desktop Chrome Canary flag ('Password change with Glic') that swaps the button for 'Change it for me', aimed at weak and reused passwords. It was reported in August 2026 and failed in both Android Authority's and Windows Report's tests. It is not in Canary for Android. Don't confuse it with the separate non-Gemini 'automated password change' for compromised passwords, announced at Google I/O in May 2025: it works on supported sites only, always asks permission, and was rolled out gradually. TOTP absence: I found no evidence that GPM generates TOTP codes; TOTP stays in the separate Google Authenticator app. But I found no Google primary source that states this either way, so that sub-claim is unverifiable rather than confirmed. Method: WebSearch summaries; WebFetch failed with DNS errors.",
+    "sources": [
+     "https://blog.google/innovation-and-ai/technology/safety-security/google-password-manager-passkeys-update-september-2024/",
+     "https://developer.chrome.com/blog/passkeys-gpm-ios",
+     "https://developer.chrome.com/blog/passkeys-gpm-desktop",
+     "https://androidauthority.com/chrome-canary-gemini-change-bad-passwords-3698237",
+     "https://windowsreport.com/chrome-tests-gemini-integration-for-its-automated-password-change-feature/",
+     "https://thehackernews.com/2025/05/google-chrome-can-now-auto-change.html",
+     "https://security.googleblog.com/2023/04/google-authenticator-now-supports.html"
+    ]
+   },
+   {
+    "claim": "Microsoft Authenticator removed password autofill (June-Aug 2025) and Edge added passkey save/sync (Nov 2025)",
+    "verdict": "confirmed",
+    "correction": "Microsoft Support timeline: in June 2025, adding or importing passwords in Authenticator stopped. In July 2025, autofill stopped. From August 2025, saved passwords were no longer accessible in Authenticator; they remain synced to the Microsoft account and Edge. Payment info was deleted after July 2025 and has to be re-entered by hand. Generated-password history was not kept. Authenticator keeps MFA and work or school (Entra) passkeys, and Authenticator must stay enabled as an autofill or passkey provider for those passkeys to work. Edge: passkey saving and syncing through Microsoft Password Manager was announced November 3, 2025 and rolled out gradually in Edge 142 on Windows. It covered personal Microsoft accounts only and was protected by a Password Manager PIN. Entra accounts and mobile platforms were not supported at launch. Microsoft told ZDNet it was targeting iOS by the end of 2025, with Android and macOS after that. Only a secondary blog (Chrome Story, June 2026) claims mobile and Mac support now, so whether passkeys have expanded beyond Windows is unverified. Method: WebSearch summaries.",
+    "sources": [
+     "https://support.microsoft.com/en-au/account-billing/changes-to-microsoft-authenticator-autofill-09fd75df-dc04-4477-9619-811510805ab6",
+     "https://blogs.windows.com/msedgedev/2025/11/03/microsoft-edge-introduces-passkey-saving-and-syncing-with-microsoft-password-manager/",
+     "https://cyberinsider.com/microsoft-edge-adds-passkey-syncing-in-its-password-manager/",
+     "https://pureinfotech.com/microsoft-edge-syncs-passkeys-password-manager/",
+     "https://chromestory.com/2026/06/edge-passkey-sync-setup/"
+    ]
+   },
+   {
+    "claim": "Samsung Pass syncs passkeys via Knox Matrix and has a Windows app",
+    "verdict": "confirmed",
+    "correction": "Supported mainly by Samsung's own press, with no independent technical documentation. Samsung Pass added passkeys in One UI 6 (SDC23, October 2023). Knox Matrix 'Credential Sync' syncs credentials between Samsung devices, and passkeys can be held in escrow until the previous device's lock-screen PIN, password or pattern is entered. I found no One UI 7 or 8 details on the sync design. The Windows app is real but narrow. It comes from the Microsoft Store and launched with the Galaxy Book3 line in 2023. It supports Galaxy Book3 and later, needs Windows 10 1903+ or Windows 11, TPM 2.0 and Windows Hello, and is only for existing mobile Samsung Pass users. It links to the phone by QR code and fills in Chrome and Edge. It is not a general Windows app, and I could not confirm that it supports passkeys. Method: WebSearch summaries.",
+    "sources": [
+     "https://news.samsung.com/global/samsung-empowers-customers-with-innovative-and-democratized-security-solutions-at-sdc23",
+     "https://news.samsung.com/global/the-knox-journals-the-passwordless-future-of-security",
+     "https://www.samsung.com/ie/support/apps-services/how-to-use-samsung-pass-on-galaxy-book/",
+     "https://www.howtogeek.com/871041/samsung-pass-isn%E2%80%99t-limited-to-galaxy-phones-anymore/",
+     "https://www.samsung.com/in/apps/samsung-pass/"
+    ]
+   }
+  ],
+  "new_facts": [
+   "iOS 27 was released publicly on September 14, 2026, and iOS 27.0.1 (a Face ID bug fix) followed on September 28, 2026 (MacRumors).",
+   "Apple delayed two Apple Intelligence features from iOS 27.0 to a 'future software update': automatic password change in Passwords, and Messages suggestions (one-tap Reminders, Notes and Calendar actions). The delay also applies to iPadOS 27 and macOS 27. Messages suggestions were pulled just before the Release Candidate; password auto-change was removed in beta 5.",
+   "MacRumors and Gotechtor report that the iPhone Duo ships October 23, 2026 with iOS 27.1 preinstalled, so 27.1 is likely due before then. Apple has not confirmed that 27.1 contains the delayed Passwords feature.",
+   "Research report 04 (\u00a71.2 and \u00a73.4) and report 01 present iOS 27 agentic password change as a current capability. Downgrade it to 'announced, delayed, not shipped as of 2026-10-15'.",
+   "iOS 26 moved full credit-card entry into Wallet (manual entry of full details) and added a Credit Card option to system AutoFill. Cards are still not items in the Passwords app.",
+   "Apple Passwords shared groups: only the owner adds or removes members, any member can add, edit or delete items, an item can be in only one group, and leaving a group does not revoke access to items already shared.",
+   "Chrome's non-Gemini automated change for compromised passwords was announced at Google I/O in May 2025 for 'supported websites', always asks permission, and rolled out gradually. The Gemini 'Change it for me' for weak and reused passwords is a separate desktop Canary experiment from August 2026.",
+   "Microsoft Authenticator's retirement deleted stored payment info and did not keep generated-password history. Authenticator must stay enabled as an autofill or passkey provider for Entra work or school passkeys.",
+   "Edge passkey sync launched with Windows-only, personal-MSA-only scope, with no Entra and no mobile. Microsoft's stated plan was iOS by the end of 2025, then Android and macOS; current cross-platform status is unconfirmed by Microsoft.",
+   "Samsung One UI 7 added passkey sign-in for Samsung Account itself. The Samsung Pass Windows app is only for existing mobile Samsung Pass users.",
+   "Verification method: WebFetch failed with DNS errors on every host tried (macrumors.com, 9to5mac.com, gotechtor.com, en.wikipedia.org), and curl through the proxy returned a 403. All verdicts rest on WebSearch result summaries."
+  ]
+ },
+ {
+  "cluster": "security-research",
+  "claims": [
+   {
+    "claim": "ETH Zurich/USI (Scarlata et al., USENIX Security 2026) found 12 attacks on Bitwarden, 7 on LastPass, 6 on Dashlane under a malicious-server model; was 1Password analysed and what was found",
+    "verdict": "partly",
+    "correction": "The 12/7/6 counts, the fully-malicious-server threat model and the venue are confirmed. Authors: Matteo Scarlata, Giovanni Torrisi, Matilda Backendal, Kenneth G. Paterson (ETH Zurich + USI). The paper is ePrint 2026/058, made public 16 Feb 2026. 1Password WAS analysed, as a secondary target. The USENIX title says 'Three' managers, but a search result showed the ePrint PDF titled '...Four Cloud-based Password Managers'. Press reports 2 attacks on 1Password (TechRadar), for 27 in total (25 across the three main vendors plus 2). Infosecurity Magazine's per-category split puts 1 of the 11 vault-encryption attacks against 1Password. The paper, as quoted second-hand on the 1Password forum, says 1Password lacks authentication of public keys and of public-key (RSA-OAEP) ciphertexts. That enables key or vault substitution in sharing, rated as complete compromise of vault confidentiality and integrity. 1Password's blog of 16 Feb 2026 says these are known architectural limits already in its Security Design White Paper, with 'no new attack vectors', and it did not request an embargo. So '1Password held up best thanks to its Secret Key' oversimplifies: it had fewer attacks but was not immune, and the Secret Key does not stop server-side public-key substitution. Bitwarden's own blog says 'all issues identified in the report have been addressed'. That conflicts with the secondary claim (threatroad substack) of '7 fixed, 3 design decisions', which remains unverified. Method: WebSearch summaries only. WebFetch hit DNS failures on eprint.iacr.org, usenix.org, 1password.com, ethz.ch and the 1Password community.",
+    "sources": [
+     "https://www.usenix.org/conference/usenixsecurity26/presentation/scarlata",
+     "https://eprint.iacr.org/2026/058",
+     "https://www.usi.ch/en/feeds/34363",
+     "https://ethz.ch/en/news-and-events/eth-news/news/2026/02/password-managers-less-secure-than-promised.html",
+     "https://1password.com/blog/eth-zurich-zero-knowledge-malicious-server-review",
+     "https://www.1password.community/1password-at-home-31/eth-zuerich-paper-concerns-24042",
+     "https://www.techradar.com/pro/security/some-top-password-managers-can-be-hacked-and-hijacked-to-change-your-passwords-heres-what-we-know",
+     "https://www.infosecurity-magazine.com/news/vulnerabilities-password-managers",
+     "https://bitwarden.com/blog/security-through-transparency-eth-zurich-audits-bitwarden-cryptography/",
+     "https://thehackernews.com/2026/02/study-uncovers-25-password-recovery.html"
+    ]
+   },
+   {
+    "claim": "OPAQUE was published as RFC 9807 (July 2025) and is used by WhatsApp encrypted backups",
+    "verdict": "confirmed",
+    "correction": "RFC 9807, 'The OPAQUE Augmented PAKE (aPAKE) Protocol', is dated July 2025. An AUTH48 diff shows the date moved from June to July 2025 during editing. It is Informational, from the IRTF stream and the CFRG, not Standards Track. Authors: D. Bourdrez (AWS), H. Krawczyk (AWS), K. Lewi (Meta), C. A. Wood (Cloudflare). WhatsApp's E2EE backups register the backup key in Meta's HSM-based Backup Key Vault via OPAQUE, with rate-limiting and lockout. Meta's engineering post of 1 May 2026 adds two things: fleet-key validation bundles signed by Cloudflare and counter-signed by Meta, and over-the-air fleet-key distribution for Messenger. Coverage differs on whether the user secret is a password, a recovery code or a passkey. Method: WebSearch summaries; rfc-editor.org and datatracker were unreachable.",
+    "sources": [
+     "https://www.rfc-editor.org/rfc/rfc9807.html",
+     "https://datatracker.ietf.org/doc/html/rfc9807",
+     "https://engineering.fb.com/2026/05/01/security/meta-strengthening-end-to-end-encrypted-backups/",
+     "https://www.helpnetsecurity.com/2026/05/05/meta-whatsapp-messenger-encrypted-backups-update/",
+     "https://eprint.iacr.org/2023/843.pdf"
+    ]
+   },
+   {
+    "claim": "No major password manager ships hybrid post-quantum (ML-KEM) key wrapping for vault sharing; status of Keeper, Proton, 1Password, Bitwarden PQ work in 2026",
+    "verdict": "partly",
+    "correction": "I found no counter-example, but I could not search NordPass, Dashlane or others because the search budget ran out, so the universal negative is unproven. Per-vendor status:\n- KEEPER: confirmed. It announced hybrid Kyber/ML-KEM on 26 Feb 2026 (SecurityBrief) for client-server communications. It is enabled in backend APIs and Keeper Commander, mobile is next, and other products follow in phases. Commander docs say the scheme is ECDH-P256 + ML-KEM-1024, not X25519MLKEM768. Keeper's encryption-model docs still describe record sharing via the recipient's elliptic-curve public key, so its sharing does not use PQ wrapping.\n- 1PASSWORD: hybrid X25519MLKEM768 TLS on the web app only, per its blog of 31 Mar 2026. No vault-level PQ found.\n- BITWARDEN: the GitHub sdk-internal repo (HEAD 3571232a, 15 Oct 2026) added ML-DSA-44 signing keypairs on 22 Apr 2026 (PR #920, PM-34825). SignatureAlgorithm::default_algorithm() now returns MlDsa44. But PublicKeyEncryptionAlgorithm has only RsaOaepSha1, so there is no ML-KEM key wrapping.\n- PROTON: Proton Mail launched opt-in PQC keys, rolling out gradually, on 5 May 2026. RFC 9980, 'PQC in OpenPGP' (Proposed Standard, June 2026), is co-authored by Proton's Wussler with Kousidis (BSI) and Roth and Strenzke (MTG). It defines ML-KEM only as a composite with ECDH. I found no Proton Pass PQ rollout.",
+    "sources": [
+     "https://securitybrief.asia/story/keeper-deploys-kyber-to-shield-passwords-from-quantum",
+     "https://docs.keeper.io/keeperpam/commander-cli/commander-installation-setup/quantum-resistant-cryptography-qrc",
+     "https://docs.keeper.io/enterprise-guide/keeper-encryption-model",
+     "https://www.keepersecurity.com/security.html",
+     "https://1password.com/blog/post-quantum-cryptography",
+     "https://github.com/bitwarden/sdk-internal (cloned; crates/bitwarden-crypto/src/signing/mod.rs, keys/public_key_encryption.rs)",
+     "https://www.privacyguides.org/news/2026/05/07/proton-mail-launches-post-quantum-encryption",
+     "https://www.rfc-editor.org/rfc/rfc9980.html"
+    ]
+   },
+   {
+    "claim": "NDSS 2025 paper showed desktop password-manager IPC credential theft on Windows",
+    "verdict": "unverifiable",
+    "correction": "I could not check this. The WebSearch budget ran out before I reached this claim. WebFetch and curl to ndss-symposium.org failed (DNS error, proxy 403). The report cites https://www.ndss-symposium.org/?p=23650 without a paper title or authors. Add the title and authors and re-check before using it in a spec.",
+    "sources": []
+   },
+   {
+    "claim": "Keeper Forcefield (memory-scraping protection on Windows) launched Nov 2025",
+    "verdict": "unverifiable",
+    "correction": "I could not check this. The search budget ran out, and WebFetch and curl to siliconangle.com and docs.keeper.io failed (DNS error, proxy 403). The only evidence is the report's citation: a SiliconANGLE URL dated 2025/11/06. The report also flags a conflicting Keeper release-note entry dated May 2025, which I did not resolve. Re-check before relying on the date, the 'Windows 11 only' scope, or the 'kernel-level' description.",
+    "sources": []
+   }
+  ],
+  "new_facts": [
+   "Method note: every WebFetch attempt failed with DNS errors (eprint.iacr.org, usenix.org, 1password.com, 1password.community, ethz.ch, webro.ke, secretsofprivacy.com, ndss-symposium.org, siliconangle.com). curl through the proxy got 403 for the same hosts. The findings rest on WebSearch result summaries plus one direct GitHub clone. The WebSearch budget (200 per turn, shared across agents) ran out before claims 4 and 5 could be searched.",
+   "Infosecurity Magazine's per-category breakdown of the ETH/USI attacks: vault encryption 11 (LastPass 5, Bitwarden 4, Dashlane 1, 1Password 1); key escrow 4 (Bitwarden 3, LastPass 1). The sharing and backward-compatibility category counts were not retrieved.",
+   "Coverage reports Dashlane and Bitwarden began releasing patches after a 90-day disclosure period. LastPass reportedly disputed the severity ratings (a social-media post citing The Register; low reliability).",
+   "Bitwarden sdk-internal (HEAD 3571232a, 2026-10-15): ML-DSA-44 is the default signature algorithm for new signing keys (added 2026-04-22, PR #920). Public-key encryption is still RSA-OAEP with SHA-1 only (PublicKeyEncryptionAlgorithm::RsaOaepSha1 = 0). RSA-OAEP without ciphertext authentication is the same primitive class the ETH paper flagged for 1Password's vault-substitution attack.",
+   "Keeper's Commander CLI post-quantum mode uses ECDH-P256 + ML-KEM-1024 (not X25519MLKEM768) to protect API transmissions.",
+   "RFC 9980 (PQC in OpenPGP, Proposed Standard, June 2026) extends RFC 9580. It defines ML-KEM only as a composite with ECDH and ML-DSA as a composite with ECC, plus SLH-DSA on its own. Authors: Kousidis (BSI), Roth and Strenzke (MTG AG), Wussler (Proton AG).",
+   "Meta (1 May 2026) strengthened the HSM-based Backup Key Vault. The vault fleet runs across multiple datacenters with majority-consensus replication. Fleet keys are validated by bundles signed by Cloudflare and counter-signed by Meta, and Cloudflare keeps an audit log of every bundle. Messenger gets over-the-air fleet-key distribution."
+  ]
+ }
+]

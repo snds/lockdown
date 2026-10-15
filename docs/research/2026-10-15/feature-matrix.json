@@ -1,0 +1,4771 @@
+{
+ "competitors": [
+  "1Password",
+  "Bitwarden",
+  "Proton Pass",
+  "Vaultwarden",
+  "Apple Passwords",
+  "Google PM",
+  "KeePassXC",
+  "Dashlane",
+  "Keeper"
+ ],
+ "categories": [
+  {
+   "id": "vault-item-types",
+   "name": "Vault & item types",
+   "summary": "What a user can store, in which typed shapes, and how items age, version and get deleted.",
+   "features": [
+    {
+     "id": "login-items",
+     "name": "Logins",
+     "detail": "A saved username, password and one or more website addresses.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "yes",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Login items hold several URLs, a sign-in-method field (password, passkey, federated, SSO) and their linked TOTP and passkey on one record.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "secure-notes",
+     "name": "Secure notes",
+     "detail": "A standalone encrypted note item, not just a notes field on a login.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "yes",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Markdown secure notes with their own per-item key, plus a notes field on every other item type.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "payment-cards",
+     "name": "Payment cards",
+     "detail": "Credit and debit card items that can be filled at checkout (Apple keeps cards in Wallet, not Passwords).",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "partial",
+      "Google PM": "partial",
+      "KeePassXC": "no",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Card items with issuer detection, an optional CVC re-prompt and a second deliberate action before any card fill.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "identities",
+     "name": "Identities and addresses",
+     "detail": "Personal details such as name, address and phone used to fill forms.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "partial",
+      "KeePassXC": "no",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Typed identity profiles (person, address, business, vehicle, passport) kept separate from a contacts list that is never used for filling, as RoboForm does.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "typed-templates",
+     "name": "Typed item templates",
+     "detail": "Built-in item types with proper fields, such as passport, driver licence, bank account, server, database, API credential and crypto wallet.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "partial",
+      "Proton Pass": "paid",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "partial",
+      "Dashlane": "partial",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "25+ schema-versioned types plus user-defined templates on the free tier, each mapped to a CXF field so nothing is lost on export.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "custom-fields",
+     "name": "Custom fields",
+     "detail": "Extra fields a user adds to an item, such as text, hidden, checkbox or linked fields.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "paid",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "Text, hidden, boolean, date, URL, TOTP and linked field kinds on every item, free, and kept in every export format.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "attachments",
+     "name": "File attachments",
+     "detail": "Files stored inside an item and encrypted with the vault.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "paid",
+      "Proton Pass": "paid",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "paid"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "beat",
+      "how": "5 GB per user on paid plans with chunked streaming encryption and a separate key per file, so large files are never fully decrypted in memory.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "password-generator",
+     "name": "Password and passphrase generator",
+     "detail": "Creates random passwords or word passphrases that meet a site's rules.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "yes",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "CSPRNG-only generator with statistical randomness tests in CI and per-site rule profiles, avoiding the time-seeded flaws that hit Kaspersky and early RoboForm.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "wifi-items",
+     "name": "Wi-Fi network items",
+     "detail": "Saved Wi-Fi names and passwords that can be shared as a QR code.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "no",
+      "Proton Pass": "paid",
+      "Vaultwarden": "no",
+      "Apple Passwords": "yes",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Apple Passwords",
+     "lockdown": {
+      "target": "beat",
+      "how": "Wi-Fi type with WPA3 and enterprise (EAP) fields, a full-screen guest QR card that hides itself, a printable card, and Wi-Fi kept in CXF exports through the standard's Wi-Fi type.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "item-expiry",
+     "name": "Item expiry reminders",
+     "detail": "Expiry dates on items such as passports or cards, with reminders before they lapse.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Expiry and renewal reminders for documents, cards, domains and certificates, with dates signed and checked on the client so a server cannot hide them.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "version-history",
+     "name": "Item version history",
+     "detail": "Earlier versions of an item that can be viewed and restored.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "partial",
+      "Proton Pass": "?",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "partial",
+      "Google PM": "no",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "Keeper",
+     "lockdown": {
+      "target": "beat",
+      "how": "Field-level end-to-end encrypted versions signed by the editing device, kept one year by default, with one-click restore and a whole-vault time machine.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "trash-recovery",
+     "name": "Trash with recovery",
+     "detail": "Deleted items stay recoverable for a grace period.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "?",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "Vaultwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "30-day trash by default, configurable per vault, and nothing purged while a sync conflict is unresolved.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "item-archive",
+     "name": "Item archive",
+     "detail": "Hides old items from search and autofill without deleting them.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "paid",
+      "Proton Pass": "?",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Free archive state on every item, excluded from autofill, agents and default search but kept in exports.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "seed-safe-mode",
+     "name": "Crypto seed-phrase safe mode",
+     "detail": "Special handling for crypto wallet recovery phrases so they are harder to steal or leak.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "?"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Detect BIP-39 and SLIP-39 phrases pasted anywhere, move them into a high-risk item that needs the full password per reveal and is never autofilled, copied, exported or shown to agents, and suggest storing the recovery plan instead of the seed.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "document-scan",
+     "name": "Document scan to typed item",
+     "detail": "Scan a passport, licence or card with the camera and turn it into filled-in fields.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "novel",
+      "how": "On-device OCR with passport MRZ and licence PDF417 parsing and check-digit validation; the user confirms each field and the image is optional and kept under its own key.",
+      "phase": "v2"
+     },
+     "confidence": "low"
+    }
+   ]
+  },
+  {
+   "id": "organization-search",
+   "name": "Organization & search",
+   "summary": "How items are grouped, ranked and found across vaults.",
+   "features": [
+    {
+     "id": "folders",
+     "name": "Folders",
+     "detail": "Nested folders for grouping items.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "yes",
+      "Dashlane": "partial",
+      "Keeper": "yes"
+     },
+     "best": "Keeper",
+     "lockdown": {
+      "target": "parity",
+      "how": "Nested folders in every vault, free, inheriting the vault's sharing, with folder trees imported from Bitwarden, Proton and KeePass.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "tags",
+     "name": "Tags",
+     "detail": "Labels attached to many items across vaults.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "no",
+      "Proton Pass": "?",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "yes",
+      "Dashlane": "partial",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Nested tags across vaults, encrypted like all other metadata.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "multiple-vaults",
+     "name": "Multiple vaults",
+     "detail": "Separate vaults for different parts of life or different groups of people.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "partial",
+      "Proton Pass": "yes",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "partial",
+      "Google PM": "no",
+      "KeePassXC": "yes",
+      "Dashlane": "no",
+      "Keeper": "partial"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Unlimited vaults on paid plans and at least three on free, each with its own key so access can be removed per vault.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "quick-access",
+     "name": "Global quick-access palette",
+     "detail": "A system-wide shortcut that opens search so you can copy or fill from anywhere.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "partial",
+      "Google PM": "no",
+      "KeePassXC": "partial",
+      "Dashlane": "no",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Global palette on macOS, Windows and Linux with copy, fill, show-code and open-site actions, built on the shared Rust search index.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "smart-categories",
+     "name": "Smart categories",
+     "detail": "Automatic views such as Passkeys, Codes, Wi-Fi, security issues and recently deleted.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "partial",
+      "Proton Pass": "partial",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "yes",
+      "Google PM": "no",
+      "KeePassXC": "partial",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Apple Passwords",
+     "lockdown": {
+      "target": "parity",
+      "how": "Sidebar of live computed views (Passkeys, Codes, Wi-Fi, Expiring, Needs attention, Deleted) from the local index.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "nl-search",
+     "name": "Natural-language search",
+     "detail": "Search with everyday phrases such as 'mom's wifi' or 'passports expiring this year'.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "On-device hybrid keyword and semantic index encrypted with the vault key; retrieval only, with no generative model ever run over secrets.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "context-profiles",
+     "name": "Context-aware items",
+     "detail": "Items surfaced or hidden by place, time or mode, such as work versus home.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "novel",
+      "how": "Work, home and travel profiles driven on-device by Focus mode, Wi-Fi network or geofence that only reorder and hide items and are never a security boundary.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "duplicate-finder",
+     "name": "Duplicate finder",
+     "detail": "Finds and merges duplicate items, especially after an import.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "?",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Ente Auth",
+     "lockdown": {
+      "target": "beat",
+      "how": "Post-import duplicate detection on URL, username and TOTP secret with a side-by-side merge that keeps both histories.",
+      "phase": "v1"
+     },
+     "confidence": "low"
+    },
+    {
+     "id": "recency-ranking",
+     "name": "Favorites and recency ranking",
+     "detail": "Orders suggestions by favorites and how recently or often an item is used.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "partial",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Rank fill suggestions and search by favorite, last fill and frequency, with usage stats kept only on the device.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    }
+   ]
+  },
+  {
+   "id": "autofill-browser",
+   "name": "Autofill (browser)",
+   "summary": "Filling and saving credentials on web pages through extensions or built-in browser managers.",
+   "features": [
+    {
+     "id": "extension-coverage",
+     "name": "Browser extension coverage",
+     "detail": "Extensions for Chrome, Edge, Firefox, Safari and Brave.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "partial",
+      "Google PM": "partial",
+      "KeePassXC": "partial",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "MV3 extension for Chromium browsers and Firefox plus a Safari Web Extension, all on one Rust/WASM core, at launch.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "inline-menu",
+     "name": "Inline fill menu",
+     "detail": "A suggestion menu that appears inside login fields.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "yes",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "Inline menu drawn in the browser top layer from an extension-origin frame inside a closed shadow root.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "clickjacking-defense",
+     "name": "Clickjacking-hardened fill",
+     "detail": "Protection against invisible-overlay tricks that make a click land on a hidden fill button (DEF CON 33, August 2025).",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "?",
+      "Proton Pass": "yes",
+      "Vaultwarden": "?",
+      "Apple Passwords": "?",
+      "Google PM": "n/a",
+      "KeePassXC": "?",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "Proton Pass",
+     "lockdown": {
+      "target": "beat",
+      "how": "On by default: top-layer popover, opacity and visibility checks up the whole page tree, IntersectionObserver v2 visibility tracking, overlay detection, and a second deliberate action for TOTP, card and passkey fills.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "url-matching",
+     "name": "Precise URL matching",
+     "detail": "Rules for which sites an item fills on, such as exact host, base domain or equivalent domains.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "partial",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "beat",
+      "how": "Exact-host match by default, base domain via the Public Suffix List only on opt-in, curated equivalent-domain groups, per-item rules synced end to end, and no fill into cross-origin frames without confirmation.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "autosave",
+     "name": "Save and update prompts",
+     "detail": "Offers to save a new login or update a changed password after sign-in.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "yes",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Detect sign-up and change-password submits, offer save or update with the generated password already linked, and save only fields the user actually submitted.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "ml-field-classifier",
+     "name": "Learned field detection",
+     "detail": "A small machine-learning model that recognises username, password, code and card fields on unfamiliar pages.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "?",
+      "Google PM": "partial",
+      "KeePassXC": "?",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Google PM",
+     "lockdown": {
+      "target": "novel",
+      "how": "On-device WASM classifier using page and accessibility-tree features, with precedence autocomplete > user override > model > heuristics, opt-in hashed form feedback, and signed reproducible model files.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "site-fix-overrides",
+     "name": "Per-site fill fixes",
+     "detail": "User or vendor corrections for sites where autofill breaks.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "yes",
+      "Proton Pass": "no",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "partial",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "beat",
+      "how": "Per-site user overrides synced end to end plus a signed community fix list that also trains the field classifier.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "fill-hotkey",
+     "name": "Fill keyboard shortcut",
+     "detail": "A shortcut that fills the current page without the mouse.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "no",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Configurable fill and fill-code shortcuts in every browser, cycling through matching items on repeat.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "card-address-fill",
+     "name": "Card and address fill",
+     "detail": "Filling checkout and address forms from card and identity items.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "partial",
+      "Google PM": "yes",
+      "KeePassXC": "no",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Classifier-driven checkout fill that handles split card fields and asks for confirmation, aimed at the card-field misses Bitwarden users report.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "sign-in-method-picker",
+     "name": "Automatic sign-in method",
+     "detail": "The manager works out whether a site wants a password, passkey or SSO and uses it.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Per-site sign-in-method record drives one Sign in action in every browser including Firefox, with a visible per-site off switch to avoid the regressions 1Password users hit.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "basic-auth-fill",
+     "name": "HTTP Basic Auth fill",
+     "detail": "Filling the browser's own login dialog on sites that use HTTP authentication.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "?",
+      "Proton Pass": "yes",
+      "Vaultwarden": "?",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Proton Pass",
+     "lockdown": {
+      "target": "parity",
+      "how": "Answer HTTP auth challenges from the extension's auth handler on Chromium and Firefox, matched to the exact host.",
+      "phase": "v1.x"
+     },
+     "confidence": "low"
+    }
+   ]
+  },
+  {
+   "id": "autofill-os",
+   "name": "Autofill (mobile & desktop OS)",
+   "summary": "Filling credentials and codes in phone apps, desktop apps and system dialogs through operating-system frameworks.",
+   "features": [
+    {
+     "id": "ios-provider",
+     "name": "iOS AutoFill provider",
+     "detail": "Acts as the system password provider on iPhone and iPad, with keyboard suggestions.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "no",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "Apple Passwords",
+     "lockdown": {
+      "target": "parity",
+      "how": "AutoFill credential provider extension with ASCredentialIdentityStore so suggestions appear without launching the app, on a small-memory Rust core.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "android-provider",
+     "name": "Android autofill and Credential Manager",
+     "detail": "Acts as the Android autofill service and Credential Manager provider, with keyboard inline suggestions.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "yes",
+      "KeePassXC": "no",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "Google PM",
+     "lockdown": {
+      "target": "parity",
+      "how": "AutofillService with inline keyboard suggestions (API 30+) plus a CredentialProviderService, with onboarding for Chrome's 'Autofill using another service' setting.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "autofill-health-check",
+     "name": "Autofill health check",
+     "detail": "Detects when autofill is off or the wrong provider is selected and links to the right setting.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "n/a",
+      "Google PM": "n/a",
+      "KeePassXC": "n/a",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "One health check on iOS, Android, macOS and Windows that tests the provider, the browser setting and the extension link, and deep-links to each broken switch.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "ios-otp-provider",
+     "name": "One-time-code AutoFill on iOS",
+     "detail": "Supplies TOTP codes to the iOS 18+ one-time-code AutoFill slot.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "yes",
+      "Proton Pass": "?",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "?",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "Implement ASOneTimeCodeCredentialRequest on iOS 18+ and register code identities so codes appear in the keyboard bar.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "macos-autofill",
+     "name": "Native macOS AutoFill",
+     "detail": "Acts as the system credential provider on the Mac for Safari and native apps.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "yes",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Apple Passwords",
+     "lockdown": {
+      "target": "parity",
+      "how": "macOS credential provider with passwords, passkeys and one-time codes on day one (1Password's build, generally available since 11 August 2026, still lacks one-time codes; its beta needed macOS 14 and Apple silicon), Intel Macs included.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "macos-any-app",
+     "name": "Fill into any Mac app",
+     "detail": "Fills credentials into apps and dialogs that lack AutoFill support, such as admin prompts.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "partial",
+      "Google PM": "no",
+      "KeePassXC": "yes",
+      "Dashlane": "no",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Accessibility-based universal fill on a global shortcut, gated by checking the target app's code signature.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "desktop-autotype",
+     "name": "Auto-type on Windows and Linux",
+     "detail": "Types credentials into any desktop window from a global shortcut.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "partial",
+      "Proton Pass": "no",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "yes",
+      "Dashlane": "no",
+      "Keeper": "?"
+     },
+     "best": "KeePassXC",
+     "lockdown": {
+      "target": "beat",
+      "how": "UI Automation (Windows) and AT-SPI/X11 (Linux) auto-type with signed-process verification of the target window, filling the Windows gap 1Password leaves.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "sms-otp-relay",
+     "name": "SMS code relay to desktop",
+     "detail": "Passes SMS one-time codes from the phone to the computer you are signing in on.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "partial",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "Apple Passwords",
+     "lockdown": {
+      "target": "novel",
+      "how": "Android SMS User Consent listener started when a code field is focused, relayed end to end to the desktop extension, and filled only when the code's origin matches the page.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "email-otp-capture",
+     "name": "Email code capture",
+     "detail": "Reads sign-in codes from email and fills them.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "partial",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "Apple Passwords",
+     "lockdown": {
+      "target": "novel",
+      "how": "On device only, from Lockdown's own alias inbox or a user-linked IMAP or JMAP account, last 10 minutes, sender matching the item, never via servers, so Gmail restricted-scope audits do not apply.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "magic-link-handling",
+     "name": "Email magic-link handling",
+     "detail": "Recognises a sign-in link sent by email and opens it for the matching pending sign-in.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Only from Lockdown's own alias inbox: match the link's host to a pending sign-in, open it on a tap in the same browser profile, never follow it automatically, and let it expire.",
+      "phase": "later"
+     },
+     "confidence": "medium"
+    }
+   ]
+  },
+  {
+   "id": "passkeys-webauthn",
+   "name": "Passkeys & WebAuthn",
+   "summary": "Storing and syncing passkeys, acting as the OS passkey provider, and serving as the phone authenticator for cross-device QR sign-in.",
+   "features": [
+    {
+     "id": "passkey-sync",
+     "name": "Passkey storage and sync",
+     "detail": "Saves passkeys and makes them usable on every device.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "partial",
+      "Google PM": "yes",
+      "KeePassXC": "yes",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "Synced, backup-eligible passkeys on every platform on the free tier, built to WebAuthn Level 3 (W3C Recommendation, 25 Aug 2026).",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "ios-hybrid",
+     "name": "Phone as authenticator (iPhone)",
+     "detail": "Sign in on a computer by scanning its QR code with the phone and approving with a stored passkey.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "no",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "Apple Passwords",
+     "lockdown": {
+      "target": "parity",
+      "how": "Register as an iOS 17+ credential provider; Apple confirms the system supplies the QR and Bluetooth hybrid flow for free, and only synced passkeys can be returned.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "android-hybrid",
+     "name": "Phone as authenticator (Android)",
+     "detail": "The same QR sign-in flow using the manager on an Android 14+ phone.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "?",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "yes",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Google PM",
+     "lockdown": {
+      "target": "parity",
+      "how": "CredentialProviderService targeting SDK 34+, tested across an OEM device matrix, with a clear message on phones that block third-party providers.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "windows-passkey-plugin",
+     "name": "Windows 11 passkey plugin",
+     "detail": "Acts as a system passkey provider on Windows 11 so passkeys work in every browser and app.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "partial",
+      "Proton Pass": "?",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "?",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "COM IPluginAuthenticator plugin with Windows Hello verification, shipped stable on first release (MSIX-packaged) rather than as a beta (Bitwarden launched beta-only in Nov 2025).",
+      "phase": "v1.x"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "extension-passkey-fallback",
+     "name": "Browser passkey fallback",
+     "detail": "Provides passkeys through the extension where no OS provider API exists, such as Linux and ChromeOS.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "?",
+      "Google PM": "n/a",
+      "KeePassXC": "yes",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "beat",
+      "how": "Use the WebAuthn override only where no OS provider exists, and publish a coexistence convention so two managers' overrides stop breaking each other.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "conditional-create",
+     "name": "Automatic passkey upgrade",
+     "detail": "Adds a passkey silently after a normal password sign-in on sites that ask for it.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "no",
+      "Dashlane": "yes",
+      "Keeper": "?"
+     },
+     "best": "Apple Passwords",
+     "lockdown": {
+      "target": "parity",
+      "how": "Set SupportsConditionalPasskeyRegistration (iOS 18, macOS 15) and the Android equivalent, create only when the vault is unlocked and a matching password was just filled, and never remove the password.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "signal-api",
+     "name": "WebAuthn Signal API handling",
+     "detail": "Acts on site signals that a passkey was removed or a username changed.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "?",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Google PM",
+     "lockdown": {
+      "target": "beat",
+      "how": "Honour all three signals with soft-delete and undo because sites can send wrong lists, on Chrome 132+ desktop, Chrome 144+ Android and Safari 26 (Firefox has none).",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "prf-unlock",
+     "name": "Vault unlock with a passkey (PRF)",
+     "detail": "Uses a passkey's PRF extension to derive a key that unlocks the vault.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "partial",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "n/a",
+      "Google PM": "n/a",
+      "KeePassXC": "no",
+      "Dashlane": "partial",
+      "Keeper": "?"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "beat",
+      "how": "PRF output to HKDF to key-encryption key on web, extensions, iOS, Android and desktop (Bitwarden has web and Chromium only), with several enrolled passkeys and never as the only unlock factor.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "passkey-management",
+     "name": "Passkey management view",
+     "detail": "List, inspect and delete stored passkeys with their site and dates.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "yes",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "KeePassXC",
+     "lockdown": {
+      "target": "parity",
+      "how": "Passkey list with site ID, provider ID (AAGUID), backup flags and last use, a safe delete that warns if it is the account's only sign-in, and no rewriting of flags on existing passkeys.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    }
+   ]
+  },
+  {
+   "id": "two-factor-authenticator",
+   "name": "Two-factor & authenticator",
+   "summary": "Generating, filling, syncing and migrating one-time codes, inside the vault and in a companion authenticator.",
+   "features": [
+    {
+     "id": "totp-generator",
+     "name": "Built-in TOTP codes",
+     "detail": "Stores 2FA secrets and generates the 6-digit codes.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "paid",
+      "Proton Pass": "paid",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "?",
+      "KeePassXC": "yes",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "TOTP on every tier including free, where Bitwarden and Proton require a paid plan.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "totp-autofill",
+     "name": "TOTP autofill",
+     "detail": "Fills or copies the code right after the password, including split six-box fields.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "paid",
+      "Proton Pass": "paid",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "?",
+      "KeePassXC": "yes",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Auto-fill codes into single and split code fields after the password fill, under the same second-action rule as the clickjacking defense.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "authenticator-app",
+     "name": "Standalone authenticator app",
+     "detail": "A separate app for 2FA codes that works without the password manager.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "no",
+      "Google PM": "yes",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "?"
+     },
+     "best": "Proton Pass",
+     "lockdown": {
+      "target": "parity",
+      "how": "Lockdown Auth for iOS, Android and desktop, with an account-free local mode.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "authenticator-sync",
+     "name": "Authenticator sync",
+     "detail": "End-to-end encrypted sync of 2FA secrets across devices and with the password vault.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "partial",
+      "Proton Pass": "yes",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "no",
+      "Google PM": "partial",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "?"
+     },
+     "best": "Ente Auth",
+     "lockdown": {
+      "target": "beat",
+      "how": "Cross-device E2EE sync plus two-way vault sync (Bitwarden's is same-device only), with a warning when a code protects the same account used for sync, the Retool lesson.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "otp-importers",
+     "name": "Authenticator importers",
+     "detail": "Imports 2FA secrets from other authenticator apps and their transfer QR codes.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "?",
+      "Proton Pass": "partial",
+      "Vaultwarden": "?",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "partial",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Aegis",
+     "lockdown": {
+      "target": "beat",
+      "how": "Import Google Authenticator transfer batches, Aegis (including encrypted), 2FAS, Ente, Proton, Bitwarden and plain otpauth links through sandboxed parsers with size limits.",
+      "phase": "v1"
+     },
+     "confidence": "low"
+    },
+    {
+     "id": "live-code-share",
+     "name": "Live code sharing",
+     "detail": "A time-limited link that shows current codes for a shared account without revealing the secret.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "Ente Auth",
+     "lockdown": {
+      "target": "novel",
+      "how": "Links valid for 2, 5 or 10 minutes that stream live codes, never the seed, for shared family or team accounts.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "code-display-aids",
+     "name": "Code display aids",
+     "detail": "Next-code preview, expiry colour and vibration cues, and clock-skew correction.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "?",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Aegis",
+     "lockdown": {
+      "target": "beat",
+      "how": "Show the next code near expiry, colour and haptic warnings, correct device clock skew against server time, and focus search on launch.",
+      "phase": "v1"
+     },
+     "confidence": "low"
+    },
+    {
+     "id": "hardware-oath",
+     "name": "Hardware-bound TOTP",
+     "detail": "Keeps the most valuable 2FA secrets on a YubiKey instead of in the vault.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "Yubico Authenticator",
+     "lockdown": {
+      "target": "novel",
+      "how": "Optional storage class that reads OATH codes from a YubiKey over NFC or USB and shows them beside vault codes, as one slot among several.",
+      "phase": "later"
+     },
+     "confidence": "low"
+    }
+   ]
+  },
+  {
+   "id": "vendor-login-bridges",
+   "name": "Vendor login bridges (Steam, Battle.net, Adobe, device-code activation, etc.)",
+   "summary": "Ways to drive a service's own login, from standard codes and passkeys to TV activation and one fenced, tolerated proprietary bridge (Steam).",
+   "features": [
+    {
+     "id": "steam-guard-codes",
+     "name": "Steam Guard codes",
+     "detail": "Generates Steam's 5-character login codes, which standard TOTP apps cannot.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "paid",
+      "Proton Pass": "?",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "?",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "KeePassXC",
+     "lockdown": {
+      "target": "parity",
+      "how": "Free Steam code type (HMAC-SHA1, 30 s, alphabet 23456789BCDFGHJKMNPQRTVWXY) that accepts steam:// keys and converts base64 maFile secrets to base32 correctly.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "steam-mafile-import",
+     "name": "Steam maFile import",
+     "detail": "Imports Steam Desktop Authenticator, WinAuth or Steam app backups, which causes no trade hold.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "no",
+      "Proton Pass": "?",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "steamguard-cli",
+     "lockdown": {
+      "target": "beat",
+      "how": "Parse SDA (including passkey-encrypted), WinAuth and Steam v2 JSON as untrusted input and re-encrypt shared_secret and identity_secret from legacy unauthenticated AES-CBC into Lockdown's AEAD vault.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "steam-qr-approve",
+     "name": "Steam QR login approval",
+     "detail": "Approves a Steam sign-in by scanning the s.team/q QR code shown on another device.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "steamguard-cli",
+     "lockdown": {
+      "target": "novel",
+      "how": "Opt-in bridge that signs HMAC-SHA256(shared_secret, version, client_id, steamid), shows the requesting device and location first, and approves only self-scanned codes.",
+      "phase": "v1.x"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "steam-confirmations",
+     "name": "Steam trade and market confirmations",
+     "detail": "Confirms trades and market listings with the identity_secret, as Steam's mobile app does.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "steamguard-cli",
+     "lockdown": {
+      "target": "novel",
+      "how": "Opt-in trader mode that stores identity_secret in the high-risk class with its own key, re-authenticates per batch, and never offers confirm-all.",
+      "phase": "v1.x"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "steam-enrol-transfer",
+     "name": "Steam authenticator enrol or move",
+     "detail": "Makes the manager the account's Steam authenticator, or moves it from an old phone.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "steamguard-cli",
+     "lockdown": {
+      "target": "novel",
+      "how": "Guided enrolment (SMS or email confirm) or SMS transfer with plain warnings: a move costs about a 2-day trade hold, removal or revocation 15 days, and import none.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "battlenet-import",
+     "name": "Battle.net authenticator import",
+     "detail": "Converts a Battle.net authenticator into a standard 8-digit TOTP entry.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "Aegis",
+     "lockdown": {
+      "target": "novel",
+      "how": "Accept Battle.net secrets users bring from other tools (Aegis, WinAuth exports) as 8-digit codes; ship no in-app extractor that calls Blizzard's private API (the SSO-token method still works per user reports, but is a ToS risk); steer users to Battle.net passkeys.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "device-code-approve",
+     "name": "TV and console activation by scan",
+     "detail": "Scan the code a TV or console shows, open the service's real activation page, autofill and approve (OAuth device flow, RFC 8628).",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "In-app scanner recognises allow-listed activation URLs (netflix.com/tv8, microsoft.com/link, youtube.com/activate, epicgames.com/activate, discord.com/activate, disneyplus.com/begin), pre-fills the user code and autofills login and TOTP in a visible secure browser.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "proximity-gate",
+     "name": "Anti-phishing approval gate",
+     "detail": "One shared rule that only approves login codes or QR codes the user scanned from a screen in front of them.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Non-overridable gate shared by device-code, Steam QR and passkey QR flows: refuse codes that arrive by message, link or paste and show account, device and app before approval (Storm-2372 lesson).",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "large-type",
+     "name": "Large-type display",
+     "detail": "Shows a password in big grouped characters for typing on a TV remote.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "?",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Large type grouped in threes and coloured by character class, plus a hotel and rental mode that logs the TV sign-in and reminds you to sign out at checkout.",
+      "phase": "v1"
+     },
+     "confidence": "low"
+    },
+    {
+     "id": "federated-login-map",
+     "name": "Federated sign-in map",
+     "detail": "Records which sites you enter with Google, Apple, Microsoft, Steam or another account, and what breaks if that account is lost.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "partial",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Capture identity-provider button clicks and redirect chains, show a blast-radius view per provider, and warn before a provider account loses its recovery options.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "bridge-plugin-host",
+     "name": "Fenced bridge plugin host",
+     "detail": "An isolated, opt-in plugin layer for any vendor-specific login protocol.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Signed, sandboxed plugins declare their secrets, endpoints and ToS warning (Steam first), while Battle.net push, Adobe Account Access push and Discord QR emulation are declined in favour of passkeys and TOTP.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "service-2fa-guides",
+     "name": "Service 2FA setup guides",
+     "detail": "Step-by-step 2FA and passkey setup for services with quirks.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "partial",
+      "Proton Pass": "partial",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Setup cards from 2fa.directory and the passkeys directory (CC BY 4.0, attributed) for Epic, EA, Ubisoft, Rockstar, Riot, GOG, Twitch, Roblox, Nintendo, PlayStation and Adobe, noting quirks such as Twitch needing a phone first.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    }
+   ]
+  },
+  {
+   "id": "sharing-collaboration",
+   "name": "Sharing & collaboration",
+   "summary": "Sharing vaults and items with members and outsiders, with permissions, links, logs and revocation.",
+   "features": [
+    {
+     "id": "shared-vaults",
+     "name": "Shared vaults",
+     "detail": "Vaults or groups shared with other people.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "paid",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "partial",
+      "KeePassXC": "partial",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Shared vaults with each member's key wrapped separately and rotated on removal, on free (2 people) and paid plans.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "granular-permissions",
+     "name": "Granular share permissions",
+     "detail": "Per-person rights such as view, edit, hide password or manage.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "partial",
+      "Keeper": "yes"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "View, edit, fill-only, manage and re-share rights per member and group, enforced by clients and logged.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "item-sharing",
+     "name": "Single-item sharing",
+     "detail": "Share one item with another user without sharing a whole vault.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "partial",
+      "Proton Pass": "yes",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "partial",
+      "Google PM": "partial",
+      "KeePassXC": "no",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "Keeper",
+     "lockdown": {
+      "target": "parity",
+      "how": "Share any item with a user or group in two taps; the item gets its own key wrapped to each recipient.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "share-links",
+     "name": "Share links for non-users",
+     "detail": "A link that lets anyone open a copy of an item or file, with expiry and view limits.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "paid",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "beat",
+      "how": "One Send feature for items, files and text with expiry, view caps, optional password and recipient-email check, the key in the URL fragment, and text and item Sends free.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "request-link",
+     "name": "Request a secret",
+     "detail": "A link that lets someone outside send a secret to you, encrypted to your key.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "yes"
+     },
+     "best": "Keeper",
+     "lockdown": {
+      "target": "parity",
+      "how": "Single-use request links that encrypt the sender's input to the requester's public key in the browser.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "fill-only-sharing",
+     "name": "Fill-only sharing",
+     "detail": "Recipients can sign in with a shared login but cannot see the password.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "yes",
+      "Proton Pass": "?",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "Hide-password permission described honestly as a guard, not encryption, with rotation prompts when access ends.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "rotate-on-revoke",
+     "name": "Rotate on revoke",
+     "detail": "When someone loses access, every item they could see is flagged to change.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "Passbolt",
+     "lockdown": {
+      "target": "novel",
+      "how": "On member removal, mark every item they could decrypt as 'rotate now', notify owners, and link each one to the guided or agentic change flow.",
+      "phase": "v2"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "share-activity",
+     "name": "Shared item activity log",
+     "detail": "A history of who changed, revealed or filled a shared item.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "partial",
+      "Proton Pass": "?",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "partial"
+     },
+     "best": "Keeper",
+     "lockdown": {
+      "target": "novel",
+      "how": "Encrypted per-vault log of edits, reveals and fills that every member can see equally, so a family log cannot become covert surveillance.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "collab-notes",
+     "name": "Live co-editing of shared notes",
+     "detail": "Two people edit the same shared note, even offline, without conflict copies.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "End-to-end encrypted CRDT editing inside an item's rich notes only, while membership stays server-controlled.",
+      "phase": "later"
+     },
+     "confidence": "medium"
+    }
+   ]
+  },
+  {
+   "id": "family-emergency-recovery",
+   "name": "Family & emergency/recovery",
+   "summary": "Household plans, roles for children and older relatives, emergency and legacy access, and account recovery.",
+   "features": [
+    {
+     "id": "family-plan",
+     "name": "Family plan",
+     "detail": "One plan for several household members with shared and private vaults.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "n/a",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "Six-person plan priced near Bitwarden's $47.88 a year (1Password Families is $71.88 after March 2026), with a household vault for Wi-Fi, streaming and door codes.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "kid-roles",
+     "name": "Child and teen accounts",
+     "detail": "Roles for children, teens and assisted adults with guardian controls.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "n/a",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Guardian, Teen, Child and Assisted-adult roles, an under-13 policy (no export, no outside Send), break-glass guardian recovery that always notifies, and re-keying at the age of majority.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "emergency-access",
+     "name": "Emergency access",
+     "detail": "A trusted contact can view or take over the vault after a waiting period.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "paid",
+      "Proton Pass": "paid",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "beat",
+      "how": "Free emergency access with authenticated contact keys (key transparency plus a QR fingerprint check), closing the key-swap flaw ETH Zurich found in escrow flows.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "digital-legacy",
+     "name": "Digital legacy",
+     "detail": "A scoped vault and letter released to heirs after long inactivity, with an owner veto.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "partial",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "Proton Pass",
+     "lockdown": {
+      "target": "novel",
+      "how": "Armed, check-in, grace and release-pending states, k-of-n heirs via Shamir shares wrapped to their keys, a 7-30 day owner veto, and a server that only runs the clock.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "recovery-kit",
+     "name": "Recovery kit",
+     "detail": "A printable kit or code that restores access if the password is lost.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "partial",
+      "Proton Pass": "yes",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Printable kit and passphrase made at signup with a forced 'test it now' step, so users know it works before they need it.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "social-recovery",
+     "name": "Social recovery",
+     "detail": "Several trusted people each hold a piece; enough of them together restore access.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "partial",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "Apple Passwords",
+     "lockdown": {
+      "target": "novel",
+      "how": "Optional Shamir k-of-n recovery among enrolled contacts with authenticated keys and a notice to every party when used.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "pin-escrow",
+     "name": "PIN-protected cloud escrow",
+     "detail": "Restore on a new device with a short PIN protected by hardware that limits guesses.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "Apple Passwords",
+     "lockdown": {
+      "target": "parity",
+      "how": "Optional OPAQUE-plus-HSM PIN escrow in the style of Signal SVR and WhatsApp backups, with attempt limits and published HSM attestation.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "organizer-recovery",
+     "name": "Organizer recovery of members",
+     "detail": "A family organizer or admin restores a locked-out member.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "paid",
+      "Proton Pass": "?",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "n/a",
+      "KeePassXC": "n/a",
+      "Dashlane": "?",
+      "Keeper": "paid"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Member opt-in at enrolment, M-of-N organizer approval for teams, an out-of-band callback, and never a single admin key.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "recovery-drill",
+     "name": "Recovery drill",
+     "detail": "A dry run that proves recovery works without locking anything.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Yearly prompted drill that checks the recovery kit, heirs' keys and legacy settings and records the last successful date.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "password-reminder",
+     "name": "Password reminder for biometric users",
+     "detail": "Periodically asks for the master password so biometric users do not forget it.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "n/a",
+      "Google PM": "n/a",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Aegis",
+     "lockdown": {
+      "target": "parity",
+      "how": "Periodic password prompt (default every 14 days) with a short note on why it matters.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    }
+   ]
+  },
+  {
+   "id": "security-monitoring-phishing",
+   "name": "Security monitoring & phishing defense",
+   "summary": "Finding weak, breached and unprotected accounts, blocking phishing, and guiding what to do after a compromise.",
+   "features": [
+    {
+     "id": "breached-passwords",
+     "name": "Breached password check",
+     "detail": "Checks saved passwords against known breaches without sending them (k-anonymity).",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "paid",
+      "Proton Pass": "?",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "yes",
+      "Dashlane": "yes",
+      "Keeper": "paid"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Free k-anonymity breach checks on every tier, offline dump support for air-gapped users, and a re-check after each fix.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "weak-reused",
+     "name": "Weak and reused password report",
+     "detail": "Flags weak passwords and the same password used on several sites.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "paid",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "yes",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Free on every tier, detecting reuse across all vaults the user can open.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "email-breach-monitoring",
+     "name": "Email breach monitoring",
+     "detail": "Alerts when your email addresses or aliases appear in new breaches.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "partial",
+      "Proton Pass": "paid",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "yes",
+      "Keeper": "paid"
+     },
+     "best": "Dashlane",
+     "lockdown": {
+      "target": "parity",
+      "how": "Continuous monitoring of the account email and every Lockdown alias on paid plans, feeding the breach playbooks.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "missing-2fa-report",
+     "name": "Missing 2FA report",
+     "detail": "Lists sites that support 2FA or passkeys where you have not turned them on.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "paid",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Free report from 2fa.directory and the passkeys directory, linking straight to each site's setup page.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "passwordless-coaching",
+     "name": "Passwordless migration plan",
+     "detail": "A ranked plan for moving accounts to passkeys.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "partial",
+      "Google PM": "partial",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Rank accounts by reset-path value (email, identity providers, finance first), track sites that still accept the old password, and require two authenticators before suggesting password removal.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "breach-playbooks",
+     "name": "Breach-response playbooks",
+     "detail": "Step-by-step guided response when an account, email or device is compromised.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "paid",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "novel",
+      "how": "Seven incident types (site breach, stuffing, 2FA seed leak, email takeover, identity-provider takeover, infostealer, vault breach) with ordered steps covering sessions, forwarding rules, recovery info and app grants, ending in a verify step.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "phishing-blocker",
+     "name": "Phishing site blocker",
+     "detail": "Warns or blocks before you open a known phishing site.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "paid",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "no",
+      "Google PM": "partial",
+      "KeePassXC": "no",
+      "Dashlane": "yes",
+      "Keeper": "?"
+     },
+     "best": "Dashlane",
+     "lockdown": {
+      "target": "beat",
+      "how": "Open-list blocker (Phishing.Database plus partner feeds) in every browser including Safari, on every plan.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "lookalike-warning",
+     "name": "Lookalike-domain warning",
+     "detail": "Warns when you try to fill or paste a saved password on a site that is not the saved one.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "partial",
+      "Proton Pass": "?",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "yes",
+      "Dashlane": "yes",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Homoglyph and typo-squat detection with a hard stop and explicit confirm before any cross-domain fill or paste.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "change-password-link",
+     "name": "One-tap change-password link",
+     "detail": "Opens a site's change-password page directly via /.well-known/change-password.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Apple Passwords",
+     "lockdown": {
+      "target": "parity",
+      "how": "Use /.well-known/change-password, then a curated recipe URL, as the first step of every change action.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "account-alerts",
+     "name": "Vault account sign-in alerts",
+     "detail": "Notifies on new devices signing in to the password manager account and lets you end sessions.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "n/a",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "Proton Pass",
+     "lockdown": {
+      "target": "parity",
+      "how": "New-device alerts on every device, a session list with remote sign-out, and email verification for new devices only when no stronger factor exists.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "connected-app-review",
+     "name": "Connected-app review",
+     "detail": "A guided review of apps with access to your Google, Microsoft, GitHub or Apple accounts.",
+     "support": {
+      "1Password": "paid",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "novel",
+      "how": "Quarterly consumer review that deep-links each identity provider from the federated map and flags mail, drive and full-account grants, without holding any OAuth tokens.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "deletion-helper",
+     "name": "Account deletion helper",
+     "detail": "Finds accounts you no longer use and shows how to delete them.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Match dormant items to JustDeleteMe data (MIT), draft GDPR and CCPA request emails, and keep a tombstone with the username for future breach matching.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    }
+   ]
+  },
+  {
+   "id": "privacy",
+   "name": "Privacy (aliases, masked cards, travel mode, duress)",
+   "summary": "Hiding the user's real identity from sites and protecting the vault under device search or coercion.",
+   "features": [
+    {
+     "id": "first-party-aliases",
+     "name": "Built-in email aliases",
+     "detail": "Creates a unique forwarding email address for each site during sign-up.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "partial",
+      "Proton Pass": "yes",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "paid",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Proton Pass",
+     "lockdown": {
+      "target": "parity",
+      "how": "First-party aliases (10 free, unlimited paid) created inline at sign-up, with custom domains and reply-from-alias.",
+      "phase": "later"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "alias-forwarders",
+     "name": "Third-party alias services",
+     "detail": "Generates aliases with alias services the user already has.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "yes",
+      "Proton Pass": "partial",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "Support SimpleLogin, addy.io, Firefox Relay, Fastmail, DuckDuckGo and Forward Email API keys beside first-party aliases.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "virtual-cards",
+     "name": "Virtual payment cards",
+     "detail": "Single-merchant or single-use card numbers created at checkout.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Partner with a virtual-card issuer for per-merchant cards created in the fill flow, starting in the US.",
+      "phase": "v2"
+     },
+     "confidence": "low"
+    },
+    {
+     "id": "travel-mode",
+     "name": "Travel mode",
+     "detail": "Removes chosen vaults and their keys from devices before crossing a border.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Travel profile scheduled by trip dates, per device and on family plans, that removes keys rather than hiding items and restores them after the trip.",
+      "phase": "v1.x"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "panic-lock",
+     "name": "Panic lock",
+     "detail": "One action that locks every device, clears the clipboard and ends sessions.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Hotkey, phone gesture or watch button locks all devices, clears clipboards and revokes sessions, and logs it for later review.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "duress-pin",
+     "name": "Duress PIN",
+     "detail": "A second PIN that wipes the local copy instead of unlocking.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "?"
+     },
+     "best": "GrapheneOS",
+     "lockdown": {
+      "target": "novel",
+      "how": "Duress PIN wipes the local cache and device keys and de-registers the device, allowed only when fully synced, with plain docs on legal limits and no hidden vaults.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "clipboard-hygiene",
+     "name": "Clipboard and screenshot hygiene",
+     "detail": "Clears copied secrets and blocks screenshots of secret screens.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "KeePassXC",
+     "lockdown": {
+      "target": "parity",
+      "how": "Auto-clear clipboard, exclude copies from Windows clipboard history and cloud clipboard, and block screen capture on reveal screens.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    }
+   ]
+  },
+  {
+   "id": "import-export-portability",
+   "name": "Import/export & portability",
+   "summary": "Getting data in and out without loss, through FIDO credential exchange (CXF/CXP), importers and open formats.",
+   "features": [
+    {
+     "id": "cxf-ios",
+     "name": "iOS credential exchange",
+     "detail": "OS-run transfer of passwords, passkeys and codes between apps on iPhone and iPad (iOS 26).",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "yes",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "yes",
+      "Google PM": "partial",
+      "KeePassXC": "no",
+      "Dashlane": "yes",
+      "Keeper": "partial"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "Set SupportsCredentialExchange with version 1.0 and ship both ASCredentialExportManager and ASCredentialImportManager at launch, mapping password, passkey and TOTP items.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "cxf-android",
+     "name": "Android credential exchange",
+     "detail": "OS-run transfer between password managers on the same Android phone (Play services 26.21+ from June 2026; system-wide switch flow since 10 September 2026).",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "yes",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "no",
+      "Google PM": "yes",
+      "KeePassXC": "no",
+      "Dashlane": "yes",
+      "Keeper": "?"
+     },
+     "best": "Google PM",
+     "lockdown": {
+      "target": "parity",
+      "how": "Implement androidx.credentials providerevents import and export (registerExport, importCredentials) with Android 14+ and Play services 26.21+ as the minimum.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "cxf-desktop",
+     "name": "Desktop credential exchange",
+     "detail": "The same app-to-app transfer on macOS, Windows and Linux.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "partial",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Apple Passwords",
+     "lockdown": {
+      "target": "novel",
+      "how": "Ship macOS 26 import and export plus a CXF file path on Windows and Linux, becoming the first working third-party desktop target.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "remote-cxp",
+     "name": "Cross-device transfer (CXP)",
+     "detail": "Encrypted transfer from one device or platform to another, such as Android to iPhone.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Track the CXP draft (still the 2024-10-03 Working Draft) and ship an HPKE device-to-device transfer once it stabilises, using CXF payloads either way.",
+      "phase": "later"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "lossless-transfer",
+     "name": "Lossless transfer",
+     "detail": "Moves everything, including Wi-Fi, notes, attachments, folders and history, not just logins.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "partial",
+      "Proton Pass": "partial",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "partial",
+      "Google PM": "partial",
+      "KeePassXC": "yes",
+      "Dashlane": "partial",
+      "Keeper": "?"
+     },
+     "best": "KeePassXC",
+     "lockdown": {
+      "target": "beat",
+      "how": "Map every Lockdown field to CXF, use CXF Wi-Fi and extension fields for the rest, and show a per-item report of anything the target app dropped.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "importers",
+     "name": "Importers from other managers",
+     "detail": "Imports from CSV and native formats of other password managers and browsers.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "partial",
+      "Google PM": "partial",
+      "KeePassXC": "yes",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "beat",
+      "how": "Importers for 1PUX, Bitwarden JSON, Proton, KDBX, Dashlane, Keeper, LastPass, Enpass, browsers and CSV, run sandboxed with size limits.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "full-export",
+     "name": "Complete export",
+     "detail": "Exports everything, including passkeys and attachments.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "yes",
+      "Proton Pass": "?",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "partial",
+      "Google PM": "partial",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "KeePassXC",
+     "lockdown": {
+      "target": "beat",
+      "how": "Export passkeys, attachments, TOTP, history and folders as an encrypted archive or CXF, free even after a subscription lapses, with CSV-injection-safe output.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "encrypted-export",
+     "name": "Encrypted export",
+     "detail": "The exported file is protected by a password or key.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "yes",
+      "Proton Pass": "?",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "Password-protected (Argon2id plus AEAD) and age-recipient exports, with plaintext export only behind an extra confirm.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "open-format",
+     "name": "Published backup format",
+     "detail": "The vault or backup format is documented so other tools can read it.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "partial",
+      "Proton Pass": "?",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "KeePassXC",
+     "lockdown": {
+      "target": "beat",
+      "how": "Publish the Lockdown backup format with an open-licence reference decoder, plus one-click KDBX export as an exit path.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "auto-backups",
+     "name": "Automatic local backups",
+     "detail": "Scheduled encrypted backups to a folder or drive the user chooses, with a reminder showing when the last backup succeeded.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "partial",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Aegis",
+     "lockdown": {
+      "target": "beat",
+      "how": "Versioned, encrypted backups on a schedule to a user-chosen folder, NAS or cloud drive, a 'last successful backup' indicator and a printable emergency sheet, restorable without a Lockdown account.",
+      "phase": "v1.x"
+     },
+     "confidence": "low"
+    }
+   ]
+  },
+  {
+   "id": "developer-secrets",
+   "name": "Developer & secrets (SSH, CLI, env, CI)",
+   "summary": "SSH and Git, command-line access, runtime secret injection, machine identities and key agents for developers.",
+   "features": [
+    {
+     "id": "ssh-agent",
+     "name": "SSH agent",
+     "detail": "Serves SSH keys from the vault and asks for approval on each use.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "paid",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "yes",
+      "Dashlane": "no",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Built-in agent on macOS, Windows (including WSL) and Linux with per-use biometric approval and a config file choosing which keys each host sees.",
+      "phase": "v1.x"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "commit-signing",
+     "name": "Git commit signing",
+     "detail": "Signs Git commits with a vault SSH key.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "partial",
+      "Dashlane": "no",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "One-click Git SSH signing setup (Git 2.34+) that writes the gitconfig lines and allowed-signers file.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "cli",
+     "name": "Command-line tool",
+     "detail": "A CLI for reading and managing vault items in scripts.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "paid",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Single static Rust binary with JSON output, biometric unlock through the desktop app, and secret references, on every plan.",
+      "phase": "v1.x"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "secret-injection",
+     "name": "Secret references and injection",
+     "detail": "References in config files that are swapped for real values at run time.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "partial",
+      "Proton Pass": "?",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "lockdown://vault/item/field references with run and inject commands that never write values to disk.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "env-mounts",
+     "name": "Mounted .env files",
+     "detail": "A .env file served from the vault on demand and never written to disk.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Named-pipe .env mounts on macOS, Linux and Windows (1Password's are Mac and Linux only), with per-process approval and a visible mount list.",
+      "phase": "v1.x"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "machine-tokens",
+     "name": "Service accounts and tokens",
+     "detail": "Scoped, expiring tokens that let scripts and CI read only granted secrets.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "paid",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Free scoped tokens bound to vault, item list, expiry and IP range, with every use in the audit log.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "ci-oidc",
+     "name": "CI secrets without stored tokens",
+     "detail": "CI jobs prove their identity with OIDC and receive short-lived secrets.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "OIDC trust policies for GitHub Actions, GitLab and generic issuers that mint single-use, per-run access.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "devops-integrations",
+     "name": "DevOps integrations",
+     "detail": "Kubernetes operator, Terraform provider, GitHub Actions and IDE plugins.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "partial",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Kubernetes operator, Terraform provider, GitHub Action and VS Code extension on the same token model.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "shell-plugins",
+     "name": "CLI biometric plugins",
+     "detail": "Unlock third-party CLIs such as AWS, gh or Stripe with a fingerprint instead of plaintext config.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Open plugin format for third-party CLIs with biometric approval, seeded with the most-used developer CLIs.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "plaintext-secret-scan",
+     "name": "Plaintext secret scanner",
+     "detail": "Finds unencrypted SSH keys and .env files on the device and offers to move them into the vault.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Local scan for unencrypted SSH keys and .env files with one-click import and safe delete, free for individuals.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "secret-service",
+     "name": "Linux secret store provider",
+     "detail": "Acts as the Linux Secret Service so other apps keep their secrets in the vault.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "n/a",
+      "Google PM": "n/a",
+      "KeePassXC": "yes",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "KeePassXC",
+     "lockdown": {
+      "target": "parity",
+      "how": "D-Bus Secret Service provider with per-app approval prompts.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "age-gpg-agent",
+     "name": "age and GPG key agent",
+     "detail": "Stores age and OpenPGP keys and decrypts on approval.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "age-plugin-lockdown returns only the file key after biometric approval and supports post-quantum age keys; GPG keys are stored with export-to-agent on approval.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "ssh-certificates",
+     "name": "Short-lived SSH certificates",
+     "detail": "The vault acts as an SSH certificate authority and issues short-lived certificates after approval.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "?"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Issue OpenSSH certificates valid for minutes after a passkey approval, instead of syncing software sk-keys that defeat hardware binding.",
+      "phase": "later"
+     },
+     "confidence": "medium"
+    }
+   ]
+  },
+  {
+   "id": "ai-agents",
+   "name": "AI & agents",
+   "summary": "Letting AI agents use credentials without seeing them, with scoped tokens, human approval and audit, plus AI-driven password change.",
+   "features": [
+    {
+     "id": "agent-sign-in",
+     "name": "Agent sign-in without exposing secrets",
+     "detail": "An AI agent can log in to a site while the model never sees the password.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "A broker fills credentials at the injection point on every OS and browser and returns only status, working with any MCP client, not one partner (1Password for Claude is Mac-first).",
+      "phase": "v2"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "per-task-approval",
+     "name": "Per-task human approval",
+     "detail": "Each agent use of a credential is approved by the user on a trusted device.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Prompt on desktop, phone or watch shows agent, task, destination domain and a matching number, approved per task to limit fatigue.",
+      "phase": "v2"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "agent-audit-log",
+     "name": "Agent audit log",
+     "detail": "A record of every credential use by an agent.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "paid",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "Proton Pass",
+     "lockdown": {
+      "target": "beat",
+      "how": "End-to-end encrypted, hash-chained, exportable log of every agent use from day one (1Password's is still planned).",
+      "phase": "v2"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "agent-tokens",
+     "name": "Scoped agent tokens",
+     "detail": "Limited, expiring tokens that give an agent access to a few items only.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "partial",
+      "Proton Pass": "paid",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "?"
+     },
+     "best": "Proton Pass",
+     "lockdown": {
+      "target": "beat",
+      "how": "Capability tokens bound to item, origin, action, expiry, use count and agent identity, revocable instantly.",
+      "phase": "v2"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "mcp-server",
+     "name": "MCP server",
+     "detail": "Lets AI assistants use the vault through the Model Context Protocol.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "yes",
+      "Proton Pass": "?",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Tools are verbs (login, http_with_credential, run_with_env, ssh_sign) that return status, never secrets, and sensitive input uses URL-mode elicitation as MCP 2025-11-25 requires.",
+      "phase": "v2"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "agent-deny-classes",
+     "name": "High-risk items blocked from agents",
+     "detail": "Seeds, email and identity-provider master logins and banking are off-limits to agents by default.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Deny by default for high-risk item classes, overridable per item only with a full-password confirm.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "agent-screen-masking",
+     "name": "Masking during agent sessions",
+     "detail": "Hides filled values and manager UI so agent screenshots cannot capture them.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "Mask filled fields and extension UI for the whole agent session and block reveal actions until it ends.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "agentic-password-change",
+     "name": "AI password change",
+     "detail": "An assistant changes weak or breached passwords on sites for you.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "partial",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "Google PM",
+     "lockdown": {
+      "target": "beat",
+      "how": "Tiered: well-known link, then signed per-site recipes, then a navigate-only model that never sees secrets, with two-phase commit, re-login check and rollback (Apple's iOS 27 version is delayed past 27.0).",
+      "phase": "later"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "hosted-browser-agents",
+     "name": "Hosted browser agent support",
+     "detail": "Credential injection for agents running in cloud browsers.",
+     "support": {
+      "1Password": "paid",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Noise-protocol channel from the broker to a hosted-browser extension, approvals on the user's device, and audit from day one.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    }
+   ]
+  },
+  {
+   "id": "business-admin",
+   "name": "Business/admin (SSO, SCIM, policies, logs, device trust)",
+   "summary": "Identity integration, provisioning, policy, audit and access control for organizations.",
+   "features": [
+    {
+     "id": "sso-unlock",
+     "name": "SSO unlock",
+     "detail": "Employees unlock the vault with their company identity provider instead of a master password.",
+     "support": {
+      "1Password": "paid",
+      "Bitwarden": "paid",
+      "Proton Pass": "?",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "no",
+      "Google PM": "n/a",
+      "KeePassXC": "no",
+      "Dashlane": "paid",
+      "Keeper": "paid"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "OIDC and SAML unlock with trusted-device key release and an optional self-hosted key connector.",
+      "phase": "v2"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "scim",
+     "name": "SCIM provisioning",
+     "detail": "Automatic user creation and removal from the identity provider.",
+     "support": {
+      "1Password": "paid",
+      "Bitwarden": "paid",
+      "Proton Pass": "?",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "n/a",
+      "KeePassXC": "no",
+      "Dashlane": "paid",
+      "Keeper": "paid"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Native SCIM 2.0 endpoint with no bridge, for Entra ID, Okta, Google and JumpCloud.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "admin-policies",
+     "name": "Admin policies",
+     "detail": "Organization rules such as required 2FA, password rules, export blocks and timeouts.",
+     "support": {
+      "1Password": "paid",
+      "Bitwarden": "paid",
+      "Proton Pass": "paid",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "no",
+      "Google PM": "partial",
+      "KeePassXC": "no",
+      "Dashlane": "paid",
+      "Keeper": "paid"
+     },
+     "best": "Keeper",
+     "lockdown": {
+      "target": "parity",
+      "how": "Policy engine in the shared Rust core enforcing 25+ policies the same way on every client, including generator, export, Send, sharing and agent rules.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "event-logs",
+     "name": "Event logs and SIEM export",
+     "detail": "Audit events streamed to security tools.",
+     "support": {
+      "1Password": "paid",
+      "Bitwarden": "paid",
+      "Proton Pass": "?",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "no",
+      "Google PM": "n/a",
+      "KeePassXC": "no",
+      "Dashlane": "paid",
+      "Keeper": "paid"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "beat",
+      "how": "Signed, hash-chained event log with HEC, syslog and webhook export on Teams plans and up.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "rbac",
+     "name": "Groups and custom roles",
+     "detail": "Assign access by group and define custom admin roles.",
+     "support": {
+      "1Password": "paid",
+      "Bitwarden": "paid",
+      "Proton Pass": "?",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "no",
+      "Google PM": "n/a",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "paid"
+     },
+     "best": "Keeper",
+     "lockdown": {
+      "target": "parity",
+      "how": "Groups plus custom roles with least-privilege templates.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "admin-recovery",
+     "name": "Admin account recovery",
+     "detail": "Admins help a locked-out member regain access.",
+     "support": {
+      "1Password": "paid",
+      "Bitwarden": "paid",
+      "Proton Pass": "?",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "n/a",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "paid"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "beat",
+      "how": "M-of-N admin approval, member opt-in at enrolment, key-transparency checks and an out-of-band callback instead of one org recovery key.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "device-trust",
+     "name": "Device trust checks",
+     "detail": "Checks device health before allowing vault access.",
+     "support": {
+      "1Password": "paid",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "n/a",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Posture checks (OS version, disk encryption, screen lock) through MDM attestation before unlock on managed devices.",
+      "phase": "later"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "jit-access",
+     "name": "Just-in-time access requests",
+     "detail": "Members request a secret with a reason and an owner grants it for a limited time.",
+     "support": {
+      "1Password": "paid",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "n/a",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "paid"
+     },
+     "best": "Keeper",
+     "lockdown": {
+      "target": "beat",
+      "how": "Lightweight version for small teams: request with reason, time-boxed grant, optional exclusive check-out and auto-rotate on check-in.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "risk-analytics",
+     "name": "Credential risk analytics",
+     "detail": "An organization view of at-risk credentials by app, with trends.",
+     "support": {
+      "1Password": "paid",
+      "Bitwarden": "paid",
+      "Proton Pass": "?",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "n/a",
+      "KeePassXC": "no",
+      "Dashlane": "paid",
+      "Keeper": "paid"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "beat",
+      "how": "Per-app risk with trend lines plus playbook completion and rotate-on-revoke status per team.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "ai-tool-discovery",
+     "name": "AI tool and shadow-IT discovery",
+     "detail": "Finds AI agents and unmanaged apps on company devices.",
+     "support": {
+      "1Password": "paid",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "n/a",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Endpoint discovery of agents and exposed secrets reported to the admin console, built on the plaintext secret scanner.",
+      "phase": "later"
+     },
+     "confidence": "medium"
+    }
+   ]
+  },
+  {
+   "id": "self-hosting-deployment",
+   "name": "Self-hosting & deployment",
+   "summary": "Running the server yourself, or running with no server at all.",
+   "features": [
+    {
+     "id": "official-self-host",
+     "name": "Official self-hosting",
+     "detail": "Run the server yourself with vendor support.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "yes",
+      "Proton Pass": "no",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "n/a",
+      "Dashlane": "no",
+      "Keeper": "?"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "beat",
+      "how": "Official self-host that is the same Rust (axum + sqlx) binary as the cloud, with every personal and family feature free.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "single-container",
+     "name": "Lightweight single container",
+     "detail": "One small container image with an embedded database option.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "partial",
+      "Proton Pass": "no",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "n/a",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "Vaultwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "Single container of about 50 MB RAM with SQLite or Postgres and S3-compatible attachment storage.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "saas-parity",
+     "name": "Same code as the cloud",
+     "detail": "Self-hosted servers get the same features and security fixes as the vendor cloud.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "yes",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "n/a",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "Feature flags rather than forks, so security releases reach cloud and self-host the same day with advisory IDs.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "local-only-mode",
+     "name": "Account-free local vault",
+     "detail": "Use the manager with no account or server at all.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "partial",
+      "Google PM": "partial",
+      "KeePassXC": "yes",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "KeePassXC",
+     "lockdown": {
+      "target": "beat",
+      "how": "Local-only vault mode inside the same apps, upgradable to sync later without re-import.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "byo-storage-sync",
+     "name": "Bring-your-own storage sync",
+     "detail": "Sync the encrypted vault through your own WebDAV, NAS or cloud drive.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "partial",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "Enpass",
+     "lockdown": {
+      "target": "beat",
+      "how": "Sync the end-to-end encrypted vault and its signed manifest through WebDAV, S3 or iCloud Drive with proper conflict handling.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "self-host-push",
+     "name": "Self-hosted live sync",
+     "detail": "Live sync notifications for self-hosted servers.",
+     "support": {
+      "1Password": "n/a",
+      "Bitwarden": "yes",
+      "Proton Pass": "n/a",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "n/a",
+      "Google PM": "n/a",
+      "KeePassXC": "n/a",
+      "Dashlane": "n/a",
+      "Keeper": "n/a"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "WebSocket live sync for desktop and browser clients plus a documented push relay for mobile.",
+      "phase": "v1"
+     },
+     "confidence": "low"
+    }
+   ]
+  },
+  {
+   "id": "security-architecture-crypto",
+   "name": "Security architecture & crypto",
+   "summary": "Key derivation, login protocol, encryption binding, malicious-server resistance, post-quantum readiness and endpoint hardening.",
+   "features": [
+    {
+     "id": "e2ee",
+     "name": "End-to-end encryption",
+     "detail": "Only the user's devices can decrypt vault data, including titles and URLs.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "partial",
+      "KeePassXC": "yes",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Every item field and all metadata (titles, URLs, tags, icons) end-to-end encrypted, never optional, so a LastPass-style breach leaks no site list.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "secret-key",
+     "name": "Secret Key",
+     "detail": "A random device-made key combined with the password so stolen server data cannot be cracked offline.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "n/a",
+      "Google PM": "n/a",
+      "KeePassXC": "partial",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "128-bit Secret Key on by default (opt-out allowed with a plain warning), combined with the password via HKDF, with an emergency kit and QR transfer to new devices.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "pake-login",
+     "name": "Password-authenticated login (PAKE)",
+     "detail": "Login proves the password without sending anything a server could crack.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "no",
+      "Proton Pass": "yes",
+      "Vaultwarden": "no",
+      "Apple Passwords": "n/a",
+      "Google PM": "n/a",
+      "KeePassXC": "n/a",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "beat",
+      "how": "OPAQUE (RFC 9807, July 2025) through the audited opaque-ke crate, as WhatsApp uses for encrypted backups.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "client-kdf",
+     "name": "Strong key derivation",
+     "detail": "Slow, memory-hard hashing of the master password on the device.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "yes",
+      "Proton Pass": "partial",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "n/a",
+      "Google PM": "n/a",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "KeePassXC",
+     "lockdown": {
+      "target": "beat",
+      "how": "Argon2id at 64 MiB or more, t=3, p=4 on desktop, calibrated per device with an enforced floor and renegotiation on a stronger device.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "malicious-server-resistance",
+     "name": "Malicious-server resistance",
+     "detail": "Security holds even if the vendor's own server turns hostile.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "partial",
+      "Proton Pass": "?",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "n/a",
+      "Dashlane": "partial",
+      "Keeper": "?"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "novel",
+      "how": "Design to the ETH Zurich/USI threat model (12 attacks on Bitwarden, 6 on Dashlane, 2 on 1Password), publish a formal Tamarin or ProVerif model of login, sharing and recovery, and commission an academic review before launch.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "key-transparency",
+     "name": "Authenticated public keys",
+     "detail": "Clients verify other users' public keys so a server cannot swap in its own.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "yes",
+      "Vaultwarden": "no",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "n/a",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Proton Pass",
+     "lockdown": {
+      "target": "beat",
+      "how": "Key-transparency log for every identity key plus QR fingerprint checks and passphrase-verified invites for high-value shares.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "bound-encryption",
+     "name": "Bound authenticated encryption",
+     "detail": "Each encrypted field is tied to its item, vault and version so it cannot be swapped or downgraded.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "partial",
+      "Proton Pass": "?",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "?",
+      "Dashlane": "partial",
+      "Keeper": "?"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "beat",
+      "how": "AEAD with associated data binding item ID, vault ID, field name and schema version, client-enforced parameter floors, and no legacy formats.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "anti-rollback",
+     "name": "Rollback and deletion protection",
+     "detail": "Detects a server hiding, reverting or reordering items.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "n/a",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Signed, hash-chained per-vault manifest of item IDs and versions, checked on every sync.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "pq-transport",
+     "name": "Post-quantum transport",
+     "detail": "Hybrid post-quantum TLS between apps and the server.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "n/a",
+      "Dashlane": "?",
+      "Keeper": "partial"
+     },
+     "best": "Keeper",
+     "lockdown": {
+      "target": "parity",
+      "how": "Hybrid X25519MLKEM768 TLS on every client and the self-host server from launch (1Password has it on the web app only, Keeper on backend APIs and Commander).",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "pq-key-wrapping",
+     "name": "Post-quantum key wrapping",
+     "detail": "Sharing, recovery and organization keys stored with hybrid post-quantum encryption.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "n/a",
+      "Dashlane": "?",
+      "Keeper": "no"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Wrap every vault, organization and recovery key to X25519 plus ML-KEM-768 hybrid recipients via HPKE from day one, with Ed25519 and ML-DSA signatures (Bitwarden has ML-DSA signing but RSA-OAEP-SHA1 encryption).",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "hardware-backed-unlock",
+     "name": "Hardware-backed biometric unlock",
+     "detail": "Biometric unlock keys live in the Secure Enclave, StrongBox or TPM and reset if enrolled fingerprints change.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "Apple Passwords",
+     "lockdown": {
+      "target": "parity",
+      "how": "Key-slot design where password, biometric and passkey slots each wrap the same vault key, with invalidation when biometrics change.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "account-security-keys",
+     "name": "Security-key 2FA on the account",
+     "detail": "Protects the password manager account with hardware security keys.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "n/a",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "FIDO2 keys and passkeys as account second factors, several per account, on the free tier.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "hardware-key-factor",
+     "name": "Hardware key as a vault key factor",
+     "detail": "The vault cannot be decrypted without a physical security key's response as well as the password, as with KeePassXC's YubiKey challenge-response.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "n/a",
+      "Google PM": "n/a",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "KeePassXC",
+     "lockdown": {
+      "target": "beat",
+      "how": "Optional two-key mode that adds a FIDO2 PRF security key as a required factor beside the password, allowed only after two keys are enrolled, with the recovery kit as the fallback.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "device-approval",
+     "name": "New-device approval with code match",
+     "detail": "Approve a new device from an existing one after comparing a short code.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "yes",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "n/a",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "beat",
+      "how": "QR plus short-code key transfer over an authenticated channel, with number matching and rate limits against push fatigue.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "memory-hygiene",
+     "name": "Memory hygiene",
+     "detail": "Secrets are wiped from memory after use and kept out of swap.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "?",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "beat",
+      "how": "Rust core with zeroize and secrecy, locked memory pages, no secrets as JavaScript or JVM strings, and lock on sleep; Keeper Forcefield's claims could not be verified.",
+      "phase": "v1"
+     },
+     "confidence": "low"
+    },
+    {
+     "id": "ipc-peer-auth",
+     "name": "Verified local connections",
+     "detail": "The desktop app checks the code signature of any extension or tool that connects to it.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "n/a",
+      "Google PM": "n/a",
+      "KeePassXC": "?",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "beat",
+      "how": "Authenticate every native-messaging and IPC peer by code signature or process identity on all OSes (the NDSS 2025 Windows finding is unverified, but the control is cheap).",
+      "phase": "v1"
+     },
+     "confidence": "low"
+    },
+    {
+     "id": "high-risk-class",
+     "name": "High-risk item class",
+     "detail": "A stronger protection level for crypto seeds, Steam identity secrets and email or identity-provider master logins.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Separate key, full password for each reveal, no autofill, no agent access, no bulk export, and legacy release only by opt-in.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "exposure-tiers",
+     "name": "Per-item exposure tiers",
+     "detail": "Choose per item whether it reaches the browser extension, needs phone approval, or fills freely (Bitwarden's per-item master-password re-prompt counts as partial).",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "partial",
+      "Proton Pass": "?",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "2FAS Pass",
+     "lockdown": {
+      "target": "beat",
+      "how": "Three tiers (never in extension, phone approval, free fill) per item, with high-risk items defaulting to approval, which also blunts clickjacking.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    }
+   ]
+  },
+  {
+   "id": "platforms-apps",
+   "name": "Platforms & apps",
+   "summary": "Where the product runs, how native it is, and what works offline or for free.",
+   "features": [
+    {
+     "id": "windows-app",
+     "name": "Windows app",
+     "detail": "Desktop app for Windows.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "partial",
+      "Google PM": "partial",
+      "KeePassXC": "yes",
+      "Dashlane": "no",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Tauri 2 desktop app with native modules for the passkey plugin, Windows Hello and auto-type.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "macos-app",
+     "name": "macOS app",
+     "detail": "Desktop app for Mac.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "partial",
+      "KeePassXC": "yes",
+      "Dashlane": "no",
+      "Keeper": "yes"
+     },
+     "best": "Apple Passwords",
+     "lockdown": {
+      "target": "parity",
+      "how": "Tauri 2 app plus native AutoFill and passkey extensions for Apple silicon and Intel.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "linux-app",
+     "name": "Linux app",
+     "detail": "Desktop app for Linux.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "partial",
+      "KeePassXC": "yes",
+      "Dashlane": "no",
+      "Keeper": "yes"
+     },
+     "best": "KeePassXC",
+     "lockdown": {
+      "target": "parity",
+      "how": "Native Linux build (Flatpak, deb, rpm) with Secret Service, SSH agent and TPM-sealed unlock.",
+      "phase": "v1.x"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "ios-app",
+     "name": "iPhone and iPad app",
+     "detail": "Mobile app for iOS and iPadOS.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "partial",
+      "KeePassXC": "no",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "Apple Passwords",
+     "lockdown": {
+      "target": "parity",
+      "how": "Native SwiftUI app over the Rust core through UniFFI.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "android-app",
+     "name": "Android app",
+     "detail": "Mobile app for Android.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "yes",
+      "KeePassXC": "no",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "Proton Pass",
+     "lockdown": {
+      "target": "parity",
+      "how": "Native Jetpack Compose app, also on F-Droid.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "web-vault",
+     "name": "Web vault",
+     "detail": "Vault access from any browser without installing anything.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "yes",
+      "KeePassXC": "no",
+      "Dashlane": "yes",
+      "Keeper": "yes"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "Web vault built from the same WASM core.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "watch-apps",
+     "name": "Watch apps",
+     "detail": "Codes and approvals on Apple Watch and Wear OS.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "partial",
+      "Proton Pass": "?",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "yes"
+     },
+     "best": "Keeper",
+     "lockdown": {
+      "target": "beat",
+      "how": "Watch shows codes at a glance and serves as an approval surface with number matching; nearness only ever locks, never unlocks.",
+      "phase": "v2"
+     },
+     "confidence": "low"
+    },
+    {
+     "id": "offline-access",
+     "name": "Offline access",
+     "detail": "Read and edit the vault without a connection.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "partial",
+      "Proton Pass": "partial",
+      "Vaultwarden": "partial",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "KeePassXC",
+     "lockdown": {
+      "target": "beat",
+      "how": "Full offline read and write with per-item revisions and conflict copies on every client, the extension included.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "non-electron-desktop",
+     "name": "Non-Electron desktop",
+     "detail": "A desktop app not built on Electron, for smaller size and attack surface.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "?",
+      "Vaultwarden": "no",
+      "Apple Passwords": "yes",
+      "Google PM": "n/a",
+      "KeePassXC": "yes",
+      "Dashlane": "n/a",
+      "Keeper": "?"
+     },
+     "best": "KeePassXC",
+     "lockdown": {
+      "target": "beat",
+      "how": "Tauri 2 (Rust IPC, system WebView) instead of Electron, with native targets where OS APIs require them.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "free-tier",
+     "name": "Usable free tier",
+     "detail": "Core features free with no device limits.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "yes",
+      "Dashlane": "no",
+      "Keeper": "partial"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "beat",
+      "how": "Free tier with unlimited items and devices, passkeys, TOTP and a 2-person share (Dashlane dropped its free plan; Bitwarden Premium is now $19.80 a year).",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "portable-mode",
+     "name": "Portable mode",
+     "detail": "Run from a USB stick without installing.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "yes",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "KeePassXC",
+     "lockdown": {
+      "target": "parity",
+      "how": "Portable build that keeps config and cache beside the binary, for local-only vaults.",
+      "phase": "later"
+     },
+     "confidence": "medium"
+    }
+   ]
+  },
+  {
+   "id": "trust-transparency",
+   "name": "Trust & transparency (audits, open source, reproducible builds)",
+   "summary": "Open code, independent review, verifiable builds and promises about ownership and exit.",
+   "features": [
+    {
+     "id": "oss-clients",
+     "name": "Open-source clients",
+     "detail": "Client source code is public under an open licence.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "partial",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "no"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "All clients under GPL-3.0 with no BUSL licence or proprietary assets, so anyone can fork.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "oss-server",
+     "name": "Open-source server",
+     "detail": "Server source code is public.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "yes",
+      "Proton Pass": "no",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "n/a",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "Vaultwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "AGPL server that is the same code as the cloud.",
+      "phase": "v1.x"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "published-audits",
+     "name": "Published independent audits",
+     "detail": "Outside security firms test the product and the reports are public.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "no",
+      "Apple Passwords": "partial",
+      "Google PM": "?",
+      "KeePassXC": "?",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "Bitwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "Yearly multi-firm audits (crypto, clients, server, mobile) published in full, plus SOC 2.",
+      "phase": "v1"
+     },
+     "confidence": "high"
+    },
+    {
+     "id": "reproducible-builds",
+     "name": "Reproducible builds",
+     "detail": "Anyone can rebuild the app and get the identical binary.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "?",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Reproducible builds for extension, desktop and Android, checked by an independent rebuilder from the first release.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "binary-transparency",
+     "name": "Binary transparency",
+     "detail": "Clients check that the build they run appears in a public, append-only log.",
+     "support": {
+      "1Password": "no",
+      "Bitwarden": "no",
+      "Proton Pass": "no",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "no",
+      "KeePassXC": "no",
+      "Dashlane": "no",
+      "Keeper": "no"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "Public append-only release log checked by clients before unlock, with SLSA provenance on every artifact.",
+      "phase": "later"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "signed-releases",
+     "name": "Signed releases and SBOMs",
+     "detail": "Releases are signed with provenance and a software bill of materials.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "?",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Vaultwarden",
+     "lockdown": {
+      "target": "beat",
+      "how": "Signed, attested releases with SBOMs, pinned and vetted dependencies (cargo-vet, cargo-deny), and a minimal JavaScript tree against npm worms.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "bug-bounty",
+     "name": "Public bug bounty",
+     "detail": "Researchers are paid to report vulnerabilities.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "no",
+      "Apple Passwords": "yes",
+      "Google PM": "yes",
+      "KeePassXC": "no",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "1Password",
+     "lockdown": {
+      "target": "parity",
+      "how": "Public bounty from launch with malicious-server scenarios explicitly in scope.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "security-advisories",
+     "name": "Security advisories in release notes",
+     "detail": "Each release lists the security issues it fixes with advisory IDs.",
+     "support": {
+      "1Password": "partial",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "?",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "Vaultwarden",
+     "lockdown": {
+      "target": "parity",
+      "how": "Every release lists its security fixes with advisory IDs and CVEs, as Vaultwarden and Passbolt do.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "exit-guarantee",
+     "name": "Ownership and exit guarantee",
+     "detail": "A promise that export stays free and users are told before any change of owner.",
+     "support": {
+      "1Password": "?",
+      "Bitwarden": "?",
+      "Proton Pass": "?",
+      "Vaultwarden": "?",
+      "Apple Passwords": "?",
+      "Google PM": "?",
+      "KeePassXC": "?",
+      "Dashlane": "?",
+      "Keeper": "?"
+     },
+     "best": "none",
+     "lockdown": {
+      "target": "novel",
+      "how": "In-app notice of any ownership change, free export forever, no custody move without consent, and a funded succession plan (Raivo, Buttercup and Kaspersky lessons).",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "data-residency",
+     "name": "Data residency choice",
+     "detail": "Pick the region where encrypted data is stored.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "partial",
+      "Vaultwarden": "yes",
+      "Apple Passwords": "n/a",
+      "Google PM": "n/a",
+      "KeePassXC": "n/a",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "Keeper",
+     "lockdown": {
+      "target": "parity",
+      "how": "US and EU regions at launch plus self-host anywhere.",
+      "phase": "v1.x"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "compliance-certs",
+     "name": "Compliance certifications",
+     "detail": "SOC 2, ISO 27001 and government certifications.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "?",
+      "Vaultwarden": "no",
+      "Apple Passwords": "no",
+      "Google PM": "n/a",
+      "KeePassXC": "n/a",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "Keeper",
+     "lockdown": {
+      "target": "parity",
+      "how": "SOC 2 Type 2 in year one and ISO 27001 next; FedRAMP only if a government track opens.",
+      "phase": "v2"
+     },
+     "confidence": "medium"
+    },
+    {
+     "id": "security-whitepaper",
+     "name": "Readable security white paper",
+     "detail": "A public explanation of the cryptography with diagrams for every flow.",
+     "support": {
+      "1Password": "yes",
+      "Bitwarden": "yes",
+      "Proton Pass": "yes",
+      "Vaultwarden": "no",
+      "Apple Passwords": "partial",
+      "Google PM": "?",
+      "KeePassXC": "yes",
+      "Dashlane": "?",
+      "Keeper": "yes"
+     },
+     "best": "Padloc",
+     "lockdown": {
+      "target": "beat",
+      "how": "White paper with sequence diagrams for every flow and the documented vault format, updated with each crypto change.",
+      "phase": "v1"
+     },
+     "confidence": "medium"
+    }
+   ]
+  }
+ ]
+}
