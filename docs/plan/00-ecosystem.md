@@ -15,6 +15,18 @@ Each app works alone. Every shared feature below has a "not linked" behaviour th
 - **One format from day one:** identity records and key envelopes come from one shared Rust crate (`ecosystem-identity`, name TBD) with a versioned on-disk format. Every app embeds the same crate. This is what makes adoption free of migration.
 - Owner of the schema: the shared crate. Lockdown is the reference implementation; Synapse and Mailbird embed it. (Resolves the earlier open question.)
 
+### Three ways into an identity (D11)
+| Situation | How the new app gets in | What the user does |
+|---|---|---|
+| Same device, another ecosystem app already runs | Local handshake: the running app attests and grants access | Nothing |
+| New device, an enrolled device is at hand | Scan a QR on the enrolled device, compare a short code | One scan |
+| New device, nothing else available | Type or scan the recovery kit (Secret Key + recovery code) | Enter the kit once |
+
+The kit rebuilds the identity key. Everything wrapped to that key (vault keys, note keys, persona records) opens with it. Data encrypted under a key that is *not* wrapped to the identity stays closed, so every app wraps its data keys to the identity from first run.
+
+### Where the crate is built (D12)
+Inside Mailbird first (`crates/core`), with the Phase 33 note lock as the first consumer. Extracted to its own repo when Lockdown starts consuming it. Mailbird is the test-bed; Lockdown is the reference implementation after extraction.
+
 ## 2. Enclave-to-enclave trust (D4)
 - Each app holds its keys in the platform keystore (Secure Enclave, StrongBox, TPM).
 - Linking = a one-time pairing: both apps show a short code, the user confirms, each stores the other's attested public key.
@@ -37,6 +49,6 @@ Same model in both apps: signed manifest, capability list, risk tier (standards 
 
 ## Open questions
 - Detection order and what counts as a trusted existing install (signature checks per OS).
-- Whether Mailbird's existing Phase 33 note lock migrates into the shared format before or after the crate exists (it predates it).
+- Phase 33's note lock becomes the crate's first consumer (D12); its existing PBKDF2 lock is re-wrapped to the identity key on the user's next unlock.
 - Does the self-host bundle ship under one name, or as two products with a documented pairing?
 - Team and timeline given D9 (feature-complete v1).
