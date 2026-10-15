@@ -1,6 +1,6 @@
 # Identity crate — format v1 (draft)
 
-_Status: draft spec, 2026-10-15. Implements D3, D10, D11, D12, D13. The crate is built inside Mailbird first (`crates/core`), then extracted. Working crate name: `ecosystem-identity`; rename when the ecosystem has a name._
+_Status: draft spec v1.1, 2026-10-15 (reconciled with 02-model and 04-security: `account` KeyRef, per-persona `kem_pub`). Implements D3, D10, D11, D12, D13. The crate is built inside Mailbird first (`crates/core`), then extracted. Working crate name: `ecosystem-identity`; rename when the ecosystem has a name._
 
 ## For future agent
 
@@ -37,7 +37,7 @@ All records are CBOR, signed, and versioned. `v` is the format version; readers 
 | Record | One per | Holds | Who may write |
 |---|---|---|---|
 | `Profile` | person | `profile_id`, `created_at`, `recovery` (kit state: none / created / drilled), `manager` (which app manages this identity, or none), `format_v` | the manager, or any app while `manager` is none |
-| `Persona` | wall | `persona_id`, `label`, `kind` (personal / work / business / custom), `created_by_app`, `identity_key_ref`, `color` | the app that created it, or the manager |
+| `Persona` | wall | `persona_id`, `label`, `kind` (personal / work / business / custom), `created_by_app`, `identity_key_ref`, `kem_pub` (hybrid X25519+ML-KEM-768 public key for shares), `color` | the app that created it, or the manager |
 | `Device` | enrolled device | `device_id`, `name`, `platform`, `attestation` (platform keystore attestation when available), `device_pub`, `enrolled_at`, `enrolled_by` (device or kit), `revoked_at` | the device itself, or the manager |
 | `KeyEnvelope` | wrapped key | see §4 | the owning app |
 | `Consent` | tolerated-tier grant | bridge id, disclosure version, when, by which device | the app that showed the disclosure |
@@ -57,11 +57,11 @@ Device Key (per device, in the platform keystore)
    └─ wraps ─▶ IRK for local use (so unlock never needs the kit)
 ```
 
-- **IRK** never leaves a device unwrapped. It is wrapped once per enrolled device to that device's keystore key, and once to the recovery kit.
+- **IRK** never leaves a device unwrapped. It is wrapped three ways: once per enrolled device to that device's keystore key (`device`); once to the **Account Unlock Key** (`account`), which is derived from the master password and the Secret Key through OPAQUE (04-security §3), so a fresh device with the password plus the kit's Secret Key can open it; and once to a key derived from the recovery code alone (`kit`), for the case where the password is forgotten.
 - **Persona Key** is the wall. An app that holds the `work` PK cannot open `personal` data. Revoking a persona re-keys only that branch.
 - **App Data Key** is what an app actually uses. Mailbird's Phase 33 note-lock key becomes Mailbird's ADK for the persona that owns the notes (D12). Re-wrap happens on the user's next unlock.
 - **Crown-Jewel Key** holds the high-blast-radius class. Opening it needs a fresh biometric check and a deliberate tap; exporting needs the full account password. Never autofilled, never given to agents.
-- **Public-key wrapping** between devices and for sharing uses hybrid X25519 + ML-KEM-768 through HPKE (brief §4.5). Symmetric wrapping uses XChaCha20-Poly1305 with associated data (§4).
+- **Public-key wrapping** between devices and for sharing uses hybrid X25519 + ML-KEM-768 through HPKE (brief §4.5). The receiving key pair lives **per persona**: `Persona.kem_pub` is public and goes into the key-transparency log; the private half is wrapped by that Persona Key. So a share sent to someone's work persona can never be opened by their personal one. Each `Device` also has a hybrid pair for enrolment only. Symmetric wrapping uses XChaCha20-Poly1305 with associated data (§4).
 - **Password stretching:** Argon2id, device-calibrated, floor 64 MiB / 3 passes / 4 lanes on desktop; parameters stored signed; readers refuse anything below the floor (brief §4.3).
 
 ## 4. Key envelope
@@ -72,7 +72,7 @@ Every wrapped key is one `KeyEnvelope`:
 KeyEnvelope {
   v: 1,
   key_id:        uuid,            // the key being wrapped
-  wrapped_by:    KeyRef,          // who can open it: { kind: device|persona|irk|kit|peer, id }
+  wrapped_by:    KeyRef,          // who can open it: { kind: account|device|persona|irk|kit|peer, id }
   alg:           "xchacha20poly1305" | "hpke-x25519-mlkem768",
   aad:           bytes,           // canonical CBOR of {profile_id, persona_id, key_id, purpose, v}
   nonce:         bytes,

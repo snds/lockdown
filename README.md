@@ -2,7 +2,11 @@
 
 A cross-platform password manager, passkey provider, and authenticator. The goal is to meet and beat 1Password, Bitwarden, Proton Pass, Vaultwarden, and Apple Passwords.
 
-**Status:** research. No code yet.
+**Status:** planned (plan set v0.1, 14 decisions). No code yet. The shared identity crate is built first, in Mailbird.
+
+## Plan
+
+Start with [docs/plan/00-big-picture.md](docs/plan/00-big-picture.md). The plan set (00–06 plus `decisions.md`) is the current source of truth; the research below is its evidence.
 
 ## Research (15 October 2026)
 
