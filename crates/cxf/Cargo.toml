@@ -1,0 +1,16 @@
+[package]
+name = "lockdown-cxf"
+description = "Import and export: FIDO Credential Exchange Format v1.0, CSV; every parser size-capped and hostile-input safe"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+lockdown-vault.workspace = true
+lockdown-codes.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+data-encoding.workspace = true
+thiserror.workspace = true

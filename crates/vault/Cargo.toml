@@ -1,0 +1,16 @@
+[package]
+name = "lockdown-vault"
+description = "Vaults, items, fields, versions, the crown-jewel class and the signed manifest chain"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+lockdown-crypto.workspace = true
+ecosystem-identity.workspace = true
+serde.workspace = true
+serde_bytes.workspace = true
+zeroize.workspace = true
+thiserror.workspace = true
