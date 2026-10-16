@@ -168,7 +168,7 @@ In this order, inside `crates/core`:
 - Envelope files are `<key_id>.<kind>.<id>.cbor` (D21).
 - The hybrid KEM is X-Wing (`x25519-mlkem768`) via RustCrypto; `hpke-x25519-mlkem768` is reserved for peer envelopes (D23).
 - Every record is signed by the ISK from the first byte (D24). `Device.kem_pub` and `EnrolledBy::Creator` exist (D25).
-- Reference: `snds/Mailbird` `crates/identity`, JSON Schemas in `crates/identity/schema/`.
+- Reference: `snds/ecosystem-identity` (extracted 2026-10-16, D34; tag `v0.1.0`), JSON Schemas in `schema/`. Built first in `snds/Mailbird` `crates/identity`.
 
 ## 10b. What the handshake implementation changed (v1.4, D28–D33)
 
@@ -176,7 +176,7 @@ In this order, inside `crates/core`:
 - Peer wraps are `x-wing-xchacha20poly1305` with `KeyEnvelope.enc`; `hpke-x25519-mlkem768` stays reserved (D30). Handshake wire protocol v1 with commit-then-reveal and a six-digit code (D31).
 - `Head` remembers the last accepted Argon2id params; a lowered set is refused (D32, closes D26). Raising in place is a later feature.
 - Linux: socket inside the identity root, peer verified by process identity; Apple and Windows verifiers declared, not built (D33).
-- Still open in the crate: QR device enrolment (§8 row 2), Apple/Windows/Android verifiers and transports, hardware keystores, a real OPAQUE client (needs the server), key transparency (needs the server), persona re-keying, extraction to its own repository when Lockdown consumes it (§10 step 5).
+- Still open in the crate: QR device enrolment (§8 row 2), Apple/Windows/Android verifiers and transports, hardware keystores, a real OPAQUE client (needs the server), key transparency (needs the server), persona re-keying, extraction done (D34).
 
 ## 11. Settled and open
 
