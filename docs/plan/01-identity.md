@@ -1,6 +1,6 @@
 # Identity crate — format v1 (draft)
 
-_Status: spec v1.3 (D15–D25 settled; first implementation merged as Mailbird PR #44 / ADR-0049), 2026-10-15 (reconciled with 02-model and 04-security: `account` KeyRef, per-persona `kem_pub`). Implements D3, D10, D11, D12, D13. The crate is built inside Mailbird first (`crates/core`), then extracted. Working crate name: `ecosystem-identity`; rename when the ecosystem has a name._
+_Status: spec v1.4 (D15–D33 settled; implementation merged as Mailbird PRs #44 and #46, ADR-0049 and ADR-0050), 2026-10-15 (reconciled with 02-model and 04-security: `account` KeyRef, per-persona `kem_pub`). Implements D3, D10, D11, D12, D13. The crate is built inside Mailbird first (`crates/core`), then extracted. Working crate name: `ecosystem-identity`; rename when the ecosystem has a name._
 
 ## For future agent
 
@@ -169,6 +169,14 @@ In this order, inside `crates/core`:
 - The hybrid KEM is X-Wing (`x25519-mlkem768`) via RustCrypto; `hpke-x25519-mlkem768` is reserved for peer envelopes (D23).
 - Every record is signed by the ISK from the first byte (D24). `Device.kem_pub` and `EnrolledBy::Creator` exist (D25).
 - Reference: `snds/Mailbird` `crates/identity`, JSON Schemas in `crates/identity/schema/`.
+
+## 10b. What the handshake implementation changed (v1.4, D28–D33)
+
+- App-data and crown-jewel envelopes carry an `app` label, also bound into the AAD (D28); `retire_envelope` leaves a manifest tombstone (D29).
+- Peer wraps are `x-wing-xchacha20poly1305` with `KeyEnvelope.enc`; `hpke-x25519-mlkem768` stays reserved (D30). Handshake wire protocol v1 with commit-then-reveal and a six-digit code (D31).
+- `Head` remembers the last accepted Argon2id params; a lowered set is refused (D32, closes D26). Raising in place is a later feature.
+- Linux: socket inside the identity root, peer verified by process identity; Apple and Windows verifiers declared, not built (D33).
+- Still open in the crate: QR device enrolment (§8 row 2), Apple/Windows/Android verifiers and transports, hardware keystores, a real OPAQUE client (needs the server), key transparency (needs the server), persona re-keying, extraction to its own repository when Lockdown consumes it (§10 step 5).
 
 ## 11. Settled and open
 
