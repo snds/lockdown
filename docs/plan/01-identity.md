@@ -1,6 +1,6 @@
 # Identity crate — format v1 (draft)
 
-_Status: draft spec v1.2 (D15, D16 settled; green-lit for Mailbird), 2026-10-15 (reconciled with 02-model and 04-security: `account` KeyRef, per-persona `kem_pub`). Implements D3, D10, D11, D12, D13. The crate is built inside Mailbird first (`crates/core`), then extracted. Working crate name: `ecosystem-identity`; rename when the ecosystem has a name._
+_Status: draft spec v1.2 (D15, D16 settled; first implementation in Mailbird PR #44 with D18–D25 proposed; fold them into v1.3 once Sean approves), 2026-10-15 (reconciled with 02-model and 04-security: `account` KeyRef, per-persona `kem_pub`). Implements D3, D10, D11, D12, D13. The crate is built inside Mailbird first (`crates/core`), then extracted. Working crate name: `ecosystem-identity`; rename when the ecosystem has a name._
 
 ## For future agent
 
