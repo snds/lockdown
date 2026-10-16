@@ -1,6 +1,6 @@
 # Identity crate — format v1 (draft)
 
-_Status: draft spec v1.2 (D15, D16 settled; first implementation in Mailbird PR #44 with D18–D25 proposed; fold them into v1.3 once Sean approves), 2026-10-15 (reconciled with 02-model and 04-security: `account` KeyRef, per-persona `kem_pub`). Implements D3, D10, D11, D12, D13. The crate is built inside Mailbird first (`crates/core`), then extracted. Working crate name: `ecosystem-identity`; rename when the ecosystem has a name._
+_Status: spec v1.3 (D15–D25 settled; first implementation merged as Mailbird PR #44 / ADR-0049), 2026-10-15 (reconciled with 02-model and 04-security: `account` KeyRef, per-persona `kem_pub`). Implements D3, D10, D11, D12, D13. The crate is built inside Mailbird first (`crates/core`), then extracted. Working crate name: `ecosystem-identity`; rename when the ecosystem has a name._
 
 ## For future agent
 
@@ -159,6 +159,16 @@ In this order, inside `crates/core`:
 3. Re-wrap the Phase 33 note-lock key as Mailbird's ADK.
 4. The handshake (§6 step 3) once a second app exists to test against. Until then, a test double.
 5. Extract to its own repo when Lockdown starts consuming it.
+
+## 10a. What the first implementation changed (v1.3, D18–D25)
+
+- `Profile` also carries `isk_pub` and the signed Argon2id params `kdf` (D18).
+- The ISK and each persona's receiving key are **derived** from the IRK / Persona Key by HKDF-SHA-512 with fixed labels, not stored as envelopes (D19). Rotation needs a counter field later.
+- A Persona Key's `key_id` is its `persona_id` (D20). `account` and `kit` wraps use the profile id as `KeyRef.id` (D22).
+- Envelope files are `<key_id>.<kind>.<id>.cbor` (D21).
+- The hybrid KEM is X-Wing (`x25519-mlkem768`) via RustCrypto; `hpke-x25519-mlkem768` is reserved for peer envelopes (D23).
+- Every record is signed by the ISK from the first byte (D24). `Device.kem_pub` and `EnrolledBy::Creator` exist (D25).
+- Reference: `snds/Mailbird` `crates/identity`, JSON Schemas in `crates/identity/schema/`.
 
 ## 11. Settled and open
 
