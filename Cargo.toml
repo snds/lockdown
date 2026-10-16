@@ -1,0 +1,100 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/crypto",
+    "crates/vault",
+    "crates/store",
+    "crates/sync",
+    "crates/matcher",
+    "crates/codes",
+    "crates/cxf",
+    "crates/policy",
+    "crates/approval",
+    "crates/bridge-host",
+    "crates/ffi",
+    "crates/wasm",
+    "bins/cli",
+    "bins/server",
+]
+# The pure-Rust crates: everything that builds on CI without a platform SDK.
+# `ffi` and `wasm` are built with the shells, which bring UniFFI and the wasm
+# toolchain; `cargo build --workspace` still builds their skeletons today.
+default-members = [
+    "crates/crypto",
+    "crates/vault",
+    "crates/store",
+    "crates/sync",
+    "crates/matcher",
+    "crates/codes",
+    "crates/cxf",
+    "crates/policy",
+    "crates/approval",
+    "crates/bridge-host",
+    "bins/cli",
+    "bins/server",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "Apache-2.0"
+repository = "https://github.com/snds/lockdown"
+authors = ["Sean Sands"]
+
+[workspace.dependencies]
+# The shared ecosystem identity crate (docs/plan/01-identity.md, D12, D34).
+# Consumed, never forked. Pinned by commit until tag `v0.1.0` is on the remote;
+# then this line becomes `tag = "v0.1.0"`.
+ecosystem-identity = { git = "https://github.com/snds/ecosystem-identity", rev = "96434d1de190164d7635302ce851fc0817000649", version = "0.1.0" }
+
+# Workspace crates.
+lockdown-crypto = { path = "crates/crypto", version = "0.1.0" }
+lockdown-vault = { path = "crates/vault", version = "0.1.0" }
+lockdown-store = { path = "crates/store", version = "0.1.0" }
+lockdown-sync = { path = "crates/sync", version = "0.1.0" }
+lockdown-matcher = { path = "crates/matcher", version = "0.1.0" }
+lockdown-codes = { path = "crates/codes", version = "0.1.0" }
+lockdown-cxf = { path = "crates/cxf", version = "0.1.0" }
+lockdown-policy = { path = "crates/policy", version = "0.1.0" }
+lockdown-approval = { path = "crates/approval", version = "0.1.0" }
+lockdown-bridge-host = { path = "crates/bridge-host", version = "0.1.0" }
+lockdown-ffi = { path = "crates/ffi", version = "0.1.0" }
+
+# Cryptography: the same crates and versions the identity crate uses, so one
+# copy of each is linked (04-security.md §4–§5, 01-identity.md §10a).
+chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "zeroize"] }
+argon2 = { version = "0.6", default-features = false, features = ["alloc", "zeroize"] }
+hkdf = "0.13"
+hmac = "0.13"
+sha1 = { version = "0.11", default-features = false }
+sha2 = { version = "0.11", default-features = false }
+ed25519-dalek = { version = "3.0", default-features = false, features = ["fast", "zeroize"] }
+x-wing = { version = "0.1", default-features = false, features = ["zeroize", "getrandom"] }
+blake3 = "1.8"
+getrandom = "0.3"
+zeroize = { version = "1.9", features = ["derive"] }
+secrecy = "0.10"
+
+# Encoding and data.
+serde = { version = "1.0", features = ["derive"] }
+serde_bytes = "0.11"
+serde_json = "1.0"
+ciborium = "0.2"
+data-encoding = "2.11"
+uuid = { version = "1.18", features = ["v4", "serde"] }
+url = "2.5"
+idna = "1.1"
+psl = "2.1"
+thiserror = "2.0"
+
+# Binaries.
+clap = { version = "4.5", features = ["derive"] }
+axum = "0.8"
+tokio = { version = "1.47", features = ["rt-multi-thread", "macros", "net"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

@@ -1,0 +1,17 @@
+[package]
+name = "lockdown-cli"
+description = "The Lockdown command-line tool (and, later, SSH agent)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "lockdown"
+path = "src/main.rs"
+
+[dependencies]
+lockdown-codes.workspace = true
+lockdown-matcher.workspace = true
+clap.workspace = true

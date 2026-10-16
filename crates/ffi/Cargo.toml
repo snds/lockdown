@@ -1,0 +1,18 @@
+[package]
+name = "lockdown-ffi"
+description = "The UniFFI facade: opaque handles, redacted views, one-shot reveals"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+lockdown-crypto.workspace = true
+lockdown-vault.workspace = true
+lockdown-matcher.workspace = true
+lockdown-codes.workspace = true
+lockdown-policy.workspace = true
+lockdown-approval.workspace = true
+zeroize.workspace = true
+thiserror.workspace = true

@@ -1,0 +1,22 @@
+[package]
+name = "lockdown-server"
+description = "The Lockdown server: one binary for cloud and self-host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "lockdown-server"
+path = "src/main.rs"
+
+[dependencies]
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tower.workspace = true
+http-body-util.workspace = true

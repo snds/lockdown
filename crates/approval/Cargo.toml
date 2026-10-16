@@ -1,0 +1,13 @@
+[package]
+name = "lockdown-approval"
+description = "The one approval service: proximity gate, number matching, context, rate limits, 'this wasn't me'"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+lockdown-policy.workspace = true
+serde.workspace = true
+thiserror.workspace = true

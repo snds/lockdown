@@ -1,0 +1,30 @@
+[package]
+name = "lockdown-crypto"
+description = "Lockdown's cryptographic primitives: the audited choices the identity crate made, plus the helpers the vault needs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ecosystem-identity.workspace = true
+chacha20poly1305.workspace = true
+ed25519-dalek.workspace = true
+blake3.workspace = true
+getrandom.workspace = true
+zeroize.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_bytes.workspace = true
+thiserror.workspace = true
+
+[features]
+# Lowers the Argon2id floor so a debug-mode test finishes in milliseconds.
+# Forwards to the identity crate's feature of the same name. Never enable it
+# in an app; the crate's own tests turn it on through the self dev-dependency.
+insecure-test-kdf = ["ecosystem-identity/insecure-test-kdf"]
+
+[dev-dependencies.lockdown-crypto]
+path = "."
+features = ["insecure-test-kdf"]

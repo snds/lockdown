@@ -1,0 +1,36 @@
+# cargo-deny configuration (03-architecture.md §2 guardrails).
+# Run locally with `cargo deny check`; CI runs the same.
+
+[graph]
+all-features = true
+
+[advisories]
+# A yanked crate or a known vulnerability fails the build.
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Every dependency must carry one of these licences.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "Unicode-3.0",
+    "BSL-1.0",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# The shared identity crate (D34). Pinned by commit in Cargo.toml.
+allow-git = ["https://github.com/snds/ecosystem-identity"]

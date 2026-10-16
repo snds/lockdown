@@ -1,0 +1,11 @@
+[package]
+name = "lockdown-wasm"
+description = "The wasm-bindgen facade with the same surface as lockdown-ffi; secrets stay in linear memory"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+lockdown-ffi.workspace = true

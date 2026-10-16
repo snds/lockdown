@@ -1,0 +1,12 @@
+[package]
+name = "lockdown-store"
+description = "The local encrypted store: ciphertext items, manifest heads, the offline queue; the search index stays in memory"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+lockdown-vault.workspace = true
+thiserror.workspace = true
