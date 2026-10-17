@@ -1,32 +1,40 @@
 import type { ReactNode } from "react"
 
-import { Badge, Icon } from "@unicron/ui"
+import { CrownJewelSurface } from "@unicron/ui/security/crown-jewel"
+
+import { useGate } from "@/app/gate"
+
+/** The SecretField reveal lifetime inside the surface (`--c-crown-jewel-reveal-lifetime`, 20 s). */
+export const CROWN_JEWEL_REVEAL_S = 20
+
+interface ItemCrownJewelProps {
+  /** Names the thing for the region and the gate's reason: the item's title. */
+  title: string
+  children: ReactNode
+}
 
 /**
- * The crown-jewel treatment (D98): a section that says, in a word and a
- * glyph, that what is inside is the strictest class of secret, and that
- * using it takes a fresh check and revealing it the password (D101). The
- * gate itself runs in the core and asks through `app/gate.tsx`; this
- * wrapper is the cue, and the placement (the app window, never a page) is
- * the guarantee.
- *
- * Placeholder for unicron's CrownJewel treatment (docs/specs/security/
- * crown-jewel-treatment.md). The inverted `protected` surface is that
- * spec's to define: the `--c-crown-jewel-*` knobs in app-extension.css
- * stay empty until it lands, so this draws a plain bordered section with
- * the word, nothing more.
+ * unicron's CrownJewelSurface on this host (D98, D101): `host="app"` (the
+ * placement is the guarantee: never a page), the proof routed through the
+ * core's `approval_route` and judged by the core when the gated call
+ * arrives (`app/gate.tsx`), the biometric named as the platform names it
+ * (Touch ID, Windows Hello). Where this computer has no platform check
+ * the route is the account password, and the surface's copy says so.
+ * Nested SecretField, CodeDisplay and LargeTypeView read the surface and
+ * switch to gated mode on their own.
  */
-export function CrownJewel({ children }: { children: ReactNode }) {
+export function ItemCrownJewel({ title, children }: ItemCrownJewelProps) {
+  const gate = useGate()
+  const biometricName = gate.route?.route === "platform" ? gate.route.method : "your account password"
   return (
-    <section aria-label="Protected item" data-crown-jewel="" className="flex flex-col gap-3 rounded-xl border-2 p-3">
-      <p className="flex items-center gap-2 text-sm">
-        <Badge variant="outline">
-          <Icon name="lock" data-icon="inline-start" />
-          Protected
-        </Badge>
-        <span className="text-muted-foreground">Using it asks for a fresh check; seeing it asks for your account password.</span>
-      </p>
+    <CrownJewelSurface
+      host="app"
+      appName="Lockdown"
+      title={title}
+      biometricName={biometricName}
+      requestProof={(kind) => gate.requestProof(kind, `To ${kind === "use" ? "use" : "show"} ${title}`)}
+    >
       {children}
-    </section>
+    </CrownJewelSurface>
   )
 }

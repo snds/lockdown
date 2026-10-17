@@ -8,7 +8,7 @@ import { codeKey, useCodes } from "@/features/codes/use-codes"
 import { whenLocal } from "@/lib/format"
 
 import { ItemCodeDisplay } from "./code-display"
-import { CrownJewel } from "./crown-jewel"
+import { ItemCrownJewel } from "./crown-jewel"
 import { kindLabel } from "./list-model"
 import { ItemField, type SecretFormat } from "./item-field"
 
@@ -111,7 +111,7 @@ export function DetailPane({ id, onEdit, onTrashed, onNotice }: DetailPaneProps)
           </div>
         )}
       </header>
-      {item.crown_jewel ? <CrownJewel>{body}</CrownJewel> : body}
+      {item.crown_jewel ? <ItemCrownJewel title={title}>{body}</ItemCrownJewel> : body}
       <Dialog open={confirm} onOpenChange={setConfirm}>
         <DialogContent>
           <DialogHeader>

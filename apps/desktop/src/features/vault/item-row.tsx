@@ -1,4 +1,5 @@
 import { Badge, Icon, Item, ItemContent, ItemDescription, ItemMedia, ItemTitle, type IconName } from "@unicron/ui"
+import { CrownJewelMark } from "@unicron/ui/security/crown-jewel"
 
 import type { ItemSummary } from "@/core/types"
 
@@ -19,9 +20,9 @@ const METHODS: Record<string, [IconName, string]> = {
 
 /**
  * One list row: kind glyph, title, subtitle, the Login's method glyphs
- * (each with its word for assistive tech), and the crown-jewel mark with
- * its word (brief §6.5: never an icon alone). Rows take the density knobs
- * through `data-row`.
+ * (each with its word for assistive tech), and unicron's CrownJewelMark
+ * (a filled lock with "Crown jewel" for assistive tech). Rows take the
+ * density knobs through `data-row`.
  */
 export function ItemRow({ row, selected, onSelect }: ItemRowProps) {
   const subtitle = [row.username, row.site].filter(Boolean).join(" · ")
@@ -41,12 +42,7 @@ export function ItemRow({ row, selected, onSelect }: ItemRowProps) {
       <ItemContent>
         <ItemTitle>
           <span className="truncate">{row.title || row.site || row.id}</span>
-          {row.crown_jewel && (
-            <Badge variant="outline">
-              <Icon name="lock" data-icon="inline-start" />
-              Protected
-            </Badge>
-          )}
+          {row.crown_jewel && <CrownJewelMark size="sm" />}
           {row.conflict_copy && <Badge variant="secondary">Conflict copy</Badge>}
           {row.state === "trashed" && <Badge variant="secondary">In the trash</Badge>}
         </ItemTitle>

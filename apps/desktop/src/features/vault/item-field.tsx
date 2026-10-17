@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react"
 
 import { Button, Icon, Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@unicron/ui"
+import { useCrownJewel } from "@unicron/ui/security/crown-jewel"
 import { SecretField, type SecretFieldHost, type SecretFormat } from "@unicron/ui/security/secret-field"
 
 import { useGate } from "@/app/gate"
@@ -8,6 +9,8 @@ import { useLocked } from "@/app/locked"
 import { useSettings } from "@/app/settings"
 import { describeError, useClient } from "@/core/client"
 import type { FieldView } from "@/core/types"
+
+import { CROWN_JEWEL_REVEAL_S } from "./crown-jewel"
 
 export type { SecretFormat }
 
@@ -45,13 +48,17 @@ function formatPlain(text: string, format: SecretFormat): string {
  *   its timer, `locked` the core's lock state.
  *
  * A standard field needs no gate (the core gates nothing on it); inside a
- * `CrownJewelSurface` the surface gates use and reveal (`crown-jewel.tsx`).
+ * `CrownJewelSurface` the surface gates use and reveal (`crown-jewel.tsx`),
+ * the reveal is a tap with the crown-jewel lifetime (a hold cannot
+ * outlive the gate's dialog or the OS prompt), and a copy fetches nothing
+ * for the webview: the core copies by reference after its own `Use` gate.
  */
 export function ItemField({ itemId, field, onNotice, format = "plain", children }: ItemFieldProps) {
   const client = useClient()
   const gate = useGate()
   const { settings } = useSettings()
   const locked = useLocked()
+  const crown = useCrownJewel()
   const [error, setError] = useState<string | null>(null)
   /** True while the last copy went by reference (the component never had the bytes). */
   const byReference = useRef(false)
@@ -100,7 +107,8 @@ export function ItemField({ itemId, field, onNotice, format = "plain", children 
         label={field.label}
         getSecret={getSecret}
         host={host}
-        revealMode={settings.reveal}
+        revealMode={crown.gated ? "toggle" : settings.reveal}
+        revealLifetime={crown.gated ? CROWN_JEWEL_REVEAL_S : undefined}
         clipboardTimer={settings.clipboard_clear_secs}
         format={format}
         locked={locked}
