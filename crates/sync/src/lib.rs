@@ -25,7 +25,10 @@ pub mod kt;
 pub mod transport;
 pub mod wire;
 
-pub use engine::{BlobStore, SyncReport, Syncer, VaultSyncState, bootstrap_vault, sync_vault};
+pub use engine::{
+    BlobStore, SyncReport, Syncer, VaultSyncState, bootstrap_vault, bootstrap_vault_with,
+    sync_vault, sync_vault_with,
+};
 pub use identity::{pull_identity, push_identity};
 pub use kt::{AuditExpectations, AuditReport, KtSession};
 pub use transport::{HttpTransport, Transport, TransportError};

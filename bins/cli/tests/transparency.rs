@@ -16,6 +16,7 @@ use lockdown_store::{MemoryStore, ServerView};
 use lockdown_sync::transport::Transport;
 use lockdown_sync::{
     AuditExpectations, HttpTransport, KtSession, Syncer, VaultSyncState, sync_vault,
+    sync_vault_with,
 };
 use lockdown_vault::test_support::{sample_context, sample_login_fields};
 use lockdown_vault::transparency::LogEntry;
@@ -133,7 +134,6 @@ fn the_log_records_logins_and_heads_and_the_clients_audit_it() {
         transport: &ta,
         token: &token_a,
         device_label: "laptop",
-        kt: None,
     };
     sync_vault(&syncer_a, &mut vault_a, &record, &mut state_a, &mut store_a).unwrap();
     assert_eq!(state.storage.log_size().unwrap(), 3);
@@ -282,9 +282,16 @@ fn a_forked_log_is_caught_by_the_citation_in_the_vault_head() {
         transport: &ta,
         token: &token_a,
         device_label: "laptop",
-        kt: Some(&kt_a),
     };
-    sync_vault(&syncer_a, &mut vault_a, &record, &mut state_a, &mut store_a).unwrap();
+    sync_vault_with(
+        &syncer_a,
+        &mut vault_a,
+        &record,
+        &mut state_a,
+        &mut store_a,
+        Some(&kt_a),
+    )
+    .unwrap();
     let cited = vault_a
         .head()
         .unwrap()
@@ -363,9 +370,10 @@ fn a_forked_log_is_caught_by_the_citation_in_the_vault_head() {
         transport: &tb2,
         token: &token_b2,
         device_label: "phone",
-        kt: Some(&kt_b),
     };
-    let err = lockdown_sync::bootstrap_vault(&syncer_b, &mut store_b, &list.vaults[0]).unwrap_err();
+    let err =
+        lockdown_sync::bootstrap_vault_with(&syncer_b, &mut store_b, &list.vaults[0], Some(&kt_b))
+            .unwrap_err();
     assert!(err.to_string().contains("Split view"), "{err}");
     assert!(
         lockdown_vault::Store::list_vaults(&store_b)
@@ -375,11 +383,5 @@ fn a_forked_log_is_caught_by_the_citation_in_the_vault_head() {
     );
     // Without a key-transparency session the same chain would have been
     // taken: the citation is what catches the fork.
-    let blind = Syncer {
-        transport: &tb2,
-        token: &token_b2,
-        device_label: "phone",
-        kt: None,
-    };
-    assert!(lockdown_sync::bootstrap_vault(&blind, &mut store_b, &list.vaults[0]).is_ok());
+    assert!(lockdown_sync::bootstrap_vault(&syncer_b, &mut store_b, &list.vaults[0]).is_ok());
 }

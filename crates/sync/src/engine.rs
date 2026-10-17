@@ -10,9 +10,10 @@
 //!    trusted devices, and replace whatever this device had after
 //!    `synced_seq` (heads it committed offline were never on the server;
 //!    their changes live on in the items). With a key-transparency session
-//!    ([`Syncer::kt`]), the tree head each pulled head cites is checked
-//!    against this device's view with a consistency proof: a server that
-//!    showed the other device another log is a split view, refused.
+//!    ([`sync_vault_with`]), the tree head each pulled head cites is
+//!    checked against this device's view with a consistency proof: a
+//!    server that showed the other device another log is a split view,
+//!    refused.
 //! 2. **Merge.** Items the new heads list are pulled, with the blobs their
 //!    attachments name that this device lacks (each checked against its
 //!    name before it is kept). One this device did not touch is taken as is. One both sides changed is merged field by
@@ -197,10 +198,6 @@ pub struct Syncer<'a> {
     pub token: &'a str,
     /// What this device is called, for conflict copies.
     pub device_label: &'a str,
-    /// The key-transparency session for this run, when the caller began
-    /// one: pulled heads' citations are checked against it and committed
-    /// heads cite it. `None` skips both (tests with no log in sight).
-    pub kt: Option<&'a KtSession<'a>>,
 }
 
 impl std::fmt::Debug for Syncer<'_> {
@@ -221,15 +218,32 @@ pub(crate) fn session_or(e: TransportError) -> SyncError {
     }
 }
 
-/// Syncs `vault` with the server. `record` is the vault's record bytes
-/// (sent on the first contact so another device can find the vault);
-/// `blobs` is where this device keeps attachment blobs (its store).
+/// Syncs `vault` with the server with no key-transparency session: what
+/// [`sync_vault_with`] does with `kt` `None`. For callers with no log in
+/// sight; an app syncs through [`sync_vault_with`].
 pub fn sync_vault(
     syncer: &Syncer<'_>,
     vault: &mut Vault,
     record: &[u8],
     state: &mut VaultSyncState,
     blobs: &mut dyn BlobStore,
+) -> Result<SyncReport, SyncError> {
+    sync_vault_with(syncer, vault, record, state, blobs, None)
+}
+
+/// Syncs `vault` with the server. `record` is the vault's record bytes
+/// (sent on the first contact so another device can find the vault);
+/// `blobs` is where this device keeps attachment blobs (its store); `kt`
+/// is the key-transparency session for this run, when the caller began
+/// one: every pulled head's citation is checked against it and the head
+/// committed here cites it.
+pub fn sync_vault_with(
+    syncer: &Syncer<'_>,
+    vault: &mut Vault,
+    record: &[u8],
+    state: &mut VaultSyncState,
+    blobs: &mut dyn BlobStore,
+    kt: Option<&KtSession<'_>>,
 ) -> Result<SyncReport, SyncError> {
     let vault_id = vault.context().vault_id;
     let t = syncer.transport;
@@ -255,7 +269,7 @@ pub fn sync_vault(
         let mut remote_heads = Vec::with_capacity(remote.heads.len());
         for bytes in &remote.heads {
             let head = ManifestHead::from_bytes(bytes)?;
-            if let (Some(kt), Some(cited)) = (syncer.kt, head.sth) {
+            if let (Some(kt), Some(cited)) = (kt, head.sth) {
                 kt.verify_citation(cited)?;
             }
             remote_heads.push(head);
@@ -373,7 +387,7 @@ pub fn sync_vault(
             report.chain_rewritten = true;
         }
         vault.truncate_heads_after(state.synced_seq);
-        if let Some(kt) = syncer.kt {
+        if let Some(kt) = kt {
             vault.cite_sth(Some(kt.citation()));
         }
         let seq = vault.commit()?;
@@ -418,6 +432,18 @@ pub fn bootstrap_vault(
     store: &mut dyn Store,
     summary: &VaultSummary,
 ) -> Result<Option<VaultSyncState>, SyncError> {
+    bootstrap_vault_with(syncer, store, summary, None)
+}
+
+/// [`bootstrap_vault`] with a key-transparency session: every head's cited
+/// tree head is checked against this device's view before anything is
+/// written to the store.
+pub fn bootstrap_vault_with(
+    syncer: &Syncer<'_>,
+    store: &mut dyn Store,
+    summary: &VaultSummary,
+    kt: Option<&KtSession<'_>>,
+) -> Result<Option<VaultSyncState>, SyncError> {
     let t = syncer.transport;
     let token = syncer.token;
     let record = VaultRecord::from_bytes(&summary.record)?;
@@ -433,7 +459,7 @@ pub fn bootstrap_vault(
     let mut heads = Vec::with_capacity(remote.heads.len());
     for bytes in &remote.heads {
         let head = ManifestHead::from_bytes(bytes)?;
-        if let (Some(kt), Some(cited)) = (syncer.kt, head.sth) {
+        if let (Some(kt), Some(cited)) = (kt, head.sth) {
             kt.verify_citation(cited)?;
         }
         heads.push(head);

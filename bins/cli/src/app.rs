@@ -1582,7 +1582,6 @@ impl App {
             transport: &transport,
             token: &token,
             device_label: &label,
-            kt: Some(&kt),
         };
         let vault_id = self.opened.vault.context().vault_id;
         let record = self
@@ -1598,12 +1597,13 @@ impl App {
             .vaults
             .entry(vault_id)
             .or_default();
-        let outcome = lockdown_sync::sync_vault(
+        let outcome = lockdown_sync::sync_vault_with(
             &syncer,
             &mut self.opened.vault,
             &record,
             state,
             &mut self.store,
+            Some(&kt),
         );
         // Whatever happened on the wire, what is in memory is saved and
         // remembered, so a half-finished round is picked up next time.
@@ -2115,7 +2115,6 @@ fn pull_new_vaults(
         transport,
         token,
         device_label: "",
-        kt: None,
     };
     let mut pulled = 0;
     for summary in &list.vaults {

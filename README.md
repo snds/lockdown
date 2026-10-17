@@ -60,7 +60,7 @@ Stable Rust (`rust-toolchain.toml`; MSRV 1.90) and network access to crates.io a
 
 ```sh
 cargo build                         # the default members: every pure-Rust crate
-cargo test --workspace              # 152 tests across 14 crates
+cargo test --workspace              # 165 tests across the workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 cargo deny check                    # cargo install cargo-deny --locked
