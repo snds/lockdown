@@ -7,6 +7,11 @@ settings:
 overrides:
   '@unicron/tokens': https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.2.0/unicron-tokens-0.2.0.tgz
 
+patchedDependencies:
+  '@unicron/ui':
+    hash: d80021790aa658172ccf7c444b67f6da450afd7c2cd0a0a636a7758b969eeb84
+    path: patches/@unicron__ui.patch
+
 importers:
 
   .:
@@ -25,7 +30,7 @@ importers:
         version: https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.2.0/unicron-tokens-0.2.0.tgz
       '@unicron/ui':
         specifier: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.4.0/unicron-ui-0.4.0.tgz
-        version: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.4.0/unicron-ui-0.4.0.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.4.0/unicron-ui-0.4.0.tgz(patch_hash=d80021790aa658172ccf7c444b67f6da450afd7c2cd0a0a636a7758b969eeb84)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -2170,7 +2175,7 @@ snapshots:
 
   '@unicron/tokens@https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.2.0/unicron-tokens-0.2.0.tgz': {}
 
-  '@unicron/ui@https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.4.0/unicron-ui-0.4.0.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@unicron/ui@https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.4.0/unicron-ui-0.4.0.tgz(patch_hash=d80021790aa658172ccf7c444b67f6da450afd7c2cd0a0a636a7758b969eeb84)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@base-ui/react': 1.9.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@fontsource-variable/inter': 5.3.0

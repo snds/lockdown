@@ -78,6 +78,13 @@ describe("ItemField on unicron's SecretField (the host contract)", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Copied. Clipboard clears in 45 seconds."))
   })
 
+  it("a reveal that crosses the bridge (slower than a microtask) still shows: the patched SecretField keeps its value span mounted", async () => {
+    const reveal = () => new Promise<Uint8Array>((r) => setTimeout(() => r(new TextEncoder().encode(SECRET)), 30))
+    const { container } = mount(fakeClient({ reveal, getSettings: () => Promise.resolve(settingsWith("toggle")) }))
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Show Password" }))
+    await waitFor(() => expect(container.textContent).toContain(SECRET))
+  })
+
   it("shows the core's words under the field when a reveal is refused", async () => {
     const reveal = vi.fn(() => Promise.reject({ code: "refused", message: "'pw' isn't a hidden field" }))
     const { container } = mount(fakeClient({ reveal, getSettings: () => Promise.resolve(settingsWith("toggle")) }))
