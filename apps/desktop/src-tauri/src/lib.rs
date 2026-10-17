@@ -7,6 +7,7 @@
 
 pub mod approver;
 pub mod clipboard;
+pub mod codes;
 pub mod items;
 
 #[cfg(feature = "shell")]

@@ -123,7 +123,16 @@ export interface CodeView {
   current: string
   next: string | null
   seconds_left: number | null
+  /** The counter `current` was made from: HOTP only, `null` for the time-based kinds. */
+  counter: number | null
   warnings: string[]
+}
+
+/** "Next code" on an HOTP code (`advance_code`): the new code, its counter, the item's new version. Never the set-up. */
+export interface CodeAdvanced {
+  code: string
+  counter: number
+  version: number
 }
 
 export interface PersonaInfo {

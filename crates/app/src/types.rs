@@ -181,8 +181,23 @@ pub struct CodeView {
     pub next: Option<String>,
     /// Seconds the current code stays valid; `None` for HOTP.
     pub seconds_left: Option<u64>,
+    /// The counter `current` was made from (HOTP only; `None` for the
+    /// time-based kinds). A count, not part of the set-up's secret.
+    pub counter: Option<u64>,
     /// `issuer-equals-login` when the code's issuer is the sync login.
     pub warnings: Vec<String>,
+}
+
+/// What advancing a counter-based (HOTP) code gives back: the new code and
+/// the counter it was made from. The set-up stays in the core.
+#[derive(Clone, Debug, Serialize)]
+pub struct CodeAdvanced {
+    /// The code for the new counter.
+    pub code: String,
+    /// The counter now stored on the item.
+    pub counter: u64,
+    /// The item's version after the advance (a new version, so it syncs).
+    pub version: u64,
 }
 
 /// One persona of the identity, for the sidebar's switcher.

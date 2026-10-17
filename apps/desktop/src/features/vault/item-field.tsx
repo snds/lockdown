@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 
 import { Button, Icon, Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@unicron/ui"
 import { SecretField, type SecretFieldReferenceHost, type SecretFormat } from "@unicron/ui/security/secret-field"
@@ -47,8 +47,9 @@ const coreWords = (e: unknown): string | undefined => (isAppError(e) ? e.message
  *   bytes come to the webview for a copy. It resolves with the shell's
  *   number for that copy, which the component hands back to
  *   `host.clipboardHolds` at expiry; with `host.clear` that is the shell's
- *   own clipboard rule (`clipboard_holds`, `clipboard_clear`), so
- *   "Cleared" is only ever said about our own copy;
+ *   own clipboard rule (`clipboard_holds`, then `clipboard_clear` with
+ *   the same number), so "Cleared" is only ever said about, and the clear
+ *   only ever runs for, our own copy;
  * - `errorText` is the core's sentence when a reveal or a copy fails;
  * - `revealMode` is the settings file's gesture (D97), `clipboardTimer`
  *   its timer, `locked` the core's lock state.
@@ -66,15 +67,20 @@ export function ItemField({ itemId, field, onNotice, format = "plain", largeType
   const [error, setError] = useState<string | null>(null)
   const fieldId = field.field_id
 
+  // The shell's number for this field's last copy: the clear at the countdown's end names it, so it
+  // runs only while that copy is still the shell's last write (clipboard_clear; D105, D115).
+  const lastCopy = useRef<number | null>(null)
+
   const getSecret = useMemo(() => () => gate.run((g) => client.reveal(itemId, fieldId, g)), [client, gate, itemId, fieldId])
 
   const host = useMemo<SecretFieldReferenceHost>(
     () => ({
       copyRef: async () => {
         const { copy } = await gate.run((g) => client.copySecret(itemId, fieldId, settings.clipboard_clear_secs, g))
+        lastCopy.current = copy
         return { hash: String(copy) }
       },
-      clear: () => client.clipboardClear(),
+      clear: () => (lastCopy.current === null ? Promise.resolve() : client.clipboardClear(lastCopy.current)),
       clipboardHolds: (hash) => {
         const copy = Number(hash)
         return Number.isSafeInteger(copy) ? client.clipboardHolds(copy) : Promise.resolve(false)

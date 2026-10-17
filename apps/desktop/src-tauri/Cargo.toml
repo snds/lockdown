@@ -55,3 +55,6 @@ tauri-plugin-clipboard-manager = { version = "2.5", optional = true }
 # Manager, Secret Service on Linux (lockdown_app::secrets).
 keyring = { version = "3.6", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"], optional = true }
 log = { version = "0.4", optional = true }
+
+[dev-dependencies]
+tempfile.workspace = true

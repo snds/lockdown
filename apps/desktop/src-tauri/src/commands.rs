@@ -226,13 +226,19 @@ async fn clipboard_holds(
     Ok(guard.holds(current.as_deref().map(str::as_bytes), copy))
 }
 
-/// Clears the clipboard now, under the same rule as the timer: only if it
-/// still holds what Lockdown wrote. The component's countdown calls this
-/// at expiry; the shell's own timer runs regardless.
+/// Clears the clipboard now, for the copy numbered `copy` (the `copy` of
+/// the `Copied` that `copy_secret` or `copy_code` gave the control): only
+/// while that copy is still the shell's last write and still on the
+/// clipboard (`ClipboardGuard::may_clear`). A component's countdown calls
+/// this at expiry; the shell's own timer runs regardless.
 #[tauri::command]
-async fn clipboard_clear(guard: State<'_, ClipboardGuard>, handle: AppHandle) -> AppResult<()> {
+async fn clipboard_clear(
+    guard: State<'_, ClipboardGuard>,
+    handle: AppHandle,
+    copy: u64,
+) -> AppResult<()> {
     let current = handle.clipboard().read_text().ok();
-    if guard.holds(current.as_deref().map(str::as_bytes), None) {
+    if guard.may_clear(copy, current.as_deref().map(str::as_bytes)) {
         handle
             .clipboard()
             .clear()
@@ -523,6 +529,22 @@ async fn codes(app: State<'_, App>) -> AppResult<Vec<lockdown_app::CodeView>> {
     blocking(&app, |a| a.codes()).await
 }
 
+/// "Next code" on a counter-based (HOTP) code: the core moves the counter
+/// on in a new item version and answers with the new code and counter
+/// (codes.rs). A crown jewel's step goes through the `Use` gate first.
+#[tauri::command]
+async fn advance_code(
+    app: State<'_, App>,
+    item_id: String,
+    field_id: String,
+    gate: Option<GateInput>,
+) -> AppResult<lockdown_app::CodeAdvanced> {
+    blocking(&app, move |a| {
+        crate::codes::advance_code(&a, &item_id, &field_id, gate)
+    })
+    .await
+}
+
 #[tauri::command]
 async fn add_code(
     app: State<'_, App>,
@@ -645,6 +667,7 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         set_settings,
         approval_route,
         codes,
+        advance_code,
         add_code,
         personas,
         audit,

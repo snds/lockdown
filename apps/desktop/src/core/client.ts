@@ -5,6 +5,7 @@ import type {
   AppError,
   ApprovalKind,
   ApprovalRoute,
+  CodeAdvanced,
   CodeView,
   Copied,
   DeviceInfo,
@@ -61,8 +62,13 @@ export interface Client {
    * the answer is never about text the shell did not write.
    */
   clipboardHolds(copy: number): Promise<boolean>
-  /** Clears the clipboard now, only if it still holds what the shell wrote. */
-  clipboardClear(): Promise<void>
+  /**
+   * Clears the clipboard now for copy number `copy` (a `Copied.copy`): only
+   * while that copy is still the shell's last write and still on the
+   * clipboard, so one control's countdown never clears a later copy or the
+   * person's own text.
+   */
+  clipboardClear(copy: number): Promise<void>
   addLogin(input: { site: string; username: string; password: number[]; title?: string }): Promise<string>
   editLogin(input: { id: string; title?: string; username?: string; password?: number[]; gate?: GateInput }): Promise<number>
   /** Every kind's template and the kinds a field added by hand may take (static). */
@@ -78,6 +84,12 @@ export interface Client {
   /** Brings a trashed item back from Deleted, as it was. */
   restore(id: string): Promise<void>
   codes(): Promise<CodeView[]>
+  /**
+   * "Next code" on an HOTP code: the core moves its counter on in a new
+   * item version (so it syncs) and answers with the new code and counter.
+   * A crown jewel's step goes through the `Use` gate.
+   */
+  advanceCode(itemId: string, fieldId: string, gate?: GateInput): Promise<CodeAdvanced>
   addCode(input: { uri: string; title?: string; into?: string }): Promise<string>
   personas(): Promise<PersonaInfo[]>
   status(): Promise<Status>
@@ -137,7 +149,7 @@ export const tauriClient: Client = {
   copySecret: (id, fieldId, clearAfterSecs, gate) => call("copy_secret", { id, fieldId, clearAfterSecs, gate }),
   copyCode: (itemId, fieldId, clearAfterSecs, which, gate) => call("copy_code", { itemId, fieldId, clearAfterSecs, which, gate }),
   clipboardHolds: (copy) => call("clipboard_holds", { copy }),
-  clipboardClear: () => call("clipboard_clear"),
+  clipboardClear: (copy) => call("clipboard_clear", { copy }),
   addLogin: (input) => call("add_login", input),
   editLogin: (input) => call("edit_login", input),
   templates: () => call("templates"),
@@ -146,6 +158,7 @@ export const tauriClient: Client = {
   trash: (id) => call("trash", { id }),
   restore: (id) => call("restore", { id }),
   codes: () => call("codes"),
+  advanceCode: (itemId, fieldId, gate) => call("advance_code", { itemId, fieldId, gate }),
   addCode: (input) => call("add_code", input),
   personas: () => call("personas"),
   status: () => call("status"),

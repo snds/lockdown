@@ -70,6 +70,17 @@ impl ClipboardGuard {
         written.blake3 == *blake3::hash(current).as_bytes()
     }
 
+    /// Whether a clear the webview asks for (a component's countdown ran
+    /// out: `clipboard_clear`) may run: only for copy `copy`, the number
+    /// the shell gave that copy, while it is still the shell's last write
+    /// and still on the clipboard. A clear for an older copy, a number the
+    /// shell never gave, or a clipboard the person has copied over since
+    /// does nothing, so one control's countdown never clears another's
+    /// copy or the person's own text (D105, D115).
+    pub fn may_clear(&self, copy: u64, current: Option<&[u8]>) -> bool {
+        self.holds(current, Some(copy))
+    }
+
     /// Whether the timer of copy `generation` may clear the clipboard that
     /// now holds `current`: only when no later copy happened and the
     /// clipboard still holds what that copy wrote.
@@ -153,6 +164,29 @@ mod tests {
         guard.forget();
         assert!(!guard.holds(Some(b"correct horse"), None));
         assert!(!guard.holds(Some(b"correct horse"), Some(newer)));
+    }
+
+    #[test]
+    fn a_clear_from_the_webview_runs_only_for_the_copy_it_names() {
+        let guard = ClipboardGuard::default();
+        // Nothing copied yet: no number clears anything.
+        assert!(!guard.may_clear(1, Some(b"hunter2")));
+        // A code copied, then a password: the code's countdown ends first.
+        let code = guard.note_written(b"287082");
+        let password = guard.note_written(b"hunter2");
+        assert!(
+            !guard.may_clear(code, Some(b"hunter2")),
+            "the code's clear must not take the password copied after it"
+        );
+        assert!(guard.may_clear(password, Some(b"hunter2")));
+        // A number the shell never gave clears nothing.
+        assert!(!guard.may_clear(password + 1, Some(b"hunter2")));
+        // The person copied their own text over ours: leave it.
+        assert!(!guard.may_clear(password, Some(b"a shopping list")));
+        assert!(!guard.may_clear(password, None));
+        // After a lock (or a clear) the record is gone.
+        guard.forget();
+        assert!(!guard.may_clear(password, Some(b"hunter2")));
     }
 
     #[test]

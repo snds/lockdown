@@ -94,6 +94,7 @@ describe("ItemField on unicron's SecretField (the host contract)", () => {
       await vi.advanceTimersByTimeAsync(46_000)
       await waitFor(() => expect(clipboardHolds).toHaveBeenCalledWith(7))
       await waitFor(() => expect(clipboardClear).toHaveBeenCalledTimes(1))
+      expect(clipboardClear).toHaveBeenCalledWith(7)
       await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Clipboard cleared."))
     } finally {
       vi.useRealTimers()

@@ -283,6 +283,28 @@ impl Core {
             .map_err(AppError::refused)
     }
 
+    /// Moves an HOTP code on by one (a new item version), after the `Use`
+    /// gate when the item is a crown jewel: the step changes the item, as
+    /// an edit does (D110), and hands back a code, as a copy does.
+    fn advance_code(
+        &mut self,
+        id: &str,
+        field_id: &str,
+        gate: &GateInput,
+    ) -> AppResult<CodeAdvanced> {
+        self.clock.touch(Instant::now());
+        if self
+            .session()?
+            .is_crown_jewel(id)
+            .map_err(AppError::refused)?
+        {
+            self.approve(ApprovalKind::Use, "move this protected code on", gate)?;
+        }
+        self.session()?
+            .advance_code(id, field_id)
+            .map_err(AppError::refused)
+    }
+
     /// Changes an item through the generic edit, after the `Use` gate when
     /// the item is a crown jewel: replacing or removing a recovery phrase is
     /// as weighty as copying it (D110).
@@ -588,6 +610,20 @@ impl App {
     ) -> AppResult<Revealed> {
         let (id, field_id) = (id.to_string(), field_id.to_string());
         self.call(move |core| core.code_now(&id, &field_id, next, &gate))
+    }
+
+    /// Moves a counter-based (HOTP) code on by one, for the display's
+    /// "Next code": the counter is saved in a new item version, so it syncs,
+    /// and the new code comes back with its counter. A time-based code is
+    /// refused. A crown jewel's goes through the `Use` gate first.
+    pub fn advance_code(
+        &self,
+        id: &str,
+        field_id: &str,
+        gate: GateInput,
+    ) -> AppResult<CodeAdvanced> {
+        let (id, field_id) = (id.to_string(), field_id.to_string());
+        self.call(move |core| core.advance_code(&id, &field_id, &gate))
     }
 
     /// Adds a code from its URI, inside `into` (a Login) or as its own item.
@@ -1375,6 +1411,107 @@ mod tests {
         let detail = app.show(&code_id, false).unwrap();
         let json = serde_json::to_string(&detail).unwrap();
         assert!(!json.contains(SEED), "{json}");
+    }
+
+    #[test]
+    fn an_hotp_code_moves_on_when_asked_and_keeps_its_counter_through_a_lock() {
+        let (_dir, app) = fresh();
+        app.open_or_create(true).unwrap();
+        const SEED: &str = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+        let hotp = app
+            .add_code(
+                &format!("otpauth://hotp/Example:alice?secret={SEED}&counter=0"),
+                None,
+                None,
+            )
+            .unwrap();
+        let totp = app
+            .add_code(&format!("otpauth://totp/Ex:me?secret={SEED}"), None, None)
+            .unwrap();
+        let steam = app
+            .add_code(
+                &format!("otpauth://totp/Steam:me?secret={SEED}&issuer=Steam"),
+                None,
+                None,
+            )
+            .unwrap();
+        let view = |id: &str| {
+            app.codes()
+                .unwrap()
+                .into_iter()
+                .find(|c| c.item_id == id)
+                .unwrap()
+        };
+        // RFC 4226 counters 0 and 1.
+        assert_eq!(
+            (view(&hotp).current, view(&hotp).counter),
+            ("755224".into(), Some(0))
+        );
+        let step = app
+            .advance_code(&hotp, "code.0", GateInput::default())
+            .unwrap();
+        assert_eq!((step.code.as_str(), step.counter), ("287082", 1));
+        assert_eq!(view(&hotp).current, "287082");
+
+        // Locked and opened again: the counter is the item's, not the session's.
+        app.lock().unwrap();
+        assert_eq!(
+            app.advance_code(&hotp, "code.0", GateInput::default())
+                .unwrap_err()
+                .code,
+            ErrorCode::Locked
+        );
+        app.unlock().unwrap();
+        assert_eq!(view(&hotp).counter, Some(1));
+        let step = app
+            .advance_code(&hotp, "code.0", GateInput::default())
+            .unwrap();
+        assert_eq!((step.code.as_str(), step.counter), ("359152", 2));
+        let copied = app
+            .code_now(&hotp, "code.0", false, GateInput::default())
+            .unwrap();
+        assert_eq!(copied.expose(), b"359152");
+
+        // Time-based codes have no counter and refuse.
+        for id in [&totp, &steam] {
+            assert_eq!(view(id).counter, None);
+            let err = app
+                .advance_code(id, "code.0", GateInput::default())
+                .unwrap_err();
+            assert_eq!(err.code, ErrorCode::Refused);
+        }
+
+        // Inside a crown jewel the step asks first, like an edit.
+        let jewel = app
+            .add_item(
+                "login",
+                Some("Bank"),
+                true,
+                vec![FieldChange::secret(
+                    "code.0",
+                    format!("otpauth://hotp/Bank:me?secret={SEED}&counter=7").as_bytes(),
+                )],
+            )
+            .unwrap();
+        let err = app
+            .advance_code(&jewel, "code.0", GateInput::default())
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::ApprovalNeeded);
+        assert_eq!(
+            view(&jewel).counter,
+            Some(7),
+            "nothing moved before the ask"
+        );
+        let confirmed = GateInput {
+            password: None,
+            confirmed: true,
+        };
+        assert_eq!(
+            app.advance_code(&jewel, "code.0", confirmed)
+                .unwrap()
+                .counter,
+            8
+        );
     }
 
     /// A platform check for tests: answers as told, counts the asks.

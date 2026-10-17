@@ -8,7 +8,7 @@ use lockdown_vault::{FieldKind, FieldValue, Id, ItemClass, ItemKind, ItemState, 
 
 use super::{Session, parse_id, text_of};
 use crate::Revealed;
-use crate::types::CodeView;
+use crate::types::{CodeAdvanced, CodeView};
 
 /// The warning when a code's issuer is the account's own login (02-model
 /// §4): a code that protects the vault's own account must not live in it.
@@ -64,6 +64,7 @@ fn code_view(
         current,
         next,
         seconds_left: code.next_code_in(now).map(|d| d.as_secs()),
+        counter: (code.variant == Variant::Hotp).then_some(code.counter),
         warnings,
     })
 }
@@ -144,6 +145,53 @@ impl Session {
         Ok(Revealed::from_text(&value))
     }
 
+    /// Moves a counter-based (HOTP) code on by one: the counter in its
+    /// set-up goes up, the item gets a new version (so the step syncs to
+    /// every device and the history keeps the old counter), and the code
+    /// for the new counter comes back with the counter. A time-based code
+    /// (TOTP, Steam) has nothing to advance and is refused, as is a trashed
+    /// item: nothing is written then.
+    pub fn advance_code(&mut self, id: &str, field_id: &str) -> Result<CodeAdvanced, String> {
+        let item_id = parse_id(id)?;
+        let item = self.vault().item(item_id).map_err(|e| e.to_string())?;
+        if item.state != ItemState::Live {
+            return Err("that item isn't live; restore it first".into());
+        }
+        let mut fields = self.vault().open_item(item_id).map_err(|e| e.to_string())?;
+        let field = fields
+            .iter_mut()
+            .find(|f| f.field_id == field_id && f.kind == FieldKind::Totp)
+            .ok_or_else(|| format!("no code '{field_id}' on this item"))?;
+        let FieldValue::Text(uri) = &field.value else {
+            return Err("this code's set-up isn't readable".into());
+        };
+        let mut code = parse_uri(uri).map_err(|e| e.to_string())?;
+        if code.variant != Variant::Hotp {
+            return Err(
+                "only a counter-based code moves on when asked; this one follows the clock".into(),
+            );
+        }
+        code.counter = code
+            .counter
+            .checked_add(1)
+            .ok_or("this code's counter can't go any higher")?;
+        let value = code
+            .code_for_counter(code.counter)
+            .map_err(|e| e.to_string())?;
+        field.value = FieldValue::Text(code.to_otpauth());
+        let version = self
+            .opened
+            .vault
+            .update_item(item_id, fields)
+            .map_err(|e| e.to_string())?;
+        self.save()?;
+        Ok(CodeAdvanced {
+            code: value,
+            counter: code.counter,
+            version,
+        })
+    }
+
     /// Adds a code from its `otpauth://` or `steam://` URI: inside the item
     /// `into` (a Login keeps its codes, brief §1), or as a Code item of its
     /// own. The URI is checked to be one this device can generate from
@@ -206,5 +254,108 @@ impl Session {
         };
         self.save()?;
         Ok(id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session::{Mode, Paths};
+
+    const SEED: &str = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+
+    fn session(dir: &tempfile::TempDir, mode: Mode) -> Session {
+        let paths = Paths::resolve(Some(dir.path().join("snds/identity")), None).unwrap();
+        Session::open(paths, None, mode).unwrap()
+    }
+
+    #[test]
+    fn an_hotp_advance_is_a_new_version_and_outlives_the_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = session(&dir, Mode::Init);
+        // RFC 4226 test key ("12345678901234567890"): counter 3 is 969429, 4 is 338314.
+        let uri = format!("otpauth://hotp/Example:alice?secret={SEED}&counter=3");
+        let id = s.add_code(&uri, None, None).unwrap();
+        let before = s.vault().item(id).unwrap().versions.len();
+        let view = s.codes(0).unwrap();
+        assert_eq!(
+            (view[0].current.as_str(), view[0].counter),
+            ("969429", Some(3))
+        );
+        assert_eq!(view[0].next, None);
+
+        let step = s.advance_code(&id.to_string(), "code.0").unwrap();
+        assert_eq!((step.code.as_str(), step.counter), ("338314", 4));
+        assert_eq!(s.vault().item(id).unwrap().versions.len(), before + 1);
+        assert_eq!(step.version as usize, before + 1);
+        // What `code_now` copies is the code the display now shows.
+        let copied = s.code_now(&id.to_string(), "code.0", 0, false).unwrap();
+        assert_eq!(copied.expose(), b"338314");
+        drop(s);
+
+        // Locked (the session dropped) and opened again: the counter held.
+        let mut s = session(&dir, Mode::Open);
+        let view = s.codes(0).unwrap();
+        assert_eq!(
+            (view[0].current.as_str(), view[0].counter),
+            ("338314", Some(4))
+        );
+        let step = s.advance_code(&id.to_string(), "code.0").unwrap();
+        assert_eq!((step.code.as_str(), step.counter), ("254676", 5));
+        // The set-up's other parts came through the rewrite unchanged.
+        let fields = s.vault().open_item(id).unwrap();
+        let FieldValue::Text(uri) = &fields
+            .iter()
+            .find(|f| f.field_id == "code.0")
+            .unwrap()
+            .value
+        else {
+            panic!("a code's set-up is text");
+        };
+        let code = parse_uri(uri).unwrap();
+        assert_eq!(code.issuer.as_deref(), Some("Example"));
+        assert_eq!(code.account.as_deref(), Some("alice"));
+        assert_eq!((code.digits, code.counter), (6, 5));
+    }
+
+    #[test]
+    fn a_time_based_code_has_nothing_to_advance() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = session(&dir, Mode::Init);
+        let totp = s
+            .add_code(&format!("otpauth://totp/Ex:me?secret={SEED}"), None, None)
+            .unwrap();
+        let steam = s
+            .add_code(
+                &format!("otpauth://totp/Steam:me?secret={SEED}&issuer=Steam"),
+                None,
+                None,
+            )
+            .unwrap();
+        for id in [totp, steam] {
+            let versions = s.vault().item(id).unwrap().versions.len();
+            let err = s.advance_code(&id.to_string(), "code.0").unwrap_err();
+            assert!(err.contains("follows the clock"), "{err}");
+            assert_eq!(
+                s.vault().item(id).unwrap().versions.len(),
+                versions,
+                "nothing written"
+            );
+        }
+        assert_eq!(
+            s.codes(0)
+                .unwrap()
+                .iter()
+                .map(|c| c.counter)
+                .collect::<Vec<_>>(),
+            [None, None]
+        );
+        assert!(s.advance_code(&totp.to_string(), "title").is_err());
+        s.trash(&totp.to_string()).unwrap();
+        assert!(
+            s.advance_code(&totp.to_string(), "code.0")
+                .unwrap_err()
+                .contains("isn't live")
+        );
     }
 }
