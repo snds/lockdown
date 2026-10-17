@@ -28,7 +28,7 @@ Three columns at desktop width, two below `lg`, one below `sm` (the web UI is sh
 ```
 Sidebar                  List (master)            Detail
   Persona switcher         search (focused on      item header: kind glyph, title,
-  All items                 launch, as Ente does)    favourite, crown-jewel treatment
+  All items                 launch, as Ente does)    favorite, crown-jewel treatment
   Smart views              rows: kind glyph ·       fields by kind (§3.1)
     Passkeys · Codes ·      title · subtitle ·       SecretField · CodeDisplay
     Wi-Fi · Expiring ·      method glyphs ·          URLs with match rule
@@ -62,7 +62,7 @@ Codes get their own smart view rather than their own top-level area, because a c
 |---|---|---|---|---|---|
 | Unlock | Open the vault | Unlock | Field, Input, Button, NativeSelect (server) | SecretField (password; Secret Key on a new device) | Error: wrong password, server unreachable (offline unlock still works). Locked is this screen. |
 | First run: create | New account, kit, recovery picks | Continue | Dialog with steps (DialogTitle back), Field, Checkbox | SecretField (show the Secret Key once) | Error: weak password against the signed floor |
-| First run: join | Enrol this device | Request approval | Field, Input, Spinner | ApprovalSheet (shown on the other device; this side shows the matching number) | Error: denied, timed out |
+| First run: join | Enroll this device | Request approval | Field, Input, Spinner | ApprovalSheet (shown on the other device; this side shows the matching number) | Error: denied, timed out |
 | Kit page (D69) | Print or save the kit | Print | Dialog, Button | LargeTypeView (Secret Key and recovery code, printable) | Error: file exists, path refused |
 | Recovery drill | Prove the kit works | Start drill | Dialog, Field, Input | SecretField | Error: kit does not open, kit re-issued |
 | Vault | Browse and find | Open item | Item, ItemGroup, Command (search), ScrollArea, Badge | CrownJewel mark on rows | Empty: import or add. Error: sync failed banner. Locked: list blurred under `--surface-locked`, no titles readable |
@@ -73,7 +73,7 @@ Codes get their own smart view rather than their own top-level area, because a c
 | Quick-access palette | Global hotkey, act without the window | Copy or fill | Command, CommandDialog, Kbd | SecretField (copy only), CodeDisplay (compact) | Locked: palette asks to unlock first; crown jewels never listed |
 | Approvals | Approve a device, an agent grant, a device code, or veto a contact request | Approve / Deny | Sheet, DialogActions | ApprovalSheet (number matching, context, "This wasn't me") | Error: timed out, rate limited. Never from a push that carries a code |
 | Needs attention | Conflict copies (D58), expiring items, issuer-equals-login warnings, items hidden by Signal | Resolve | Item, Badge, Button | none | Empty: "Nothing needs you" |
-| Devices | See and revoke devices | Revoke | Item, Badge, Dialog (confirm) | ApprovalSheet (enrol), CrownJewel (revoke needs a fresh check) | Empty: this device only; nudge to add a second in week one |
+| Devices | See and revoke devices | Revoke | Item, Badge, Dialog (confirm) | ApprovalSheet (enroll), CrownJewel (revoke needs a fresh check) | Empty: this device only; nudge to add a second in week one |
 | Recovery | Kit status, drill, trusted contacts, Shamir later | Run drill | Item, Badge, Dialog | LargeTypeView (kit) | Error: drill failed |
 | Status | The proofs, and sync health | Check now | Item, Badge, Spinner, Skeleton | none | Error: a check failed, in plain words, with what to do |
 | Settings | Lock timing, clipboard timer, extension pairing, appearance, server | Save | Tabs, Field, Switch, NativeSelect | none | Locked: not reachable |
@@ -107,10 +107,10 @@ The rule for every handoff: the last screen we own says what will happen next, i
 ## 6. Clickjacking constraints as design rules
 
 1. In-page surfaces (the fill menu, the save prompt) are fully opaque, at least 240 × 44 px, and live in the top layer in an extension-origin frame. No page can draw over them or make them transparent.
-2. Approvals, reveals of crown jewels, exports, and device enrolment happen only in the app window or an OS surface. The extension can request them; it cannot host them.
+2. Approvals, reveals of crown jewels, exports, and device enrollment happen only in the app window or an OS surface. The extension can request them; it cannot host them.
 3. Passkeys, codes, and cards need a second deliberate action before any fill, by default. The second action is a visible control the person presses, never a hover or a timer.
 4. Device codes are approved only when scanned from a screen in front of the person. The approval sheet has no path to render an approve control for a pasted or messaged code; the component's `origin` prop encodes this, not a setting.
-5. Nothing security-relevant rides on colour alone or on an icon alone. Every tier, state, and warning carries a word.
+5. Nothing security-relevant rides on color alone or on an icon alone. Every tier, state, and warning carries a word.
 
 ## 7. Accessibility targets
 
@@ -118,8 +118,8 @@ The rule for every handoff: the last screen we own says what will happen next, i
 |---|---|
 | WCAG 2.2 AA across the web UI, checked per engine (WKWebView, WebView2, WebKitGTK) | axe plus manual keyboard pass per screen; target size 24 × 24 CSS px minimum (2.5.8), focus not obscured (2.4.11), no drag-only interactions (2.5.7) |
 | Codes read digit by digit | CodeDisplay and LargeTypeView expose `aria-label` with the characters separated ("4, 8, 2, pause, 9, 1, 7"), never the number as a quantity |
-| Reduced motion | No countdown animation, no next-code slide, no sheet travel; states still change (colour plus text) |
-| High contrast | `prefers-contrast: more` and Windows forced colours: borders become solid, the ring thickens, masked dots become a text placeholder, the crown-jewel treatment keeps its border and label when the inverted surface is lost |
+| Reduced motion | No countdown animation, no next-code slide, no sheet travel; states still change (color plus text) |
+| High contrast | `prefers-contrast: more` and Windows forced colors: borders become solid, the ring thickens, masked dots become a text placeholder, the crown-jewel treatment keeps its border and label when the inverted surface is lost |
 | Keyboard everything | Palette, reveal, copy, approve, deny, and "This wasn't me" all reachable without a pointer; Escape never approves |
 | Screen reader timing | Countdowns are not announced every second; a polite announcement at "about to expire" and at rollover, only while the control has focus |
 
@@ -137,7 +137,7 @@ Declared in `apps/desktop/src/styles/app-extension.css`, written as Mailbird's i
 | `--attention` | `--warning` if unicron adopts it, else `--g-amber-500` | `--g-amber-400` | Needs attention, expiring, unverified |
 | `--area-codes` | `--g-blue-500` | `--g-blue-400` | The one wayfinding hue, for the Codes view and the palette's code rows |
 
-The six components take no app-extension tokens; their colours come from core tier 2 roles, three of which the specs propose adding (`warning`, `info`, `protected`).
+The six components take no app-extension tokens; their colors come from core tier 2 roles, three of which the specs propose adding (`warning`, `info`, `protected`).
 
 ## 9. Open questions for Sean
 
