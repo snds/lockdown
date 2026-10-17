@@ -1,22 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react"
 
-import {
-  Button,
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-  Input,
-  Spinner,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@unicron/ui"
+import { Button, Field, FieldDescription, FieldError, FieldGroup, FieldLabel, Input, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from "@unicron/ui"
 
+import { useSettings } from "@/app/settings"
 import { describeError, useClient } from "@/core/client"
 import type { LockReason, Probe, Status } from "@/core/types"
+
+import { FirstRunCreate, Step } from "./first-run"
 
 interface UnlockScreenProps {
   /** Why the vault is shown locked, when a timer did it. */
@@ -37,9 +27,9 @@ const REASONS: Record<LockReason, string> = {
  *
  * - an identity this device is enrolled in → **Unlock** (the device
  *   keystore is the key, D11; no password exists for a local open);
- * - nothing at all → **Create** a new identity here, or **Join** an
- *   account from another device (login name, password, Secret Key), or
- *   **Recover** with the whole kit when no other device is left;
+ * - nothing at all → the first run (D94): one screen with the tagline and
+ *   the three doors, **Create** (then the Secret Key and recovery screens),
+ *   **Join** an account from another device, or **Recover** with the kit;
  * - an identity this device is not enrolled in → a plain explanation.
  *
  * Every error comes from the core in plain words and is shown as is.
@@ -62,7 +52,8 @@ export function UnlockScreen({ reason, onOpened }: UnlockScreenProps) {
 
   if (probeError) {
     return (
-      <Frame title="Lockdown can't start">
+      <Frame>
+        <h1 className="mb-4 text-lg font-semibold tracking-tight">Lockdown can't start</h1>
         <p role="alert" className="text-sm text-destructive">
           {probeError}
         </p>
@@ -71,7 +62,7 @@ export function UnlockScreen({ reason, onOpened }: UnlockScreenProps) {
   }
   if (!probe) {
     return (
-      <Frame title="Lockdown">
+      <Frame>
         <Spinner />
       </Frame>
     )
@@ -82,25 +73,22 @@ export function UnlockScreen({ reason, onOpened }: UnlockScreenProps) {
   }
   if (probe.identity_present) {
     return (
-      <Frame title="This device isn't enrolled yet">
+      <Frame>
+        <h1 className="mb-4 text-lg font-semibold tracking-tight">This device isn't enrolled yet</h1>
         <p className="text-sm text-muted-foreground">
-          An ecosystem identity already exists at <code className="font-mono">{probe.root}</code>, but it doesn't list
-          this device. Enrol it from another ecosystem app on this computer, or recover with the kit on a device with
-          nothing on it. A second identity is never created next to the first.
+          An ecosystem identity already exists at <code className="font-mono">{probe.root}</code>, but it doesn't list this device. Enrol it from another
+          ecosystem app on this computer, or recover with the kit on a device with nothing on it. A second identity is never created next to the first.
         </p>
       </Frame>
     )
   }
-  return <FirstRun probe={probe} onOpened={onOpened} />
+  return <FirstRun onOpened={onOpened} />
 }
 
-function Frame({ title, children }: { title: string; children: React.ReactNode }) {
+function Frame({ children }: { children: React.ReactNode }) {
   return (
     <main className="flex min-h-full items-center justify-center bg-surface-locked p-6">
-      <section className="w-full max-w-sm rounded-xl border bg-card p-6 shadow-sm">
-        <h1 className="mb-4 text-lg font-semibold tracking-tight">{title}</h1>
-        {children}
-      </section>
+      <section className="w-full max-w-sm rounded-xl border bg-card p-6 shadow-sm">{children}</section>
     </main>
   )
 }
@@ -122,17 +110,13 @@ function AttachForm({ probe, reason, onOpened }: { probe: Probe; reason?: LockRe
     }
   }
   return (
-    <Frame title="Lockdown">
+    <Frame>
+      <h1 className="mb-4 text-lg font-semibold tracking-tight">Lockdown</h1>
       <form onSubmit={unlock} className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">
-          {reason ? REASONS[reason] : "The vault is locked."} This device ({probe.device_name}) opens it with its own
-          key; nothing leaves this computer to do so.
+          {reason ? REASONS[reason] : "The vault is locked."} This device ({probe.device_name}) opens it with its own key.
         </p>
-        {error && (
-          <FieldError role="alert" className="text-sm">
-            {error}
-          </FieldError>
-        )}
+        {error && <FieldError role="alert">{error}</FieldError>}
         <Button type="submit" disabled={busy} autoFocus>
           {busy ? <Spinner /> : null}
           Unlock
@@ -142,71 +126,57 @@ function AttachForm({ probe, reason, onOpened }: { probe: Probe; reason?: LockRe
   )
 }
 
-function FirstRun({ probe, onOpened }: { probe: Probe; onOpened: (s: Status) => void }) {
-  return (
-    <Frame title="Every way you sign in. Locked down, even from us.">
-      <p className="mb-4 text-sm text-muted-foreground">
-        Nothing is set up on this computer yet ({probe.root}). Start a new identity here, or join one you already have
-        on another device.
-      </p>
-      <Tabs defaultValue="create">
-        <TabsList className="mb-4 w-full">
-          <TabsTrigger value="create">Create</TabsTrigger>
-          <TabsTrigger value="join">Join</TabsTrigger>
-          <TabsTrigger value="recover">Recover</TabsTrigger>
-        </TabsList>
-        <TabsContent value="create">
-          <CreateForm onOpened={onOpened} />
-        </TabsContent>
-        <TabsContent value="join">
-          <JoinForm mode="join" onOpened={onOpened} />
-        </TabsContent>
-        <TabsContent value="recover">
-          <JoinForm mode="recover" onOpened={onOpened} />
-        </TabsContent>
-      </Tabs>
-    </Frame>
-  )
-}
-
-function CreateForm({ onOpened }: { onOpened: (s: Status) => void }) {
-  const client = useClient()
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const create = async (e: FormEvent) => {
-    e.preventDefault()
-    setBusy(true)
-    setError(null)
-    try {
-      onOpened(await client.openVault(true))
-    } catch (err) {
-      setError(describeError(err))
-    } finally {
-      setBusy(false)
-    }
+/** Screen 1 of the first run (D94): the tagline, once, and the three doors. */
+function FirstRun({ onOpened }: { onOpened: (s: Status) => void }) {
+  const [creating, setCreating] = useState(false)
+  if (creating) {
+    return (
+      <Frame>
+        <FirstRunCreate onOpened={onOpened} onCancel={() => setCreating(false)} />
+      </Frame>
+    )
   }
   return (
-    <form onSubmit={create} className="flex flex-col gap-4">
-      <p className="text-sm text-muted-foreground">
-        Makes the shared ecosystem identity and your first vault, keyed to this device. An account on a server and the
-        recovery kit come after, from the Status screen.
-      </p>
-      {error && (
-        <FieldError role="alert" className="text-sm">
-          {error}
-        </FieldError>
-      )}
-      <Button type="submit" disabled={busy}>
-        {busy ? <Spinner /> : null}
-        Create
-      </Button>
-    </form>
+    <Frame>
+      <Step
+        title="Every way you sign in. Locked down, even from us."
+        sentence="One vault for passwords, passkeys and codes, opened by this device's own key."
+        learnMore={
+          <>
+            <p>Lockdown keeps every way you sign in to a site together: the password, the passkeys and the one-time codes of one account are one record.</p>
+            <p>The vault is encrypted on this device and opened by a key only this device holds. A server, when you add one, syncs encrypted history it cannot read and keeps a public log this app checks on every sync.</p>
+            <p>Export is one click and never gated behind a plan; your own server is a first-class choice.</p>
+          </>
+        }
+      >
+        <Tabs defaultValue="create">
+          <TabsList className="mb-4 w-full">
+            <TabsTrigger value="create">Create</TabsTrigger>
+            <TabsTrigger value="join">Join</TabsTrigger>
+            <TabsTrigger value="recover">Recover</TabsTrigger>
+          </TabsList>
+          <TabsContent value="create">
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-muted-foreground">Start a new identity on this computer.</p>
+              <Button onClick={() => setCreating(true)}>Create</Button>
+            </div>
+          </TabsContent>
+          <TabsContent value="join">
+            <JoinForm mode="join" onOpened={onOpened} />
+          </TabsContent>
+          <TabsContent value="recover">
+            <JoinForm mode="recover" onOpened={onOpened} />
+          </TabsContent>
+        </Tabs>
+      </Step>
+    </Frame>
   )
 }
 
 /** Join from an account (password + Secret Key) or recover with the whole kit. */
 function JoinForm({ mode, onOpened }: { mode: "join" | "recover"; onOpened: (s: Status) => void }) {
   const client = useClient()
+  const { settings } = useSettings()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notes, setNotes] = useState<string[]>([])
@@ -235,11 +205,13 @@ function JoinForm({ mode, onOpened }: { mode: "join" | "recover"; onOpened: (s: 
   }
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        {mode === "join" ? "Enrol this device in an account you already have; another device of yours stays as it is." : "Bring the identity back on a device with nothing on it, with the whole kit."}
+      </p>
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor={`${mode}-server`}>Server</FieldLabel>
-          <Input id={`${mode}-server`} name="server" type="url" placeholder="https://" required autoComplete="off" />
-          <FieldDescription>Your own server is a first-class choice.</FieldDescription>
+          <Input id={`${mode}-server`} name="server" type="url" placeholder="https://" defaultValue={settings.server ?? ""} required autoComplete="off" />
         </Field>
         <Field>
           <FieldLabel htmlFor={`${mode}-login`}>Login name</FieldLabel>
@@ -248,16 +220,11 @@ function JoinForm({ mode, onOpened }: { mode: "join" | "recover"; onOpened: (s: 
         <Field>
           <FieldLabel htmlFor={`${mode}-password`}>Account password</FieldLabel>
           <Input id={`${mode}-password`} name="password" type="password" required autoComplete="current-password" />
-          <FieldDescription>Never leaves this device (OPAQUE).</FieldDescription>
         </Field>
         <Field>
           <FieldLabel htmlFor={`${mode}-secret-key`}>Secret Key</FieldLabel>
           <Input id={`${mode}-secret-key`} name="secretKey" type="password" required={mode === "recover"} autoComplete="off" />
-          <FieldDescription>
-            {mode === "join"
-              ? "From your recovery kit. Needed when the account was protected with it."
-              : "From your recovery kit."}
-          </FieldDescription>
+          <FieldDescription>{mode === "join" ? "From your recovery kit. Needed when the account was protected with it." : "From your recovery kit."}</FieldDescription>
         </Field>
         {mode === "recover" && (
           <Field>
@@ -266,11 +233,7 @@ function JoinForm({ mode, onOpened }: { mode: "join" | "recover"; onOpened: (s: 
           </Field>
         )}
       </FieldGroup>
-      {error && (
-        <FieldError role="alert" className="text-sm">
-          {error}
-        </FieldError>
-      )}
+      {error && <FieldError role="alert">{error}</FieldError>}
       {notes.length > 0 && (
         <ul className="text-sm text-muted-foreground">
           {notes.map((n) => (

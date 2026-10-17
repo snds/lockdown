@@ -37,14 +37,10 @@ const status: Status = {
 function fakeClient(overrides: Partial<Client>): Client {
   const refuse = () => Promise.reject({ code: "refused", message: "not in this test" })
   const base = new Proxy({} as Client, { get: () => refuse })
-  return Object.assign(
-    Object.create(base),
-    { status: () => Promise.resolve(status), deviceList: () => Promise.resolve([]) },
-    overrides,
-  )
+  return Object.assign(Object.create(base), { status: () => Promise.resolve(status) }, overrides)
 }
 
-describe("the transparency line on the Status screen", () => {
+describe("the Status screen", () => {
   it("shows the verified log, and the audit's words when a sync is refused", async () => {
     const sync = vi.fn(() =>
       Promise.reject({
@@ -55,7 +51,7 @@ describe("the transparency line on the Status screen", () => {
     )
     render(
       <ClientProvider value={fakeClient({ sync })}>
-        <StatusView status={status} lock={null} onStatus={() => {}} onLock={() => {}} onLockNow={() => {}} onNotice={() => {}} />
+        <StatusView status={status} onStatus={() => {}} onNotice={() => {}} />
       </ClientProvider>,
     )
     expect(screen.getByText(/^3 entries, checked /)).toBeInTheDocument()
@@ -74,9 +70,31 @@ describe("the transparency line on the Status screen", () => {
     const unchecked: Status = { ...status, account: { ...status.account!, transparency: null } }
     render(
       <ClientProvider value={fakeClient({})}>
-        <StatusView status={unchecked} lock={null} onStatus={() => {}} onLock={() => {}} onLockNow={() => {}} onNotice={() => {}} />
+        <StatusView status={unchecked} onStatus={() => {}} onNotice={() => {}} />
       </ClientProvider>,
     )
     expect(screen.getByText("not checked yet; the next sync verifies it")).toBeInTheDocument()
+  })
+
+  it("Check now runs the audit and shows its words, pass or fail (D95)", async () => {
+    const audit = vi
+      .fn<() => Promise<string[]>>()
+      .mockResolvedValueOnce(["tree head: 3 entries, root 0123456789abcdef, signed 2026-10-17", "3 entries of this account verified: every device key is one your identity lists"])
+      .mockRejectedValueOnce({ code: "refused", message: "key transparency: the tree head is smaller than the one remembered (3 → 2): a rollback" })
+    render(
+      <ClientProvider value={fakeClient({ audit })}>
+        <StatusView status={status} onStatus={() => {}} onNotice={() => {}} />
+      </ClientProvider>,
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Check now" }))
+    const status1 = await screen.findByRole("status")
+    expect(status1).toHaveTextContent("Checked just now")
+    expect(status1).toHaveTextContent("3 entries of this account verified")
+
+    await user.click(screen.getByRole("button", { name: "Check now" }))
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("The check failed"))
+    expect(screen.getByRole("status")).toHaveTextContent("a rollback")
+    expect(screen.getByRole("status")).toHaveTextContent("Nothing was changed")
   })
 })
