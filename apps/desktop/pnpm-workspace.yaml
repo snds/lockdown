@@ -8,12 +8,5 @@ overrides:
   # The shared design system (03-architecture §9): @unicron/ui pins its
   # tokens by exact version, which is not on a registry; point the
   # dependency at the same release tarball (unicron docs/05-consuming.md §1).
-  "@unicron/tokens": https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.2.0/unicron-tokens-0.2.0.tgz
+  "@unicron/tokens": https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.3.0/unicron-tokens-0.3.0.tgz
 
-# A consumer-side hotfix on the pinned release, removed when unicron ships
-# the fix: SecretField 0.4.0 unmounts the span it writes the revealed value
-# into while `getSecret` is pending, so any reveal slower than a microtask
-# (every Tauri IPC call) is dropped. The patch keeps the span mounted and
-# draws the loading skeleton inside it (docs/plan/10-desktop-shell.md §3).
-patchedDependencies:
-  "@unicron/ui": patches/@unicron__ui.patch
