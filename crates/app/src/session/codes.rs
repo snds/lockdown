@@ -111,10 +111,17 @@ impl Session {
         Ok(out)
     }
 
-    /// The code valid at `now` for one code field, as bytes for the
-    /// clipboard path: the value is short-lived and derived, the set-up
-    /// stays here.
-    pub fn code_now(&self, id: &str, field_id: &str, now: u64) -> Result<Revealed, String> {
+    /// The code valid at `now` for one code field (or, with `next`, the one
+    /// after it, which the display offers in a code's last seconds), as
+    /// bytes for the clipboard path: the value is short-lived and derived,
+    /// the set-up stays here.
+    pub fn code_now(
+        &self,
+        id: &str,
+        field_id: &str,
+        now: u64,
+        next: bool,
+    ) -> Result<Revealed, String> {
         let item_id = parse_id(id)?;
         let fields = self.vault().open_item(item_id).map_err(|e| e.to_string())?;
         let field = fields
@@ -125,7 +132,15 @@ impl Session {
             return Err("this code's set-up isn't readable".into());
         };
         let code = parse_uri(uri).map_err(|e| e.to_string())?;
-        let value = code.generate_at(now).map_err(|e| e.to_string())?;
+        let value = if next {
+            if code.variant == Variant::Hotp {
+                return Err("a counter-based code has no next value until it is asked for".into());
+            }
+            code.code_for_counter(code.step_at(now) + 1)
+                .map_err(|e| e.to_string())?
+        } else {
+            code.generate_at(now).map_err(|e| e.to_string())?
+        };
         Ok(Revealed::from_text(&value))
     }
 

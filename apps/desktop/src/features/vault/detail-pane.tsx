@@ -7,7 +7,7 @@ import type { FieldView, ItemDetail } from "@/core/types"
 import { codeKey, useCodes } from "@/features/codes/use-codes"
 import { whenLocal } from "@/lib/format"
 
-import { CodeDisplay } from "./code-display"
+import { ItemCodeDisplay } from "./code-display"
 import { CrownJewel } from "./crown-jewel"
 import { kindLabel } from "./list-model"
 import { ItemField, type SecretFormat } from "./item-field"
@@ -77,7 +77,7 @@ export function DetailPane({ id, onEdit, onTrashed, onNotice }: DetailPaneProps)
   const codeBlocks = (item.fields.filter((f) => f.kind === "totp") ?? []).map((f) => {
     const view = codes.codes?.find((c) => c.field_id === f.field_id)
     return view ? (
-      <CodeDisplay key={f.field_id} code={view} secondsLeft={codes.secondsLeft[codeKey(view)] ?? view.seconds_left} onNotice={onNotice} />
+      <ItemCodeDisplay key={f.field_id} code={view} now={codes.now} expiresAt={codes.expiresAt[codeKey(view)] ?? null} />
     ) : (
       <div key={f.field_id} className="text-sm text-muted-foreground">
         {codes.error ?? "Computing the code…"}

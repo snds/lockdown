@@ -46,8 +46,12 @@ export interface Client {
   reveal(id: string, fieldId: string, gate?: GateInput): Promise<Uint8Array>
   /** Copies on the Rust side; resolves to the seconds until the clipboard is cleared. */
   copySecret(id: string, fieldId: string, clearAfterSecs?: number, gate?: GateInput): Promise<number>
-  /** Copies the code valid now on the Rust side, with the same clipboard timer. */
-  copyCode(itemId: string, fieldId: string, clearAfterSecs?: number): Promise<number>
+  /**
+   * Copies the code valid now (or, with `which: "next"`, the one after it)
+   * on the Rust side, with the same clipboard timer. A code inside a crown
+   * jewel goes through the `Use` gate (D101).
+   */
+  copyCode(itemId: string, fieldId: string, clearAfterSecs?: number, which?: "code" | "next", gate?: GateInput): Promise<number>
   /**
    * Whether the clipboard still holds what the shell last copied. `hash` is
    * the component's name for the copy (hex SHA-256 of the bytes it handed
@@ -76,6 +80,8 @@ export interface Client {
   importItems(bytes: number[], format: string): Promise<ImportReport>
   exportItems(format: string, gate?: GateInput): Promise<Uint8Array>
   openSite(url: string): Promise<void>
+  /** Opens the OS date and time settings; `false` where this platform has no way in (Linux). */
+  openClockSettings(): Promise<boolean>
 }
 
 /** Whether a rejection is the app's own error shape. */
@@ -116,7 +122,7 @@ export const tauriClient: Client = {
   show: (id) => call("show", { id }),
   reveal: (id, fieldId, gate) => callBytes("reveal", { id, fieldId, gate }),
   copySecret: (id, fieldId, clearAfterSecs, gate) => call("copy_secret", { id, fieldId, clearAfterSecs, gate }),
-  copyCode: (itemId, fieldId, clearAfterSecs) => call("copy_code", { itemId, fieldId, clearAfterSecs }),
+  copyCode: (itemId, fieldId, clearAfterSecs, which, gate) => call("copy_code", { itemId, fieldId, clearAfterSecs, which, gate }),
   clipboardHolds: (hash) => call("clipboard_holds", { hash }),
   clipboardClear: () => call("clipboard_clear"),
   addLogin: (input) => call("add_login", input),
@@ -138,6 +144,7 @@ export const tauriClient: Client = {
   importItems: (bytes, format) => call("import_items", { bytes, format }),
   exportItems: (format, gate) => callBytes("export_items", { format, gate }),
   openSite: (url) => call("open_site", { url }),
+  openClockSettings: () => call("open_clock_settings"),
 }
 
 const ClientContext = createContext<Client>(tauriClient)

@@ -138,8 +138,11 @@ async fn copy_secret(
     copy_with_timer(&guard, &handle, revealed, clear_after_secs)
 }
 
-/// Copies the code valid now for one code field, on the same clipboard
-/// path and timer as `copy_secret`; the set-up never leaves the core.
+/// Copies the code valid now for one code field (`which` = `next` copies
+/// the one after it, as the display offers in a code's last seconds), on
+/// the same clipboard path and timer as `copy_secret`; the set-up never
+/// leaves the core. A code inside a crown jewel goes through the `Use`
+/// gate first (D101).
 #[tauri::command]
 async fn copy_code(
     app: State<'_, App>,
@@ -148,8 +151,12 @@ async fn copy_code(
     item_id: String,
     field_id: String,
     clear_after_secs: Option<u64>,
+    which: Option<String>,
+    gate: Option<GateInput>,
 ) -> AppResult<u64> {
-    let revealed = blocking(&app, move |a| a.code_now(&item_id, &field_id)).await?;
+    let next = which.as_deref() == Some("next");
+    let gate = gate.unwrap_or_default();
+    let revealed = blocking(&app, move |a| a.code_now(&item_id, &field_id, next, gate)).await?;
     copy_with_timer(&guard, &handle, revealed, clear_after_secs)
 }
 
@@ -496,6 +503,28 @@ async fn open_site(handle: AppHandle, url: String) -> AppResult<()> {
         .map_err(|e| failed(format!("couldn't open the browser: {e}")))
 }
 
+/// Opens this computer's date and time settings, for the code display's
+/// "Fix clock": macOS and Windows have a URL for the pane; elsewhere this
+/// answers `false` and the UI says where to look instead.
+#[tauri::command]
+async fn open_clock_settings(handle: AppHandle) -> AppResult<bool> {
+    let url = if cfg!(target_os = "macos") {
+        Some("x-apple.systempreferences:com.apple.preference.datetime")
+    } else if cfg!(windows) {
+        Some("ms-settings:dateandtime")
+    } else {
+        None
+    };
+    let Some(url) = url else {
+        return Ok(false);
+    };
+    handle
+        .opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| failed(format!("couldn't open the clock settings: {e}")))?;
+    Ok(true)
+}
+
 /// Every command the webview may call.
 pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
@@ -527,6 +556,7 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         device_list,
         device_revoke,
         open_site,
+        open_clock_settings,
         get_settings,
         set_settings,
         approval_route,

@@ -77,7 +77,7 @@ function Root() {
         {nav.area === "vault" && (
           <VaultView view={nav.view} rows={rows} error={rowsError} onChanged={reload} onAddCode={() => setNav({ area: "codes", view: nav.view })} onNotice={notice} />
         )}
-        {nav.area === "codes" && <CodesView rows={rows ?? []} onChanged={reload} onNotice={notice} />}
+        {nav.area === "codes" && <CodesView rows={rows ?? []} onChanged={reload} />}
         {nav.area === "devices" && <DevicesView status={status} onChanged={refreshStatus} onNotice={notice} />}
         {nav.area === "recovery" && <RecoveryView status={status} onChanged={refreshStatus} onNotice={notice} />}
         {nav.area === "status" && <StatusView status={status} onStatus={setStatus} onNotice={notice} />}

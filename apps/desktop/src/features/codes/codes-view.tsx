@@ -16,7 +16,6 @@ import {
   FieldLabel,
   Icon,
   Input,
-  ItemGroup,
   NativeSelect,
   NativeSelectOption,
   Sheet,
@@ -30,7 +29,9 @@ import {
 import { PaneHeader } from "@/components/master-detail"
 import { describeError, useClient } from "@/core/client"
 import type { ItemSummary } from "@/core/types"
-import { CodeDisplay } from "@/features/vault/code-display"
+import { CodeDisplayList } from "@unicron/ui/security/code-display"
+
+import { ItemCodeDisplay } from "@/features/vault/code-display"
 
 import { codeKey, useCodes } from "./use-codes"
 
@@ -38,7 +39,6 @@ interface CodesViewProps {
   /** The vault's rows, so the add form can offer the Logins to put a code inside. */
   rows: ItemSummary[]
   onChanged: () => void
-  onNotice: (text: string) => void
 }
 
 /**
@@ -46,8 +46,8 @@ interface CodesViewProps {
  * Login, scanning fast, each with its countdown and Copy. Nothing here
  * holds a seed; the core hands over values and timing only (D102).
  */
-export function CodesView({ rows, onChanged, onNotice }: CodesViewProps) {
-  const { codes, error, secondsLeft, reload } = useCodes(true)
+export function CodesView({ rows, onChanged }: CodesViewProps) {
+  const { codes, error, now, expiresAt, reload } = useCodes(true)
   const [query, setQuery] = useState("")
   const [adding, setAdding] = useState(false)
 
@@ -85,11 +85,11 @@ export function CodesView({ rows, onChanged, onNotice }: CodesViewProps) {
             </EmptyHeader>
           </Empty>
         )}
-        <ItemGroup role="list" aria-label="One-time codes">
+        <CodeDisplayList role="list" aria-label="One-time codes">
           {shown.map((c) => (
-            <CodeDisplay key={codeKey(c)} code={c} secondsLeft={secondsLeft[codeKey(c)] ?? c.seconds_left} density="list" onNotice={onNotice} />
+            <ItemCodeDisplay key={codeKey(c)} code={c} now={now} expiresAt={expiresAt[codeKey(c)] ?? null} density="list" />
           ))}
-        </ItemGroup>
+        </CodeDisplayList>
       </div>
       <AddCodeSheet
         open={adding}

@@ -6,24 +6,30 @@ import type { CodeView } from "@/core/types"
 export interface CodesState {
   codes: CodeView[] | null
   error: string | null
-  /** Seconds left per code (`item_id/field_id`), ticked here once a second. */
-  secondsLeft: Record<string, number | null>
+  /** The host clock in Unix seconds, ticked here once a second, as CodeDisplay's `now`. */
+  now: number
+  /** When each code (`item_id/field_id`) dies, in Unix seconds; `null` for a counter-based code. */
+  expiresAt: Record<string, number | null>
   reload: () => void
 }
 
 export const codeKey = (c: Pick<CodeView, "item_id" | "field_id">) => `${c.item_id}/${c.field_id}`
 
+const unixNow = () => Math.floor(Date.now() / 1000)
+
 /**
- * The codes as the core computes them, with a local countdown: the core
- * is asked once, the seconds tick here, and when any code runs out the
- * core is asked again. `enabled` false stops the clock (the screen is not
- * showing codes), so no code is computed for nothing.
+ * The codes as the core computes them, with a local clock: the core is
+ * asked once, each code's end is pinned to this clock from the seconds it
+ * reported, the clock ticks here, and when any code runs out the core is
+ * asked again. `enabled` false stops the clock (the screen is not showing
+ * codes), so no code is computed for nothing.
  */
 export function useCodes(enabled: boolean, filter?: (code: CodeView) => boolean): CodesState {
   const client = useClient()
   const [codes, setCodes] = useState<CodeView[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [secondsLeft, setSecondsLeft] = useState<Record<string, number | null>>({})
+  const [now, setNow] = useState(unixNow)
+  const [expiresAt, setExpiresAt] = useState<Record<string, number | null>>({})
   const filterRef = useRef(filter)
   useEffect(() => {
     filterRef.current = filter
@@ -34,9 +40,11 @@ export function useCodes(enabled: boolean, filter?: (code: CodeView) => boolean)
       .codes()
       .then((all) => {
         const shown = filterRef.current ? all.filter(filterRef.current) : all
+        const at = unixNow()
         setCodes(shown)
         setError(null)
-        setSecondsLeft(Object.fromEntries(shown.map((c) => [codeKey(c), c.seconds_left])))
+        setExpiresAt(Object.fromEntries(shown.map((c) => [codeKey(c), c.seconds_left === null ? null : at + c.seconds_left])))
+        setNow(at)
       })
       .catch((e) => setError(describeError(e)))
   }, [client])
@@ -47,28 +55,20 @@ export function useCodes(enabled: boolean, filter?: (code: CodeView) => boolean)
 
   // The clock: one tick a second over a ref, so the interval never reads
   // stale state and the reload runs outside the state updater.
-  const leftRef = useRef(secondsLeft)
+  const endsRef = useRef(expiresAt)
   useEffect(() => {
-    leftRef.current = secondsLeft
-  }, [secondsLeft])
+    endsRef.current = expiresAt
+  }, [expiresAt])
 
   useEffect(() => {
     if (!enabled || !codes || codes.length === 0) return
     const timer = window.setInterval(() => {
-      let expired = false
-      const next: Record<string, number | null> = {}
-      for (const [k, v] of Object.entries(leftRef.current)) {
-        if (v === null) next[k] = null
-        else if (v <= 1) {
-          next[k] = 0
-          expired = true
-        } else next[k] = v - 1
-      }
-      setSecondsLeft(next)
-      if (expired) reload()
+      const at = unixNow()
+      setNow(at)
+      if (Object.values(endsRef.current).some((end) => end !== null && end <= at)) reload()
     }, 1000)
     return () => window.clearInterval(timer)
   }, [enabled, codes, reload])
 
-  return { codes: enabled ? codes : null, error, secondsLeft, reload }
+  return { codes: enabled ? codes : null, error, now, expiresAt, reload }
 }

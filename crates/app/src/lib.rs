@@ -257,6 +257,30 @@ impl Core {
             .map_err(AppError::refused)
     }
 
+    /// One code's value now (or next), through the `Use` gate when the item
+    /// is a crown jewel: a code inside one is copied, never shown, and the
+    /// copy is a use (brief §3.1).
+    fn code_now(
+        &mut self,
+        id: &str,
+        field_id: &str,
+        next: bool,
+        gate: &GateInput,
+    ) -> AppResult<Revealed> {
+        self.clock.touch(Instant::now());
+        if self
+            .session()?
+            .is_crown_jewel(id)
+            .map_err(AppError::refused)?
+        {
+            self.approve(ApprovalKind::Use, "copy this protected code", gate)?;
+        }
+        let now = session::now_secs().max(0) as u64;
+        self.session()?
+            .code_now(id, field_id, now, next)
+            .map_err(AppError::refused)
+    }
+
     /// Runs the timers; locks when one is due.
     fn enforce(&mut self) {
         if self.session.is_none() {
@@ -527,11 +551,18 @@ impl App {
         self.with_session(|s| s.codes(session::now_secs().max(0) as u64))
     }
 
-    /// The code valid now for one code field, as bytes, for a shell's
-    /// clipboard path (the same timer as `copy_secret`).
-    pub fn code_now(&self, id: &str, field_id: &str) -> AppResult<Revealed> {
+    /// The code valid now for one code field (with `next`, the one after
+    /// it), as bytes, for a shell's clipboard path (the same timer as
+    /// `copy_secret`). A crown jewel's goes through the `Use` gate first.
+    pub fn code_now(
+        &self,
+        id: &str,
+        field_id: &str,
+        next: bool,
+        gate: GateInput,
+    ) -> AppResult<Revealed> {
         let (id, field_id) = (id.to_string(), field_id.to_string());
-        self.with_session(move |s| s.code_now(&id, &field_id, session::now_secs().max(0) as u64))
+        self.call(move |core| core.code_now(&id, &field_id, next, &gate))
     }
 
     /// Adds a code from its URI, inside `into` (a Login) or as its own item.
@@ -932,9 +963,19 @@ mod tests {
         assert_eq!(embedded.digits, 5);
         assert_eq!(embedded.current.len(), 5);
 
-        let now = app.code_now(&code_id, "code.0").unwrap();
+        let now = app
+            .code_now(&code_id, "code.0", false, GateInput::default())
+            .unwrap();
         assert_eq!(now.expose(), standalone.current.as_bytes());
-        assert!(app.code_now(&code_id, "title").is_err());
+        // The next code, for the display's last seconds (D102).
+        let next = app
+            .code_now(&code_id, "code.0", true, GateInput::default())
+            .unwrap();
+        assert_eq!(next.expose(), standalone.next.as_ref().unwrap().as_bytes());
+        assert!(
+            app.code_now(&code_id, "title", false, GateInput::default())
+                .is_err()
+        );
 
         let json = serde_json::to_string(&codes).unwrap();
         assert!(!json.contains(SEED), "the seed never crosses");
