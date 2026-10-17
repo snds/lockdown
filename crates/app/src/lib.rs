@@ -33,7 +33,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 pub use approval::{Approval, ApprovalKind, Approver, GateInput, PasswordApprover, Route};
 pub use lock::{LockPolicy, LockReason};
-pub use lockdown_vault::{Change, FieldChange, FieldInput};
+pub use lockdown_vault::{Change, FieldChange, FieldInput, FieldKind};
 pub use revealed::Revealed;
 pub use session::items::field_kind_named;
 pub use session::{Paths, device_name};

@@ -15,6 +15,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::clipboard::{self, ClipboardGuard};
+use crate::items::{FieldChangeInput, into_changes};
 
 fn failed(message: impl Into<String>) -> AppError {
     AppError {
@@ -258,6 +259,8 @@ async fn add_login(
     .await
 }
 
+/// A crown jewel's edit goes through the `Use` gate (D110), so this takes
+/// a `gate` like `edit_item`.
 #[tauri::command]
 async fn edit_login(
     app: State<'_, App>,
@@ -265,9 +268,68 @@ async fn edit_login(
     title: Option<String>,
     username: Option<String>,
     password: Option<Vec<u8>>,
+    gate: Option<GateInput>,
 ) -> AppResult<u64> {
+    let gate = gate.unwrap_or_default();
     blocking(&app, move |a| {
-        a.edit_login(&id, title.as_deref(), username.as_deref(), password)
+        a.edit_login(&id, title.as_deref(), username.as_deref(), password, gate)
+    })
+    .await
+}
+
+/// Every kind's template, for the "New item" list, the editor and the
+/// detail; and the kinds a field added by hand may take. Static data.
+#[derive(Serialize)]
+pub struct Templates {
+    kinds: Vec<lockdown_app::TemplateView>,
+    custom_kinds: Vec<lockdown_app::CustomKindView>,
+}
+
+#[tauri::command]
+async fn templates(app: State<'_, App>) -> AppResult<Templates> {
+    Ok(Templates {
+        kinds: app.templates(),
+        custom_kinds: app.custom_kinds(),
+    })
+}
+
+/// Makes an item of any kind a person may make (D110). Secrets arrive as
+/// byte arrays inside `fields` (items.rs) and are wiped after the call.
+#[tauri::command]
+async fn add_item(
+    app: State<'_, App>,
+    kind: String,
+    title: Option<String>,
+    crown_jewel: Option<bool>,
+    fields: Vec<FieldChangeInput>,
+) -> AppResult<String> {
+    let changes = into_changes(fields)?;
+    blocking(&app, move |a| {
+        a.add_item(
+            &kind,
+            title.as_deref(),
+            crown_jewel.unwrap_or(false),
+            changes,
+        )
+    })
+    .await
+}
+
+/// Saves a new version from an edit that names every field of the item:
+/// `keep` for a secret the person did not retype, so it never crosses
+/// back. A crown jewel's edit goes through the `Use` gate first.
+#[tauri::command]
+async fn edit_item(
+    app: State<'_, App>,
+    id: String,
+    title: Option<String>,
+    changes: Vec<FieldChangeInput>,
+    gate: Option<GateInput>,
+) -> AppResult<u64> {
+    let changes = into_changes(changes)?;
+    let gate = gate.unwrap_or_default();
+    blocking(&app, move |a| {
+        a.edit_item(&id, title.as_deref(), changes, gate)
     })
     .await
 }
@@ -554,6 +616,9 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         clipboard_clear,
         add_login,
         edit_login,
+        templates,
+        add_item,
+        edit_item,
         trash,
         restore,
         status,
