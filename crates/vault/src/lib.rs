@@ -29,10 +29,13 @@
 //! - [`signer`] — who signs heads and versions: the device's key
 //! - [`store`] — the local store contract a vault loads from and saves to
 //! - [`vault`] — [`Vault`]: create, update, open, purge, commit heads, load, save
+//! - [`identity`] — the adoption path: open or create the ecosystem identity,
+//!   the persona's Lockdown keys, and a vault that opens from the identity alone
 
 pub mod crown_jewel;
 pub mod error;
 pub mod field;
+pub mod identity;
 pub mod item;
 pub mod keys;
 pub mod manifest;
