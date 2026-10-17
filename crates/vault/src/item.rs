@@ -5,14 +5,15 @@
 //! wire carries the latest version; the local model keeps the whole
 //! history so a version can be restored or shredded.
 
+use lockdown_crypto::VerifyingKey;
 use lockdown_crypto::aead::Sealed;
 use lockdown_crypto::cbor::to_canonical;
 use lockdown_crypto::hash::hash;
-use lockdown_crypto::{SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
 use crate::field::SealedField;
 use crate::keys::WrappedKey;
+use crate::signer::Signer;
 use crate::{Error, Hash32, Id, Result, Timestamp};
 
 /// The item envelope format version.
@@ -162,6 +163,36 @@ pub struct AttachmentRef {
     pub meta: Sealed,
 }
 
+/// The part of an item that is not in any version: what it is and which
+/// key branch it hangs from. Every version's signature and hash cover the
+/// header too, so a store cannot relabel a login as a note, move an item
+/// out of the crown-jewel class, or clear `device_only` without breaking
+/// the signed history. (The header is not stored on its own; it is the
+/// item's fields, bound in at signing time.)
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct ItemHeader {
+    /// The item.
+    pub item_id: Id,
+    /// The vault.
+    pub vault_id: Id,
+    /// The type.
+    pub kind: ItemKind,
+    /// The type's schema version.
+    pub schema_v: u16,
+    /// Standard or crown-jewel.
+    pub class: ItemClass,
+    /// Never syncs.
+    pub device_only: bool,
+}
+
+/// What a version's signature and hash cover: the item header and the
+/// version with its key envelopes removed and `sig` empty.
+#[derive(Serialize)]
+struct Covered<'a> {
+    header: &'a ItemHeader,
+    version: ItemVersion,
+}
+
 /// One saved version of an item.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct ItemVersion {
@@ -199,34 +230,37 @@ impl ItemVersion {
         copy
     }
 
-    /// The bytes the signature covers: canonical CBOR with `sig` empty and
-    /// the key envelopes removed.
-    pub fn signable(&self) -> Result<Vec<u8>> {
-        let mut copy = self.without_keys();
-        copy.sig.clear();
-        Ok(to_canonical(&copy)?)
+    /// The bytes the signature covers: canonical CBOR of the item header
+    /// and this version with `sig` empty and the key envelopes removed.
+    pub fn signable(&self, header: &ItemHeader) -> Result<Vec<u8>> {
+        let mut version = self.without_keys();
+        version.sig.clear();
+        Ok(to_canonical(&Covered { header, version })?)
     }
 
-    /// Signs the version with the editing device's key.
-    pub fn sign(&mut self, key: &SigningKey) -> Result<()> {
-        self.sig = key.sign(&self.signable()?).to_vec();
+    /// Signs the version, under its item's header, with the editing
+    /// device's key.
+    pub fn sign(&mut self, header: &ItemHeader, signer: &dyn Signer) -> Result<()> {
+        self.sig = signer.sign(&self.signable(header)?)?.to_vec();
         Ok(())
     }
 
-    /// Checks the device signature.
-    pub fn verify(&self, key: &VerifyingKey) -> Result<()> {
+    /// Checks the device signature against the item's header.
+    pub fn verify(&self, header: &ItemHeader, key: &VerifyingKey) -> Result<()> {
         Ok(key.verify(
-            &self.signable()?,
+            &self.signable(header)?,
             &self.sig,
             &format!("item version {}", self.n),
         )?)
     }
 
-    /// BLAKE3 of the signed version without its key envelopes: what the
-    /// manifest records and the next version names as `parent_hash`. Stable
-    /// across shredding, so a tombstone keeps the last version hash.
-    pub fn hash(&self) -> Result<Hash32> {
-        Ok(hash(&to_canonical(&self.without_keys())?))
+    /// BLAKE3 of the item header and the signed version without its key
+    /// envelopes: what the manifest records and the next version names as
+    /// `parent_hash`. Stable across shredding, so a tombstone keeps the
+    /// last version hash.
+    pub fn hash(&self, header: &ItemHeader) -> Result<Hash32> {
+        let version = self.without_keys();
+        Ok(hash(&to_canonical(&Covered { header, version })?))
     }
 
     /// Whether this version's key was destroyed.
@@ -266,6 +300,24 @@ pub struct Item {
 }
 
 impl Item {
+    /// The header every version is signed under.
+    pub fn header(&self) -> ItemHeader {
+        ItemHeader {
+            item_id: self.item_id,
+            vault_id: self.vault_id,
+            kind: self.kind,
+            schema_v: self.schema_v,
+            class: self.class,
+            device_only: self.device_only,
+        }
+    }
+
+    /// BLAKE3 of the newest version under this item's header: what the
+    /// manifest records for it.
+    pub fn latest_hash(&self) -> Result<Hash32> {
+        self.latest()?.hash(&self.header())
+    }
+
     /// The newest version.
     pub fn latest(&self) -> Result<&ItemVersion> {
         self.versions
@@ -284,6 +336,17 @@ impl Item {
     /// Whether every key is gone.
     pub fn is_shredded(&self) -> bool {
         self.item_key.is_none() && self.versions.iter().all(ItemVersion::is_shredded)
+    }
+
+    /// As canonical CBOR: what a store keeps. Ciphertext and public
+    /// structure only.
+    pub fn to_bytes(&self) -> Result<Vec<u8>> {
+        Ok(to_canonical(self)?)
+    }
+
+    /// From CBOR.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        Ok(lockdown_crypto::cbor::from_slice(bytes)?)
     }
 }
 

@@ -28,7 +28,7 @@ pub fn sample_vault() -> Vault {
     Vault::create(
         sample_context(),
         Id::new(),
-        SigningKey::generate().expect("random"),
+        Box::new(SigningKey::generate().expect("random")),
         Some(cjk),
     )
     .expect("a fresh vault")

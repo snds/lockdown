@@ -9,13 +9,14 @@
 //! Every device remembers the newest sequence it has seen and refuses an
 //! older one: "Rollback attempt blocked."
 
+use lockdown_crypto::VerifyingKey;
 use lockdown_crypto::aead::Sealed;
 use lockdown_crypto::cbor::to_canonical;
 use lockdown_crypto::hash::hash;
-use lockdown_crypto::{SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
 use crate::item::ItemState;
+use crate::signer::Signer;
 use crate::{Error, Hash32, Id, Result, Timestamp};
 
 /// The manifest format version.
@@ -99,8 +100,8 @@ impl ManifestHead {
     }
 
     /// Signs the head.
-    pub fn sign(&mut self, key: &SigningKey) -> Result<()> {
-        self.sig = key.sign(&self.signable()?).to_vec();
+    pub fn sign(&mut self, signer: &dyn Signer) -> Result<()> {
+        self.sig = signer.sign(&self.signable()?)?.to_vec();
         Ok(())
     }
 
@@ -123,6 +124,16 @@ impl ManifestHead {
         let mut copy = self.clone();
         copy.checkpoint = None;
         Ok(hash(&to_canonical(&copy)?))
+    }
+
+    /// As canonical CBOR: what a store keeps.
+    pub fn to_bytes(&self) -> Result<Vec<u8>> {
+        Ok(to_canonical(self)?)
+    }
+
+    /// From CBOR.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        Ok(lockdown_crypto::cbor::from_slice(bytes)?)
     }
 }
 

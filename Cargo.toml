@@ -88,6 +88,12 @@ idna = "1.1"
 psl = "2.1"
 thiserror = "2.0"
 
+# The local store (03-architecture §11 q.1, decided in 07-workspace §4):
+# plain SQLite holding ciphertext only. `bundled` compiles SQLite in, so
+# every platform links the same version.
+rusqlite = { version = "0.40", features = ["bundled"] }
+tempfile = "3"
+
 # Binaries.
 clap = { version = "4.5", features = ["derive"] }
 axum = "0.8"

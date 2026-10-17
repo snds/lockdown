@@ -5,28 +5,38 @@
 //! with the device key, and commits a new manifest head. Purging an item
 //! destroys its Item Key and every Version Key (crypto-shredding) and leaves
 //! a tombstone so the chain stays valid.
+//!
+//! A vault round-trips through any [`Store`]: [`Vault::save`] writes the
+//! vault record, the items and the heads; [`Vault::load`] reads them back,
+//! verifies the whole chain against the devices the caller trusts, refuses
+//! a rollback behind the head this device last accepted, unwraps the Vault
+//! Key with the persona's App Data Key, and checks every item against the
+//! newest signed head before it trusts a byte of it.
 
 use std::collections::BTreeMap;
 
 use ecosystem_identity::SymmetricKey;
 use ecosystem_identity::keys::{AppDataKey, CrownJewelKey};
+use lockdown_crypto::VerifyingKey;
 use lockdown_crypto::aead::{Sealed, open, seal};
 use lockdown_crypto::cbor::{from_slice, to_canonical};
-use lockdown_crypto::{SigningKey, VerifyingKey};
+use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
 use crate::field::{FieldAad, PlainField, SCHEMA_V, SealedField};
-use crate::item::{ITEM_V, Item, ItemClass, ItemKind, ItemState, ItemVersion};
+use crate::item::{ITEM_V, Item, ItemClass, ItemHeader, ItemKind, ItemState, ItemVersion};
 use crate::keys::{
     ItemKey, KeyPlace, KeyPurpose, VaultKey, VersionKey, WRAP_V, WrappedBy, WrappedKey,
     WrapperKind, unwrap_key, wrap_key,
 };
 use crate::manifest::{MANIFEST_V, ManifestEntry, ManifestHead, Member, verify_chain};
+use crate::signer::Signer;
+use crate::store::{Store, VAULT_RECORD_V, VaultRecord};
 use crate::{Error, Hash32, Id, Result, Timestamp};
 
 /// Who and where a vault belongs to: the ids that go into every piece of
 /// associated data.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct VaultContext {
     /// The profile.
     pub profile_id: Id,
@@ -40,6 +50,26 @@ pub struct VaultContext {
     pub crown_jewel_key_id: Id,
 }
 
+/// What opens a stored vault on this device: the persona's keys from the
+/// identity, this device's signer, and what this device remembers.
+pub struct Unlock<'a> {
+    /// The persona's Lockdown App Data Key, which wraps the Vault Key.
+    pub app_data_key: &'a AppDataKey,
+    /// The persona's Crown-Jewel Key, when the persona is unlocked for it.
+    pub crown_jewel_key: Option<CrownJewelKey>,
+    /// This device's id (the identity's `Device.device_id`).
+    pub device_id: Id,
+    /// This device's signer: the key behind `Device.device_pub`.
+    pub signer: Box<dyn Signer>,
+    /// The public key of any other device whose heads and versions may be
+    /// trusted, by device id: the identity's `Device` records. This
+    /// device's own key is always trusted.
+    pub known_devices: &'a dyn Fn(Id) -> Option<VerifyingKey>,
+    /// The newest manifest sequence this device accepted for the vault, or
+    /// zero when it has none. A store behind it is refused as a rollback.
+    pub last_accepted_seq: u64,
+}
+
 /// One unlocked vault.
 pub struct Vault {
     ctx: VaultContext,
@@ -47,7 +77,8 @@ pub struct Vault {
     vault_key_id: Id,
     crown_jewel_key: Option<CrownJewelKey>,
     device_id: Id,
-    signer: SigningKey,
+    signer: Box<dyn Signer>,
+    verifying: VerifyingKey,
     items: BTreeMap<Id, Item>,
     heads: Vec<ManifestHead>,
     members: Vec<Member>,
@@ -72,9 +103,10 @@ impl Vault {
     pub fn create(
         ctx: VaultContext,
         device_id: Id,
-        signer: SigningKey,
+        signer: Box<dyn Signer>,
         crown_jewel_key: Option<CrownJewelKey>,
     ) -> Result<Self> {
+        let verifying = signer.verifying_key()?;
         let mut vault = Self {
             ctx,
             vault_key: VaultKey::from_bytes(lockdown_crypto::rand::random_32()?),
@@ -82,6 +114,7 @@ impl Vault {
             crown_jewel_key,
             device_id,
             signer,
+            verifying,
             items: BTreeMap::new(),
             heads: Vec::new(),
             members: vec![Member {
@@ -94,15 +127,138 @@ impl Vault {
         Ok(vault)
     }
 
+    /// Opens the vault `vault_id` from `store` (02-model §8; 03-architecture
+    /// §6 "rollback check"). In order: the chain of heads is verified
+    /// against the devices `unlock` trusts and refused if it has fallen
+    /// behind `last_accepted_seq` ("Rollback attempt blocked"); the Vault
+    /// Key is unwrapped with the App Data Key at the place the record
+    /// names; then every item is checked against the newest head (same
+    /// set of ids, same latest-version hash, same state) so a blob changed
+    /// after the head was signed is refused before any field is opened.
+    pub fn load(store: &dyn Store, vault_id: Id, unlock: Unlock<'_>) -> Result<Self> {
+        let record = store.get_vault(vault_id)?;
+        if record.v > VAULT_RECORD_V {
+            return Err(Error::SchemaTooNew {
+                found: record.v,
+                supported: VAULT_RECORD_V,
+            });
+        }
+        let ctx = record.context;
+        if ctx.vault_id != vault_id {
+            return Err(Error::ManifestMismatch {
+                item_id: vault_id,
+                why: format!("the vault record is for vault {}", ctx.vault_id),
+            });
+        }
+        let verifying = unlock.signer.verifying_key()?;
+        let own = verifying.clone();
+        let device_id = unlock.device_id;
+        let known = unlock.known_devices;
+        let heads = store.heads(vault_id)?;
+        let newest = verify_chain(
+            &heads,
+            |signer| {
+                if signer == device_id {
+                    Some(own.clone())
+                } else {
+                    known(signer)
+                }
+            },
+            unlock.last_accepted_seq,
+        )?
+        .clone();
+        if newest.vault_id != vault_id {
+            return Err(Error::ChainBroken {
+                seq: newest.seq,
+                why: "the heads belong to another vault".into(),
+            });
+        }
+
+        let vault_key_id = newest.vault_key_ref;
+        let place = KeyPlace {
+            profile_id: ctx.profile_id,
+            persona_id: ctx.persona_id,
+            vault_id,
+            key_id: vault_key_id,
+            purpose: KeyPurpose::Vault,
+            wrapped_by: WrappedBy::new(WrapperKind::AppData, ctx.app_data_key_id),
+            v: WRAP_V,
+        };
+        let vault_key: VaultKey = unwrap_key(&record.vault_key, unlock.app_data_key, &place)?;
+
+        let mut items = BTreeMap::new();
+        for item_id in store.list_items(vault_id)? {
+            let item = store.get_item(vault_id, item_id)?;
+            if item.item_id != item_id || item.vault_id != vault_id {
+                return Err(Error::ManifestMismatch {
+                    item_id,
+                    why: "the blob names another item or vault".into(),
+                });
+            }
+            items.insert(item_id, item);
+        }
+        check_items_against_head(&items, &newest)?;
+
+        let mut vault = Self {
+            ctx,
+            vault_key,
+            vault_key_id,
+            crown_jewel_key: unlock.crown_jewel_key,
+            device_id,
+            signer: unlock.signer,
+            verifying,
+            items,
+            heads,
+            members: Vec::new(),
+        };
+        vault.members = vault.members()?;
+        Ok(vault)
+    }
+
+    /// Writes the vault to `store`: its record (the Vault Key under
+    /// `app_data_key`), every item, and every head the store does not have
+    /// yet. Safe to call after every change.
+    pub fn save(&self, store: &mut dyn Store, app_data_key: &AppDataKey) -> Result<()> {
+        let record = self.record(app_data_key)?;
+        let have = match store.latest_head(self.ctx.vault_id) {
+            Ok(h) => h.seq,
+            Err(crate::store::StoreError::NotFound(_)) => 0,
+            Err(e) => return Err(e.into()),
+        };
+        let new_heads = self
+            .heads
+            .iter()
+            .filter(|h| h.seq > have)
+            .cloned()
+            .collect();
+        store.save_all(record, self.items.values().cloned().collect(), new_heads)?;
+        Ok(())
+    }
+
+    /// The vault as a store keeps it: the context and the Vault Key under
+    /// `app_data_key`.
+    pub fn record(&self, app_data_key: &AppDataKey) -> Result<VaultRecord> {
+        Ok(VaultRecord {
+            v: VAULT_RECORD_V,
+            context: self.ctx,
+            vault_key: self.wrap_vault_key(app_data_key)?,
+        })
+    }
+
     /// The context.
     pub fn context(&self) -> &VaultContext {
         &self.ctx
     }
 
+    /// This device's id.
+    pub fn device_id(&self) -> Id {
+        self.device_id
+    }
+
     /// The device key's public half, for other devices to verify this
     /// device's heads and versions.
     pub fn verifying_key(&self) -> VerifyingKey {
-        self.signer.verifying_key()
+        self.verifying.clone()
     }
 
     /// The Vault Key wrapped by the persona's Lockdown App Data Key: what
@@ -125,9 +281,21 @@ impl Vault {
         self.heads.last().map(|h| h.seq).unwrap_or(0)
     }
 
+    /// The newest manifest head.
+    pub fn head(&self) -> Result<&ManifestHead> {
+        self.heads
+            .last()
+            .ok_or_else(|| Error::NotFound("a manifest head".into()))
+    }
+
     /// Every manifest head, oldest first.
     pub fn heads(&self) -> &[ManifestHead] {
         &self.heads
+    }
+
+    /// Every item envelope, in id order.
+    pub fn items(&self) -> impl Iterator<Item = &Item> {
+        self.items.values()
     }
 
     /// An item's envelope.
@@ -170,7 +338,15 @@ impl Vault {
         let item_id = Id::new();
         let item_key = ItemKey::from_bytes(lockdown_crypto::rand::random_32()?);
         let wrapped_item_key = self.wrap_item_key(item_id, class, &item_key)?;
-        let version = self.make_version(item_id, &item_key, 1, Hash32::ZERO, &fields)?;
+        let header = ItemHeader {
+            item_id,
+            vault_id: self.ctx.vault_id,
+            kind,
+            schema_v: SCHEMA_V,
+            class,
+            device_only: false,
+        };
+        let version = self.make_version(&header, &item_key, 1, Hash32::ZERO, &fields)?;
         let item = Item {
             v: ITEM_V,
             item_id,
@@ -195,10 +371,11 @@ impl Vault {
     pub fn update_item(&mut self, item_id: Id, fields: Vec<PlainField>) -> Result<u64> {
         let item = self.item(item_id)?;
         let item_key = self.item_key(item)?;
+        let header = item.header();
         let latest = item.latest()?;
         let n = latest.n + 1;
-        let parent_hash = latest.hash()?;
-        let version = self.make_version(item_id, &item_key, n, parent_hash, &fields)?;
+        let parent_hash = latest.hash(&header)?;
+        let version = self.make_version(&header, &item_key, n, parent_hash, &fields)?;
         self.items
             .get_mut(&item_id)
             .ok_or_else(|| Error::NotFound(format!("item {item_id}")))?
@@ -225,7 +402,7 @@ impl Vault {
             });
         }
         let version = item.version(n)?;
-        version.verify(&self.verifying_key())?;
+        version.verify(&item.header(), &self.verifying_key())?;
         let item_key = self.item_key(item)?;
         let version_key = self.version_key(item, version, &item_key)?;
         version
@@ -398,12 +575,13 @@ impl Vault {
 
     fn make_version(
         &self,
-        item_id: Id,
+        header: &ItemHeader,
         item_key: &ItemKey,
         n: u64,
         parent_hash: Hash32,
         fields: &[PlainField],
     ) -> Result<ItemVersion> {
+        let item_id = header.item_id;
         let version_key = VersionKey::from_bytes(lockdown_crypto::rand::random_32()?);
         let version_key_id = Id::new();
         let wrapped = wrap_key(
@@ -435,7 +613,7 @@ impl Vault {
             attachments: Vec::new(),
             sig: Vec::new(),
         };
-        version.sign(&self.signer)?;
+        version.sign(header, self.signer.as_ref())?;
         Ok(version)
     }
 
@@ -450,7 +628,7 @@ impl Vault {
             entries.push(ManifestEntry {
                 item_id: item.item_id,
                 rev: item.rev,
-                version_hash: item.latest()?.hash()?,
+                version_hash: item.latest_hash()?,
                 state: item.state,
                 shredded: item.is_shredded(),
             });
@@ -468,10 +646,57 @@ impl Vault {
             sig: Vec::new(),
             checkpoint: None,
         };
-        head.sign(&self.signer)?;
+        head.sign(self.signer.as_ref())?;
         self.heads.push(head);
         Ok(())
     }
+}
+
+/// The items must be exactly what the newest signed head lists, each with
+/// the latest-version hash and state the head recorded.
+fn check_items_against_head(items: &BTreeMap<Id, Item>, head: &ManifestHead) -> Result<()> {
+    for entry in &head.entries {
+        let item = items
+            .get(&entry.item_id)
+            .ok_or_else(|| Error::ManifestMismatch {
+                item_id: entry.item_id,
+                why: "the manifest lists it but the store doesn't have it".into(),
+            })?;
+        let mismatch = |why: &str| Error::ManifestMismatch {
+            item_id: entry.item_id,
+            why: why.into(),
+        };
+        if item.v > ITEM_V {
+            return Err(Error::SchemaTooNew {
+                found: item.v,
+                supported: ITEM_V,
+            });
+        }
+        if item.latest_hash()? != entry.version_hash {
+            return Err(mismatch(
+                "its latest version isn't the one the manifest signed",
+            ));
+        }
+        if item.rev != entry.rev {
+            return Err(mismatch("its revision isn't what the manifest says"));
+        }
+        if item.state != entry.state {
+            return Err(mismatch("its state isn't what the manifest says"));
+        }
+        if item.is_shredded() != entry.shredded {
+            return Err(mismatch("its keys aren't in the state the manifest says"));
+        }
+    }
+    if let Some(extra) = items
+        .keys()
+        .find(|id| !head.entries.iter().any(|e| e.item_id == **id))
+    {
+        return Err(Error::ManifestMismatch {
+            item_id: *extra,
+            why: "the store has it but the manifest doesn't list it".into(),
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -502,7 +727,7 @@ mod tests {
         let item = vault.item(id).unwrap();
         assert_eq!(
             item.versions[1].parent_hash,
-            item.versions[0].hash().unwrap()
+            item.versions[0].hash(&item.header()).unwrap()
         );
         // Heads: create (1), item (2), update (3).
         assert_eq!(vault.seq(), 3);
@@ -531,7 +756,8 @@ mod tests {
             item_b.versions[0].clone()
         };
         let mut resigned = signer_version;
-        resigned.sign(&vault.signer).unwrap();
+        let header_b = vault.items[&b].header();
+        resigned.sign(&header_b, vault.signer.as_ref()).unwrap();
         vault.items.get_mut(&b).unwrap().versions[0] = resigned;
         assert!(
             matches!(vault.open_item(b), Err(Error::FieldTampered { field_id }) if field_id == "pw")
@@ -541,7 +767,8 @@ mod tests {
         let old = vault.items[&a].versions[0].fields[3].clone();
         let mut v2 = vault.items[&a].versions[1].clone();
         v2.fields[3] = old;
-        v2.sign(&vault.signer).unwrap();
+        let header_a = vault.items[&a].header();
+        v2.sign(&header_a, vault.signer.as_ref()).unwrap();
         vault.items.get_mut(&a).unwrap().versions[1] = v2;
         assert!(matches!(
             vault.open_version(a, 2),
@@ -551,6 +778,13 @@ mod tests {
         vault.items.get_mut(&a).unwrap().versions[0].edited_at = Timestamp(1);
         assert!(matches!(
             vault.open_version(a, 1),
+            Err(Error::Crypto(lockdown_crypto::Error::BadSignature(_)))
+        ));
+        // The header is under the signature too: relabel the item and the
+        // untouched version no longer verifies.
+        vault.items.get_mut(&b).unwrap().kind = ItemKind::Note;
+        assert!(matches!(
+            vault.open_item(b),
             Err(Error::Crypto(lockdown_crypto::Error::BadSignature(_)))
         ));
     }
@@ -615,10 +849,7 @@ mod tests {
         let head = vault.heads.last().unwrap();
         assert_eq!(head.entries[0].state, ItemState::Tombstone);
         assert!(head.entries[0].shredded);
-        assert_eq!(
-            head.entries[0].version_hash,
-            backup.versions[1].hash().unwrap()
-        );
+        assert_eq!(head.entries[0].version_hash, backup.latest_hash().unwrap());
         // Putting the backup's ciphertext back does not help: the keys are gone
         // from the item, and the version keys were wrapped by the item key.
         vault.items.insert(
@@ -653,7 +884,7 @@ mod tests {
         let mut with_key = Vault::create(
             ctx,
             device,
-            SigningKey::generate().unwrap(),
+            Box::new(lockdown_crypto::SigningKey::generate().unwrap()),
             Some(CrownJewelKey::generate().unwrap()),
         )
         .unwrap();

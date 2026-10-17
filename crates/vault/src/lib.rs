@@ -26,7 +26,9 @@
 //! - [`item`] — the item envelope, kinds, classes, states, versions
 //! - [`crown_jewel`] — the crown-jewel rules and default classification
 //! - [`manifest`] — the signed, hash-chained manifest head and chain check
-//! - [`vault`] — [`Vault`]: create, update, open, purge, commit heads
+//! - [`signer`] — who signs heads and versions: the device's key
+//! - [`store`] — the local store contract a vault loads from and saves to
+//! - [`vault`] — [`Vault`]: create, update, open, purge, commit heads, load, save
 
 pub mod crown_jewel;
 pub mod error;
@@ -34,6 +36,8 @@ pub mod field;
 pub mod item;
 pub mod keys;
 pub mod manifest;
+pub mod signer;
+pub mod store;
 pub mod test_support;
 pub mod vault;
 
@@ -47,10 +51,12 @@ pub use crown_jewel::{
 };
 pub use error::{Error, Result};
 pub use field::{FieldAad, FieldKind, FieldValue, PlainField, SCHEMA_V, SealedField};
-pub use item::{AttachmentRef, Item, ItemClass, ItemKind, ItemState, ItemVersion};
+pub use item::{AttachmentRef, Item, ItemClass, ItemHeader, ItemKind, ItemState, ItemVersion};
 pub use keys::{
     AttachmentKey, ItemKey, KeyPlace, KeyPurpose, VaultKey, VersionKey, WrappedBy, WrappedKey,
     WrapperKind, unwrap_key, wrap_key,
 };
 pub use manifest::{Checkpoint, ManifestEntry, ManifestHead, Member, verify_chain};
-pub use vault::{Vault, VaultContext};
+pub use signer::Signer;
+pub use store::{Store, StoreError, StoreResult, VAULT_RECORD_V, VaultRecord};
+pub use vault::{Unlock, Vault, VaultContext};

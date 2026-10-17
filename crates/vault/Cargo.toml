@@ -14,3 +14,8 @@ serde.workspace = true
 serde_bytes.workspace = true
 zeroize.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+# Test speed only: the identity crate's lowered Argon2id floor (07-workspace §2).
+ecosystem-identity = { workspace = true, features = ["insecure-test-kdf"] }

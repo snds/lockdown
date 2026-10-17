@@ -31,6 +31,22 @@ pub enum Error {
         /// What was wrong.
         why: String,
     },
+    /// An item in the store does not match what the newest signed manifest
+    /// head says about it. Shown as tampering: the manifest is the table of
+    /// contents, and a blob that disagrees with it was changed after the
+    /// head was signed.
+    #[error(
+        "item {item_id} doesn't match the vault's manifest ({why}); the store may have been tampered with"
+    )]
+    ManifestMismatch {
+        /// The item.
+        item_id: Id,
+        /// What disagreed.
+        why: String,
+    },
+    /// The local store failed or refused.
+    #[error(transparent)]
+    Store(#[from] crate::store::StoreError),
     /// The server offered an older manifest than this device accepted.
     #[error(
         "Rollback attempt blocked: the server offered manifest {found} but this device has already accepted {remembered}"

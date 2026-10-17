@@ -20,6 +20,8 @@ allow = [
     "CC0-1.0",
     "Unicode-3.0",
     "BSL-1.0",
+    # foldhash (via hashbrown ← hashlink ← rusqlite): zlib/libpng, permissive.
+    "Zlib",
 ]
 confidence-threshold = 0.8
 

@@ -9,4 +9,13 @@ repository.workspace = true
 
 [dependencies]
 lockdown-vault.workspace = true
+lockdown-crypto.workspace = true
+ecosystem-identity.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+# Test speed only: the identity crate's lowered Argon2id floor (07-workspace §2).
+ecosystem-identity = { workspace = true, features = ["insecure-test-kdf"] }
