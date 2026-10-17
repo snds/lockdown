@@ -69,6 +69,7 @@ impl Client {
             transport: &self.transport,
             token: &self.token,
             device_label: self.label,
+            kt: None,
         }
     }
 }

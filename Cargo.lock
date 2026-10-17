@@ -3007,6 +3007,7 @@ dependencies = [
  "lockdown-store",
  "lockdown-sync",
  "lockdown-vault",
+ "rusqlite",
  "serde",
  "tempfile",
 ]

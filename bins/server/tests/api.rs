@@ -243,6 +243,7 @@ impl LocalVault {
             entries,
             signer: self.device.id,
             signed_at: Timestamp::now(),
+            sth: None,
             sig: Vec::new(),
             checkpoint: None,
         };

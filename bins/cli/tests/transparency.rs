@@ -133,6 +133,7 @@ fn the_log_records_logins_and_heads_and_the_clients_audit_it() {
         transport: &ta,
         token: &token_a,
         device_label: "laptop",
+        kt: None,
     };
     sync_vault(&syncer_a, &mut vault_a, &record, &mut state_a, &mut store_a).unwrap();
     assert_eq!(state.storage.log_size().unwrap(), 3);
@@ -152,19 +153,7 @@ fn the_log_records_logins_and_heads_and_the_clients_audit_it() {
         vault: &vault_a,
     };
     let mut session = KtSession::begin(&ta, &token_a, None).unwrap();
-    let report = session.audit(Id::new(), &known_a);
-    assert!(
-        report.unwrap_err().to_string().contains("another account"),
-        "the account id must be the session's"
-    );
-    let account = state
-        .storage
-        .account_by_login("me@example.com")
-        .unwrap()
-        .unwrap()
-        .account_id;
-    let mut session = KtSession::begin(&ta, &token_a, None).unwrap();
-    let report = session.audit(account, &known_a).unwrap();
+    let report = session.audit(&known_a).unwrap();
     assert_eq!(report.checked.len(), 3);
     assert!(
         matches!(report.checked[0].leaf.entry, LogEntry::Device { device_id, .. } if device_id == device_a.id)
@@ -183,7 +172,7 @@ fn the_log_records_logins_and_heads_and_the_clients_audit_it() {
         vault: &vault_a,
     };
     let mut session_b = KtSession::begin(&tb, &token_b, None).unwrap();
-    session_b.audit(account, &known_b).unwrap();
+    session_b.audit(&known_b).unwrap();
     assert_eq!(session_b.view.sth.root, view_a.sth.root);
 
     // More heads; A's next session proves the log grew from what it saw,
@@ -198,7 +187,7 @@ fn the_log_records_logins_and_heads_and_the_clients_audit_it() {
         devices: devices.clone(),
         vault: &vault_a,
     };
-    let report = session.audit(account, &known_a).unwrap();
+    let report = session.audit(&known_a).unwrap();
     assert_eq!(report.checked.len(), 1);
     session.verify_citation(session_b.citation()).unwrap();
     session_b.verify_citation(session.citation()).unwrap();
@@ -222,7 +211,7 @@ fn the_log_records_logins_and_heads_and_the_clients_audit_it() {
         &device_c,
     );
     let mut session = KtSession::begin(&ta, &token_a, Some(&session.view)).unwrap();
-    let err = session.audit(account, &known_a).unwrap_err();
+    let err = session.audit(&known_a).unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains(&device_c.id.to_string()), "{msg}");
     assert!(msg.contains("doesn't list"), "{msg}");
@@ -235,6 +224,162 @@ fn the_log_records_logins_and_heads_and_the_clients_audit_it() {
         vault: &vault_a,
     };
     let mut session = KtSession::begin(&ta, &token_a, Some(&view_a)).unwrap();
-    session.audit(account, &known_all).unwrap();
+    session.audit(&known_all).unwrap();
     assert_eq!(session.view.audited, 5);
+}
+
+/// A server on disk, so its log can be rewritten between two clients.
+fn server_on_disk(dir: &std::path::Path) -> (Arc<AppState>, RunningServer) {
+    let storage =
+        lockdown_server::storage::SqliteStorage::open(&dir.join("server.sqlite")).unwrap();
+    let keys =
+        lockdown_server::keys::ServerKeys::load_or_create(&dir.join("server-key.cbor")).unwrap();
+    let state = Arc::new(AppState::new(Box::new(storage), keys, Config::default()));
+    let running = run_in_background(state.clone()).unwrap();
+    (state, running)
+}
+
+#[test]
+fn a_forked_log_is_caught_by_the_citation_in_the_vault_head() {
+    // A syncs with a key-transparency session: the head it pushes cites
+    // the tree head it verified. The server then rewrites its log (one
+    // leaf replaced: the history A saw is gone) and serves the rewritten
+    // log to B, a fresh device with nothing remembered. B's own STH check
+    // passes (it has no memory to compare against); the citation in A's
+    // head does not connect to B's view, and B refuses to take the head.
+    let dir = tempfile::tempdir().unwrap();
+    let (state, running) = server_on_disk(dir.path());
+    let url = running.url();
+    let (device_a, device_b) = (Device::new(), Device::new());
+    let profile = Id::new();
+    let mut auth_a = OpaqueAccountAuth::new(
+        HttpTransport::new(&url).unwrap(),
+        "me@example.com",
+        device_a.binding(),
+    );
+    auth_a
+        .register_account(&profile, "correct horse battery staple")
+        .unwrap();
+    let (ta, token_a) = login(
+        &url,
+        "me@example.com",
+        "correct horse battery staple",
+        &device_a,
+    );
+    let adk = lockdown_crypto::identity::AppDataKey::generate().unwrap();
+    let ctx = sample_context();
+    let mut vault_a = Vault::create(ctx, device_a.id, Box::new(device_a.key()), None).unwrap();
+    vault_a.trust_device(device_b.id, device_b.public());
+    let record = vault_a.record(&adk).unwrap().to_bytes().unwrap();
+    vault_a
+        .create_item(ItemKind::Login, ItemClass::Standard, sample_login_fields())
+        .unwrap();
+    let kt_a = KtSession::begin(&ta, &token_a, None).unwrap();
+    assert_eq!(kt_a.sth().size, 1, "A's device leaf");
+    let mut store_a = MemoryStore::new();
+    let mut state_a = VaultSyncState::default();
+    let syncer_a = Syncer {
+        transport: &ta,
+        token: &token_a,
+        device_label: "laptop",
+        kt: Some(&kt_a),
+    };
+    sync_vault(&syncer_a, &mut vault_a, &record, &mut state_a, &mut store_a).unwrap();
+    let cited = vault_a
+        .head()
+        .unwrap()
+        .sth
+        .expect("the head cites the tree head");
+    assert_eq!(cited, kt_a.citation());
+    assert_eq!(state.storage.log_size().unwrap(), 2, "plus the head leaf");
+    let view_a = kt_a.view.clone();
+    drop(kt_a);
+
+    // An honest B first: the citation connects, the head is taken.
+    let (tb, token_b) = login(
+        &url,
+        "me@example.com",
+        "correct horse battery staple",
+        &device_b,
+    );
+    {
+        let kt_b = KtSession::begin(&tb, &token_b, None).unwrap();
+        kt_b.verify_citation(cited).unwrap();
+    }
+
+    // The server rewrites its log: the leaf at index 0 (A's device) is
+    // replaced by another device's, so every tree from size 1 on differs
+    // from what A saw. Done on the file with the server stopped.
+    drop(running);
+    {
+        let conn = rusqlite::Connection::open(dir.path().join("server.sqlite")).unwrap();
+        let account: String = conn
+            .query_row("SELECT account_id FROM kt_log WHERE idx = 0", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        let leaf = lockdown_vault::transparency::LogLeaf::new(
+            Id::parse(&account).unwrap(),
+            LogEntry::Device {
+                device_id: Id::new(),
+                device_pub: [42; 32],
+            },
+        );
+        let body = leaf.to_bytes().unwrap();
+        let hash = lockdown_crypto::merkle::leaf_hash(&body);
+        conn.execute(
+            "UPDATE kt_log SET leaf_hash = ?1, body = ?2 WHERE idx = 0",
+            rusqlite::params![&hash.0[..], body],
+        )
+        .unwrap();
+    }
+    let (state2, running2) = server_on_disk(dir.path());
+    let url2 = running2.url();
+    assert_eq!(state2.storage.log_size().unwrap(), 3);
+
+    // A, with its memory, catches the rewrite on its own: the new tree
+    // head doesn't continue the one it saw.
+    let ta2 = HttpTransport::new(&url2).unwrap();
+    let err = KtSession::begin(&ta2, &token_a, Some(&view_a)).unwrap_err();
+    assert!(err.to_string().contains("history was rewritten"), "{err}");
+
+    // B, fresh, with nothing to compare against, accepts the tree head;
+    // the citation in A's head is what gives the server away.
+    let (tb2, token_b2) = login(
+        &url2,
+        "me@example.com",
+        "correct horse battery staple",
+        &device_b,
+    );
+    let kt_b = KtSession::begin(&tb2, &token_b2, None).unwrap();
+    assert!(kt_b.sth().size >= 3);
+    let err = kt_b.verify_citation(cited).unwrap_err();
+    assert!(err.to_string().contains("Split view"), "{err}");
+    // And through the engine: bootstrapping B's vault refuses the chain
+    // before anything is written to B's store.
+    let mut store_b = MemoryStore::new();
+    let list = tb2.list_vaults(&token_b2).unwrap();
+    let syncer_b = Syncer {
+        transport: &tb2,
+        token: &token_b2,
+        device_label: "phone",
+        kt: Some(&kt_b),
+    };
+    let err = lockdown_sync::bootstrap_vault(&syncer_b, &mut store_b, &list.vaults[0]).unwrap_err();
+    assert!(err.to_string().contains("Split view"), "{err}");
+    assert!(
+        lockdown_vault::Store::list_vaults(&store_b)
+            .unwrap()
+            .is_empty(),
+        "nothing of A's was taken"
+    );
+    // Without a key-transparency session the same chain would have been
+    // taken: the citation is what catches the fork.
+    let blind = Syncer {
+        transport: &tb2,
+        token: &token_b2,
+        device_label: "phone",
+        kt: None,
+    };
+    assert!(lockdown_sync::bootstrap_vault(&blind, &mut store_b, &list.vaults[0]).is_ok());
 }

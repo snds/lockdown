@@ -24,6 +24,8 @@ serde.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+# The forked-log test rewrites a server's log file between two clients.
+rusqlite.workspace = true
 # The server, in process, so the sync tests spin it on a random port.
 lockdown-server.workspace = true
 # Test speed only: the identity crate's lowered Argon2id floor, so the

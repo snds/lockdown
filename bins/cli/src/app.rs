@@ -9,6 +9,7 @@
 //!   vault.sqlite              the ciphertext store (lockdown-store)
 //!   remembered.cbor           the newest heads this device accepted (rollback memory)
 //!   identity-sync.cbor        the identity's signed record set as last accepted from the server
+//!   transparency.cbor         per server: the pinned log key and the newest tree head verified here
 //!   sync.cbor                 the server, the login name, the session, how far each vault is synced
 //! ```
 //!
@@ -28,10 +29,13 @@ use ecosystem_identity::{
     AccountAuth, AccountCredentials, ExportKey, FileKeystore, Identity, RecoveryKit, default_root,
 };
 use lockdown_crypto::auth::{DeviceBinding, OpaqueAccountAuth};
-use lockdown_store::{HeadMemory, RememberedHead, SqliteStore, SyncedIdentity, write_private};
+use lockdown_store::{
+    HeadMemory, RememberedHead, SqliteStore, SyncedIdentity, TransparencyMemory, write_private,
+};
 use lockdown_sync::wire::ErrorCode;
 use lockdown_sync::{
-    HttpTransport, SyncReport, Syncer, Transport, VaultSyncState, pull_identity, push_identity,
+    AuditExpectations, HttpTransport, KtSession, SyncReport, Syncer, Transport, VaultSyncState,
+    pull_identity, push_identity,
 };
 use lockdown_vault::identity::{
     self, APP, DeviceTrust, OpenVault, default_persona, device_keys, find_persona,
@@ -39,13 +43,15 @@ use lockdown_vault::identity::{
     persona_vaults, record_set,
 };
 use lockdown_vault::identity_set::{Revocation, VaultBoundary};
-use lockdown_vault::{FieldKind, FieldValue, Id, ItemState, PlainField, Vault};
+use lockdown_vault::transparency::{CHECKPOINT_V, Checkpoint};
+use lockdown_vault::{FieldKind, FieldValue, Hash32, Id, ItemState, PlainField, Vault};
 use serde::{Deserialize, Serialize};
 
 const KEYSTORE_FILE: &str = "device-key.cbor";
 const STORE_FILE: &str = "vault.sqlite";
 const MEMORY_FILE: &str = "remembered.cbor";
 const IDENTITY_SYNC_FILE: &str = "identity-sync.cbor";
+const TRANSPARENCY_FILE: &str = "transparency.cbor";
 const SYNC_FILE: &str = "sync.cbor";
 const SYNC_V: u16 = 1;
 /// How many times a push of the identity manifest is retried after another
@@ -191,10 +197,67 @@ pub struct App {
     store: SqliteStore,
     memory: HeadMemory,
     synced: SyncedIdentity,
+    transparency: TransparencyMemory,
     sync: Option<SyncConfig>,
     opened: OpenVault,
     /// Whether this run created the identity.
     pub identity_created: bool,
+}
+
+/// What this device knows, for the key-transparency audit: its identity's
+/// devices (local and synced), the identity manifest it accepted, and the
+/// vault it holds.
+struct Expectations<'a> {
+    app: &'a App,
+}
+
+impl AuditExpectations for Expectations<'_> {
+    fn device_key(&self, device_id: Id) -> Option<[u8; 32]> {
+        if let Some(d) = self
+            .app
+            .identity
+            .devices()
+            .find(|d| d.device_id == device_id)
+        {
+            return Some(d.device_pub);
+        }
+        self.app
+            .synced
+            .device_keys()
+            .get(&device_id)
+            .map(|k| k.to_bytes())
+    }
+
+    fn own_device(&self) -> Id {
+        self.app.identity.device_id()
+    }
+
+    fn identity_head(&self) -> Option<(u64, Hash32)> {
+        let m = self.app.synced.manifest()?;
+        Some((m.seq, m.hash().ok()?))
+    }
+
+    /// Only heads the server confirmed to this device count: heads after
+    /// `synced_seq` are provisional offline heads that the next sync
+    /// replaces with the server's chain (D55), so the log may well name
+    /// another device's head at that `seq`.
+    fn vault_head(&self, vault_id: Id, seq: u64) -> Option<Hash32> {
+        let vault = self.app.vault();
+        if vault.context().vault_id != vault_id {
+            return None;
+        }
+        let synced = self
+            .app
+            .sync
+            .as_ref()
+            .and_then(|c| c.vaults.get(&vault_id))
+            .map(|s| s.synced_seq)
+            .unwrap_or(0);
+        if seq > synced {
+            return None;
+        }
+        vault.head_at(seq).and_then(|h| h.hash().ok())
+    }
 }
 
 impl App {
@@ -285,6 +348,8 @@ impl App {
         let isk_pub = identity.profile().isk_pub;
         let mut synced = SyncedIdentity::open(&paths.data.join(IDENTITY_SYNC_FILE), Some(&isk_pub))
             .map_err(|e| e.to_string())?;
+        let transparency = TransparencyMemory::open(&paths.data.join(TRANSPARENCY_FILE))
+            .map_err(|e| e.to_string())?;
         let mut sync = SyncConfig::load(&paths.sync_file())?;
 
         // With an account: bring the identity's records in step first (so
@@ -374,6 +439,7 @@ impl App {
             store,
             memory,
             synced,
+            transparency,
             sync,
             opened,
             identity_created,
@@ -754,6 +820,17 @@ impl App {
                     "synced         seq {} (item revision {})",
                     state.synced_seq, state.synced_rev
                 ));
+                match self.transparency.view(&cfg.server) {
+                    Some(view) => lines.push(format!(
+                        "transparency   log of {} entries, root {}, audited through {}",
+                        view.sth.size,
+                        &view.sth.root.to_hex()[..16],
+                        view.audited
+                    )),
+                    None => {
+                        lines.push("transparency   not checked yet (run `lockdown sync`)".into())
+                    }
+                }
             }
             None => lines.push("account        none (run `lockdown account register`)".into()),
         }
@@ -1480,18 +1557,32 @@ impl App {
         }
     }
 
-    /// `lockdown sync`: pull, merge, push, head (03-architecture §6).
+    /// `lockdown sync`: key transparency first (04-security §6: the
+    /// server's tree head must continue the one this device saw, and the
+    /// account's own log entries must be what this device knows), then
+    /// pull, merge, push, head (03-architecture §6) with the verified tree
+    /// head cited in the new head and every pulled head's citation checked
+    /// against it, then the account's entries once more for what the sync
+    /// added. A failed proof or a split view stops everything before a
+    /// byte is written.
     pub fn sync(&mut self) -> Result<Vec<String>, String> {
-        let Some(cfg) = self.sync.as_mut() else {
+        let Some(cfg) = self.sync.as_ref() else {
             return Err("no account on this device; run `lockdown account register` or `lockdown account login` first".into());
         };
-        let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
+        let server = cfg.server.clone();
+        let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
         let token = cfg.session_token()?.to_string();
+        let remembered = self.transparency.view(&server).cloned();
+        let mut kt =
+            KtSession::begin(&transport, &token, remembered.as_ref()).map_err(|e| e.to_string())?;
+        kt.audit(&Expectations { app: self })
+            .map_err(|e| e.to_string())?;
         let label = device_name();
         let syncer = Syncer {
             transport: &transport,
             token: &token,
             device_label: &label,
+            kt: Some(&kt),
         };
         let vault_id = self.opened.vault.context().vault_id;
         let record = self
@@ -1500,7 +1591,13 @@ impl App {
             .record(&self.opened.keys.app_data_key)
             .and_then(|r| r.to_bytes())
             .map_err(|e| e.to_string())?;
-        let state = cfg.vaults.entry(vault_id).or_default();
+        let state = self
+            .sync
+            .as_mut()
+            .expect("checked above")
+            .vaults
+            .entry(vault_id)
+            .or_default();
         let outcome = lockdown_sync::sync_vault(
             &syncer,
             &mut self.opened.vault,
@@ -1534,8 +1631,345 @@ impl App {
         if let Some(cfg) = &self.sync {
             cfg.save(&self.paths.sync_file())?;
         }
-        Ok(sync_lines(&report))
+        // The entries this sync added (the new head, at least) are audited
+        // under a fresh tree head that must continue the one just verified.
+        let mut view = kt.view.clone();
+        drop(kt);
+        let mut kt =
+            KtSession::begin(&transport, &token, Some(&view)).map_err(|e| e.to_string())?;
+        kt.audit(&Expectations { app: self })
+            .map_err(|e| e.to_string())?;
+        view = kt.view.clone();
+        drop(kt);
+        self.transparency
+            .remember(&server, view.clone())
+            .map_err(|e| e.to_string())?;
+        let mut lines = sync_lines(&report);
+        lines.push(format!(
+            "transparency: log of {} entries verified (root {}), your entries audited through {}",
+            view.sth.size,
+            &view.sth.root.to_hex()[..16],
+            view.audited
+        ));
+        Ok(lines)
     }
+
+    // --- key transparency ---------------------------------------------------
+
+    /// `lockdown audit`: brings the identity's records in step, then prints
+    /// and verifies every log entry of the account from the start, each
+    /// under an inclusion proof against a tree head that must continue the
+    /// one this device remembers. Nothing in the vault changes.
+    pub fn audit(&mut self) -> Result<Vec<String>, String> {
+        let Some(cfg) = self.sync.as_ref() else {
+            return Err("no account on this device; run `lockdown account register` or `lockdown account login` first".into());
+        };
+        let server = cfg.server.clone();
+        let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
+        let token = cfg.session_token()?.to_string();
+        sync_identity_records(
+            &transport,
+            &token,
+            &mut self.identity,
+            self.keystore.as_ref(),
+            &mut self.synced,
+            &mut self.memory,
+        )?;
+        let remembered = self.transparency.view(&server).cloned();
+        let mut kt =
+            KtSession::begin(&transport, &token, remembered.as_ref()).map_err(|e| e.to_string())?;
+        // From the start, so the whole account history is printed.
+        kt.view.audited = 0;
+        kt.view.identity_logged = None;
+        kt.view.own_device_logged = false;
+        let sth = kt.sth().clone();
+        let mut lines = vec![
+            format!("server          {server}"),
+            format!("log key         {}", Hash32(kt.view.log_key).to_hex()),
+            format!(
+                "tree head       {} entries, root {}, signed {}",
+                sth.size,
+                sth.root.to_hex(),
+                lockdown_sync::engine::civil_date(sth.time)
+            ),
+            match &remembered {
+                Some(r) => format!(
+                    "remembered      {} entries, root {}: the log continues it",
+                    r.sth.size,
+                    &r.sth.root.to_hex()[..16]
+                ),
+                None => "remembered      nothing yet; this tree head is the first this device pins"
+                    .into(),
+            },
+            String::new(),
+        ];
+        let report = kt.audit(&Expectations { app: self }).map_err(|e| {
+            format!(
+                "{e}
+(the entries before it were fine; nothing was changed)"
+            )
+        })?;
+        for e in &report.checked {
+            lines.push(format!(
+                "#{:<6} {}  {}  verified",
+                e.index,
+                lockdown_sync::engine::civil_date(e.leaf.time),
+                e.leaf.describe()
+            ));
+        }
+        lines.push(String::new());
+        lines.push(format!(
+            "{} entries of this account verified under the tree head; every device key is one your identity lists, your identity manifest and this vault's heads are the ones this device holds{}",
+            report.checked.len(),
+            if report.pending > 0 {
+                format!("; {} newer entries wait for the next tree head", report.pending)
+            } else {
+                String::new()
+            }
+        ));
+        let view = kt.view.clone();
+        drop(kt);
+        self.transparency
+            .remember(&server, view)
+            .map_err(|e| e.to_string())?;
+        Ok(lines)
+    }
+
+    /// `lockdown checkpoint`: verifies the server's current tree head and
+    /// exports it with the account's newest heads as this device holds
+    /// them, signed by this device, as one text page a person can keep or
+    /// hand to another device.
+    pub fn checkpoint_export(&mut self) -> Result<(Checkpoint, String), String> {
+        let Some(cfg) = self.sync.as_ref() else {
+            return Err("no account on this device; run `lockdown account register` or `lockdown account login` first".into());
+        };
+        let server = cfg.server.clone();
+        let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
+        let token = cfg.session_token()?.to_string();
+        let remembered = self.transparency.view(&server).cloned();
+        let kt =
+            KtSession::begin(&transport, &token, remembered.as_ref()).map_err(|e| e.to_string())?;
+        let view = kt.view.clone();
+        drop(kt);
+        let vault = self.vault();
+        let head = vault.head().map_err(|e| e.to_string())?;
+        let mut cp = Checkpoint {
+            v: CHECKPOINT_V,
+            server: server.clone(),
+            log_key: view.log_key,
+            sth: view.sth.clone(),
+            identity_head: self
+                .synced
+                .manifest()
+                .and_then(|m| m.hash().ok().map(|h| (m.seq, h))),
+            vault_heads: vec![(
+                vault.context().vault_id,
+                head.seq,
+                head.hash().map_err(|e| e.to_string())?,
+            )],
+            exported_at: lockdown_vault::Timestamp::now().0,
+            device_id: self.identity.device_id(),
+            sig: Vec::new(),
+        };
+        let signer: Box<dyn lockdown_vault::Signer> = Box::new(self.keystore.clone());
+        cp.sign(signer.as_ref()).map_err(|e| e.to_string())?;
+        self.transparency
+            .remember(&server, view)
+            .map_err(|e| e.to_string())?;
+        let text = render_checkpoint(&cp, &device_name())?;
+        Ok((cp, text))
+    }
+
+    /// `lockdown checkpoint --verify FILE`: reads a checkpoint another
+    /// device exported and checks it against this device's view: same
+    /// server and log key, the tree head signed by that key and provably a
+    /// prefix (or continuation) of the one this device verifies now, the
+    /// exporting device one the identity lists and its signature good,
+    /// and every head it names the one this device holds at that `seq`.
+    pub fn checkpoint_verify(&mut self, text: &str) -> Result<Vec<String>, String> {
+        let cp = parse_checkpoint(text)?;
+        let Some(cfg) = self.sync.as_ref() else {
+            return Err("no account on this device; run `lockdown account login` first".into());
+        };
+        let server = cfg.server.clone();
+        let mut lines = Vec::new();
+        if cp.server.trim_end_matches('/') != server.trim_end_matches('/') {
+            return Err(format!(
+                "the checkpoint is for {} but this device uses {server}; the two can't be compared",
+                cp.server
+            ));
+        }
+        let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
+        let token = cfg.session_token()?.to_string();
+        let remembered = self.transparency.view(&server).cloned();
+        let kt =
+            KtSession::begin(&transport, &token, remembered.as_ref()).map_err(|e| e.to_string())?;
+        if cp.log_key != kt.view.log_key {
+            return Err(
+                "the checkpoint names a different log key from the one this device pinned; one of the two devices was shown another server"
+                    .into(),
+            );
+        }
+        let key =
+            lockdown_crypto::VerifyingKey::from_bytes(&cp.log_key).map_err(|e| e.to_string())?;
+        cp.sth.verify(&key).map_err(|e| e.to_string())?;
+        lines.push(format!(
+            "tree head       {} entries, root {}: signed by the server's log key",
+            cp.sth.size,
+            &cp.sth.root.to_hex()[..16]
+        ));
+        kt.verify_citation(cp.sth.as_ref())
+            .map_err(|e| e.to_string())?;
+        lines.push(format!(
+            "consistency     connects to this device's view of {} entries: one log, no fork",
+            kt.view.sth.size
+        ));
+        let device_key = Expectations { app: self }
+            .device_key(cp.device_id)
+            .ok_or_else(|| {
+                format!(
+                    "the checkpoint was exported by device {}, which this identity doesn't list",
+                    cp.device_id
+                )
+            })?;
+        cp.verify(
+            &lockdown_crypto::VerifyingKey::from_bytes(&device_key).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+        let name = self
+            .identity
+            .devices()
+            .find(|d| d.device_id == cp.device_id)
+            .map(|d| d.name.clone())
+            .unwrap_or_else(|| cp.device_id.to_string());
+        lines.push(format!(
+            "exported by     {name} on {}: signature good",
+            lockdown_sync::engine::civil_date(cp.exported_at)
+        ));
+        if let (Some((seq, hash)), Some(mine)) = (cp.identity_head, self.synced.manifest()) {
+            if mine.seq == seq {
+                if mine.hash().ok() != Some(hash) {
+                    return Err(format!(
+                        "the checkpoint's identity manifest {seq} isn't the one this device holds at that seq; the two devices were shown different identities"
+                    ));
+                }
+                lines.push(format!("identity        manifest {seq}: the same as here"));
+            } else {
+                lines.push(format!(
+                    "identity        manifest {seq} there, {} here (the other device synced at another time)",
+                    mine.seq
+                ));
+            }
+        }
+        for (vault_id, seq, hash) in &cp.vault_heads {
+            match (Expectations { app: self }).vault_head(*vault_id, *seq) {
+                Some(mine) if mine != *hash => {
+                    return Err(format!(
+                        "the checkpoint's head {seq} of vault {vault_id} isn't the one this device holds; the two devices were shown different vault histories"
+                    ));
+                }
+                Some(_) => lines.push(format!("vault {vault_id}  head {seq}: the same as here")),
+                None => lines.push(format!(
+                    "vault {vault_id}  head {seq}: not held here (another vault, or not pulled yet)"
+                )),
+            }
+        }
+        lines.push(format!(
+            "fingerprint     {}",
+            cp.fingerprint().map_err(|e| e.to_string())?.to_hex()
+        ));
+        lines.push("the checkpoint agrees with this device".into());
+        let view = kt.view.clone();
+        drop(kt);
+        self.transparency
+            .remember(&server, view)
+            .map_err(|e| e.to_string())?;
+        Ok(lines)
+    }
+}
+
+/// The checkpoint as one text page (D81): the facts a person can read and
+/// the signed bytes a device can check, in lowercase hex.
+pub fn render_checkpoint(cp: &Checkpoint, device: &str) -> Result<String, String> {
+    let mut page = format!(
+        "LOCKDOWN CHECKPOINT
+===================
+What the server's public log said when this device checked it, and the
+newest heads this device holds. Compare the fingerprint with another
+device's, or give this page to `lockdown checkpoint --verify FILE` there.
+
+Server:          {server}
+Log key:         {log_key}
+Tree head:       {size} entries
+Tree root:       {root}
+Signed at:       {signed}
+",
+        server = cp.server,
+        log_key = Hash32(cp.log_key).to_hex(),
+        size = cp.sth.size,
+        root = cp.sth.root.to_hex(),
+        signed = lockdown_sync::engine::civil_date(cp.sth.time),
+    );
+    match cp.identity_head {
+        Some((seq, hash)) => page.push_str(&format!(
+            "Identity head:   manifest {seq}, {}
+",
+            hash.to_hex()
+        )),
+        None => page.push_str(
+            "Identity head:   none synced yet
+",
+        ),
+    }
+    for (vault_id, seq, hash) in &cp.vault_heads {
+        page.push_str(&format!(
+            "Vault {vault_id}:
+                 head {seq}, {}
+",
+            hash.to_hex()
+        ));
+    }
+    page.push_str(&format!(
+        "Exported:        {} on {device} ({})
+Fingerprint:     {}
+
+Checkpoint:      {}
+",
+        lockdown_sync::engine::civil_date(cp.exported_at),
+        cp.device_id,
+        cp.fingerprint().map_err(|e| e.to_string())?.to_hex(),
+        hex(&cp.to_bytes().map_err(|e| e.to_string())?),
+    ));
+    Ok(page)
+}
+
+/// The checkpoint back from its page: the `Checkpoint:` line holds the
+/// signed bytes; everything else is for the person.
+pub fn parse_checkpoint(text: &str) -> Result<Checkpoint, String> {
+    let line = text
+        .lines()
+        .find_map(|l| l.strip_prefix("Checkpoint:"))
+        .ok_or("this isn't a Lockdown checkpoint page: no `Checkpoint:` line")?;
+    let bytes = unhex(line.trim()).ok_or("the checkpoint's bytes aren't readable")?;
+    Checkpoint::from_bytes(&bytes).map_err(|e| format!("the checkpoint didn't decode: {e}"))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        s.push_str(&format!("{b:02x}"));
+    }
+    s
+}
+
+fn unhex(text: &str) -> Option<Vec<u8>> {
+    if !text.len().is_multiple_of(2) || !text.is_ascii() {
+        return None;
+    }
+    text.as_bytes()
+        .chunks(2)
+        .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).ok()?, 16).ok())
+        .collect()
 }
 
 /// What `sync` prints.
@@ -1681,6 +2115,7 @@ fn pull_new_vaults(
         transport,
         token,
         device_label: "",
+        kt: None,
     };
     let mut pulled = 0;
     for summary in &list.vaults {

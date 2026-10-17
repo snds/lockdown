@@ -9,7 +9,10 @@
 //!    are verified as a chain continuing this device's copy, signed by
 //!    trusted devices, and replace whatever this device had after
 //!    `synced_seq` (heads it committed offline were never on the server;
-//!    their changes live on in the items).
+//!    their changes live on in the items). With a key-transparency session
+//!    ([`Syncer::kt`]), the tree head each pulled head cites is checked
+//!    against this device's view with a consistency proof: a server that
+//!    showed the other device another log is a split view, refused.
 //! 2. **Merge.** Items the new heads list are pulled, with the blobs their
 //!    attachments name that this device lacks (each checked against its
 //!    name before it is kept). One this device did not touch is taken as is. One both sides changed is merged field by
@@ -24,7 +27,7 @@
 //!    device got there between the pull and the push: merge against the
 //!    copy the server returned and go round again.
 //! 4. **Head.** A fresh head is committed over the items with their
-//!    server revisions and sent. `fork`, `gap` or `older_seq` means
+//!    server revisions, citing the tree head this device verified, and sent. `fork`, `gap` or `older_seq` means
 //!    another device moved first: go round again. A few rounds settle any
 //!    race; more than that is reported, not retried forever.
 //!
@@ -40,6 +43,7 @@ use lockdown_vault::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::kt::KtSession;
 use crate::transport::{Transport, TransportError};
 use crate::wire::{ErrorCode, ItemPush, PushReply, VaultSummary};
 use crate::{SyncError, merge_fields};
@@ -193,6 +197,10 @@ pub struct Syncer<'a> {
     pub token: &'a str,
     /// What this device is called, for conflict copies.
     pub device_label: &'a str,
+    /// The key-transparency session for this run, when the caller began
+    /// one: pulled heads' citations are checked against it and committed
+    /// heads cite it. `None` skips both (tests with no log in sight).
+    pub kt: Option<&'a KtSession<'a>>,
 }
 
 impl std::fmt::Debug for Syncer<'_> {
@@ -246,7 +254,11 @@ pub fn sync_vault(
         }
         let mut remote_heads = Vec::with_capacity(remote.heads.len());
         for bytes in &remote.heads {
-            remote_heads.push(ManifestHead::from_bytes(bytes)?);
+            let head = ManifestHead::from_bytes(bytes)?;
+            if let (Some(kt), Some(cited)) = (syncer.kt, head.sth) {
+                kt.verify_citation(cited)?;
+            }
+            remote_heads.push(head);
         }
         if state.synced_seq > 0 {
             let ours = vault
@@ -361,6 +373,9 @@ pub fn sync_vault(
             report.chain_rewritten = true;
         }
         vault.truncate_heads_after(state.synced_seq);
+        if let Some(kt) = syncer.kt {
+            vault.cite_sth(Some(kt.citation()));
+        }
         let seq = vault.commit()?;
         let head = vault.head()?;
         match t
@@ -393,9 +408,11 @@ pub fn sync_vault(
 
 /// Pulls a vault this device has never held into `store`: the record, the
 /// whole head chain, every item the newest head lists and the blobs
-/// those items name. Returns the sync state to continue from, or `None`
-/// when the server holds no head yet. The caller opens the vault
-/// afterwards, which verifies everything against the devices it trusts.
+/// those items name. With a key-transparency session, every head's cited
+/// tree head is checked against this device's view first. Returns the
+/// sync state to continue from, or `None` when the server holds no head
+/// yet. The caller opens the vault afterwards, which verifies everything
+/// against the devices it trusts.
 pub fn bootstrap_vault(
     syncer: &Syncer<'_>,
     store: &mut dyn Store,
@@ -415,7 +432,11 @@ pub fn bootstrap_vault(
         .map_err(session_or)?;
     let mut heads = Vec::with_capacity(remote.heads.len());
     for bytes in &remote.heads {
-        heads.push(ManifestHead::from_bytes(bytes)?);
+        let head = ManifestHead::from_bytes(bytes)?;
+        if let (Some(kt), Some(cited)) = (syncer.kt, head.sth) {
+            kt.verify_citation(cited)?;
+        }
+        heads.push(head);
     }
     let Some(newest) = heads.last().cloned() else {
         return Ok(None);

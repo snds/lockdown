@@ -421,6 +421,7 @@ pub async fn kt_entries(
         })
         .collect();
     Ok(Cbor(AccountEntries {
+        account_id: session.account_id,
         entries,
         size: state.storage.log_size()?,
     }))

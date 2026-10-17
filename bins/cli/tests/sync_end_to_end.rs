@@ -329,6 +329,48 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
         );
     }
 
+    // Key transparency from the shell: `sync` reported the log; `audit`
+    // prints every entry of the account verified; a checkpoint exported on
+    // the laptop verifies on the phone; `status` shows the view.
+    let out = a.ok(&["status"], None);
+    assert!(out.contains("transparency   log of "), "{out}");
+    let out = a.ok(&["audit"], None);
+    assert!(out.contains("tree head       "), "{out}");
+    assert!(out.contains("device "), "{out}");
+    assert!(out.contains("identity manifest "), "{out}");
+    assert!(out.contains("vault "), "{out}");
+    assert!(out.contains("entries of this account verified"), "{out}");
+    let cp_file = dir.path().join("laptop-checkpoint.txt");
+    let out = a.ok(&["checkpoint", "--out", cp_file.to_str().unwrap()], None);
+    assert!(out.contains("checkpoint written to"), "{out}");
+    let page = std::fs::read_to_string(&cp_file).unwrap();
+    assert!(page.starts_with("LOCKDOWN CHECKPOINT"), "{page}");
+    assert!(page.contains("Fingerprint:     "), "{page}");
+    let (ok, _, err) = a.run(&["checkpoint", "--out", cp_file.to_str().unwrap()], None);
+    assert!(!ok);
+    assert!(err.contains("exists already"), "{err}");
+    let out = b.ok(&["checkpoint", "--verify", cp_file.to_str().unwrap()], None);
+    assert!(out.contains("one log, no fork"), "{out}");
+    assert!(out.contains("exported by     Lockdown on laptop"), "{out}");
+    assert!(
+        out.contains("the checkpoint agrees with this device"),
+        "{out}"
+    );
+    // A page with a bent fingerprint line still verifies by its bytes; a
+    // page with bent bytes does not.
+    let bent = page.replace("Checkpoint:      ", "Checkpoint:      00");
+    let bent_file = dir.path().join("bent.txt");
+    std::fs::write(&bent_file, bent).unwrap();
+    let (ok, _, err) = b.run(
+        &["checkpoint", "--verify", bent_file.to_str().unwrap()],
+        None,
+    );
+    assert!(!ok);
+    assert!(
+        err.contains("didn't decode") || err.contains("aren't readable"),
+        "{err}"
+    );
+
     // A sees both devices and revokes the phone.
     let out = a.ok(&["device", "list"], None);
     assert_eq!(out.lines().count(), 2, "{out}");

@@ -87,8 +87,11 @@ pub struct LoggedEntry {
 
 /// `GET /v1/kt/entries?from=I`: the session's account's leaves at index
 /// `I` or later, oldest first, and the log size now.
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct AccountEntries {
+    /// The account the session stands for, as the server files it. Every
+    /// leaf must name it, and this device's own key must be among them.
+    pub account_id: Id,
     /// The entries.
     pub entries: Vec<LoggedEntry>,
     /// How many leaves the log has now.
@@ -273,15 +276,12 @@ impl<'a> KtSession<'a> {
     /// Audits the account's own entries since the last audit against
     /// `expect`. Moves `view.audited` past what was checked; entries past
     /// the verified STH wait for the next one.
-    pub fn audit(
-        &mut self,
-        account_id: Id,
-        expect: &dyn AuditExpectations,
-    ) -> Result<AuditReport, SyncError> {
+    pub fn audit(&mut self, expect: &dyn AuditExpectations) -> Result<AuditReport, SyncError> {
         let entries = self
             .transport
             .kt_entries(self.token, self.view.audited)
             .map_err(session_or)?;
+        let account_id = entries.account_id;
         let size = self.view.sth.size;
         let root = self.view.sth.root;
         let mut report = AuditReport::default();
@@ -437,6 +437,8 @@ mod tests {
     struct FakeLog {
         key: SigningKey,
         leaves: RefCell<Vec<Vec<u8>>>,
+        /// The account the fake says the session stands for.
+        account: RefCell<Id>,
     }
 
     impl FakeLog {
@@ -444,10 +446,12 @@ mod tests {
             Self {
                 key: SigningKey::generate().unwrap(),
                 leaves: RefCell::new(Vec::new()),
+                account: RefCell::new(Id::new()),
             }
         }
 
         fn append(&self, account: Id, entry: LogEntry) -> u64 {
+            *self.account.borrow_mut() = account;
             let leaf = LogLeaf::new(account, entry);
             let mut leaves = self.leaves.borrow_mut();
             leaves.push(leaf.to_bytes().unwrap());
@@ -541,6 +545,7 @@ mod tests {
         fn kt_entries(&self, _: &str, from: u64) -> TResult<AccountEntries> {
             let leaves = self.leaves.borrow();
             Ok(AccountEntries {
+                account_id: *self.account.borrow(),
                 entries: leaves
                     .iter()
                     .enumerate()
@@ -637,9 +642,10 @@ mod tests {
     #[test]
     fn an_honest_log_audits_clean_and_the_view_moves_forward() {
         let (log, account, known, vault) = honest();
+        let _ = account;
         let mut session = KtSession::begin(&log, "t", None).unwrap();
         assert_eq!(session.sth().size, 5);
-        let report = session.audit(account, &known).unwrap();
+        let report = session.audit(&known).unwrap();
         assert_eq!(report.checked.len(), 5);
         assert_eq!(report.pending, 0);
         assert_eq!(session.view.audited, 5);
@@ -659,7 +665,7 @@ mod tests {
         let mut session = KtSession::begin(&log, "t", Some(&remembered)).unwrap();
         assert_eq!(session.sth().size, 6);
         // A head this device hasn't pulled yet is left alone.
-        let report = session.audit(account, &known).unwrap();
+        let report = session.audit(&known).unwrap();
         assert_eq!(report.checked.len(), 1);
         assert_eq!(session.view.audited, 6);
         // The same size again: nothing new, nothing wrong.
@@ -743,11 +749,11 @@ mod tests {
         // The server binds the other device to a key the identity doesn't
         // list for it: the inclusion check passes (the log is honest about
         // what the server did) and the audit refuses it by name.
-        let (log, account, mut known, vault) = honest();
+        let (log, _account, mut known, vault) = honest();
         let other = *known.devices.keys().find(|d| **d != known.me).unwrap();
         known.devices.insert(other, [21; 32]);
         let mut session = KtSession::begin(&log, "t", None).unwrap();
-        let msg = message(session.audit(account, &known));
+        let msg = message(session.audit(&known));
         assert!(msg.contains("swapped a device key"), "{msg}");
 
         // A device logged in that the identity doesn't list at all.
@@ -760,15 +766,15 @@ mod tests {
             },
         );
         let mut session = KtSession::begin(&log, "t", None).unwrap();
-        let msg = message(session.audit(account, &known));
+        let msg = message(session.audit(&known));
         assert!(msg.contains("doesn't list"), "{msg}");
         assert!(msg.contains("password"), "{msg}");
 
         // The identity manifest in the log isn't the one this device holds.
-        let (log, account, mut known, _) = honest();
+        let (log, _account, mut known, _) = honest();
         known.identity = Some((1, Hash32([77; 32])));
         let mut session = KtSession::begin(&log, "t", None).unwrap();
-        let msg = message(session.audit(account, &known));
+        let msg = message(session.audit(&known));
         assert!(msg.contains("swapped your identity records"), "{msg}");
 
         // A newer identity manifest than this device was ever shown.
@@ -781,21 +787,21 @@ mod tests {
             },
         );
         let mut session = KtSession::begin(&log, "t", None).unwrap();
-        let msg = message(session.audit(account, &known));
+        let msg = message(session.audit(&known));
         assert!(msg.contains("hiding a change"), "{msg}");
 
         // A vault head with another hash than this device holds at that seq.
-        let (log, account, mut known, vault_id) = honest();
+        let (log, _account, mut known, vault_id) = honest();
         known.vaults.insert((vault_id, 2), Hash32([22; 32]));
         let mut session = KtSession::begin(&log, "t", None).unwrap();
-        let msg = message(session.audit(account, &known));
+        let msg = message(session.audit(&known));
         assert!(msg.contains("another history"), "{msg}");
 
         // The identity manifest this device holds was never logged.
-        let (log, account, mut known, _) = honest();
+        let (log, _account, mut known, _) = honest();
         known.identity = Some((2, Hash32([71; 32])));
         let mut session = KtSession::begin(&log, "t", None).unwrap();
-        let msg = message(session.audit(account, &known));
+        let msg = message(session.audit(&known));
         assert!(msg.contains("doesn't record it"), "{msg}");
 
         // This device's own key never appears: the server hid a device.
@@ -816,10 +822,11 @@ mod tests {
             vaults: BTreeMap::new(),
         };
         let mut session = KtSession::begin(&log, "t", None).unwrap();
-        let msg = message(session.audit(account, &known));
+        let msg = message(session.audit(&known));
         assert!(msg.contains("hiding a device"), "{msg}");
 
-        // Another account's leaf served as ours.
+        // Another account's leaf served as ours: the server says the
+        // session is account X and hands over a leaf of account Y.
         let log = FakeLog::new();
         log.append(
             Id::new(),
@@ -828,14 +835,16 @@ mod tests {
                 device_pub: [1; 32],
             },
         );
+        *log.account.borrow_mut() = account;
         let mut session = KtSession::begin(&log, "t", None).unwrap();
-        let msg = message(session.audit(account, &known));
+        let msg = message(session.audit(&known));
         assert!(msg.contains("another account"), "{msg}");
     }
 
     #[test]
     fn the_wire_types_round_trip() {
         let entries = AccountEntries {
+            account_id: Id::new(),
             entries: vec![LoggedEntry {
                 index: 3,
                 leaf: vec![1, 2],

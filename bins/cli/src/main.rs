@@ -14,7 +14,10 @@
 //! `kit create`, `kit verify` and `recover` are the recovery kit (D69,
 //! D70): the Secret Key half protects the account slot beside the password.
 //! `attach`, `attachments` and `fetch` are files on items (02-model §6);
-//! their blobs travel with the item on `sync`.
+//! their blobs travel with the item on `sync`. `audit` and `checkpoint`
+//! are key transparency (04-security §6): `sync` checks the server's
+//! public log before and after every run; `audit` prints what it checked;
+//! `checkpoint` exports a signed page another device can verify.
 //!
 //! A password, a Secret Key or a recovery code never arrives as an
 //! argument, where it would land in shell history and `ps`: they are read
@@ -105,8 +108,23 @@ enum Command {
         #[command(subcommand)]
         what: AccountWhat,
     },
-    /// Pull from the server, merge, push, and advance the vault head.
+    /// Pull from the server, merge, push, and advance the vault head. The
+    /// server's public log is checked first and after.
     Sync,
+    /// Print and verify every entry about this account in the server's
+    /// public log (key transparency). Changes nothing.
+    Audit,
+    /// Export a signed checkpoint (the server's tree head and this device's
+    /// newest heads) to keep or compare with another device; or verify one.
+    Checkpoint {
+        /// Write the page here. Default: lockdown-checkpoint-<date>.txt in
+        /// the current directory. Refused if the file exists.
+        #[arg(long, value_name = "FILE")]
+        out: Option<PathBuf>,
+        /// Verify a checkpoint page another device exported instead.
+        #[arg(long, value_name = "FILE", conflicts_with = "out")]
+        verify: Option<PathBuf>,
+    },
     /// The devices enrolled in the identity.
     Device {
         #[command(subcommand)]
@@ -602,6 +620,43 @@ fn run(cli: Cli) -> Result<Vec<String>, String> {
             )
         }
         Command::Sync => App::open_for_sync(Paths::resolve(cli.root, cli.data)?, persona)?.sync(),
+        Command::Audit => App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?.audit(),
+        Command::Checkpoint { out, verify } => {
+            let mut app = App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?;
+            match verify {
+                Some(file) => {
+                    let text = std::fs::read_to_string(&file)
+                        .map_err(|e| format!("couldn't read {}: {e}", file.display()))?;
+                    app.checkpoint_verify(&text)
+                }
+                None => {
+                    let path = out.unwrap_or_else(|| {
+                        PathBuf::from(format!(
+                            "lockdown-checkpoint-{}.txt",
+                            lockdown_sync::engine::civil_date(now as i64)
+                        ))
+                    });
+                    if path.exists() {
+                        return Err(format!(
+                            "{} exists already; choose another file with --out",
+                            path.display()
+                        ));
+                    }
+                    let (cp, text) = app.checkpoint_export()?;
+                    lockdown_store::write_private(&path, text.as_bytes())
+                        .map_err(|e| format!("couldn't write {}: {e}", path.display()))?;
+                    Ok(vec![
+                        format!(
+                            "checkpoint written to {} (tree head of {} entries, fingerprint {})",
+                            path.display(),
+                            cp.sth.size,
+                            &cp.fingerprint().map_err(|e| e.to_string())?.to_hex()[..16]
+                        ),
+                        "keep it, or compare it on another device with `lockdown checkpoint --verify FILE`".into(),
+                    ])
+                }
+            }
+        }
         Command::Device { what } => {
             let paths = Paths::resolve(cli.root, cli.data)?;
             match what {

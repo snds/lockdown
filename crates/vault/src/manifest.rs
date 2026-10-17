@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::item::ItemState;
 use crate::signer::Signer;
+use crate::transparency::SthRef;
 use crate::{Error, Hash32, Id, Result, Timestamp};
 
 /// The manifest format version.
@@ -81,6 +82,14 @@ pub struct ManifestHead {
     pub signer: Id,
     /// When.
     pub signed_at: Timestamp,
+    /// The newest key-transparency tree head the signing device had
+    /// verified when it signed (04-security §6): the gossip hook. Another
+    /// device that pulls this head checks the citation against its own
+    /// view with a consistency proof and refuses a split view. Absent from
+    /// a head signed with no server in sight, and from every head before
+    /// the log existed. Under the signature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sth: Option<SthRef>,
     /// Ed25519 by the signing device over the canonical head with `sig`
     /// empty and no checkpoint.
     #[serde(with = "serde_bytes")]

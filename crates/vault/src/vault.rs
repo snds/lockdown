@@ -39,6 +39,7 @@ use crate::manifest::{
 };
 use crate::signer::Signer;
 use crate::store::{Store, VAULT_RECORD_V, VaultRecord};
+use crate::transparency::SthRef;
 use crate::{Error, Hash32, Id, Result, Timestamp};
 
 /// Who and where a vault belongs to: the ids that go into every piece of
@@ -101,6 +102,9 @@ pub struct Vault {
     members: Vec<Member>,
     /// Attachment blobs sealed here and not yet written to a store.
     pending_blobs: Vec<(Hash32, Vec<u8>)>,
+    /// The key-transparency tree head cited in every head committed from
+    /// now on; set by sync once it has verified one.
+    cited_sth: Option<SthRef>,
 }
 
 /// One attachment of an item, as listed: its sealed facts opened for the
@@ -161,6 +165,7 @@ impl Vault {
                 key_env: Id::new(),
             }],
             pending_blobs: Vec::new(),
+            cited_sth: None,
         };
         vault.commit_head()?;
         Ok(vault)
@@ -274,6 +279,7 @@ impl Vault {
             heads,
             members: Vec::new(),
             pending_blobs: Vec::new(),
+            cited_sth: None,
         };
         vault.members = vault.members()?;
         Ok(vault)
@@ -802,6 +808,18 @@ impl Vault {
         Ok(())
     }
 
+    /// Sets the key-transparency tree head every head committed from now
+    /// on cites (04-security §6 gossip). Sync sets it after verifying the
+    /// server's current tree head; `None` cites nothing.
+    pub fn cite_sth(&mut self, sth: Option<SthRef>) {
+        self.cited_sth = sth;
+    }
+
+    /// The citation heads carry now.
+    pub fn cited_sth(&self) -> Option<SthRef> {
+        self.cited_sth
+    }
+
     /// Drops every head after `seq`: the provisional heads this device
     /// committed offline, just before sync commits one head in their
     /// place over the same items. Nothing about the items changes.
@@ -1094,6 +1112,7 @@ impl Vault {
             entries,
             signer: self.device_id,
             signed_at: Timestamp::now(),
+            sth: self.cited_sth,
             sig: Vec::new(),
             checkpoint: None,
         };
