@@ -1,5 +1,3 @@
-import { useState, type ReactNode } from "react"
-
 import {
   Button,
   Field,
@@ -46,8 +44,11 @@ function generatorWords(row: EditorRow): string | null {
  * secret is unicron's SecretField in edit mode; on an item that already
  * holds it the field starts empty and is kept as it is unless the person
  * types a new one, generates one (the core makes it on save; this window
- * never sees it) or removes it. Every other control is a unicron
- * primitive with no overrides.
+ * never sees it) or removes it. A secret over several lines (a private
+ * key, a recovery phrase) is the same field with `multiline` (@unicron/ui
+ * 0.8.0), masked until Show; a required one carries native `required`, so
+ * the form's own check stops an empty save. Every other control is a
+ * unicron primitive with no overrides.
  */
 export function FieldControl({ row, onChange, onDiscard }: FieldControlProps) {
   const id = `field-${row.key.replace(/[^a-z0-9]+/gi, "-")}`
@@ -95,15 +96,30 @@ export function FieldControl({ row, onChange, onDiscard }: FieldControlProps) {
         {discard}
       </>
     )
-    if (row.control === "secret-multiline") return <MaskedText id={id} row={row} description={description} onChange={onChange} actions={actions} />
+    const crownJewel = row.template?.crown_jewel ?? false
     return (
       <SecretField
         mode="edit"
         id={id}
-        label={required && !row.exists ? `${row.label} (needed)` : row.label}
+        name={row.fieldId ?? row.key}
+        label={row.label}
+        // Native and announced: the form won't submit without it, and the core refuses a missing one too.
+        required={required && !row.exists}
+        // A private key or a recovery phrase keeps its line breaks, masked until Show.
+        multiline={row.control === "secret-multiline"}
         value={row.text}
         onChange={(text) => onChange({ text, secret: "type" })}
-        description={description}
+        description={
+          crownJewel ? (
+            <>
+              {description && <>{description} </>}
+              <Icon name="lock" data-icon="inline-start" />
+              Kept as a crown jewel: showing, copying or changing it always asks it's you first.
+            </>
+          ) : (
+            description
+          )
+        }
       >
         {actions}
       </SecretField>
@@ -160,58 +176,6 @@ export function FieldControl({ row, onChange, onDiscard }: FieldControlProps) {
         />
       )}
       {(hint || removable) && <FieldDescription>{hint ?? removable}</FieldDescription>}
-    </Field>
-  )
-}
-
-/**
- * A secret over several lines (a private key, a recovery phrase): a
- * textarea drawn masked (`data-masked`, app-extension.css), because a
- * one-line password input would drop the line breaks a key needs.
- */
-function MaskedText({
-  id,
-  row,
-  description,
-  onChange,
-  actions,
-}: {
-  id: string
-  row: EditorRow
-  description?: string
-  onChange: (patch: Partial<EditorRow>) => void
-  actions: ReactNode
-}) {
-  const [shown, setShown] = useState(false)
-  const required = row.template?.required ?? false
-  return (
-    <Field>
-      <div className="flex items-center justify-between gap-2">
-        <FieldLabel htmlFor={id}>{required && !row.exists ? `${row.label} (needed)` : row.label}</FieldLabel>
-        <span className="flex items-center">
-          <IconButton label={shown ? `Hide ${row.label}` : `Show ${row.label}`} icon={shown ? "visibility_off" : "visibility"} aria-pressed={shown} onClick={() => setShown((s) => !s)} />
-          {actions}
-        </span>
-      </div>
-      <Textarea
-        id={id}
-        data-masked={shown ? undefined : ""}
-        value={row.text}
-        onChange={(e) => onChange({ text: e.target.value, secret: "type" })}
-        required={required && !row.exists}
-        rows={4}
-        spellCheck={false}
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize="off"
-      />
-      {description && <FieldDescription>{description}</FieldDescription>}
-      {row.template?.crown_jewel && (
-        <FieldDescription>
-          <Icon name="lock" data-icon="inline-start" />
-          Kept as a crown jewel: showing, copying or changing it always asks it's you first.
-        </FieldDescription>
-      )}
     </Field>
   )
 }

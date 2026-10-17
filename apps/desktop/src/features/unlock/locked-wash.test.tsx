@@ -10,4 +10,15 @@ describe("the locked wash (brief §4)", () => {
     expect(container.querySelector('[data-slot="locked-wash"]')).toHaveAttribute("aria-hidden", "true")
     expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(8)
   })
+
+  it("draws unicron's row skeletons, as tall as a row at the person's density", () => {
+    const { container } = render(<LockedWash />)
+    const skeletons = container.querySelectorAll('[data-slot="skeleton"]')
+    expect(skeletons).toHaveLength(17)
+    for (const s of skeletons) {
+      // `--c-skeleton-row-height` is mapped to the density's row height in app-extension.css.
+      expect(s).toHaveAttribute("data-variant", "row")
+      expect(s).not.toHaveAttribute("data-row")
+    }
+  })
 })

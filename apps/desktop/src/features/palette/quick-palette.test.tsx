@@ -39,7 +39,7 @@ const ROWS: ItemSummary[] = [
   row({ id: "t1", kind: "note", title: "Old plans", state: "trashed" }),
 ]
 
-function Harness({ client, onOpen, onNotice }: { client: Client; onOpen: (id: string) => void; onNotice: (t: string) => void }) {
+function Harness({ client, onOpen, onNotice, rows = ROWS }: { client: Client; onOpen: (id: string) => void; onNotice: (t: string) => void; rows?: ItemSummary[] }) {
   const [open, setOpen] = useState(false)
   return (
     <ClientProvider value={client}>
@@ -47,7 +47,7 @@ function Harness({ client, onOpen, onNotice }: { client: Client; onOpen: (id: st
         <TemplatesProvider>
           <GateProvider>
             <p>window</p>
-            <QuickPalette open={open} onOpenChange={setOpen} rows={ROWS} onOpen={onOpen} onNotice={onNotice} />
+            <QuickPalette open={open} onOpenChange={setOpen} rows={rows} onOpen={onOpen} onNotice={onNotice} />
           </GateProvider>
         </TemplatesProvider>
       </SettingsProvider>
@@ -64,6 +64,64 @@ describe("the quick-access palette (D111)", () => {
     expect(matches("wi-fi", words("w1"))).toBe(true)
     expect(matches("cold", words("j1"))).toBe(true)
     expect(matches("login", words("w1"))).toBe(false)
+  })
+
+  // The palette keeps the vault list's rule (every word a plain substring, any order) over each
+  // item's keywords, not cmdk's fuzzy ranking: Ctrl+Enter copies the highlighted result, and a
+  // scattered-letter match ranked first would copy the wrong item's password (10-desktop-shell §12).
+  it("matches on keywords alone: a title word, a host, words in any order; never the id, never scattered letters", async () => {
+    const ID = { github: "4f3a9c1e-0b7d-4e2a-9f10-1c2d3e4f5a6b", mail: "9b8c7d6e-5f4a-4b3c-8d2e-1f0a9b8c7d6e" }
+    const rows = [
+      row({ id: ID.github, kind: "login", title: "GitHub", site: "https://github.com/login", username: "sean@example.com", subtitle: "sean@example.com", copy: { field_id: "pw", how: "secret", label: "password" } }),
+      row({ id: ID.mail, kind: "login", title: "Mail", site: "https://mail.google.com", username: "sean", subtitle: "sean", copy: { field_id: "pw", how: "secret", label: "password" } }),
+    ]
+    const copySecret = vi.fn<Client["copySecret"]>(() => Promise.resolve({ clears_in_secs: 30, copy: 1 }))
+    render(<Harness client={fakeClient({ templates: () => Promise.resolve(TEMPLATES), copySecret })} rows={rows} onOpen={() => {}} onNotice={() => {}} />)
+    const user = userEvent.setup()
+    await user.keyboard("{Control>}k{/Control}")
+    const input = await screen.findByPlaceholderText(/Search titles/)
+    const shown = () => screen.queryAllByRole("option").map((o) => o.textContent ?? "")
+    const search = async (text: string) => {
+      await user.clear(input)
+      if (text) await user.type(input, text)
+    }
+
+    await search("github") // a title word
+    await waitFor(() => expect(shown()).toEqual([expect.stringContaining("GitHub")]))
+    await search("mail.google") // the website's host
+    await waitFor(() => expect(shown()).toEqual([expect.stringContaining("Mail")]))
+    await search("example sean git") // words in any order
+    await waitFor(() => expect(shown()).toEqual([expect.stringContaining("GitHub")]))
+    await search("4f3a") // the id's letters: an id is a key, not a word
+    await waitFor(() => expect(screen.getByText("No matches. Try fewer letters.")).toBeInTheDocument())
+    // Scattered letters: cmdk's ranking puts GitHub first for "gml" (g…m…l across its keywords);
+    // under the list's rule nothing matches, so Ctrl+Enter can't copy a near miss.
+    await search("gml")
+    await waitFor(() => expect(screen.getByText("No matches. Try fewer letters.")).toBeInTheDocument())
+    await user.keyboard("{Control>}{Enter}{/Control}")
+    expect(copySecret).not.toHaveBeenCalled()
+    // An empty search lists both, each with an explicit value, its copy described with its key.
+    await search("")
+    await waitFor(() => expect(shown()).toHaveLength(2))
+    for (const option of screen.getAllByRole("option")) {
+      expect(option).toHaveAttribute("data-value", expect.stringMatching(/^[0-9a-f-]{36}$/))
+      expect(option).toHaveAttribute("aria-keyshortcuts", "Control+Enter")
+      expect(option).toHaveAccessibleDescription("Copy password, Control Enter")
+    }
+  })
+
+  it("the copy control on a result copies without opening the item", async () => {
+    const copySecret = vi.fn<Client["copySecret"]>(() => Promise.resolve({ clears_in_secs: 30, copy: 1 }))
+    const onOpen = vi.fn()
+    render(<Harness client={fakeClient({ templates: () => Promise.resolve(TEMPLATES), copySecret })} onOpen={onOpen} onNotice={() => {}} />)
+    const user = userEvent.setup()
+    await user.keyboard("{Control>}k{/Control}")
+    await user.type(await screen.findByPlaceholderText(/Search titles/), "home")
+    // The button is hidden from assistive tech (the result describes it); a pointer still clicks it.
+    const home = await screen.findByRole("option", { description: "Copy Wi-Fi password, Control Enter" })
+    await user.click(home.querySelector<HTMLElement>('[data-slot="command-item-action"]')!)
+    await waitFor(() => expect(copySecret).toHaveBeenCalledWith("w1", "wifi.passphrase", 30, {}))
+    expect(onOpen).not.toHaveBeenCalled()
   })
 
   it("opens on Ctrl+K, filters, opens an item on Enter, and leaves trashed items out", async () => {
@@ -114,7 +172,8 @@ describe("the quick-access palette (D111)", () => {
       </ClientProvider>,
     )
     const user = userEvent.setup()
-    await user.click(await screen.findByRole("button", { name: "Copy recovery phrase" }))
+    const wallet = await screen.findByRole("option", { description: "Copy recovery phrase, Control Enter" })
+    await user.click(wallet.querySelector<HTMLElement>('[data-slot="command-item-action"]')!)
     expect(await screen.findByRole("heading", { name: "Are you sure?" })).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Confirm" }))
     await waitFor(() => expect(copySecret).toHaveBeenLastCalledWith("j1", "seed", 30, { confirmed: true }))

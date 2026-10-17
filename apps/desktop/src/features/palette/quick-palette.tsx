@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo } from "react"
 
-import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut, Icon, IconButton } from "@unicron/ui"
+import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandItemAction, CommandList, Icon, commandItemActionShortcut } from "@unicron/ui"
 import { CrownJewelMark } from "@unicron/ui/security/crown-jewel"
 
 import { useTemplates } from "@/app/templates"
@@ -8,7 +8,7 @@ import type { ItemSummary } from "@/core/types"
 import { kindIcon, kindLabel } from "@/features/vault/list-model"
 import { useQuickCopy } from "@/features/vault/quick-copy"
 
-import { hostOf, isMac, matches, searchWords } from "./palette-model"
+import { hostOf, matches, searchWords } from "./palette-model"
 
 interface QuickPaletteProps {
   open: boolean
@@ -27,14 +27,20 @@ interface QuickPaletteProps {
  * secret), Enter opens the item, and each result offers its one copy
  * (password, code, Wi-Fi password, card number) through the core's copy
  * commands and gates: a crown jewel asks first, and the value never
- * comes to this window. ⌘↵ or Ctrl+Enter copies the highlighted result;
- * the copy control on a result does the same for a pointer.
+ * comes to this window.
+ *
+ * Each result is a `CommandItem` keyed by the item's id (`value`) and
+ * found by its `keywords` alone, matched with the vault list's rule (every
+ * word a plain substring, in any order) rather than cmdk's fuzzy ranking
+ * (§12; D118): ⌘↵ copies the highlighted result, so a loose match ranked
+ * first would copy the wrong item's password. The copy is unicron's
+ * `CommandItemAction`: a pointer clicks it, ⌘↵ / Ctrl+Enter runs it for
+ * the highlighted result, and the result announces it.
  */
 export function QuickPalette({ open, onOpenChange, rows, onOpen, onNotice }: QuickPaletteProps) {
   const { forKind } = useTemplates()
   const quickCopy = useQuickCopy(onNotice)
-  const [highlighted, setHighlighted] = useState("")
-  const mod = isMac() ? "⌘" : "Ctrl+"
+  const shortcut = commandItemActionShortcut().label
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -48,7 +54,6 @@ export function QuickPalette({ open, onOpenChange, rows, onOpen, onNotice }: Qui
   }, [open, onOpenChange])
 
   const live = useMemo(() => rows.filter((r) => r.state !== "trashed"), [rows])
-  const words = useMemo(() => new Map(live.map((r) => [r.id, searchWords(r, forKind(r.kind)?.name ?? "")])), [live, forKind])
 
   const copy = (row: ItemSummary) => {
     // Close first: a crown jewel's ask opens over the window, not over the palette.
@@ -65,26 +70,15 @@ export function QuickPalette({ open, onOpenChange, rows, onOpen, onNotice }: Qui
       open={open}
       onOpenChange={onOpenChange}
       title="Quick access"
-      description={`Search your items by title, username, website or kind. Enter opens one; ${mod}Enter copies its password or code.`}
+      description={`Search your items by title, username, website or kind. Enter opens one; ${shortcut} copies its password or code.`}
     >
-      <Command
-        value={highlighted}
-        onValueChange={setHighlighted}
-        filter={(value, search) => (matches(search, words.get(value) ?? []) ? 1 : 0)}
-        onKeyDown={(e) => {
-          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-            e.preventDefault()
-            const row = live.find((r) => r.id === highlighted)
-            if (row?.copy) copy(row)
-          }
-        }}
-      >
+      <Command filter={(_value, search, keywords) => (matches(search, keywords ?? []) ? 1 : 0)}>
         <CommandInput placeholder="Search titles, usernames, websites, kinds" />
         <CommandList>
           <CommandEmpty>{live.length ? "No matches. Try fewer letters." : "Nothing saved yet."}</CommandEmpty>
           <CommandGroup heading="Items">
             {live.map((r) => (
-              <CommandItem key={r.id} value={r.id} onSelect={() => pick(r.id)}>
+              <CommandItem key={r.id} value={r.id} keywords={searchWords(r, forKind(r.kind)?.name ?? "")} onSelect={() => pick(r.id)}>
                 <Icon name={kindIcon(r.kind)} />
                 <span className="flex min-w-0 flex-col">
                   <span className="flex items-center gap-1 truncate">
@@ -93,22 +87,7 @@ export function QuickPalette({ open, onOpenChange, rows, onOpen, onNotice }: Qui
                   </span>
                   <span className="truncate text-xs text-muted-foreground">{[forKind(r.kind)?.name, r.subtitle || r.username].filter(Boolean).join(" · ")}</span>
                 </span>
-                {r.copy && (
-                  <CommandShortcut>
-                    <span aria-hidden="true">{mod}↵</span>
-                    <IconButton
-                      label={`Copy ${r.copy.label}`}
-                      icon="content_copy"
-                      size="icon-xs"
-                      tabIndex={-1}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        copy(r)
-                      }}
-                    />
-                  </CommandShortcut>
-                )}
+                {r.copy && <CommandItemAction label={`Copy ${r.copy.label}`} icon="content_copy" onAction={() => copy(r)} />}
               </CommandItem>
             ))}
           </CommandGroup>

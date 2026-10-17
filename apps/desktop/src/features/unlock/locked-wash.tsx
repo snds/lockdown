@@ -13,15 +13,15 @@ const ROWS = 8
 export function LockedWash() {
   return (
     <div aria-hidden className="pointer-events-none flex h-full min-h-0 flex-col bg-surface-locked md:flex-row" data-slot="locked-wash">
-      {/* Rows take their height from the density knobs through `data-row`, like the real ones. */}
+      {/* Row skeletons are as tall as a row at the person's density (`--c-skeleton-row-height`, app-extension.css). */}
       <div className="hidden w-(--c-shell-sidebar-width) shrink-0 flex-col gap-2 border-r p-3 md:flex">
         {Array.from({ length: 8 }, (_, i) => (
-          <Skeleton key={i} data-row="" />
+          <Skeleton key={i} variant="row" />
         ))}
       </div>
       <div className="flex w-full shrink-0 flex-col gap-2 p-3 md:w-(--c-shell-list-width) md:border-r">
         {Array.from({ length: ROWS + 1 }, (_, i) => (
-          <Skeleton key={i} data-row="" />
+          <Skeleton key={i} variant="row" />
         ))}
       </div>
       <div className="hidden flex-1 md:block" />

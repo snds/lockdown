@@ -123,9 +123,9 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
       )}
       {!rows && !error && (
         <div className="flex flex-col gap-2 px-2" aria-busy="true" aria-label="Loading">
-          <Skeleton data-row="" />
-          <Skeleton data-row="" />
-          <Skeleton data-row="" />
+          <Skeleton variant="row" />
+          <Skeleton variant="row" />
+          <Skeleton variant="row" />
         </div>
       )}
       {rows && inView === 0 && (
