@@ -45,7 +45,7 @@ dsa.config.json                  measurement (root); baseline at apps/desktop/.d
 
 `lockdown-app` runs the session on one worker thread: the vault holds a `Box<dyn Signer>` and the keystore an `Rc`, neither `Send`, so the `App` handle (clonable, `Send + Sync`) sends one closure at a time to that thread and waits. One call at a time is also the mutex; two windows never interleave on the vault.
 
-**Where the data is.** The same places as the CLI (D47): the identity root (D15) and the `lockdown` directory beside it. The desktop app and `lockdown` on one machine share `device-key.cbor`, so they are one device named `Lockdown on <hostname>` (D68, D74). `LOCKDOWN_ROOT` and `LOCKDOWN_DATA` move both for a second profile. `sync.cbor` keeps the CLI's shape; with the keychain installed the session token lives there and the file holds an empty string in its place, and the file also gains `last_sync_at`, which the CLI ignores.
+**Where the data is.** The same places as the CLI (D47): the identity root (D15) and the `lockdown` directory beside it. The desktop app and `lockdown` on one machine share `device-key.cbor`, so they are one device named `Lockdown on <hostname>` (D68, D74). `LOCKDOWN_ROOT` and `LOCKDOWN_DATA` move both for a second profile. `sync.cbor` keeps the CLI's shape; with the keychain installed the session token lives there and the file holds an empty string in its place, and the file also gains `last_sync_at`, which the CLI ignores. `transparency.cbor` (D79) is shared too: the view of the server's log one of them verifies is the view the other continues from.
 
 **The CLI still carries its own copy** of these flows (`bins/cli/src/app.rs`). Moving it onto `lockdown-app` is a later pass, kept out of this one because the CLI was mid-change.
 
@@ -70,11 +70,11 @@ Every row is one `App` method (Rust), one `#[tauri::command]`, and one `Client` 
 | `add_login` | `add_login(site, user, bytes, title)` | yes | item id | password arrives as bytes |
 | `edit_login` | `edit_login(id, title?, user?, bytes?)` | yes | version number | a new version; history kept |
 | `trash` | `trash(id)` | yes | — | soft delete; grace period |
-| `status` | `status()` | yes | `Status` | identity, device, persona, vault head, devices, account |
+| `status` | `status()` | yes | `Status` | identity, device, persona, vault head, devices, account, the server's log as last verified (`AccountStatus.transparency`) |
 | `account_register` | `account_register(…)` | yes | notes + kit page as **bytes** | OPAQUE; makes the kit when none exists (D69, D70) |
 | `account_login` | `account_login(…)` | no* | notes | *on an empty device enrols it from the account; else a fresh session |
 | `recover` | `recover(…)` | no | notes | the whole kit on an empty device |
-| `sync` | `sync()` | yes | `SyncOutcome` | identity records first (D71), then pull / merge / push / head |
+| `sync` | `sync()` | yes | `SyncOutcome` | identity records first (D71), then key transparency, pull / merge / push / head, key transparency again (D78, D80), as `lockdown sync`; `SyncOutcome.transparency` is the verified view; a refused proof or audit is `{ code: "refused" }` with the audit's own sentence |
 | `kit_create` | `kit_create(replace, password?)` | yes | notes + page as **bytes** | D69; with an account the slot takes the new Secret Key (D70) |
 | `kit_verify` | `kit_verify(sk, code, password?, drill)` | yes | notes | changes nothing unless `drill` |
 | `device_list` | `device_list()` | yes | `DeviceInfo[]` | |
@@ -95,6 +95,7 @@ A call on a locked vault answers `{ code: "locked" }`; the UI shows the unlock s
 | What a webview cannot do | A typed password is a webview string between keystroke and submit; a revealed value is a string while drawn. The native shells will use native fields; the desktop says so here instead of pretending. |
 | Capabilities and CSP | `core:default` only; no `shell`, `fs`, `http` or `clipboard` permission reaches the webview. CSP: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; frame-src 'none'` (`'unsafe-inline'` for styles only, because Base UI sets inline `style` attributes). Sync traffic is Rust-side `reqwest` over rustls, never from the webview. |
 | Session token | `lockdown_app::secrets::SecretStore`; the shell installs the OS keychain (`keyring` 3.6: macOS Keychain, Windows Credential Manager, Secret Service on Linux) under service `design.snds.lockdown`, key `session:<login>@<server>`. |
+| The server is held to its log, as the CLI holds it (04-security §6) | `Session::sync` begins a `KtSession` from `transparency.cbor`, audits the account's entries with the shared `lockdown_sync::DeviceExpectations` (the identity's devices, the synced manifest, the vault's heads up to the confirmed `seq`), runs `sync_vault_with` under it, audits again and remembers the view; the first pull after a join goes through `bootstrap_vault_with` under the same session. A rollback, a split view, a swapped or unlisted device key stops the sync before a byte is written and reaches the Status screen as the audit's words. Tests: `crates/app/tests/sync_transparency.rs` (a clean sync and a join, a swapped device key, an older tree head) against the in-process server. |
 
 ## 4. The app-extension layer
 
@@ -123,7 +124,7 @@ The brief ([`11-desktop-design-brief.md`](11-desktop-design-brief.md)) owns all 
 - the six security components (SecretField, CodeDisplay, LargeTypeView, ApprovalSheet, RiskTierBadge, CrownJewel) and their colours; today's `SecretField` is a placeholder built from `Item` + `Button`;
 - the lock-as-UX details: the washed list with skeleton rows, the 10-second toast before an idle lock, no transition animation;
 - copy and reveal controls (countdown ring, "Cleared"), hold-to-reveal as a variant;
-- the Status screen's proof lines with "Check now", the Needs attention view, Devices and Recovery as their own screens;
+- the Status screen's proof lines with "Check now" (today: one "Transparency log: N entries, checked <time>" fact, and the refusal under it when a sync stopped at the log), the Needs attention view, Devices and Recovery as their own screens;
 - density, list grouping, the risk-tier words (brief §9).
 
 ## 6. How to run
@@ -135,7 +136,7 @@ pnpm tauri dev                             # Vite on :5173 + the Tauri window; f
 pnpm typecheck && pnpm lint && pnpm test   # tsc, oxlint, Vitest (jsdom)
 pnpm build                                 # vite build → dist/ (what the shell embeds)
 pnpm ds:scan && pnpm ds:patterns && pnpm ds:ratchet
-cargo test -p lockdown-app                 # the command layer
+cargo test -p lockdown-app                 # the command layer, incl. the audited sync against the in-process server
 cargo test -p lockdown-desktop             # the clipboard rule, no Tauri needed
 cargo clippy -p lockdown-desktop --all-targets --features shell -- -D warnings
 pnpm tauri build                           # bundles; never run with a shared, tight target dir
