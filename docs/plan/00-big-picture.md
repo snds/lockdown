@@ -48,6 +48,7 @@ Tagline: **Every way you sign in. Locked down, even from us.**
 | `05-self-host.md` | the single binary and the private-cloud bundle |
 | `06-roadmap.md` | phases, team, exit criteria under D9 |
 | `07-workspace.md` | the Rust workspace as built: crate map, what is real, the next five steps |
+| `12-feature-status.md` | the v1 feature checklist: every committed feature, done / partial / not started, what is left (generated from `feature-status.json`; refresh it when a slice lands) |
 | `decisions.md` | the decision log |
 
 ## Walls

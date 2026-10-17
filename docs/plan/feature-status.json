@@ -1,0 +1,2028 @@
+{
+ "as_of": "71bee69",
+ "source": "docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)",
+ "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser extension exists: extension/ holds only the wasm matcher boundary, its JSON schema and a Playwright clickjacking harness. The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI and the self-host server. The CLI still carries its own copy of the flows and handles logins only for item kinds. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 today; the plan leaves the licence open (05-self-host §12 asks Sean between AGPL-3.0 and a source-available licence for the server), so oss-clients and oss-server wait on that call. Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for desktop, CLI and server only; every one still needs its mobile and extension half when those surfaces exist.",
+ "non_v1_built": [
+  {
+   "id": "cli",
+   "note": "Partly built: the `lockdown` binary (bins/cli/src/main.rs) does init, add/edit/list/show logins, account register/login, sync, kit, device list/revoke, attach/fetch, audit, checkpoint, code and match, with end-to-end tests (bins/cli/tests/end_to_end.rs:42). No JSON output, no biometric unlock through the desktop app, no secret references."
+  },
+  {
+   "id": "local-only-mode",
+   "note": "Largely built: \"This device only\" on first run makes a vault and kit with no account, and an account can be added later from Status (apps/desktop/src/features/unlock/first-run.tsx:122); `lockdown init` works without a server."
+  },
+  {
+   "id": "version-history",
+   "note": "Data layer built: every edit is a new signed version under its own key and old versions open (crates/vault/src/vault.rs:1240 seal_open_and_history); no history view, restore action or retention rule."
+  },
+  {
+   "id": "seed-safe-mode",
+   "note": "Detector only: crates/vault/src/crown_jewel.rs:112 looks_like_seed_phrase (test at :173); not wired to any paste or field."
+  }
+ ],
+ "features": [
+  {
+   "id": "login-items",
+   "category": "Vault & item types",
+   "name": "Logins",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop",
+    "cli"
+   ],
+   "left": "Several websites in the editor (only url.0 is offered), a sign-in-method field (password, passkey, federated, SSO), and passkeys made on the record rather than only imported.",
+   "evidence": [
+    "crates/vault/src/template.rs:263 (LOGIN: username, password, one code, one website)",
+    "crates/app/src/session.rs:617 (methods: password / passkey / code on one row)",
+    "crates/app/src/lib.rs:1065 every_kind_goes_through_one_path_and_secrets_never_cross_as_json"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "secure-notes",
+   "category": "Vault & item types",
+   "name": "Secure notes",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Render the Markdown (the body is shown as written); the encrypted note item and the notes field on every kind already work.",
+   "evidence": [
+    "crates/vault/src/template.rs:445 (NOTE body)",
+    "crates/vault/src/template.rs:208 (NOTES on every other kind)",
+    "docs/plan/10-desktop-shell.md:306 (Markdown rendering listed as not built)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "payment-cards",
+   "category": "Vault & item types",
+   "name": "Payment cards",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "The card fill itself (extension or OS provider) with the second deliberate action and the optional CVC re-prompt.",
+   "evidence": [
+    "crates/vault/src/template.rs:408 (CARD fields, fill: confirm)",
+    "crates/vault/src/template.rs:716 card_brand (issuer detection)",
+    "apps/desktop/src/features/vault/detail-pane.test.tsx:44"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "identities",
+   "category": "Vault & item types",
+   "name": "Identities and addresses",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Typed subtypes (person, address, business, vehicle, passport) and a separate contacts list that is never filled; plus the form fill itself.",
+   "evidence": [
+    "crates/vault/src/template.rs:374 (one Identity template: name, contact, address)",
+    "docs/plan/10-desktop-shell.md:306 (Identity subtypes listed as not built)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "typed-templates",
+   "category": "Vault & item types",
+   "name": "Typed item templates",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Reach 25+ types (passport and licence are a Document type choice today) and add user-defined templates.",
+   "evidence": [
+    "crates/vault/src/template.rs:553 (TEMPLATES: 18 kinds, 16 creatable)",
+    "crates/app/src/lib.rs:1065 every_kind_goes_through_one_path_and_secrets_never_cross_as_json",
+    "docs/plan/10-desktop-shell.md:281 (template designer is a follow-up)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "custom-fields",
+   "category": "Vault & item types",
+   "name": "Custom fields",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Add the TOTP and linked field kinds.",
+   "evidence": [
+    "crates/vault/src/template.rs:250 (CUSTOM_KINDS: text, secret, URL, email, phone, date, yes/no)",
+    "crates/vault/src/compose.rs:821 fields_by_hand_are_numbered_and_kinds_are_limited",
+    "crates/cxf/src/convert.rs:714 fields_no_credential_holds_ride_in_the_lockdown_extension_both_ways"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "attachments",
+   "category": "Vault & item types",
+   "name": "File attachments",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "cli",
+    "server"
+   ],
+   "left": "Attachments in lockdown-app and the desktop editor and detail, streaming for large files, blobs on object storage, and the 5 GB quota.",
+   "evidence": [
+    "crates/vault/src/attachment.rs:334 a_five_mib_file_round_trips_in_five_chunks",
+    "bins/cli/tests/attachments.rs:130 an_attachment_crosses_two_devices_and_dies_with_its_item",
+    "docs/plan/07-workspace.md:30 (lockdown-app has no attachments yet)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "password-generator",
+   "category": "Vault & item types",
+   "name": "Password and passphrase generator",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Word passphrases, per-site rule profiles, length and class options in the UI, and statistical randomness tests in CI.",
+   "evidence": [
+    "crates/crypto/src/generator.rs:225 characters_are_uniform_over_the_alphabet",
+    "apps/desktop/src/features/vault/item-editor.test.tsx:47",
+    "docs/plan/10-desktop-shell.md:306 (generator options listed as not built)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "wifi-items",
+   "category": "Vault & item types",
+   "name": "Wi-Fi network items",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "The self-hiding guest QR card, the printable card, and export through CXF's own Wi-Fi type (it rides in the Lockdown extension today).",
+   "evidence": [
+    "crates/vault/src/template.rs:300 (WIFI: WPA3 and Enterprise security, EAP identity)",
+    "apps/desktop/src/features/vault/detail-pane.test.tsx:34 (large type on the password)",
+    "docs/plan/10-desktop-shell.md:306 (guest QR and printable card not built)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "item-expiry",
+   "category": "Vault & item types",
+   "name": "Item expiry reminders",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Actual reminders before a date lapses, renewal kinds for domains and certificates, and the client-side signed-date check.",
+   "evidence": [
+    "crates/app/src/views.rs:66 (expires_at within 30 days puts an item in Expiring)",
+    "crates/app/src/session.rs:603 (expiry read from Date fields)",
+    "crates/app/src/views.rs:196 expiring_and_attention"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "trash-recovery",
+   "category": "Vault & item types",
+   "name": "Trash with recovery",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "The 30-day grace timer that purges on every device, the per-vault setting, holding purges while a conflict is open, and trash in the CLI.",
+   "evidence": [
+    "crates/vault/src/vault.rs:898 trash_item / 911 restore_item",
+    "crates/vault/src/vault.rs:1470 trash_then_restore_brings_the_item_back_live_with_its_history",
+    "apps/desktop/src/features/vault/detail-pane.tsx:79 (Restore)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "item-archive",
+   "category": "Vault & item types",
+   "name": "Item archive",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core"
+   ],
+   "left": "An archive and unarchive action in the core and the desktop, and leaving archived items out of search (the state exists but nothing sets it).",
+   "evidence": [
+    "crates/vault/src/item.rs:143 (ItemState::Archived)",
+    "crates/vault/src/vault.rs:511 (edits accept Live or Archived items)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "folders",
+   "category": "Organization & search",
+   "name": "Folders",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: a folder tree in the vault model, the UI, and folder import.",
+   "evidence": [
+    "crates/cxf/src/model.rs:64 (CXF Collection parsed, not mapped)",
+    "docs/plan/07-workspace.md:21 (collections/folders mapping not yet)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "tags",
+   "category": "Organization & search",
+   "name": "Tags",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: an encrypted tag field, nesting, cross-vault views and the UI.",
+   "evidence": [
+    "rg for an item tag field in crates/vault/src finds none",
+    "crates/vault/src/item.rs:184 (ItemHeader has no tags)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "multiple-vaults",
+   "category": "Organization & search",
+   "name": "Multiple vaults",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core"
+   ],
+   "left": "Creating a second vault, switching between vaults in the desktop, and per-vault sync and limits.",
+   "evidence": [
+    "crates/vault/src/identity.rs:617 (a persona with several vaults opens the first; open_vault picks by id)",
+    "crates/vault/src/store.rs:92 list_vaults",
+    "docs/plan/07-workspace.md:16 (more than one vault per persona not in the default path)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "quick-access",
+   "category": "Organization & search",
+   "name": "Global quick-access palette",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "desktop"
+   ],
+   "left": "The system-wide hotkey outside the window, fill and show-code actions, and a shared Rust search index (search runs over summaries in TypeScript).",
+   "evidence": [
+    "apps/desktop/src/features/palette/quick-palette.tsx:47 (Cmd/Ctrl+K inside the window)",
+    "apps/desktop/src/features/palette/quick-palette.test.tsx:141",
+    "docs/plan/10-desktop-shell.md:298 (system-wide hotkey is a follow-up)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "smart-categories",
+   "category": "Organization & search",
+   "name": "Smart categories",
+   "target": "parity",
+   "review": false,
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Nothing for the desktop; Signal-hidden passkeys join Needs attention once the Signal API exists.",
+   "evidence": [
+    "crates/app/src/views.rs:180 kinds_and_embedded_methods_pick_the_views",
+    "apps/desktop/src/app/shell.tsx:28 (Passkeys, Codes, Wi-Fi, Expiring, Needs attention, Deleted)",
+    "apps/desktop/src/features/vault/list-model.test.tsx:55"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "duplicate-finder",
+   "category": "Organization & search",
+   "name": "Duplicate finder",
+   "target": "beat",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: detection on URL, username and code secret after import, and the side-by-side merge.",
+   "evidence": [
+    "rg for duplicate or merge detection in crates/ and apps/desktop/src finds none"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "recency-ranking",
+   "category": "Organization & search",
+   "name": "Favorites and recency ranking",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Favorites, last-fill and frequency tracking on the device, and ranking fill suggestions and search by them.",
+   "evidence": [
+    "apps/desktop/src/features/vault/list-model.test.tsx:48 (sort by last edit only)",
+    "crates/app/src/session/transfer.rs:100 (an import's favourite flag is dropped)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "extension-coverage",
+   "category": "Autofill (browser)",
+   "name": "Browser extension coverage",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core"
+   ],
+   "left": "The MV3 extension for Chromium browsers and Firefox and the Safari Web Extension; only the wasm core they will share exists.",
+   "evidence": [
+    "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)",
+    "crates/wasm/src/lib.rs:312 the_wire_functions_answer_without_a_browser",
+    "extension/test/clickjacking.spec.ts:46 (Chromium harness against the wasm build)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "inline-menu",
+   "category": "Autofill (browser)",
+   "name": "Inline fill menu",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: the top-layer menu in an extension-origin frame inside a closed shadow root.",
+   "evidence": [
+    "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "clickjacking-defense",
+   "category": "Autofill (browser)",
+   "name": "Clickjacking-hardened fill",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core"
+   ],
+   "left": "The real extension using it: the top-layer popover, IntersectionObserver v2 tracking, and the second action wired to TOTP, card and passkey fills.",
+   "evidence": [
+    "crates/matcher/src/lib.rs:606 never_fill_cross_origin_iframes_without_confirmation",
+    "extension/test/fixtures/harness.js:71 (opacity check up the tree)",
+    "extension/test/clickjacking.spec.ts:74 (opacity-0 overlay refused in Chromium)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "url-matching",
+   "category": "Autofill (browser)",
+   "name": "Precise URL matching",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "cli"
+   ],
+   "left": "A way to set per-item rules in the desktop editor (new sites get exact_host) and an extension that applies the decision.",
+   "evidence": [
+    "crates/matcher/src/lib.rs:513 base_domain_is_opt_in",
+    "crates/vault/src/field.rs:56 (each URL field carries its match rule)",
+    "crates/matcher/tests/sites.rs:156 every_row_passes (1,533 rows)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "autosave",
+   "category": "Autofill (browser)",
+   "name": "Save and update prompts",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: sign-up and change-password detection and the save or update prompt.",
+   "evidence": [
+    "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "site-fix-overrides",
+   "category": "Autofill (browser)",
+   "name": "Per-site fill fixes",
+   "target": "beat",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Per-site user overrides synced end to end and a signed community fix list.",
+   "evidence": [
+    "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)",
+    "crates/matcher/src/signed.rs:474 (signed data covers equivalent groups and confusables only)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "fill-hotkey",
+   "category": "Autofill (browser)",
+   "name": "Fill keyboard shortcut",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: fill and fill-code shortcuts in every browser, cycling on repeat.",
+   "evidence": [
+    "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "card-address-fill",
+   "category": "Autofill (browser)",
+   "name": "Card and address fill",
+   "target": "beat",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: the checkout field classifier, split card fields and the confirm step.",
+   "evidence": [
+    "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)",
+    "crates/matcher/src/lib.rs:606 (only the card second-action rule exists)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "basic-auth-fill",
+   "category": "Autofill (browser)",
+   "name": "HTTP Basic Auth fill",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: answering HTTP auth challenges from the extension on Chromium and Firefox.",
+   "evidence": [
+    "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "ios-provider",
+   "category": "Autofill (mobile & desktop OS)",
+   "name": "iOS AutoFill provider",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: the iOS app and its AutoFill credential provider extension.",
+   "evidence": [
+    "crates/ffi/src/lib.rs:4 (UniFFI facade is a skeleton; no Swift or Kotlin app exists)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "android-provider",
+   "category": "Autofill (mobile & desktop OS)",
+   "name": "Android autofill and Credential Manager",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: the Android app, AutofillService and CredentialProviderService.",
+   "evidence": [
+    "crates/ffi/src/lib.rs:4 (UniFFI facade is a skeleton; no Swift or Kotlin app exists)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "autofill-health-check",
+   "category": "Autofill (mobile & desktop OS)",
+   "name": "Autofill health check",
+   "target": "beat",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: there is no OS provider or extension link to check yet.",
+   "evidence": [
+    "crates/ffi/src/lib.rs:4 (UniFFI facade is a skeleton; no Swift or Kotlin app exists)",
+    "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "ios-otp-provider",
+   "category": "Autofill (mobile & desktop OS)",
+   "name": "One-time-code AutoFill on iOS",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: one-time-code AutoFill needs the iOS app first.",
+   "evidence": [
+    "crates/ffi/src/lib.rs:4 (UniFFI facade is a skeleton; no Swift or Kotlin app exists)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "macos-autofill",
+   "category": "Autofill (mobile & desktop OS)",
+   "name": "Native macOS AutoFill",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: the native macOS credential provider extension for passwords, passkeys and codes.",
+   "evidence": [
+    "apps/desktop/src-tauri/src (no AutoFill or credential provider extension)",
+    "docs/plan/10-desktop-shell.md:205 (system integrations still open)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "macos-any-app",
+   "category": "Autofill (mobile & desktop OS)",
+   "name": "Fill into any Mac app",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: accessibility-based fill on a global shortcut with a code-signature check.",
+   "evidence": [
+    "apps/desktop/src-tauri/src (no accessibility or auto-type module)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "passkey-sync",
+   "category": "Passkeys & WebAuthn",
+   "name": "Passkey storage and sync",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop",
+    "server"
+   ],
+   "left": "Creating and using passkeys (WebAuthn L3 provider on every platform); today a passkey can only be imported, stored, synced and viewed.",
+   "evidence": [
+    "crates/cxf/src/convert.rs:98 (imported passkeys become item fields that sync like any item)",
+    "crates/vault/src/template.rs:279 (PASSKEY, view only)",
+    "apps/desktop/src/features/vault/detail-pane.test.tsx:54"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "ios-hybrid",
+   "category": "Passkeys & WebAuthn",
+   "name": "Phone as authenticator (iPhone)",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: needs the iOS credential provider.",
+   "evidence": [
+    "crates/ffi/src/lib.rs:4 (UniFFI facade is a skeleton; no Swift or Kotlin app exists)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "android-hybrid",
+   "category": "Passkeys & WebAuthn",
+   "name": "Phone as authenticator (Android)",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: needs the Android CredentialProviderService.",
+   "evidence": [
+    "crates/ffi/src/lib.rs:4 (UniFFI facade is a skeleton; no Swift or Kotlin app exists)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "windows-passkey-plugin",
+   "category": "Passkeys & WebAuthn",
+   "name": "Windows 11 passkey plugin",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: the COM IPluginAuthenticator plugin, Windows Hello verification and MSIX packaging.",
+   "evidence": [
+    "docs/plan/07-workspace.md:87 (Windows not in CI; the COM passkey plug-in needs an MSIX spike first)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "extension-passkey-fallback",
+   "category": "Passkeys & WebAuthn",
+   "name": "Browser passkey fallback",
+   "target": "beat",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: the WebAuthn override where no OS provider exists, and the coexistence convention.",
+   "evidence": [
+    "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)",
+    "crates/matcher/src/related_origins.rs:125 the_five_label_cap_and_freshness (supporting check only)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "conditional-create",
+   "category": "Passkeys & WebAuthn",
+   "name": "Automatic passkey upgrade",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: needs the OS providers and passkey creation.",
+   "evidence": [
+    "crates/ffi/src/lib.rs:4 (UniFFI facade is a skeleton; no Swift or Kotlin app exists)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "signal-api",
+   "category": "Passkeys & WebAuthn",
+   "name": "WebAuthn Signal API handling",
+   "target": "beat",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: handling the three Signal API calls with soft delete and undo.",
+   "evidence": [
+    "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "passkey-management",
+   "category": "Passkeys & WebAuthn",
+   "name": "Passkey management view",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Provider ID (AAGUID), backup flags, last use, and a delete that warns when it is the account's only sign-in.",
+   "evidence": [
+    "apps/desktop/src/features/vault/detail-pane.test.tsx:54 (passkey detail is view only, key never drawn)",
+    "crates/vault/src/template.rs:279 (site, user name, display name)",
+    "apps/desktop/src/app/shell.tsx:28 (Passkeys view)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "totp-generator",
+   "category": "Two-factor & authenticator",
+   "name": "Built-in TOTP codes",
+   "target": "parity",
+   "review": false,
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop",
+    "cli"
+   ],
+   "left": "Nothing in code for desktop; keeping it on the free tier is a pricing rule.",
+   "evidence": [
+    "crates/codes/src/lib.rs:382 totp_rfc6238_vectors",
+    "crates/app/src/lib.rs:1364 codes_come_as_values_and_timing_never_the_seed",
+    "apps/desktop/src/features/codes/codes-view.test.tsx:34"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "totp-autofill",
+   "category": "Two-factor & authenticator",
+   "name": "TOTP autofill",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core"
+   ],
+   "left": "The extension filling single and split six-box code fields after the password.",
+   "evidence": [
+    "crates/wasm/src/lib.rs:270 locking_wipes_the_session (WasmSession gives digits for a fill, never the seed)",
+    "crates/matcher/src/lib.rs:606 (code fills need the second action)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "otp-importers",
+   "category": "Two-factor & authenticator",
+   "name": "Authenticator importers",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop",
+    "cli"
+   ],
+   "left": "Google Authenticator transfer batches and Aegis (incl. encrypted), 2FAS, Ente, Proton and Bitwarden files; only single otpauth:// and steam:// links import today.",
+   "evidence": [
+    "crates/codes/src/uri.rs:202 otpauth_totp_and_hotp",
+    "crates/codes/src/uri.rs:227 steam_in_three_spellings_and_base64_conversion",
+    "crates/app/src/lib.rs:631 add_code"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "code-display-aids",
+   "category": "Two-factor & authenticator",
+   "name": "Code display aids",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Clock-skew correction against server time and search focus on launch (haptics are a phone item).",
+   "evidence": [
+    "apps/desktop/src/features/codes/codes-view.test.tsx:34 (next code in the last seconds)",
+    "docs/plan/10-desktop-shell.md:201 (skew notice dormant until the core measures skew)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "steam-guard-codes",
+   "category": "Vendor login bridges",
+   "name": "Steam Guard codes",
+   "target": "parity",
+   "review": false,
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop",
+    "cli"
+   ],
+   "left": "Nothing in code for desktop; no UI test exercises the Steam variant specifically.",
+   "evidence": [
+    "crates/codes/src/lib.rs:430 steam_vector_by_construction",
+    "crates/codes/src/uri.rs:227 steam_in_three_spellings_and_base64_conversion",
+    "crates/app/src/session/codes.rs:322 a_time_based_code_has_nothing_to_advance (Steam path)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "steam-mafile-import",
+   "category": "Vendor login bridges",
+   "name": "Steam maFile import",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core"
+   ],
+   "left": "File parsers for SDA (incl. passkey-encrypted), WinAuth and Steam v2 JSON, with identity_secret put in the high-risk class.",
+   "evidence": [
+    "crates/codes/src/lib.rs:124 (base64 shared_secret decoding)",
+    "crates/codes/src/uri.rs:227 steam_in_three_spellings_and_base64_conversion"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "device-code-approve",
+   "category": "Vendor login bridges",
+   "name": "TV and console activation by scan",
+   "target": "novel",
+   "review": true,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "The scanner, the activation-page allow-list, opening the real page with the code and autofill, and the core producing approval requests (the sheet is a seam).",
+   "evidence": [
+    "crates/approval/src/lib.rs:24 (ApprovalKind::DeviceCode, skeleton)",
+    "apps/desktop/src/features/approvals/approval-sheet.test.tsx:50 (a scanned device code keeps the approve path)",
+    "crates/bridge-host/src/lib.rs:194 the_tier_gate_refuses_closed_and_unconsented"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "proximity-gate",
+   "category": "Vendor login bridges",
+   "name": "Anti-phishing approval gate",
+   "target": "novel",
+   "review": true,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Wire the gate into real device-code, Steam QR and passkey QR flows; nothing calls it yet.",
+   "evidence": [
+    "crates/approval/src/lib.rs:209 a_pasted_device_code_is_refused_by_the_proximity_rule",
+    "apps/desktop/src/features/approvals/approval-sheet.test.tsx:42"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "large-type",
+   "category": "Vendor login bridges",
+   "name": "Large-type display",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "desktop"
+   ],
+   "left": "Large type for any password (Logins lack it), and the hotel and rental mode that logs the TV sign-in and reminds you to sign out.",
+   "evidence": [
+    "apps/desktop/src/features/vault/large-type.tsx:27 (ShowLargeType, 120 s sheet)",
+    "apps/desktop/src/features/vault/detail-pane.tsx:142 (on Wi-Fi hidden fields)",
+    "apps/desktop/src/features/status/once-page.test.tsx:22 (kit in large type)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "federated-login-map",
+   "category": "Vendor login bridges",
+   "name": "Federated sign-in map",
+   "target": "beat",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: capturing provider buttons and redirects, the blast-radius view and recovery warnings.",
+   "evidence": [
+    "crates/vault/src/crown_jewel.rs:53 (LoginRole names the sign-in-with map as a future input)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "service-2fa-guides",
+   "category": "Vendor login bridges",
+   "name": "Service 2FA setup guides",
+   "target": "beat",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: setup cards from 2fa.directory and the passkeys directory with attribution.",
+   "evidence": [
+    "rg for 2fa.directory data in crates/ and apps/ finds none"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "shared-vaults",
+   "category": "Sharing & collaboration",
+   "name": "Shared vaults",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core"
+   ],
+   "left": "Adding and removing members, wrapping the Vault Key to another person's key, rotation on removal, server support and UI.",
+   "evidence": [
+    "crates/vault/src/manifest.rs:44 (Member: persona, rights, wrapped Vault Key, sealed in each head)",
+    "crates/vault/src/vault.rs:959 members"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "granular-permissions",
+   "category": "Sharing & collaboration",
+   "name": "Granular share permissions",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core"
+   ],
+   "left": "Enforcing the rights in clients, groups, and logging; nothing reads the rights yet.",
+   "evidence": [
+    "crates/vault/src/manifest.rs:44 (rights: view, edit, fill-only, manage, re-share as strings)"
+   ],
+   "confidence": "low"
+  },
+  {
+   "id": "item-sharing",
+   "category": "Sharing & collaboration",
+   "name": "Single-item sharing",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: per-item keys wrapped to a recipient and the two-tap share.",
+   "evidence": [
+    "rg for item-level share or recipient wrap in crates/ finds none"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "share-links",
+   "category": "Sharing & collaboration",
+   "name": "Share links for non-users",
+   "target": "beat",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: the Send feature for items, files and text.",
+   "evidence": [
+    "bins/server/src/lib.rs:228 (no Send routes on the server)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "request-link",
+   "category": "Sharing & collaboration",
+   "name": "Request a secret",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: single-use request links encrypting to the requester's key.",
+   "evidence": [
+    "bins/server/src/lib.rs:228 (no request-link routes on the server)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "fill-only-sharing",
+   "category": "Sharing & collaboration",
+   "name": "Fill-only sharing",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: needs sharing and an extension fill path.",
+   "evidence": [
+    "crates/vault/src/manifest.rs:44 (fill-only is only a word in a doc comment)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "family-plan",
+   "category": "Family & emergency/recovery",
+   "name": "Family plan",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: shared vaults, a household vault, and plan and billing logic.",
+   "evidence": [
+    "crates/vault/src/manifest.rs:44 (no member can be added yet)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "emergency-access",
+   "category": "Family & emergency/recovery",
+   "name": "Emergency access",
+   "target": "beat",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: contact keys checked through key transparency and a QR fingerprint, the waiting period and release.",
+   "evidence": [
+    "docs/plan/11-desktop-design-brief.md:77 (trusted contacts later)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "recovery-kit",
+   "category": "Family & emergency/recovery",
+   "name": "Recovery kit",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop",
+    "cli",
+    "server"
+   ],
+   "left": "Make the \"test it now\" step forced at signup; today it is an optional drill with a reminder.",
+   "evidence": [
+    "bins/cli/tests/kit_and_secret_key.rs:121 an_old_slot_is_upgraded_when_the_kit_is_made_and_the_password_alone_no_longer_enrols",
+    "apps/desktop/src/features/status/once-page.test.tsx:22 (printable kit)",
+    "apps/desktop/src/features/unlock/first-run.tsx:165 (made at signup; drill is a reminder)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "recovery-drill",
+   "category": "Family & emergency/recovery",
+   "name": "Recovery drill",
+   "target": "novel",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop",
+    "cli"
+   ],
+   "left": "The yearly prompt, a last-success date, and checks of heirs' keys and legacy settings.",
+   "evidence": [
+    "crates/app/src/session.rs:1119 (a passing drill is recorded)",
+    "apps/desktop/src/features/recovery/recovery-view.tsx:49 (Recovery drill)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "password-reminder",
+   "category": "Family & emergency/recovery",
+   "name": "Password reminder for biometric users",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: a periodic account-password prompt (default 14 days) once biometric unlock exists.",
+   "evidence": [
+    "D83 (desktop unlock is the device keystore, no local master password)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "breached-passwords",
+   "category": "Security monitoring & phishing defense",
+   "name": "Breached password check",
+   "target": "beat",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: k-anonymity checks, offline dump support and re-checks.",
+   "evidence": [
+    "rg for breach or k-anonymity in crates/ and apps/ finds none"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "weak-reused",
+   "category": "Security monitoring & phishing defense",
+   "name": "Weak and reused password report",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: the weak and reused report across vaults; the core scorer exists but D116 limits it to typing.",
+   "evidence": [
+    "crates/app/src/strength.rs:55 (zxcvbn score for a password being typed only)",
+    "D116 (never a stored secret)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "email-breach-monitoring",
+   "category": "Security monitoring & phishing defense",
+   "name": "Email breach monitoring",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: monitoring account email and aliases.",
+   "evidence": [
+    "rg for breach monitoring in crates/ and bins/ finds none"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "missing-2fa-report",
+   "category": "Security monitoring & phishing defense",
+   "name": "Missing 2FA report",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: the report from 2fa.directory and the passkeys directory.",
+   "evidence": [
+    "rg for 2fa.directory data finds none"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "breach-playbooks",
+   "category": "Security monitoring & phishing defense",
+   "name": "Breach-response playbooks",
+   "target": "novel",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: the seven guided incident flows.",
+   "evidence": [
+    "rg for playbook in crates/ and apps/ finds none"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "lookalike-warning",
+   "category": "Security monitoring & phishing defense",
+   "name": "Lookalike-domain warning",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "cli"
+   ],
+   "left": "The hard stop and explicit confirm in a real fill and paste path (extension), and the full Unicode confusables table.",
+   "evidence": [
+    "crates/matcher/src/lib.rs:583 lookalikes_get_a_hard_stop",
+    "crates/matcher/src/lookalike.rs:126 an_empty_table_still_catches_typos_and_decoys_but_not_homoglyphs",
+    "extension/test/clickjacking.spec.ts:118"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "change-password-link",
+   "category": "Security monitoring & phishing defense",
+   "name": "One-tap change-password link",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: /.well-known/change-password then curated recipe URLs.",
+   "evidence": [
+    "rg for change-password in crates/ and apps/ finds none"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "account-alerts",
+   "category": "Security monitoring & phishing defense",
+   "name": "Vault account sign-in alerts",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop",
+    "cli",
+    "server"
+   ],
+   "left": "New-device sign-in alerts, a session list that ends tokens, and email verification for new devices.",
+   "evidence": [
+    "apps/desktop/src/features/devices/devices-view.tsx:58 (revoke behind the gate)",
+    "bins/server/tests/api.rs:959 the_identity_chain_is_ordered_pinned_and_revokes_devices",
+    "crates/vault/src/identity_set.rs:630 revocations_are_consistent_and_only_grow"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "alias-forwarders",
+   "category": "Privacy",
+   "name": "Third-party alias services",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: alias generation through the six services' API keys.",
+   "evidence": [
+    "rg for SimpleLogin or addy in crates/ and apps/ finds none"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "clipboard-hygiene",
+   "category": "Privacy",
+   "name": "Clipboard and screenshot hygiene",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "desktop"
+   ],
+   "left": "Keep copies out of Windows clipboard history and cloud clipboard, and block screen capture on reveal screens.",
+   "evidence": [
+    "apps/desktop/src-tauri/src/clipboard.rs:124 clears_only_its_own_copy_while_it_is_still_there",
+    "D85"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "cxf-ios",
+   "category": "Import/export & portability",
+   "name": "iOS credential exchange",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: needs the iOS app; the CXF model it would map through exists.",
+   "evidence": [
+    "crates/ffi/src/lib.rs:4 (UniFFI facade is a skeleton; no Swift or Kotlin app exists)",
+    "docs/plan/07-workspace.md:21 (OS exchange hooks not yet)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "cxf-android",
+   "category": "Import/export & portability",
+   "name": "Android credential exchange",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: needs the Android app; the CXF model it would map through exists.",
+   "evidence": [
+    "crates/ffi/src/lib.rs:4 (UniFFI facade is a skeleton; no Swift or Kotlin app exists)",
+    "docs/plan/07-workspace.md:21 (OS exchange hooks not yet)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "lossless-transfer",
+   "category": "Import/export & portability",
+   "name": "Lossless transfer",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Attachments, folders and history in the transfer, Wi-Fi in CXF's own type, and a per-item report of what the target app dropped.",
+   "evidence": [
+    "crates/cxf/src/convert.rs:714 fields_no_credential_holds_ride_in_the_lockdown_extension_both_ways",
+    "crates/cxf/src/convert.rs:809 unmapped_credentials_are_reported_not_dropped"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "importers",
+   "category": "Import/export & portability",
+   "name": "Importers from other managers",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Importers for 1PUX, Bitwarden JSON, Proton, KDBX, Dashlane, Keeper, LastPass and Enpass, sandboxed.",
+   "evidence": [
+    "crates/cxf/src/csv.rs:267 hostile_inputs_are_errors_not_panics",
+    "crates/app/src/session/transfer.rs:30 (CXF and CSV only)",
+    "crates/cxf/src/lib.rs:16 (other-manager importers not built)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "full-export",
+   "category": "Import/export & portability",
+   "name": "Complete export",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Attachments, history and folders in the export, as an encrypted archive; export in the CLI.",
+   "evidence": [
+    "crates/app/src/session/transfer.rs:83 export (CXF or CSV of the live vault)",
+    "crates/app/src/lib.rs:1267 every_kind_survives_an_export_and_an_import_and_a_wallet_stays_a_crown_jewel",
+    "crates/cxf/src/csv.rs:298 the_writer_defuses_formulas_and_round_trips"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "encrypted-export",
+   "category": "Import/export & portability",
+   "name": "Encrypted export",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: Argon2id plus AEAD and age-recipient exports, with plaintext behind an extra confirm.",
+   "evidence": [
+    "crates/app/src/session/transfer.rs:20 (FORMATS: cxf and csv, both plaintext behind the Reveal gate)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "open-format",
+   "category": "Import/export & portability",
+   "name": "Published backup format",
+   "target": "beat",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: the published backup format, its open-licence reference decoder, and KDBX export.",
+   "evidence": [
+    "crates/cxf/src/lib.rs:16 (the .lockdown archive is not built)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "auto-backups",
+   "category": "Import/export & portability",
+   "name": "Automatic local backups",
+   "target": "beat",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: scheduled encrypted backups to a chosen folder, the last-backup indicator and the emergency sheet.",
+   "evidence": [
+    "rg for scheduled backups in crates/ and apps/ finds none (the server's VACUUM INTO is the server's own, D56)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "official-self-host",
+   "category": "Self-hosting & deployment",
+   "name": "Official self-hosting",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "server"
+   ],
+   "left": "Packaging, operator docs and support, and the server features later slices need (sharing, push); it is axum plus rusqlite, not sqlx.",
+   "evidence": [
+    "bins/server/src/main.rs:1 (one binary for cloud and self-host)",
+    "bins/server/src/lib.rs:228 (routes)",
+    "bins/server/tests/api.rs:323 register_login_push_head_pull"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "single-container",
+   "category": "Self-hosting & deployment",
+   "name": "Lightweight single container",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "server"
+   ],
+   "left": "A published container image, Postgres, S3-compatible attachment storage, and the memory measurement.",
+   "evidence": [
+    "bins/server/src/main.rs:11 (every flag has an env var so a container needs no command line)",
+    "no Dockerfile or Containerfile in the repo"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "saas-parity",
+   "category": "Self-hosting & deployment",
+   "name": "Same code as the cloud",
+   "target": "parity",
+   "review": false,
+   "status": "n/a-yet",
+   "surfaces": [],
+   "left": "Needs a cloud, a feature-flag release process and advisory IDs; nothing to build until a hosted service exists.",
+   "evidence": [
+    "bins/server/Cargo.toml:3 (one server binary)",
+    "D7"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "self-host-push",
+   "category": "Self-hosting & deployment",
+   "name": "Self-hosted live sync",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: WebSocket live sync and a push relay for mobile.",
+   "evidence": [
+    "docs/plan/07-workspace.md:28 (push listed as not yet)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "e2ee",
+   "category": "Security architecture & crypto",
+   "name": "End-to-end encryption",
+   "target": "parity",
+   "review": false,
+   "status": "done",
+   "surfaces": [
+    "core",
+    "server",
+    "desktop",
+    "cli"
+   ],
+   "left": "Decide whether item kinds and field names (visible per D48) must be hidden too; then the external audit.",
+   "evidence": [
+    "crates/vault/src/field.rs:301 the_aad_is_the_eight_named_fields",
+    "crates/vault/src/vault.rs:1265 a_field_moved_between_items_or_versions_fails",
+    "D48 (file reveals kinds and field names, never values)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "secret-key",
+   "category": "Security architecture & crypto",
+   "name": "Secret Key",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop",
+    "cli",
+    "server"
+   ],
+   "left": "QR transfer of the Secret Key to a new device (it is typed from the kit today) and the opt-out warning path.",
+   "evidence": [
+    "D70 (Secret Key mixed into the account unlock key)",
+    "bins/cli/tests/kit_and_secret_key.rs:121 an_old_slot_is_upgraded_when_the_kit_is_made_and_the_password_alone_no_longer_enrols"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "pake-login",
+   "category": "Security architecture & crypto",
+   "name": "Password-authenticated login (PAKE)",
+   "target": "beat",
+   "review": false,
+   "status": "done",
+   "surfaces": [
+    "core",
+    "server",
+    "desktop",
+    "cli"
+   ],
+   "left": "Nothing in code; it goes into the external audit.",
+   "evidence": [
+    "crates/crypto/src/auth.rs:769 register_then_login_gives_the_same_export_key_and_a_session",
+    "crates/crypto/src/auth.rs:816 a_server_that_swaps_password_files_gets_nothing",
+    "bins/server/tests/api.rs:739 wrong_password_unknown_login_and_a_strangers_key_fail_alike"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "client-kdf",
+   "category": "Security architecture & crypto",
+   "name": "Strong key derivation",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core"
+   ],
+   "left": "Per-device calibration above the floor and renegotiation on a stronger device (every device uses the desktop floor, D49).",
+   "evidence": [
+    "crates/crypto/src/kdf.rs:42 floors_are_the_identity_crates (64 MiB, t=3, p=4)",
+    "crates/crypto/src/auth.rs:888 the_ksf_is_argon2id_at_the_floor_and_deterministic",
+    "D32 (raising params in place not offered)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "malicious-server-resistance",
+   "category": "Security architecture & crypto",
+   "name": "Malicious-server resistance",
+   "target": "novel",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "server",
+    "cli",
+    "desktop"
+   ],
+   "left": "The Tamarin or ProVerif model of login, sharing and recovery, and the academic review (not code); sharing and recovery defences follow those features.",
+   "evidence": [
+    "crates/sync/src/kt.rs:746 an_older_sth_a_split_view_and_a_rewritten_history_are_refused",
+    "bins/cli/tests/sync_two_stores.rs:150 two_stores_one_server_merge_conflict_and_rollback",
+    "D77"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "key-transparency",
+   "category": "Security architecture & crypto",
+   "name": "Authenticated public keys",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "server",
+    "cli",
+    "desktop"
+   ],
+   "left": "Lookups of other people's keys, QR fingerprint checks and passphrase-verified invites (they need sharing), and log mirrors.",
+   "evidence": [
+    "crates/sync/src/kt.rs:798 a_swapped_device_key_an_unknown_device_and_hidden_changes_are_caught",
+    "bins/cli/tests/transparency.rs:243 a_forked_log_is_caught_by_the_citation_in_the_vault_head",
+    "apps/desktop/src/features/status/status-view.test.tsx:79"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "bound-encryption",
+   "category": "Security architecture & crypto",
+   "name": "Bound authenticated encryption",
+   "target": "beat",
+   "review": false,
+   "status": "done",
+   "surfaces": [
+    "core"
+   ],
+   "left": "Nothing in code; it goes into the external audit.",
+   "evidence": [
+    "crates/vault/src/field.rs:301 the_aad_is_the_eight_named_fields",
+    "crates/vault/src/vault.rs:1265 a_field_moved_between_items_or_versions_fails",
+    "crates/crypto/src/aead.rs:111 empty_aad_is_refused_both_ways"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "anti-rollback",
+   "category": "Security architecture & crypto",
+   "name": "Rollback and deletion protection",
+   "target": "novel",
+   "review": false,
+   "status": "done",
+   "surfaces": [
+    "core",
+    "server",
+    "cli",
+    "desktop"
+   ],
+   "left": "Nothing for v1 beyond the audit.",
+   "evidence": [
+    "crates/vault/src/manifest.rs:175 verify_chain",
+    "crates/sync/src/lib.rs:306 rollback_is_blocked_loudly",
+    "crates/store/tests/backends.rs:298 a_rolled_back_store_is_refused"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "pq-transport",
+   "category": "Security architecture & crypto",
+   "name": "Post-quantum transport",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: hybrid X25519MLKEM768 TLS on the client and the self-host server.",
+   "evidence": [
+    "crates/sync/src/transport.rs:122 (rustls on the ring provider, which has no X25519MLKEM768)",
+    "bins/server/src/main.rs:31 (the server binds plain HTTP; no TLS code in bins/server/src)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "pq-key-wrapping",
+   "category": "Security architecture & crypto",
+   "name": "Post-quantum key wrapping",
+   "target": "novel",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core"
+   ],
+   "left": "Wrapping vault, sharing, organisation and recovery keys to hybrid recipients, and ML-DSA signatures.",
+   "evidence": [
+    "crates/crypto/src/kem.rs:35 x_wing_round_trip",
+    "D23, D30 (X-Wing peer wraps in the identity crate)",
+    "docs/plan/07-workspace.md:15 (ML-DSA slot not yet)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "hardware-backed-unlock",
+   "category": "Security architecture & crypto",
+   "name": "Hardware-backed biometric unlock",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: key slots in the Secure Enclave, StrongBox or TPM that reset when biometrics change.",
+   "evidence": [
+    "D87 (file keystore everywhere today)",
+    "crates/platform-auth/src/lib.rs:50 (Touch ID / Windows Hello as an approval check, not a key slot)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "account-security-keys",
+   "category": "Security architecture & crypto",
+   "name": "Security-key 2FA on the account",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: FIDO2 keys and passkeys as account second factors.",
+   "evidence": [
+    "bins/server/src/lib.rs:228 (no WebAuthn second-factor routes)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "device-approval",
+   "category": "Security architecture & crypto",
+   "name": "New-device approval with code match",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Approving a new device from an existing one over an authenticated channel (a device joins with the password and kit today).",
+   "evidence": [
+    "crates/approval/src/lib.rs:225 number_matching_and_rate_limit",
+    "apps/desktop/src/features/approvals/approval-sheet.test.tsx:23 (enrolment sheet with digits to match)",
+    "docs/plan/10-desktop-shell.md:201 (ApprovalSheet is a seam; nothing produces requests)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "memory-hygiene",
+   "category": "Security architecture & crypto",
+   "name": "Memory hygiene",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Locked memory pages kept out of swap; the webview still holds typed and revealed strings briefly (D91).",
+   "evidence": [
+    "crates/app/src/revealed.rs:86 the_buffer_is_zeroed_before_it_is_freed",
+    "crates/crypto/src/secret.rs:7 (secrecy SecretBox)",
+    "crates/app/src/lock.rs:171 a_wall_clock_jump_means_the_machine_slept"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "ipc-peer-auth",
+   "category": "Security architecture & crypto",
+   "name": "Verified local connections",
+   "target": "beat",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: native-messaging and IPC peer checks by code signature or process identity on every OS.",
+   "evidence": [
+    "D33 (process-identity check lives in the identity crate's Linux handshake, unused by Lockdown)",
+    "D4"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "high-risk-class",
+   "category": "Security architecture & crypto",
+   "name": "High-risk item class",
+   "target": "novel",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Keep crown jewels out of bulk export unless opted in per item (they are exported today), moving an item into or out of the class, and the legacy-release rule.",
+   "evidence": [
+    "crates/vault/src/crown_jewel.rs:12 CROWN_JEWEL_RULES",
+    "crates/vault/src/vault.rs:1602 crown_jewel_items_need_the_crown_jewel_key",
+    "apps/desktop/src/features/vault/crown-jewel.test.tsx:58"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "exposure-tiers",
+   "category": "Security architecture & crypto",
+   "name": "Per-item exposure tiers",
+   "target": "beat",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: the three per-item tiers and the approval default for high-risk items.",
+   "evidence": [
+    "docs/plan/10-desktop-shell.md:196 (RiskTierBadge is a seam; the vault model has no tier)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "windows-app",
+   "category": "Platforms & apps",
+   "name": "Windows app",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "desktop"
+   ],
+   "left": "A Windows build and test run in CI, MSIX packaging, the passkey plugin and auto-type.",
+   "evidence": [
+    "crates/platform-auth/src/lib.rs:29 (Windows Hello path, compile-checked only)",
+    "docs/plan/07-workspace.md:87 (Windows not in the CI matrix)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "macos-app",
+   "category": "Platforms & apps",
+   "name": "macOS app",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "desktop"
+   ],
+   "left": "A signed macOS build for Apple silicon and Intel, and the native AutoFill and passkey extensions.",
+   "evidence": [
+    "crates/platform-auth/src/lib.rs:74 (Touch ID path)",
+    ".github/workflows/ci.yml:19 (core tests on macOS; the desktop job runs on Ubuntu only)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "linux-app",
+   "category": "Platforms & apps",
+   "name": "Linux app",
+   "target": "parity",
+   "review": false,
+   "status": "partial",
+   "surfaces": [
+    "desktop"
+   ],
+   "left": "Flatpak, deb and rpm packaging, the SSH agent and TPM-sealed unlock.",
+   "evidence": [
+    ".github/workflows/ci.yml:98 (desktop job on WebKitGTK)",
+    "apps/desktop/src-tauri/tauri.conf.json:34 (bundle targets all; no packaging pipeline in CI)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "ios-app",
+   "category": "Platforms & apps",
+   "name": "iPhone and iPad app",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: the SwiftUI app and the UniFFI bindings.",
+   "evidence": [
+    "crates/ffi/src/lib.rs:4 (UniFFI facade is a skeleton; no Swift or Kotlin app exists)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "android-app",
+   "category": "Platforms & apps",
+   "name": "Android app",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: the Jetpack Compose app and F-Droid build.",
+   "evidence": [
+    "crates/ffi/src/lib.rs:4 (UniFFI facade is a skeleton; no Swift or Kotlin app exists)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "web-vault",
+   "category": "Platforms & apps",
+   "name": "Web vault",
+   "target": "parity",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: a web vault on the wasm core.",
+   "evidence": [
+    "docs/plan/07-workspace.md:26 (the vault surface for the web vault not yet; wasm exports only the matcher and codes)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "offline-access",
+   "category": "Platforms & apps",
+   "name": "Offline access",
+   "target": "beat",
+   "review": false,
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop",
+    "cli"
+   ],
+   "left": "Nothing for desktop and CLI beyond a background offline queue; the extension and mobile clients need it when they exist.",
+   "evidence": [
+    "crates/app/src/lib.rs:457 unlock (opens through the device keystore, offline)",
+    "bins/cli/tests/sync_two_stores.rs:150 two_stores_one_server_merge_conflict_and_rollback",
+    "crates/sync/src/engine.rs:630 a_conflict_copy_is_named_after_the_device_and_day"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "non-electron-desktop",
+   "category": "Platforms & apps",
+   "name": "Non-Electron desktop",
+   "target": "beat",
+   "review": false,
+   "status": "done",
+   "surfaces": [
+    "desktop"
+   ],
+   "left": "Nothing; native targets come with the OS-provider features.",
+   "evidence": [
+    "apps/desktop/src-tauri/tauri.conf.json:27 (Tauri 2 with a strict CSP)",
+    ".github/workflows/ci.yml:90 (desktop shell job)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "free-tier",
+   "category": "Platforms & apps",
+   "name": "Usable free tier",
+   "target": "beat",
+   "review": false,
+   "status": "n/a-yet",
+   "surfaces": [],
+   "left": "Needs the plan and pricing decision and its enforcement on the server.",
+   "evidence": [
+    "no plan or billing code anywhere; every feature is free today"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "oss-clients",
+   "category": "Trust & transparency",
+   "name": "Open-source clients",
+   "target": "parity",
+   "review": false,
+   "status": "n/a-yet",
+   "surfaces": [],
+   "left": "Needs the licence choice: the plan says GPL-3.0 but the code is Apache-2.0 today; and a public repository.",
+   "evidence": [
+    "Cargo.toml:48 (license = \"Apache-2.0\")",
+    "LICENSE (Apache License 2.0)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "oss-server",
+   "category": "Trust & transparency",
+   "name": "Open-source server",
+   "target": "parity",
+   "review": false,
+   "status": "n/a-yet",
+   "surfaces": [],
+   "left": "Needs the licence choice: the plan says AGPL but the server is Apache-2.0 today.",
+   "evidence": [
+    "Cargo.toml:48 (license = \"Apache-2.0\", inherited by bins/server)",
+    "bins/server/Cargo.toml:7"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "published-audits",
+   "category": "Trust & transparency",
+   "name": "Published independent audits",
+   "target": "parity",
+   "review": false,
+   "status": "n/a-yet",
+   "surfaces": [],
+   "left": "Needs firms engaged and reports published, plus SOC 2.",
+   "evidence": [
+    "D38 (security-model details batched for the audit)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "reproducible-builds",
+   "category": "Trust & transparency",
+   "name": "Reproducible builds",
+   "target": "novel",
+   "review": false,
+   "status": "not-started",
+   "surfaces": [],
+   "left": "Everything: reproducible extension, desktop and Android builds and an independent rebuilder.",
+   "evidence": [
+    ".github/workflows/ci.yml (no release or rebuild job)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "signed-releases",
+   "category": "Trust & transparency",
+   "name": "Signed releases and SBOMs",
+   "target": "beat",
+   "review": false,
+   "status": "partial",
+   "surfaces": [],
+   "left": "Signed, attested releases, SBOMs and cargo-vet; there are no releases yet.",
+   "evidence": [
+    ".github/workflows/ci.yml:33 (cargo-deny job)",
+    "deny.toml (bans, licences, sources)",
+    "docs/plan/07-workspace.md:71 (identity crate pinned by commit)"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "bug-bounty",
+   "category": "Trust & transparency",
+   "name": "Public bug bounty",
+   "target": "parity",
+   "review": false,
+   "status": "n/a-yet",
+   "surfaces": [],
+   "left": "Needs a public bounty programme with malicious-server scenarios in scope.",
+   "evidence": [
+    "no security policy or bounty file in the repo"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "security-advisories",
+   "category": "Trust & transparency",
+   "name": "Security advisories in release notes",
+   "target": "parity",
+   "review": false,
+   "status": "n/a-yet",
+   "surfaces": [],
+   "left": "Needs a release process that lists advisory IDs and CVEs.",
+   "evidence": [
+    "no releases or release notes exist yet"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "exit-guarantee",
+   "category": "Trust & transparency",
+   "name": "Ownership and exit guarantee",
+   "target": "novel",
+   "review": false,
+   "status": "n/a-yet",
+   "surfaces": [],
+   "left": "Needs the ownership-change notice, the no-custody-move promise and a funded succession plan.",
+   "evidence": [
+    "crates/app/src/session/transfer.rs:83 (free export exists)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "data-residency",
+   "category": "Trust & transparency",
+   "name": "Data residency choice",
+   "target": "parity",
+   "review": false,
+   "status": "n/a-yet",
+   "surfaces": [],
+   "left": "Needs hosted US and EU regions and a region picker at signup.",
+   "evidence": [
+    "bins/server/src/main.rs:1 (self-host anywhere is possible)"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "security-whitepaper",
+   "category": "Trust & transparency",
+   "name": "Readable security white paper",
+   "target": "beat",
+   "review": false,
+   "status": "n/a-yet",
+   "surfaces": [],
+   "left": "Needs a public white paper with sequence diagrams for every flow and the documented vault format.",
+   "evidence": [
+    "docs/plan/04-security.md (internal plan, not a public paper)"
+   ],
+   "confidence": "high"
+  }
+ ]
+}

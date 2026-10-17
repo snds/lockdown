@@ -14,7 +14,23 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**Plan set v0.1, 82 decisions, fifth Rust slice built (2026-10-17).** The workspace builds, lints clean and passes its tests on stable Rust. A vault round-trips through a plain SQLite file that holds ciphertext only, opens from the shared ecosystem identity and this device's keystore with no kit and no master password, and syncs: the `lockdown` command line registers an account with OPAQUE, a second device enrols through it, and the two push, pull and merge against the one server binary, with conflict copies where a field-level merge cannot decide and "Rollback attempt blocked" when the server falls behind. Files attach to items in 1 MiB chunks under per-file keys and travel as content-addressed blobs. The server keeps a public, append-only log of every key and head it accepts, and every sync checks it: a shrunken, forked or rewritten log stops the sync, a device the identity doesn't list is named, and two devices catch a server that shows them different logs. The matcher crosses into the browser over wasm with signed data and a Chromium-driven red team. Nothing ships yet. What is real and what is a skeleton is listed in [`docs/plan/07-workspace.md`](docs/plan/07-workspace.md).
+**119 decisions, eleven build slices, no release yet (2026-10-17).** Of the 122 features committed to v1, 9 are done, 50 are partial, 53 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI and the self-host server exist; the browser extension and the mobile apps do not yet.
+
+| Slice | What it delivered |
+|---|---|
+| **0 · Plan** ✅ | Research across 9 managers (201 features), the plan set, the ecosystem identity design ([big picture](docs/plan/00-big-picture.md), [roadmap](docs/plan/06-roadmap.md)) |
+| **1 · Crypto core** ✅ | Keys, sealed items with a signed history, the URL matcher, one-time codes, CXF import and export ([workspace](docs/plan/07-workspace.md), D35) |
+| **2 · Local vault** ✅ | A SQLite file that holds ciphertext only, opened from the shared identity and the device keystore (D39–D48) |
+| **3 · Account and sync** ✅ | OPAQUE sign-in, the self-host server, verifiable sync that blocks rollback and forks (D49–D61) |
+| **4 · Extension boundary** ✅ | The matcher in the browser over wasm, signed site data, a clickjacking red team; not the extension itself ([boundary](docs/plan/09-extension-boundary.md), D62–D67) |
+| **5 · Recovery and devices** ✅ | Recovery kit with the Secret Key, the identity record set, device revocation (D68–D74) |
+| **6 · Attachments and key transparency** ✅ | Chunked encrypted files, a public append-only key log every sync checks (D75–D82) |
+| **7 · Desktop shell** ✅ | Tauri app on unicron: unlock, list, detail, Login editor, sync ([shell](docs/plan/10-desktop-shell.md), D83–D91) |
+| **8 · Desktop depth** ✅ | Settings, first run, Touch ID and Windows Hello approvals, Codes, Devices, Recovery, import and gated export ([brief](docs/plan/11-desktop-design-brief.md), D92–D104) |
+| **9 · Security components** ✅ | Secret fields, code display, crown jewels, large type, approval sheet, risk badge; idle lock, trash restore, conflict resolve (D105–D109) |
+| **10 · Every item kind** ✅ | Templates and one editor for every kind, the password generator, the ⌘K palette, lossless CXF export (D110–D115) |
+| **11 · Strength and codes** ✅ | Password strength meter, HOTP next code, copy by reference, unicron 0.9 (D116–D119) |
+| **Next** | Browser extension (fill, save, passkeys), mobile apps, sharing and family, breach monitoring, packaged and signed releases |
 
 | Real (with tests) | Skeleton (types, traits, one real rule each) |
 |---|---|
