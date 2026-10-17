@@ -274,6 +274,12 @@ async fn trash(app: State<'_, App>, id: String) -> AppResult<()> {
     blocking(&app, move |a| a.trash(&id)).await
 }
 
+/// Brings a trashed item back (the Deleted view's Restore).
+#[tauri::command]
+async fn restore(app: State<'_, App>, id: String) -> AppResult<()> {
+    blocking(&app, move |a| a.restore(&id)).await
+}
+
 #[tauri::command]
 async fn status(app: State<'_, App>) -> AppResult<lockdown_app::Status> {
     blocking(&app, |a| a.status()).await
@@ -546,6 +552,7 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         add_login,
         edit_login,
         trash,
+        restore,
         status,
         account_register,
         account_login,

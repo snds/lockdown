@@ -665,6 +665,12 @@ impl App {
         self.with_session(move |s| s.trash(&id))
     }
 
+    /// Brings a trashed item back (the Deleted view's Restore).
+    pub fn restore(&self, id: &str) -> AppResult<()> {
+        let id = id.to_string();
+        self.with_session(move |s| s.restore(&id))
+    }
+
     // --- the account, sync, kit, devices ------------------------------------------
 
     /// Where everything is and the vault's newest head.
@@ -904,6 +910,22 @@ mod tests {
         assert_eq!(rows[0].views, ["deleted"]);
         let json = serde_json::to_string(&rows).unwrap();
         assert!(!json.contains("hunter2"));
+
+        // Restore brings it back as it was, out of Deleted.
+        app.restore(&id).unwrap();
+        let rows = app.list().unwrap();
+        assert_eq!(rows[0].state, "live");
+        assert!(rows[0].views.is_empty());
+        assert_eq!(app.show(&id, false).unwrap().state, "live");
+        assert_eq!(
+            app.reveal(&id, "pw", GateInput::default())
+                .unwrap()
+                .expose(),
+            b"hunter2"
+        );
+        let err = app.restore(&id).unwrap_err();
+        assert_eq!(err.code, ErrorCode::Refused);
+        assert!(err.message.contains("isn't in the trash"), "{err}");
     }
 
     #[test]

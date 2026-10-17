@@ -869,6 +869,22 @@ impl Vault {
         self.commit_head()
     }
 
+    /// Brings a trashed item back as live, before its grace period ends.
+    /// Only the trash comes back: an archived item is not in the trash,
+    /// and a purged one has no keys to come back with.
+    pub fn restore_item(&mut self, item_id: Id) -> Result<()> {
+        let item = self
+            .items
+            .get_mut(&item_id)
+            .ok_or_else(|| Error::NotFound(format!("item {item_id}")))?;
+        if item.state != ItemState::Trashed {
+            return Err(Error::Invalid(format!("item {item_id} isn't in the trash")));
+        }
+        item.state = ItemState::Live;
+        item.trashed_at = None;
+        self.commit_head()
+    }
+
     /// Purges an item: destroys its Item Key, every Version Key and every
     /// Attachment Key, leaves a tombstone with the last version hash, and
     /// commits. The ciphertext may sit in backups forever and stays dead.
@@ -1344,6 +1360,35 @@ mod tests {
         assert_eq!(vault.revoked_after(device), Some(2));
         vault.revoke_device(device, 1);
         assert_eq!(vault.revoked_after(device), Some(1));
+    }
+
+    #[test]
+    fn trash_then_restore_brings_the_item_back_live_with_its_history() {
+        let mut vault = sample_vault();
+        let id = vault
+            .create_item(ItemKind::Login, ItemClass::Standard, login_fields("one"))
+            .unwrap();
+        vault.update_item(id, login_fields("two")).unwrap();
+        let heads_before = vault.heads.len();
+        vault.trash_item(id).unwrap();
+        assert_eq!(vault.item(id).unwrap().state, ItemState::Trashed);
+        assert!(vault.item(id).unwrap().trashed_at.is_some());
+        vault.restore_item(id).unwrap();
+        let item = vault.item(id).unwrap();
+        assert_eq!(item.state, ItemState::Live);
+        assert!(item.trashed_at.is_none());
+        assert_eq!(item.versions.len(), 2, "nothing was rewritten");
+        assert_eq!(vault.open_item(id).unwrap(), login_fields("two"));
+        // Each move is a committed head, so the other devices learn it.
+        assert_eq!(vault.heads.len(), heads_before + 2);
+        assert_eq!(
+            vault.heads.last().unwrap().entries[0].state,
+            ItemState::Live
+        );
+        // A live item is not in the trash; a purged one cannot come back.
+        assert!(matches!(vault.restore_item(id), Err(Error::Invalid(_))));
+        vault.purge_item(id).unwrap();
+        assert!(matches!(vault.restore_item(id), Err(Error::Invalid(_))));
     }
 
     #[test]

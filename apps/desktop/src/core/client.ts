@@ -64,6 +64,8 @@ export interface Client {
   addLogin(input: { site: string; username: string; password: number[]; title?: string }): Promise<string>
   editLogin(input: { id: string; title?: string; username?: string; password?: number[] }): Promise<number>
   trash(id: string): Promise<void>
+  /** Brings a trashed item back from Deleted, as it was. */
+  restore(id: string): Promise<void>
   codes(): Promise<CodeView[]>
   addCode(input: { uri: string; title?: string; into?: string }): Promise<string>
   personas(): Promise<PersonaInfo[]>
@@ -128,6 +130,7 @@ export const tauriClient: Client = {
   addLogin: (input) => call("add_login", input),
   editLogin: (input) => call("edit_login", input),
   trash: (id) => call("trash", { id }),
+  restore: (id) => call("restore", { id }),
   codes: () => call("codes"),
   addCode: (input) => call("add_code", input),
   personas: () => call("personas"),

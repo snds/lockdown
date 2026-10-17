@@ -569,6 +569,16 @@ impl Session {
         self.save()
     }
 
+    /// Brings a trashed item back from the Deleted view, as it was.
+    pub fn restore(&mut self, id: &str) -> Result<(), String> {
+        let item_id = parse_id(id)?;
+        self.opened
+            .vault
+            .restore_item(item_id)
+            .map_err(|e| e.to_string())?;
+        self.save()
+    }
+
     /// Every visible item, newest edit first, trashed ones included (their
     /// `state` says so, and `views` puts them in Deleted alone): nothing
     /// hidden is in it. The facts a row and the smart views are drawn from
