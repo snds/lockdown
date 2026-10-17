@@ -12,15 +12,19 @@
 //! - [`wire`] — the protocol types, shared with `lockdown-server`
 //! - [`transport`] — the [`Transport`] contract and the HTTPS client
 //! - [`engine`] — [`sync_vault`]: pull, merge, push, head; [`bootstrap_vault`]
+//! - [`identity`] — [`pull_identity`] and [`push_identity`]: the identity's
+//!   signed record set, pulled before any vault head (D71)
 //!
 //! The offline queue, the key-transparency check and the checkpoint proof
 //! are not built yet.
 
 pub mod engine;
+pub mod identity;
 pub mod transport;
 pub mod wire;
 
 pub use engine::{SyncReport, Syncer, VaultSyncState, bootstrap_vault, sync_vault};
+pub use identity::{pull_identity, push_identity};
 pub use transport::{HttpTransport, Transport, TransportError};
 
 use std::collections::BTreeMap;
@@ -200,6 +204,24 @@ pub enum SyncError {
 impl From<lockdown_crypto::Error> for SyncError {
     fn from(e: lockdown_crypto::Error) -> Self {
         SyncError::Vault(e.into())
+    }
+}
+
+impl From<lockdown_store::AcceptError> for SyncError {
+    fn from(e: lockdown_store::AcceptError) -> Self {
+        use lockdown_store::AcceptError as A;
+        match e {
+            A::Rollback {
+                offered,
+                remembered,
+            } => SyncError::Rollback {
+                offered,
+                remembered,
+            },
+            A::Fork { seq } => SyncError::Fork { seq },
+            A::Invalid(e) => SyncError::Vault(e),
+            A::Store(e) => SyncError::Store(e),
+        }
     }
 }
 

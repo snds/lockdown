@@ -1,33 +1,48 @@
 //! What the server keeps, behind [`Storage`]: accounts (login name, profile
-//! id, OPAQUE password file), the devices each account logged in with,
-//! the account's identity backup, and per vault the record, the item
-//! envelopes with their revisions and the signed head chain. All of it is
-//! ciphertext or signed public structure (05-self-host §2); the server
-//! holds no key and reads no field.
+//! id, OPAQUE password file, the pinned Identity Signing Key), the devices
+//! each account logged in with, the account's identity record set (the
+//! chain of identity manifests, the records they list, and the revocations
+//! the newest one carries), and per vault the record, the item envelopes
+//! with their revisions and the signed head chain. All of it is ciphertext
+//! or signed public structure (05-self-host §2); the server holds no key
+//! and reads no field.
 //!
 //! [`SqliteStorage`] is the one backend today: a single file, WAL mode,
 //! every rule that must hold across rows (the head chain, the item
 //! revision) checked inside one transaction.
 //!
 //! ```text
-//! schema_version   (version)
-//! accounts         (account_id, login UNIQUE, profile_id, password_file, created_at)
-//! devices          (account_id, device_id, device_pub, first_seen)
-//! identity_backups (account_id, body, updated_at)
-//! vaults           (vault_id, account_id, record, head_seq, head_hash, item_rev)
-//! heads            (vault_id, seq, hash, body)
-//! items            (vault_id, item_id, rev, body)
+//! schema_version    (version)
+//! accounts          (account_id, login UNIQUE, profile_id, password_file, created_at,
+//!                    identity_seq, identity_hash, isk_pub)
+//! devices           (account_id, device_id, device_pub, first_seen)
+//! identity_heads    (account_id, seq, hash, body)
+//! identity_records  (account_id, path, hash, body)
+//! revoked_devices   (account_id, device_id, vault_id, boundary_seq)
+//! vaults            (vault_id, account_id, record, head_seq, head_hash, item_rev)
+//! heads             (vault_id, seq, hash, body)
+//! items             (vault_id, item_id, rev, body)
 //! ```
+//!
+//! Schema 1 kept one last-write-wins identity backup per account
+//! (`identity_backups`, D59); schema 2 replaces it with the record set
+//! (D71). An old file is upgraded in place: the new tables are added and
+//! the old one left alone.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use lockdown_sync::wire::{ErrorCode, HeadAccepted, HeadRefused};
+use lockdown_vault::identity_set::{IdentityManifest, RecordRef};
 use lockdown_vault::{Hash32, Id, Item, ManifestHead};
 use rusqlite::{Connection, OptionalExtension, params};
 
 /// The schema this build writes and the highest it reads.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
+
+/// The marker row in `revoked_devices` that says "revoked at all",
+/// beside one row per vault boundary.
+const REVOKED_MARKER: &str = "*";
 
 /// What can go wrong in storage.
 #[derive(Debug, thiserror::Error)]
@@ -103,6 +118,60 @@ pub struct HeadRow {
     pub body: Vec<u8>,
 }
 
+/// Where an account's identity chain stands.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct IdentityState {
+    /// The newest accepted manifest's `seq`; zero before the first.
+    pub seq: u64,
+    /// Its hash.
+    pub hash: Option<Hash32>,
+    /// The Identity Signing Key pinned by the first accepted manifest.
+    pub isk_pub: Option<[u8; 32]>,
+}
+
+/// One identity record as stored.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordRow {
+    /// Its path.
+    pub path: String,
+    /// BLAKE3 of the bytes.
+    pub hash: Hash32,
+    /// The signed bytes.
+    pub body: Vec<u8>,
+}
+
+/// One revocation boundary: the device, the vault, the newest head it may
+/// have signed there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RevocationRow {
+    /// The device.
+    pub device_id: Id,
+    /// The vault.
+    pub vault_id: Id,
+    /// The boundary.
+    pub boundary_seq: u64,
+}
+
+/// What accepting an identity manifest stores, all at once.
+#[derive(Clone, Debug)]
+pub struct IdentityAccept<'a> {
+    /// The manifest, decoded.
+    pub manifest: &'a IdentityManifest,
+    /// Its bytes as signed.
+    pub body: &'a [u8],
+    /// Records that came with it.
+    pub records: &'a [RecordRow],
+    /// The Identity Signing Key the set verified under.
+    pub isk_pub: &'a [u8; 32],
+    /// Every revoked device.
+    pub revoked: &'a [Id],
+    /// Every revocation boundary.
+    pub revocations: &'a [RevocationRow],
+}
+
+/// `(identity_seq, identity_hash, isk_pub)` as SQLite returns them.
+type IdentityColumns = (i64, Option<Vec<u8>>, Option<Vec<u8>>);
+
 /// One item as stored.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ItemRow {
@@ -138,10 +207,27 @@ pub trait Storage: Send + Sync {
     fn register_device(&self, account_id: Id, device_id: Id, device_pub: &[u8; 32]) -> Result<()>;
     /// The public key of a device the account logged in with.
     fn device_pub(&self, account_id: Id, device_id: Id) -> Result<Option<[u8; 32]>>;
-    /// Replaces the account's identity backup.
-    fn put_identity_backup(&self, account_id: Id, body: &[u8]) -> Result<()>;
-    /// The account's identity backup.
-    fn identity_backup(&self, account_id: Id) -> Result<Option<Vec<u8>>>;
+    /// Where the account's identity chain stands.
+    fn identity_state(&self, account_id: Id) -> Result<IdentityState>;
+    /// Every identity manifest with `seq > since`, oldest first.
+    fn identity_heads_since(&self, account_id: Id, since: u64) -> Result<Vec<HeadRow>>;
+    /// The stored records among `refs`, by path and hash.
+    fn identity_records(&self, account_id: Id, refs: &[RecordRef]) -> Result<Vec<RecordRow>>;
+    /// Accepts an identity manifest if it extends the chain by exactly one
+    /// and names the current manifest as `prev_hash`; stores the records
+    /// given alongside, pins the signing key on the account (it must equal
+    /// the pinned one when there is one), and replaces the account's
+    /// revocation rows (every revoked device, with a marker row and one
+    /// row per boundary). The caller has verified everything else. Atomic.
+    fn accept_identity(
+        &self,
+        account_id: Id,
+        accept: IdentityAccept<'_>,
+    ) -> Result<std::result::Result<HeadAccepted, HeadRefused>>;
+    /// For a revoked device, the newest head it may have signed in
+    /// `vault_id` (zero when the revocation names no boundary there);
+    /// `None` for a device in good standing.
+    fn revoked_after(&self, account_id: Id, device_id: Id, vault_id: Id) -> Result<Option<u64>>;
     /// Creates a vault for the account or replaces its record. A vault
     /// another account owns is [`StorageError::Forbidden`].
     fn put_vault(&self, account_id: Id, vault_id: Id, record: &[u8]) -> Result<()>;
@@ -275,10 +361,26 @@ impl SqliteStorage {
                  first_seen INTEGER NOT NULL,
                  PRIMARY KEY (account_id, device_id)
              );
-             CREATE TABLE IF NOT EXISTS identity_backups (
-                 account_id TEXT PRIMARY KEY NOT NULL REFERENCES accounts(account_id),
+             CREATE TABLE IF NOT EXISTS identity_heads (
+                 account_id TEXT NOT NULL REFERENCES accounts(account_id),
+                 seq        INTEGER NOT NULL,
+                 hash       BLOB NOT NULL,
                  body       BLOB NOT NULL,
-                 updated_at INTEGER NOT NULL
+                 PRIMARY KEY (account_id, seq)
+             );
+             CREATE TABLE IF NOT EXISTS identity_records (
+                 account_id TEXT NOT NULL REFERENCES accounts(account_id),
+                 path       TEXT NOT NULL,
+                 hash       BLOB NOT NULL,
+                 body       BLOB NOT NULL,
+                 PRIMARY KEY (account_id, path, hash)
+             );
+             CREATE TABLE IF NOT EXISTS revoked_devices (
+                 account_id   TEXT NOT NULL REFERENCES accounts(account_id),
+                 device_id    TEXT NOT NULL,
+                 vault_id     TEXT NOT NULL,
+                 boundary_seq INTEGER NOT NULL,
+                 PRIMARY KEY (account_id, device_id, vault_id)
              );
              CREATE TABLE IF NOT EXISTS vaults (
                  vault_id   TEXT PRIMARY KEY NOT NULL,
@@ -322,7 +424,37 @@ impl SqliteStorage {
                     supported: SCHEMA_VERSION,
                 });
             }
+            Some(v) if v < SCHEMA_VERSION => {
+                conn.execute(
+                    "INSERT INTO schema_version (version) VALUES (?1)",
+                    params![SCHEMA_VERSION],
+                )
+                .map_err(backend)?;
+            }
             Some(_) => {}
+        }
+        // Schema 2's columns on `accounts`, added in place to a schema 1 file.
+        let mut columns = conn
+            .prepare("PRAGMA table_info(accounts)")
+            .map_err(backend)?;
+        let names: Vec<String> = columns
+            .query_map([], |r| r.get::<_, String>(1))
+            .map_err(backend)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(backend)?;
+        drop(columns);
+        for (name, decl) in [
+            ("identity_seq", "INTEGER NOT NULL DEFAULT 0"),
+            ("identity_hash", "BLOB"),
+            ("isk_pub", "BLOB"),
+        ] {
+            if !names.iter().any(|n| n == name) {
+                conn.execute(
+                    &format!("ALTER TABLE accounts ADD COLUMN {name} {decl}"),
+                    [],
+                )
+                .map_err(backend)?;
+            }
         }
         Ok(Self {
             path,
@@ -373,6 +505,31 @@ impl SqliteStorage {
                 item_rev: to_u64(item_rev),
             })),
         }
+    }
+
+    fn identity_state_in(conn: &Connection, account_id: Id) -> Result<IdentityState> {
+        let row: Option<IdentityColumns> = conn
+            .query_row(
+                "SELECT identity_seq, identity_hash, isk_pub FROM accounts WHERE account_id = ?1",
+                params![account_id.to_string()],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()
+            .map_err(backend)?;
+        let Some((seq, hash, isk_pub)) = row else {
+            return Err(StorageError::NotFound(format!("account {account_id}")));
+        };
+        let isk_pub = match isk_pub {
+            None => None,
+            Some(k) => Some(k.try_into().map_err(|_| {
+                StorageError::Backend("a stored identity key isn't 32 bytes".into())
+            })?),
+        };
+        Ok(IdentityState {
+            seq: to_u64(seq),
+            hash: hash_from(hash)?,
+            isk_pub,
+        })
     }
 
     fn item_in(conn: &Connection, vault_id: Id, item_id: Id) -> Result<Option<ItemRow>> {
@@ -495,25 +652,223 @@ impl Storage for SqliteStorage {
         }
     }
 
-    fn put_identity_backup(&self, account_id: Id, body: &[u8]) -> Result<()> {
-        let conn = self.lock();
-        conn.execute(
-            "INSERT OR REPLACE INTO identity_backups (account_id, body, updated_at) VALUES (?1, ?2, ?3)",
-            params![account_id.to_string(), body, now()],
-        )
-        .map_err(backend)?;
-        Ok(())
+    fn identity_state(&self, account_id: Id) -> Result<IdentityState> {
+        Self::identity_state_in(&self.lock(), account_id)
     }
 
-    fn identity_backup(&self, account_id: Id) -> Result<Option<Vec<u8>>> {
+    fn identity_heads_since(&self, account_id: Id, since: u64) -> Result<Vec<HeadRow>> {
         let conn = self.lock();
-        conn.query_row(
-            "SELECT body FROM identity_backups WHERE account_id = ?1",
-            params![account_id.to_string()],
-            |r| r.get(0),
+        let mut stmt = conn
+            .prepare(
+                "SELECT seq, hash, body FROM identity_heads WHERE account_id = ?1 AND seq > ?2 ORDER BY seq",
+            )
+            .map_err(backend)?;
+        let rows = stmt
+            .query_map(
+                params![account_id.to_string(), to_i64(since, "a sequence")?],
+                |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, Vec<u8>>(1)?,
+                        r.get::<_, Vec<u8>>(2)?,
+                    ))
+                },
+            )
+            .map_err(backend)?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (seq, hash, body) = row.map_err(backend)?;
+            out.push(HeadRow {
+                seq: to_u64(seq),
+                hash: hash_from(Some(hash))?.expect("some"),
+                body,
+            });
+        }
+        Ok(out)
+    }
+
+    fn identity_records(&self, account_id: Id, refs: &[RecordRef]) -> Result<Vec<RecordRow>> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT body FROM identity_records WHERE account_id = ?1 AND path = ?2 AND hash = ?3",
+            )
+            .map_err(backend)?;
+        let mut out = Vec::new();
+        for r in refs {
+            let body: Option<Vec<u8>> = stmt
+                .query_row(
+                    params![account_id.to_string(), &r.path, &r.hash.0[..]],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(backend)?;
+            if let Some(body) = body {
+                out.push(RecordRow {
+                    path: r.path.clone(),
+                    hash: r.hash,
+                    body,
+                });
+            }
+        }
+        Ok(out)
+    }
+
+    fn accept_identity(
+        &self,
+        account_id: Id,
+        accept: IdentityAccept<'_>,
+    ) -> Result<std::result::Result<HeadAccepted, HeadRefused>> {
+        let IdentityAccept {
+            manifest,
+            body,
+            records,
+            isk_pub,
+            revoked,
+            revocations,
+        } = accept;
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(backend)?;
+        let state = Self::identity_state_in(&tx, account_id)?;
+        let refuse = |code: ErrorCode, message: String| HeadRefused {
+            code,
+            message,
+            current_seq: state.seq,
+            current_hash: state.hash,
+        };
+        if let Some(pinned) = state.isk_pub
+            && pinned != *isk_pub
+        {
+            return Ok(Err(refuse(
+                ErrorCode::BadSignature,
+                "the identity manifest isn't signed by this account's identity".into(),
+            )));
+        }
+        if state.seq == 0 {
+            if manifest.seq != 1 {
+                return Ok(Err(refuse(
+                    ErrorCode::Gap,
+                    format!(
+                        "the server holds no identity manifest for this account yet; the first must be seq 1, not {}",
+                        manifest.seq
+                    ),
+                )));
+            }
+            if manifest.prev_hash != Hash32::ZERO {
+                return Ok(Err(refuse(
+                    ErrorCode::Fork,
+                    "the first identity manifest must name no predecessor".into(),
+                )));
+            }
+        } else {
+            if manifest.seq <= state.seq {
+                return Ok(Err(refuse(
+                    ErrorCode::OlderSeq,
+                    format!(
+                        "the server is already at identity manifest {}; {} is not newer",
+                        state.seq, manifest.seq
+                    ),
+                )));
+            }
+            if manifest.seq > state.seq + 1 {
+                return Ok(Err(refuse(
+                    ErrorCode::Gap,
+                    format!(
+                        "the server is at identity manifest {}; {} would skip {}",
+                        state.seq,
+                        manifest.seq,
+                        manifest.seq - state.seq - 1
+                    ),
+                )));
+            }
+            if Some(manifest.prev_hash) != state.hash {
+                return Ok(Err(refuse(
+                    ErrorCode::Fork,
+                    format!(
+                        "identity manifest {} names a predecessor that isn't the server's current one ({}); another device moved first",
+                        manifest.seq, state.seq
+                    ),
+                )));
+            }
+        }
+        for r in records {
+            tx.execute(
+                "INSERT OR IGNORE INTO identity_records (account_id, path, hash, body) VALUES (?1, ?2, ?3, ?4)",
+                params![account_id.to_string(), &r.path, &r.hash.0[..], &r.body],
+            )
+            .map_err(backend)?;
+        }
+        let hash = manifest
+            .hash()
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
+        let seq = to_i64(manifest.seq, "a sequence")?;
+        tx.execute(
+            "INSERT INTO identity_heads (account_id, seq, hash, body) VALUES (?1, ?2, ?3, ?4)",
+            params![account_id.to_string(), seq, &hash.0[..], body],
         )
-        .optional()
-        .map_err(backend)
+        .map_err(backend)?;
+        tx.execute(
+            "UPDATE accounts SET identity_seq = ?2, identity_hash = ?3, isk_pub = ?4 WHERE account_id = ?1",
+            params![account_id.to_string(), seq, &hash.0[..], &isk_pub[..]],
+        )
+        .map_err(backend)?;
+        tx.execute(
+            "DELETE FROM revoked_devices WHERE account_id = ?1",
+            params![account_id.to_string()],
+        )
+        .map_err(backend)?;
+        for device in revoked {
+            tx.execute(
+                "INSERT INTO revoked_devices (account_id, device_id, vault_id, boundary_seq) VALUES (?1, ?2, ?3, 0)",
+                params![account_id.to_string(), device.to_string(), REVOKED_MARKER],
+            )
+            .map_err(backend)?;
+        }
+        for r in revocations {
+            tx.execute(
+                "INSERT OR REPLACE INTO revoked_devices (account_id, device_id, vault_id, boundary_seq) VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    account_id.to_string(),
+                    r.device_id.to_string(),
+                    r.vault_id.to_string(),
+                    to_i64(r.boundary_seq, "a boundary")?
+                ],
+            )
+            .map_err(backend)?;
+        }
+        tx.commit().map_err(backend)?;
+        Ok(Ok(HeadAccepted {
+            seq: manifest.seq,
+            hash,
+        }))
+    }
+
+    fn revoked_after(&self, account_id: Id, device_id: Id, vault_id: Id) -> Result<Option<u64>> {
+        let conn = self.lock();
+        let marker: Option<i64> = conn
+            .query_row(
+                "SELECT boundary_seq FROM revoked_devices WHERE account_id = ?1 AND device_id = ?2 AND vault_id = ?3",
+                params![account_id.to_string(), device_id.to_string(), REVOKED_MARKER],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(backend)?;
+        if marker.is_none() {
+            return Ok(None);
+        }
+        let boundary: Option<i64> = conn
+            .query_row(
+                "SELECT boundary_seq FROM revoked_devices WHERE account_id = ?1 AND device_id = ?2 AND vault_id = ?3",
+                params![
+                    account_id.to_string(),
+                    device_id.to_string(),
+                    vault_id.to_string()
+                ],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(backend)?;
+        Ok(Some(boundary.map(to_u64).unwrap_or(0)))
     }
 
     fn put_vault(&self, account_id: Id, vault_id: Id, record: &[u8]) -> Result<()> {

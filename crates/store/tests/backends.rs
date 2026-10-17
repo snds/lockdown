@@ -122,6 +122,7 @@ impl Device {
                 device_id: self.device_id,
                 signer: self.signer(),
                 known_devices: &nobody,
+                revoked_after: &|_| None,
                 last_accepted_seq,
             },
         )

@@ -1,6 +1,8 @@
 //! Two devices as two `lockdown` processes against a server on a random
 //! port: register → sync → a second device enrols through the account →
-//! sync → conflicting edits → sync → the conflict copy shows in `list`.
+//! sync → conflicting edits → sync → the conflict copy shows in `list` →
+//! the first device revokes the second → the second can neither write
+//! nor open, while its history before the revocation still stands.
 
 use std::io::Write;
 use std::path::Path;
@@ -172,7 +174,10 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
     assert!(out.contains("password: first secret"), "{out}");
     let out = b.ok(&["status"], None);
     assert!(out.contains("device         phone"), "{out}");
-    assert!(out.contains("devices        2 in the identity"), "{out}");
+    assert!(
+        out.contains("devices        2 in the identity (0 revoked); identity manifest seq 2"),
+        "{out}"
+    );
 
     // Both change the password. A syncs first.
     a.ok(&["edit", &id, "--password-stdin"], Some("laptop secret\n"));
@@ -214,8 +219,8 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
     let out = a.ok(&["status"], None);
     assert!(out.contains("vault head     seq 3 "), "{out}");
     assert!(
-        out.contains("devices        1 in the identity, 2 learned"),
-        "{out}"
+        out.contains("devices        2 in the identity (0 revoked); identity manifest seq 2"),
+        "the phone's record reached the laptop through the synced set: {out}"
     );
 
     // Nothing to do syncs as nothing to do, on both.
@@ -226,4 +231,48 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
             "{out}"
         );
     }
+
+    // A sees both devices and revokes the phone.
+    let out = a.ok(&["device", "list"], None);
+    assert_eq!(out.lines().count(), 2, "{out}");
+    assert!(out.contains("[this device]"), "{out}");
+    let phone_line = out.lines().find(|l| l.contains("  phone  ")).unwrap();
+    let phone_id = phone_line.split_whitespace().next().unwrap().to_string();
+    let (ok, _, err) = a.run(&["device", "revoke", "nobody"], None);
+    assert!(!ok);
+    assert!(err.contains("no device 'nobody'"), "{err}");
+    let out = a.ok(&["device", "revoke", "phone"], None);
+    assert!(
+        out.contains(&format!("device {phone_id} (phone) revoked")),
+        "{out}"
+    );
+    assert!(out.contains("heads after seq 3 are refused"), "{out}");
+    let out = a.ok(&["device", "list"], None);
+    assert!(out.contains("[revoked 20"), "{out}");
+    let out = a.ok(&["status"], None);
+    assert!(
+        out.contains("devices        2 in the identity (1 revoked); identity manifest seq 3"),
+        "{out}"
+    );
+
+    // B edits and syncs: the server refuses, B learns it is out, and B's
+    // local copy no longer opens. A's copy still holds everything B
+    // signed before, verified.
+    b.ok(&["edit", &id, "--password-stdin"], Some("phone again\n"));
+    let (ok, _, err) = b.run(&["sync"], None);
+    assert!(!ok);
+    assert!(err.contains("revoked"), "{err}");
+    let (ok, _, err) = b.run(&["list"], None);
+    assert!(!ok);
+    assert!(err.contains("revoked"), "{err}");
+    let out = a.ok(&["sync"], None);
+    assert!(
+        out.contains("pushed 0, pulled 0, merged 0; vault head seq 3"),
+        "{out}"
+    );
+    let out = a.ok(&["list"], None);
+    assert!(out.contains("(conflict copy from phone, "), "{out}");
+    assert_eq!(out.lines().count(), 2, "{out}");
+    let out = a.ok(&["show", &id, "--reveal"], None);
+    assert!(out.contains("password: laptop secret"), "{out}");
 }

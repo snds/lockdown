@@ -21,19 +21,23 @@
 //! IRK, the IRK the Persona Key, the Persona Key the App Data Key, the App
 //! Data Key the Vault Key (D11 "on the same device no kit is needed").
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use ecosystem_identity::keys::{AppDataKey, CrownJewelKey, SymmetricKey};
+use ecosystem_identity::keys::{AppDataKey, CrownJewelKey, Irk, SymmetricKey};
 use ecosystem_identity::keystore::DeviceKeystore;
-use ecosystem_identity::records::{KeyRef, KeyRefKind, Persona, PersonaKind, Purpose};
-use ecosystem_identity::{Attach, Head, Identity};
-use lockdown_crypto::VerifyingKey;
+use ecosystem_identity::records::{
+    Device, KeyRef, KeyRefKind, Persona, PersonaKind, Purpose, RecoveryState,
+};
+use ecosystem_identity::store::Contents;
+use ecosystem_identity::{Attach, Head, Identity, Record};
+use lockdown_crypto::{SigningKey, VerifyingKey};
 
+use crate::identity_set::{IdentityManifest, RecordSet, Revocation, Verified};
 use crate::signer::Signer;
 use crate::store::{Store, StoreError};
 use crate::vault::{Unlock, Vault, VaultContext};
-use crate::{Error, Id, Result};
+use crate::{Error, Id, Result, Timestamp};
 
 /// The app label Lockdown's keys carry in the identity store (D28).
 pub const APP: &str = "lockdown";
@@ -240,6 +244,303 @@ pub fn device_keys(identity: &Identity) -> BTreeMap<Id, VerifyingKey> {
         .collect()
 }
 
+/// The Identity Signing Key, as this device can derive it: the device
+/// keystore opens this device's wrap of the root key, the root key derives
+/// the ISK (`ecosystem_identity::signing_key`), and the result is checked
+/// against the profile's `isk_pub`. Every step is the identity crate's own
+/// public function; nothing here re-implements a derivation. Used for the
+/// few record changes the crate has no call for yet (revoking or renaming
+/// a device, merging records from another machine, signing the identity
+/// manifest; `08-identity-proposal.md` §8) and dropped as soon as the
+/// operation is done (D72).
+pub fn identity_signing_key(
+    identity: &Identity,
+    keystore: &dyn DeviceKeystore,
+) -> Result<SigningKey> {
+    let profile = identity.profile();
+    let device_ref = KeyRef::new(KeyRefKind::Device, keystore.device_id());
+    let envelope = identity
+        .envelopes()
+        .find(|e| e.purpose == Purpose::Irk && e.wrapped_by == device_ref)
+        .ok_or_else(|| Error::NotFound("this device's wrap of the root key".into()))?;
+    let unlock = keystore.unlock()?;
+    let irk: Irk = ecosystem_identity::keys::unwrap_key(
+        envelope,
+        &unlock,
+        &ecosystem_identity::keys::aad(profile.profile_id, None, envelope.key_id, Purpose::Irk),
+    )?;
+    let isk = ecosystem_identity::signing_key(&irk)?;
+    if isk.verifying_key().to_bytes() != profile.isk_pub {
+        return Err(Error::Invalid(
+            "the root key this device holds doesn't derive the profile's signing key".into(),
+        ));
+    }
+    Ok(SigningKey::from(isk))
+}
+
+/// Reads the identity store at `identity`'s root, lets `edit` change the
+/// records (signing what it changes with the ISK), writes the store under
+/// a new manifest and refreshes `identity`. Returns the new identity head
+/// for the caller's rollback memory. The store must be exactly where
+/// `identity` last saw it: another app writing in between is refused
+/// rather than overwritten.
+fn write_identity_store(
+    identity: &mut Identity,
+    keystore: &dyn DeviceKeystore,
+    edit: impl FnOnce(&mut Contents, &SigningKey) -> Result<bool>,
+) -> Result<Option<Head>> {
+    let isk = identity_signing_key(identity, keystore)?;
+    let store = ecosystem_identity::Store::at(identity.root());
+    let mut loaded = store.load()?;
+    let seen = identity.head();
+    if loaded.head.seq != seen.seq || loaded.head.hash != seen.hash {
+        return Err(Error::Invalid(format!(
+            "the identity store at {} changed since it was opened (manifest {} on disk, {} in memory); open it again",
+            identity.root().display(),
+            loaded.head.seq,
+            seen.seq
+        )));
+    }
+    if !edit(&mut loaded.contents, &isk)? {
+        return Ok(None);
+    }
+    let (_, head) = store.write(&loaded.contents, isk.inner(), identity.device_id())?;
+    identity.refresh()?;
+    Ok(Some(head))
+}
+
+/// Whether this app may change the identity's records: Lockdown manages
+/// it, or no app does (01-identity §2, §7).
+fn check_manager(identity: &Identity) -> Result<()> {
+    match identity.profile().manager.as_deref() {
+        Some(m) if m != APP => Err(Error::Invalid(format!(
+            "this identity is managed by {m}; only it may change devices"
+        ))),
+        _ => Ok(()),
+    }
+}
+
+/// Revokes `device_id` in the local identity store: its `Device` record
+/// gets `revoked_at` now, signed by the ISK (the crate has no call for
+/// this yet; D72). Refused for this device itself, for a device that is
+/// not enrolled, when another app manages the identity, and when it
+/// would leave no device standing. Returns the signed record and the new
+/// identity head. Where the device's writes stop is the identity
+/// manifest's job ([`crate::identity_set::Revocation`]), set by the caller
+/// who knows the server's vault heads.
+pub fn revoke_device(
+    identity: &mut Identity,
+    keystore: &dyn DeviceKeystore,
+    device_id: Id,
+) -> Result<(Device, Head)> {
+    check_manager(identity)?;
+    if device_id == identity.device_id() {
+        return Err(Error::Invalid(
+            "a device can't revoke itself; revoke it from another device".into(),
+        ));
+    }
+    let mut record = None;
+    let head = write_identity_store(identity, keystore, |contents, isk| {
+        let standing = contents
+            .devices
+            .values()
+            .filter(|d| d.revoked_at.is_none() && d.device_id != device_id)
+            .count();
+        let device = contents
+            .devices
+            .get_mut(&device_id)
+            .ok_or_else(|| Error::NotFound(format!("device {device_id} in this identity")))?;
+        if device.revoked_at.is_some() {
+            return Err(Error::Invalid(format!(
+                "device {device_id} ({}) is already revoked",
+                device.name
+            )));
+        }
+        if standing == 0 {
+            return Err(Error::Invalid(
+                "revoking this device would leave no device at all".into(),
+            ));
+        }
+        device.revoked_at = Some(Timestamp::now());
+        device.sign(isk.inner())?;
+        record = Some(device.clone());
+        Ok(true)
+    })?
+    .expect("a revocation always writes");
+    Ok((record.expect("the record was set"), head))
+}
+
+/// Renames this device's record (D68 `<App> on <hostname>`), signed by
+/// the ISK. `None` when the name already matches.
+pub fn rename_this_device(
+    identity: &mut Identity,
+    keystore: &dyn DeviceKeystore,
+    name: &str,
+) -> Result<Option<Head>> {
+    check_manager(identity)?;
+    let device_id = identity.device_id();
+    write_identity_store(identity, keystore, |contents, isk| {
+        let device = contents
+            .devices
+            .get_mut(&device_id)
+            .ok_or_else(|| Error::NotFound(format!("device {device_id} in this identity")))?;
+        if device.name == name {
+            return Ok(false);
+        }
+        device.name = name.to_string();
+        device.sign(isk.inner())?;
+        Ok(true)
+    })
+}
+
+/// What merging a synced record set into the local identity store did.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct MergeReport {
+    /// Records taken from the set that this store lacked or held differently.
+    pub taken: usize,
+    /// Records removed because the set no longer lists them (retired on
+    /// another machine) although an earlier synced set did.
+    pub removed: usize,
+    /// Whether the set says this very device is revoked.
+    pub this_device_revoked: bool,
+    /// The identity head after the write, when anything was written.
+    pub head: Option<Head>,
+}
+
+fn recovery_rank(state: &RecoveryState) -> u8 {
+    match state {
+        RecoveryState::None => 0,
+        RecoveryState::Created => 1,
+        RecoveryState::Drilled => 2,
+    }
+}
+
+/// Merges a verified record set from the server into the local identity
+/// store (D71). The set is the one linearised truth, so its record wins
+/// wherever both sides hold a path, with two exceptions that keep the
+/// rules of the records themselves: a device the local store already
+/// holds as revoked stays revoked, and a profile whose local recovery
+/// state is further along (a kit made here and not pushed yet) stays.
+/// Records only this store holds are kept (and go up in the next push),
+/// unless `previously_synced` listed them and the set no longer does:
+/// then they were retired on another machine and are removed here, which
+/// the crate's store records as a tombstone (D29). Device wraps are never
+/// touched. Nothing is written when nothing changes.
+pub fn merge_records(
+    identity: &mut Identity,
+    keystore: &dyn DeviceKeystore,
+    remote: &Verified,
+    previously_synced: Option<&IdentityManifest>,
+) -> Result<MergeReport> {
+    if remote.profile.profile_id != identity.profile().profile_id {
+        return Err(Error::Invalid(
+            "the synced records belong to another profile".into(),
+        ));
+    }
+    let mut report = MergeReport {
+        this_device_revoked: remote.is_revoked(identity.device_id()),
+        ..Default::default()
+    };
+    let retired: BTreeSet<&str> = previously_synced
+        .map(|prev| {
+            prev.entries
+                .iter()
+                .map(|e| e.path.as_str())
+                .filter(|p| !remote.manifest.entries.iter().any(|e| e.path == *p))
+                .collect()
+        })
+        .unwrap_or_default();
+    let (mut taken, mut removed) = (0usize, 0usize);
+    let head = write_identity_store(identity, keystore, |contents, _isk| {
+        let local = contents.profile()?.clone();
+        if local != remote.profile
+            && recovery_rank(&local.recovery) <= recovery_rank(&remote.profile.recovery)
+        {
+            contents.profile = Some(remote.profile.clone());
+            taken += 1;
+        }
+        for (id, persona) in &remote.personas {
+            if contents.personas.get(id) != Some(persona) {
+                contents.personas.insert(*id, persona.clone());
+                taken += 1;
+            }
+        }
+        for (id, device) in &remote.devices {
+            match contents.devices.get(id) {
+                Some(mine) if mine == device => {}
+                Some(mine) if mine.revoked_at.is_some() && device.revoked_at.is_none() => {}
+                _ => {
+                    contents.devices.insert(*id, device.clone());
+                    taken += 1;
+                }
+            }
+        }
+        for (name, envelope) in &remote.envelopes {
+            if contents.envelopes.get(name) != Some(envelope) {
+                contents.put_envelope(envelope.clone());
+                taken += 1;
+            }
+        }
+        for (name, consent) in &remote.consents {
+            if contents.consents.get(name) != Some(consent) {
+                contents.consents.insert(name.clone(), consent.clone());
+                taken += 1;
+            }
+        }
+        for path in &retired {
+            let gone = match path.split_once('/') {
+                Some(("personas", name)) => {
+                    let id = name.strip_suffix(".cbor").and_then(|n| Id::parse(n).ok());
+                    id.is_some_and(|id| contents.personas.remove(&id).is_some())
+                }
+                Some(("envelopes", name)) => contents.envelopes.remove(name).is_some(),
+                Some(("consents", name)) => contents.consents.remove(name).is_some(),
+                _ => false,
+            };
+            if gone {
+                removed += 1;
+            }
+        }
+        Ok(taken + removed > 0)
+    })?;
+    report.taken = taken;
+    report.removed = removed;
+    report.head = head;
+    Ok(report)
+}
+
+/// The record set this identity would publish, following `prev` and
+/// carrying `revocations`; unsigned. Sign it with
+/// [`identity_signing_key`] before it goes anywhere.
+pub fn record_set(
+    identity: &Identity,
+    prev: Option<&IdentityManifest>,
+    revocations: Vec<Revocation>,
+) -> Result<RecordSet> {
+    RecordSet::from_records(
+        identity.profile(),
+        identity.personas().cloned(),
+        identity.devices().cloned(),
+        identity.envelopes().cloned(),
+        identity.consents().cloned(),
+        prev,
+        revocations,
+        identity.device_id(),
+    )
+}
+
+/// Which other devices a vault may trust, and where revoked ones stop:
+/// what `open_vault_trusting` is told beyond the identity's own records.
+#[derive(Clone, Debug, Default)]
+pub struct DeviceTrust {
+    /// Devices learned from the synced record set, by id. They count
+    /// exactly like the identity's own device records.
+    pub keys: BTreeMap<Id, VerifyingKey>,
+    /// For each revoked device, the newest head `seq` it may have signed
+    /// in the vault being opened (D73).
+    pub revoked_after: BTreeMap<Id, u64>,
+}
+
 /// An open vault with the key that wraps it, so it can be saved again.
 pub struct OpenVault {
     /// The vault.
@@ -341,21 +642,23 @@ pub fn open_vault(
         store,
         signer,
         last_accepted_seq,
-        &BTreeMap::new(),
+        &DeviceTrust::default(),
     )
 }
 
-/// [`open_vault`], also trusting `learned`: devices enrolled in this
-/// identity on another machine, whose signed records reached this one
-/// through the server (kept by `lockdown-store`'s `KnownDevices`). Their
-/// keys count exactly like the identity's own device records.
+/// [`open_vault`], also trusting `trust.keys`: devices enrolled in this
+/// identity on another machine, whose signed records reached this one in
+/// the synced record set (kept by `lockdown-store`'s `SyncedIdentity`).
+/// Their keys count exactly like the identity's own device records. A
+/// device in `trust.revoked_after` may not have signed a head past the
+/// `seq` given; what it signed before still verifies (D73).
 pub fn open_vault_trusting(
     identity: &Identity,
     vault_id: Id,
     store: &dyn Store,
     signer: Box<dyn Signer>,
     last_accepted_seq: u64,
-    learned: &BTreeMap<Id, VerifyingKey>,
+    trust: &DeviceTrust,
 ) -> Result<OpenVault> {
     let record = store.get_vault(vault_id)?;
     let ctx = record.context;
@@ -372,10 +675,11 @@ pub fn open_vault_trusting(
         ctx.crown_jewel_key_id,
     )?;
     let mut devices = device_keys(identity);
-    for (id, key) in learned {
+    for (id, key) in &trust.keys {
         devices.entry(*id).or_insert_with(|| key.clone());
     }
     let known = |id: Id| devices.get(&id).cloned();
+    let revoked = |id: Id| trust.revoked_after.get(&id).copied();
     let mut vault = Vault::load(
         store,
         vault_id,
@@ -385,11 +689,15 @@ pub fn open_vault_trusting(
             device_id: identity.device_id(),
             signer,
             known_devices: &known,
+            revoked_after: &revoked,
             last_accepted_seq,
         },
     )?;
     for (id, key) in &devices {
         vault.trust_device(*id, key.clone());
+    }
+    for (id, after) in &trust.revoked_after {
+        vault.revoke_device(*id, *after);
     }
     Ok(OpenVault {
         vault,

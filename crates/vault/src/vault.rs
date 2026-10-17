@@ -29,7 +29,9 @@ use crate::keys::{
     ItemKey, KeyPlace, KeyPurpose, VaultKey, VersionKey, WRAP_V, WrappedBy, WrappedKey,
     WrapperKind, unwrap_key, wrap_key,
 };
-use crate::manifest::{MANIFEST_V, ManifestEntry, ManifestHead, Member, verify_chain};
+use crate::manifest::{
+    MANIFEST_V, ManifestEntry, ManifestHead, Member, check_revocations, verify_chain,
+};
 use crate::signer::Signer;
 use crate::store::{Store, VAULT_RECORD_V, VaultRecord};
 use crate::{Error, Hash32, Id, Result, Timestamp};
@@ -65,6 +67,11 @@ pub struct Unlock<'a> {
     /// trusted, by device id: the identity's `Device` records. This
     /// device's own key is always trusted.
     pub known_devices: &'a dyn Fn(Id) -> Option<VerifyingKey>,
+    /// For a revoked device, the newest head `seq` it may have signed in
+    /// this vault (from the synced identity manifest, D73); `None` for a
+    /// device in good standing. A head by a revoked device after that
+    /// point is refused; what it signed before still verifies.
+    pub revoked_after: &'a dyn Fn(Id) -> Option<u64>,
     /// The newest manifest sequence this device accepted for the vault, or
     /// zero when it has none. A store behind it is refused as a rollback.
     pub last_accepted_seq: u64,
@@ -82,6 +89,8 @@ pub struct Vault {
     /// The public key of every device whose heads and versions this vault
     /// accepts, by device id; this device's own key is always in it.
     trusted: BTreeMap<Id, VerifyingKey>,
+    /// Revoked devices and the newest head each may have signed here.
+    revoked: BTreeMap<Id, u64>,
     items: BTreeMap<Id, Item>,
     heads: Vec<ManifestHead>,
     members: Vec<Member>,
@@ -120,6 +129,7 @@ impl Vault {
             signer,
             verifying,
             trusted,
+            revoked: BTreeMap::new(),
             items: BTreeMap::new(),
             heads: Vec::new(),
             members: vec![Member {
@@ -172,6 +182,8 @@ impl Vault {
             unlock.last_accepted_seq,
         )?
         .clone();
+        let revoked_after = unlock.revoked_after;
+        check_revocations(&heads, revoked_after)?;
         if newest.vault_id != vault_id {
             return Err(Error::ChainBroken {
                 seq: newest.seq,
@@ -207,12 +219,16 @@ impl Vault {
         // Every device that signed a head or a version must be one the
         // caller trusts; their keys are kept so versions open later.
         let mut trusted = BTreeMap::from([(device_id, own.clone())]);
+        let mut revoked = BTreeMap::new();
         let signers = heads.iter().map(|h| h.signer).chain(
             items
                 .values()
                 .flat_map(|i| i.versions.iter().map(|v| v.edited_by)),
         );
         for signer in signers {
+            if let Some(after) = revoked_after(signer) {
+                revoked.insert(signer, after);
+            }
             if trusted.contains_key(&signer) {
                 continue;
             }
@@ -229,6 +245,7 @@ impl Vault {
             signer: unlock.signer,
             verifying,
             trusted,
+            revoked,
             items,
             heads,
             members: Vec::new(),
@@ -346,6 +363,7 @@ impl Vault {
     pub fn verify(&self, last_accepted_seq: u64) -> Result<&ManifestHead> {
         let key = self.verifying_key();
         let device = self.device_id;
+        check_revocations(&self.heads, |id| self.revoked_after(id))?;
         verify_chain(
             &self.heads,
             |signer| {
@@ -478,6 +496,24 @@ impl Vault {
         self.trusted.insert(device_id, key);
     }
 
+    /// Marks a device revoked: heads it signs after `after` are refused
+    /// from now on (in [`Self::rebase`] and [`Self::verify`]); what it
+    /// signed up to `after` still counts. The caller read `after` from the
+    /// synced identity manifest (D73). A boundary only ever moves down to
+    /// the first one given for this device.
+    pub fn revoke_device(&mut self, device_id: Id, after: u64) {
+        self.revoked
+            .entry(device_id)
+            .and_modify(|a| *a = (*a).min(after))
+            .or_insert(after);
+    }
+
+    /// The newest head a revoked device may have signed here, if it is
+    /// revoked.
+    pub fn revoked_after(&self, device_id: Id) -> Option<u64> {
+        self.revoked.get(&device_id).copied()
+    }
+
     /// The head at `seq`, if this vault holds it.
     pub fn head_at(&self, seq: u64) -> Option<&ManifestHead> {
         self.heads.iter().find(|h| h.seq == seq)
@@ -543,6 +579,7 @@ impl Vault {
         }
         chain.extend(remote.iter().cloned());
         verify_chain(&chain, |id| self.key_for(id), 0)?;
+        check_revocations(&remote, |id| self.revoked_after(id))?;
         self.heads.retain(|h| h.seq <= keep_through);
         self.heads.extend(remote);
         self.members = self.members()?;
@@ -1003,6 +1040,52 @@ mod tests {
         // A head signed by an unknown device.
         let err = verify_chain(&vault.heads, |_| None, 0).unwrap_err();
         assert!(matches!(err, Error::ChainBroken { seq: 1, .. }));
+    }
+
+    #[test]
+    fn a_revoked_device_keeps_its_history_and_loses_the_future() {
+        // One device wrote heads 1–3. Revoked after head 2: head 3 is
+        // refused, heads 1–2 still count, and a later vault keeps the rule.
+        let mut vault = sample_vault();
+        let id = vault
+            .create_item(
+                ItemKind::Note,
+                ItemClass::Standard,
+                vec![PlainField::text("body", "note", "hi")],
+            )
+            .unwrap();
+        vault
+            .update_item(id, vec![PlainField::text("body", "note", "edited")])
+            .unwrap();
+        let device = vault.device_id();
+        let heads = vault.heads.clone();
+        check_revocations(&heads, |_| None).unwrap();
+        check_revocations(&heads[..2], |d| (d == device).then_some(2)).unwrap();
+        let err = check_revocations(&heads, |d| (d == device).then_some(2)).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                Error::RevokedDevice {
+                    device: d,
+                    seq: 3,
+                    after: 2
+                } if d == device
+            ),
+            "{err}"
+        );
+        assert!(err.to_string().contains("after that device was revoked"));
+        // Through the vault: `verify` consults what it was told.
+        vault.verify(0).unwrap();
+        vault.revoke_device(device, 2);
+        assert!(matches!(
+            vault.verify(0),
+            Err(Error::RevokedDevice { seq: 3, .. })
+        ));
+        // A boundary only moves down, never up.
+        vault.revoke_device(device, 5);
+        assert_eq!(vault.revoked_after(device), Some(2));
+        vault.revoke_device(device, 1);
+        assert_eq!(vault.revoked_after(device), Some(1));
     }
 
     #[test]

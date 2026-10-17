@@ -137,6 +137,28 @@ impl ManifestHead {
     }
 }
 
+/// Refuses any head in `heads` signed by a revoked device after the point
+/// its revocation names: `revoked_after(device)` is the newest `seq` that
+/// device may have signed, `None` for a device in good standing (D73).
+/// History a device signed before revocation still verifies.
+pub fn check_revocations(
+    heads: &[ManifestHead],
+    revoked_after: impl Fn(Id) -> Option<u64>,
+) -> Result<()> {
+    for head in heads {
+        if let Some(after) = revoked_after(head.signer)
+            && head.seq > after
+        {
+            return Err(Error::RevokedDevice {
+                device: head.signer,
+                seq: head.seq,
+                after,
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Verifies `heads` (oldest first) as a chain: each signed by a key
 /// `key_for(signer)` knows, `seq` rising by one, `prev_hash` matching, and
 /// `vault_key_ref` never going back to an earlier generation. Then refuses

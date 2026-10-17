@@ -8,7 +8,7 @@
 //!   device-key.cbor           this device's keys (the identity crate's file keystore)
 //!   vault.sqlite              the ciphertext store (lockdown-store)
 //!   remembered.cbor           the newest heads this device accepted (rollback memory)
-//!   known-devices.cbor        other devices' signed records, learned through the server
+//!   identity-sync.cbor        the identity's signed record set as last accepted from the server
 //!   sync.cbor                 the server, the login name, the session, how far each vault is synced
 //! ```
 //!
@@ -23,24 +23,32 @@ use std::rc::Rc;
 
 use ecosystem_identity::keystore::DeviceKeystore;
 use ecosystem_identity::{
-    AccountAuth, AccountCredentials, Backup, ExportKey, FileKeystore, Identity, default_root,
+    AccountAuth, AccountCredentials, ExportKey, FileKeystore, Identity, default_root,
 };
 use lockdown_crypto::auth::{DeviceBinding, OpaqueAccountAuth};
-use lockdown_store::{HeadMemory, KnownDevices, RememberedHead, SqliteStore, write_private};
-use lockdown_sync::{HttpTransport, SyncReport, Syncer, Transport, VaultSyncState};
-use lockdown_vault::identity::{
-    self, APP, OpenVault, default_persona, device_keys, find_persona, open_or_create_identity,
-    open_vault_trusting, persona_vaults,
+use lockdown_store::{HeadMemory, RememberedHead, SqliteStore, SyncedIdentity, write_private};
+use lockdown_sync::wire::ErrorCode;
+use lockdown_sync::{
+    HttpTransport, SyncReport, Syncer, Transport, VaultSyncState, pull_identity, push_identity,
 };
+use lockdown_vault::identity::{
+    self, APP, DeviceTrust, OpenVault, default_persona, device_keys, find_persona,
+    identity_signing_key, merge_records, open_or_create_identity, open_vault_trusting,
+    persona_vaults, record_set,
+};
+use lockdown_vault::identity_set::{Revocation, VaultBoundary};
 use lockdown_vault::{FieldKind, FieldValue, Id, ItemState, PlainField, Vault};
 use serde::{Deserialize, Serialize};
 
 const KEYSTORE_FILE: &str = "device-key.cbor";
 const STORE_FILE: &str = "vault.sqlite";
 const MEMORY_FILE: &str = "remembered.cbor";
-const KNOWN_DEVICES_FILE: &str = "known-devices.cbor";
+const IDENTITY_SYNC_FILE: &str = "identity-sync.cbor";
 const SYNC_FILE: &str = "sync.cbor";
 const SYNC_V: u16 = 1;
+/// How many times a push of the identity manifest is retried after another
+/// device moved first.
+const IDENTITY_ROUNDS: u32 = 6;
 
 /// Where this run reads and writes.
 #[derive(Clone, Debug)]
@@ -160,20 +168,20 @@ enum Mode {
     Init,
     /// Every local command: open what is there, create nothing.
     Open,
-    /// `sync`: open, after learning devices and pulling a vault this
-    /// device has never held.
+    /// `sync`: open, after syncing the identity's records and pulling a
+    /// vault this device has never held.
     Sync,
 }
 
-/// The open app: identity, store, memory, learned devices, the account,
-/// and the one vault in use.
+/// The open app: identity, store, memory, the synced identity records,
+/// the account, and the one vault in use.
 pub struct App {
     paths: Paths,
     keystore: Rc<FileKeystore>,
     identity: Identity,
     store: SqliteStore,
     memory: HeadMemory,
-    known: KnownDevices,
+    synced: SyncedIdentity,
     sync: Option<SyncConfig>,
     opened: OpenVault,
     /// Whether this run created the identity.
@@ -191,8 +199,8 @@ impl App {
         Self::open(paths, persona, Mode::Open)
     }
 
-    /// `lockdown sync`: opens, learning other devices from the server and
-    /// pulling the vault first when this device holds none yet.
+    /// `lockdown sync`: opens, syncing the identity's records with the
+    /// server first and pulling the vault when this device holds none yet.
     pub fn open_for_sync(paths: Paths, persona: Option<&str>) -> Result<Self, String> {
         Self::open(paths, persona, Mode::Sync)
     }
@@ -247,20 +255,29 @@ impl App {
 
         let mut store =
             SqliteStore::open(&paths.data.join(STORE_FILE)).map_err(|e| e.to_string())?;
-        let mut known =
-            KnownDevices::open(&paths.data.join(KNOWN_DEVICES_FILE)).map_err(|e| e.to_string())?;
+        let isk_pub = identity.profile().isk_pub;
+        let mut synced = SyncedIdentity::open(&paths.data.join(IDENTITY_SYNC_FILE), Some(&isk_pub))
+            .map_err(|e| e.to_string())?;
         let mut sync = SyncConfig::load(&paths.sync_file())?;
 
-        // With an account: learn the devices enrolled elsewhere, and pull
-        // the vault when this device holds none. `init` after `account
-        // login` on a new device must find the account's vault, not make
-        // a second one.
+        // With an account: bring the identity's records in step first (so
+        // every device and every revocation is known before a signature
+        // is judged), then pull the vault when this device holds none.
+        // `init` after `account login` on a new device must find the
+        // account's vault, not make a second one.
         if let Some(cfg) = sync.as_mut()
             && matches!(mode, Mode::Sync | Mode::Init)
         {
             let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
             let token = cfg.session_token()?.to_string();
-            learn_devices(&transport, &token, &identity, &mut known)?;
+            sync_identity_records(
+                &transport,
+                &token,
+                &mut identity,
+                keystore.as_ref(),
+                &mut synced,
+                &mut memory,
+            )?;
             if persona_vaults(&identity, persona_id, &store)
                 .map_err(|e| e.to_string())?
                 .is_empty()
@@ -269,10 +286,16 @@ impl App {
                 cfg.save(&paths.sync_file())?;
             }
         }
-        let mut learned = known.keys();
-        for (id, key) in device_keys(&identity) {
-            learned.entry(id).or_insert(key);
-        }
+        let trust_for = |vault_id: Id| {
+            let mut keys = synced.device_keys();
+            for (id, key) in device_keys(&identity) {
+                keys.entry(id).or_insert(key);
+            }
+            DeviceTrust {
+                keys,
+                revoked_after: synced.revoked_after(vault_id),
+            }
+        };
 
         let opened = if mode == Mode::Init {
             let last = |vault_id: Id| memory.last_accepted_seq(vault_id);
@@ -286,7 +309,7 @@ impl App {
                     &store,
                     Box::new(keystore.clone()),
                     last(*vault_id),
-                    &learned,
+                    &trust_for(*vault_id),
                 )
                 .map_err(|e| e.to_string())?,
                 None => identity::open_or_create_vault(
@@ -313,7 +336,7 @@ impl App {
                 &store,
                 Box::new(keystore.clone()),
                 memory.last_accepted_seq(*vault_id),
-                &learned,
+                &trust_for(*vault_id),
             )
             .map_err(|e| e.to_string())?
         };
@@ -323,7 +346,7 @@ impl App {
             identity,
             store,
             memory,
-            known,
+            synced,
             sync,
             opened,
             identity_created,
@@ -542,9 +565,13 @@ impl App {
             format!("vault head     seq {} hash {}", head.seq, hash.to_hex()),
             format!("items          {live} live"),
             format!(
-                "devices        {} in the identity, {} learned",
+                "devices        {} in the identity ({} revoked); identity manifest seq {}",
                 self.identity.devices().count(),
-                self.known.devices().count()
+                self.identity
+                    .devices()
+                    .filter(|d| d.revoked_at.is_some())
+                    .count(),
+                self.synced.seq()
             ),
         ];
         match &self.sync {
@@ -581,14 +608,14 @@ impl App {
             .enable_account_unlock(&mut auth, password, None)
             .map_err(|e| e.to_string())?;
         let (_export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
-        let backup = self
-            .identity
-            .export_backup()
-            .to_bytes()
-            .map_err(|e| e.to_string())?;
-        auth.rounds()
-            .put_identity(&session.token, &backup)
-            .map_err(|e| e.to_string())?;
+        sync_identity_records(
+            auth.rounds(),
+            &session.token,
+            &mut self.identity,
+            self.keystore.as_ref(),
+            &mut self.synced,
+            &mut self.memory,
+        )?;
         let cfg = SyncConfig {
             v: SYNC_V,
             server: auth.rounds().base().to_string(),
@@ -607,7 +634,8 @@ impl App {
     }
 
     /// `lockdown account login` on a device that already holds the
-    /// identity: a fresh session, and the account's devices learned.
+    /// identity: a fresh session, and the identity's records brought in
+    /// step with the server.
     pub fn account_login(
         &mut self,
         server: &str,
@@ -624,20 +652,14 @@ impl App {
                 self.paths.root.display()
             ));
         }
-        learn_devices(
+        sync_identity_records(
             auth.rounds(),
             &session.token,
-            &self.identity,
-            &mut self.known,
+            &mut self.identity,
+            self.keystore.as_ref(),
+            &mut self.synced,
+            &mut self.memory,
         )?;
-        let backup = self
-            .identity
-            .export_backup()
-            .to_bytes()
-            .map_err(|e| e.to_string())?;
-        auth.rounds()
-            .put_identity(&session.token, &backup)
-            .map_err(|e| e.to_string())?;
         let vaults = match &self.sync {
             Some(old) if old.server == auth.rounds().base() && old.login == login => {
                 old.vaults.clone()
@@ -659,9 +681,10 @@ impl App {
     }
 
     /// `lockdown account login` on a device with no identity: logs in
-    /// with the password, fetches the identity backup, opens the root key
-    /// through the account slot (04-security §3) and enrols this device.
-    /// The vault arrives with the first `lockdown sync`.
+    /// with the password, pulls the identity's record set, opens the root
+    /// key through the account slot (04-security §3) and enrols this
+    /// device, then publishes the record set that lists it. The vault
+    /// arrives with the first `lockdown sync`.
     pub fn enrol_from_account(
         paths: Paths,
         server: &str,
@@ -696,19 +719,19 @@ impl App {
         let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
         let mut auth = OpaqueAccountAuth::new(transport, login, binding);
         let (export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
-        let backup = auth
-            .rounds()
-            .get_identity(&session.token)
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| {
-                format!("the account '{login}' has no identity backup on {server} yet")
-            })?;
-        let backup = Backup::from_bytes(&backup).map_err(|e| e.to_string())?;
-        if backup.profile.profile_id != session.profile_id {
-            return Err("the server's identity backup is for another profile".into());
+        let mut synced = SyncedIdentity::open(&paths.data.join(IDENTITY_SYNC_FILE), None)
+            .map_err(|e| e.to_string())?;
+        pull_identity(auth.rounds(), &session.token, &mut synced, None)
+            .map_err(|e| e.to_string())?;
+        let verified = synced.verified().cloned().ok_or_else(|| {
+            format!("the account '{login}' has no identity records on {server} yet")
+        })?;
+        if verified.profile.profile_id != session.profile_id {
+            return Err("the server's identity records are for another profile".into());
         }
+        let backup = verified.to_backup();
         let mut prepared = PreparedExportKey(Some(export_key));
-        let identity = Identity::recover_with_account(
+        let mut identity = Identity::recover_with_account(
             &paths.root,
             APP,
             &device_name(),
@@ -726,17 +749,15 @@ impl App {
         memory
             .remember_identity(identity.head())
             .map_err(|e| e.to_string())?;
-        let mut known =
-            KnownDevices::open(&paths.data.join(KNOWN_DEVICES_FILE)).map_err(|e| e.to_string())?;
-        learn_devices(auth.rounds(), &session.token, &identity, &mut known)?;
-        // The backup on the server now lists this device too.
-        let refreshed = identity
-            .export_backup()
-            .to_bytes()
-            .map_err(|e| e.to_string())?;
-        auth.rounds()
-            .put_identity(&session.token, &refreshed)
-            .map_err(|e| e.to_string())?;
+        // The record set on the server now lists this device too.
+        sync_identity_records(
+            auth.rounds(),
+            &session.token,
+            &mut identity,
+            keystore.as_ref(),
+            &mut synced,
+            &mut memory,
+        )?;
         let cfg = SyncConfig {
             v: SYNC_V,
             server: auth.rounds().base().to_string(),
@@ -755,6 +776,148 @@ impl App {
             ),
             "run `lockdown sync` to pull the vault".into(),
         ])
+    }
+
+    /// `lockdown device list`: every device of the identity, this one and
+    /// revoked ones marked.
+    pub fn device_lines(&self) -> Result<Vec<String>, String> {
+        let mut devices: Vec<_> = self.identity.devices().collect();
+        devices.sort_by_key(|d| (d.enrolled_at, d.device_id));
+        let mine = self.identity.device_id();
+        Ok(devices
+            .into_iter()
+            .map(|d| {
+                let mut flags = Vec::new();
+                if d.device_id == mine {
+                    flags.push("this device".to_string());
+                }
+                if let Some(at) = d.revoked_at {
+                    flags.push(format!(
+                        "revoked {}",
+                        lockdown_sync::engine::civil_date(at.0)
+                    ));
+                }
+                format!(
+                    "{}  {:<10}  {}  enrolled {}{}",
+                    d.device_id,
+                    format!("{:?}", d.platform).to_lowercase(),
+                    d.name,
+                    lockdown_sync::engine::civil_date(d.enrolled_at.0),
+                    if flags.is_empty() {
+                        String::new()
+                    } else {
+                        format!("  [{}]", flags.join(", "))
+                    }
+                )
+            })
+            .collect())
+    }
+
+    /// `lockdown device revoke <id>`: revokes another device of this
+    /// identity (manager only, D73). The device's record is marked revoked
+    /// and signed, the identity manifest that carries it names the
+    /// server's current head of every vault as the point after which
+    /// nothing that device signs is taken, and the server and every other
+    /// device refuse its writes from then on. Needs the account: the order
+    /// between devices is the server's to fix.
+    pub fn device_revoke(&mut self, selector: &str) -> Result<Vec<String>, String> {
+        let Some(cfg) = self.sync.as_ref() else {
+            return Err("revoking a device needs the account on this device; run `lockdown account login` first".into());
+        };
+        let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
+        let token = cfg.session_token()?.to_string();
+        // Be current first, so the device to revoke is known here.
+        sync_identity_records(
+            &transport,
+            &token,
+            &mut self.identity,
+            self.keystore.as_ref(),
+            &mut self.synced,
+            &mut self.memory,
+        )?;
+        let device = self.find_device(selector)?;
+        let (record, head) =
+            identity::revoke_device(&mut self.identity, self.keystore.as_ref(), device)
+                .map_err(|e| e.to_string())?;
+        self.memory
+            .remember_identity(head)
+            .map_err(|e| e.to_string())?;
+        for _ in 0..IDENTITY_ROUNDS {
+            let vaults = transport.list_vaults(&token).map_err(|e| e.to_string())?;
+            let mut boundaries: Vec<VaultBoundary> = vaults
+                .vaults
+                .iter()
+                .map(|v| VaultBoundary {
+                    vault_id: v.vault_id,
+                    seq: v.head_seq,
+                })
+                .collect();
+            boundaries.sort_by_key(|b| b.vault_id);
+            let revocation = Revocation {
+                device_id: device,
+                vaults: boundaries.clone(),
+            };
+            match push_identity_records(
+                &transport,
+                &token,
+                &mut self.identity,
+                self.keystore.as_ref(),
+                &mut self.synced,
+                &mut self.memory,
+                vec![revocation],
+            ) {
+                Ok(_) => {
+                    let mut lines = vec![format!(
+                        "device {device} ({}) revoked; nothing it signs from now on is accepted",
+                        record.name
+                    )];
+                    for b in boundaries {
+                        lines.push(format!(
+                            "  vault {}: its heads after seq {} are refused",
+                            b.vault_id, b.seq
+                        ));
+                    }
+                    return Ok(lines);
+                }
+                Err(e) if e.contains("list the vaults again") => continue,
+                Err(e) => return Err(e),
+            }
+        }
+        Err("the vaults kept moving while the revocation was being written; try again".into())
+    }
+
+    /// A device by its full id or a unique prefix of at least eight
+    /// characters, or by its exact name when that names one device.
+    fn find_device(&self, selector: &str) -> Result<Id, String> {
+        if let Ok(id) = Id::parse(selector)
+            && self.identity.devices().any(|d| d.device_id == id)
+        {
+            return Ok(id);
+        }
+        let by_prefix: Vec<Id> = if selector.len() >= 8 {
+            self.identity
+                .devices()
+                .filter(|d| d.device_id.to_string().starts_with(selector))
+                .map(|d| d.device_id)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let by_name: Vec<Id> = self
+            .identity
+            .devices()
+            .filter(|d| d.name == selector)
+            .map(|d| d.device_id)
+            .collect();
+        match (by_prefix.as_slice(), by_name.as_slice()) {
+            ([one], _) | ([], [one]) => Ok(*one),
+            ([], []) => Err(format!(
+                "no device '{selector}' in this identity; `lockdown device list` shows them"
+            )),
+            _ => Err(format!(
+                "'{selector}' names more than one device; use the full id"
+            )),
+        }
     }
 
     /// `lockdown sync`: pull, merge, push, head (03-architecture §6).
@@ -828,24 +991,112 @@ pub fn sync_lines(report: &SyncReport) -> Vec<String> {
     lines
 }
 
-/// Learns the devices in the account's identity backup whose records the
-/// profile's own signing key vouches for. The server only relays them.
-fn learn_devices(
+/// Brings the identity's records in step with the server (D71): pulls
+/// every identity manifest after the one this device accepted, merges the
+/// records into the local identity store, then publishes this device's
+/// records when they differ from what the server holds. A device that
+/// learns it was revoked stops here.
+fn sync_identity_records(
     transport: &dyn Transport,
     token: &str,
-    identity: &Identity,
-    known: &mut KnownDevices,
-) -> Result<usize, String> {
-    let Some(bytes) = transport.get_identity(token).map_err(|e| e.to_string())? else {
-        return Ok(0);
+    identity: &mut Identity,
+    keystore: &dyn DeviceKeystore,
+    synced: &mut SyncedIdentity,
+    memory: &mut HeadMemory,
+) -> Result<(), String> {
+    pull_and_merge_identity(transport, token, identity, keystore, synced, memory)?;
+    push_identity_records(
+        transport,
+        token,
+        identity,
+        keystore,
+        synced,
+        memory,
+        Vec::new(),
+    )?;
+    Ok(())
+}
+
+fn pull_and_merge_identity(
+    transport: &dyn Transport,
+    token: &str,
+    identity: &mut Identity,
+    keystore: &dyn DeviceKeystore,
+    synced: &mut SyncedIdentity,
+    memory: &mut HeadMemory,
+) -> Result<bool, String> {
+    let before = synced.manifest().cloned();
+    let isk_pub = identity.profile().isk_pub;
+    let changed =
+        pull_identity(transport, token, synced, Some(&isk_pub)).map_err(|e| e.to_string())?;
+    let Some(verified) = synced.verified().cloned() else {
+        return Ok(false);
     };
-    let backup = Backup::from_bytes(&bytes).map_err(|e| e.to_string())?;
-    if backup.profile.profile_id != identity.profile().profile_id {
-        return Err("the server's identity backup is for another profile".into());
+    let report =
+        merge_records(identity, keystore, &verified, before.as_ref()).map_err(|e| e.to_string())?;
+    if let Some(head) = report.head {
+        memory.remember_identity(head).map_err(|e| e.to_string())?;
     }
-    known
-        .learn(&backup.devices, &identity.profile().isk_pub)
-        .map_err(|e| e.to_string())
+    if report.this_device_revoked {
+        return Err(
+            "this device was revoked from the identity by another device; it can't write to the account any more. \
+             To use Lockdown here again, enrol it afresh with the recovery kit or from another device"
+                .into(),
+        );
+    }
+    Ok(changed)
+}
+
+/// Publishes this identity's records when they differ from the set the
+/// server holds, carrying every revocation already in force plus
+/// `new_revocations`. When another device moved first, pulls, merges and
+/// tries again, a few times. Returns whether anything was published.
+fn push_identity_records(
+    transport: &dyn Transport,
+    token: &str,
+    identity: &mut Identity,
+    keystore: &dyn DeviceKeystore,
+    synced: &mut SyncedIdentity,
+    memory: &mut HeadMemory,
+    new_revocations: Vec<Revocation>,
+) -> Result<bool, String> {
+    let isk_pub = identity.profile().isk_pub;
+    for _ in 0..IDENTITY_ROUNDS {
+        let prev = synced.manifest().cloned();
+        let mut revocations: Vec<Revocation> = prev
+            .as_ref()
+            .map(|p| p.revocations.clone())
+            .unwrap_or_default();
+        for r in &new_revocations {
+            if !revocations.iter().any(|have| have.device_id == r.device_id) {
+                revocations.push(r.clone());
+            }
+        }
+        let mut set =
+            record_set(identity, prev.as_ref(), revocations).map_err(|e| e.to_string())?;
+        if let Some(p) = &prev
+            && set.same_contents(p)
+        {
+            return Ok(false);
+        }
+        let isk = identity_signing_key(identity, keystore).map_err(|e| e.to_string())?;
+        set.sign(&isk).map_err(|e| e.to_string())?;
+        drop(isk);
+        match push_identity(transport, token, &set, synced, Some(&isk_pub))
+            .map_err(|e| e.to_string())?
+        {
+            Ok(_) => return Ok(true),
+            Err(refused) => match refused.code {
+                ErrorCode::Fork | ErrorCode::Gap | ErrorCode::OlderSeq => {
+                    pull_and_merge_identity(transport, token, identity, keystore, synced, memory)?;
+                }
+                _ => return Err(format!("the server refused: {}", refused.message)),
+            },
+        }
+    }
+    Err(format!(
+        "the identity's records didn't settle after {IDENTITY_ROUNDS} rounds (another device kept writing); try again"
+    ))
 }
 
 /// Pulls every vault of this profile the server holds and this store does

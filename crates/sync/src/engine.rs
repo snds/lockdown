@@ -93,7 +93,7 @@ impl std::fmt::Debug for Syncer<'_> {
     }
 }
 
-fn session_or(e: TransportError) -> SyncError {
+pub(crate) fn session_or(e: TransportError) -> SyncError {
     match e {
         TransportError::Refused {
             code: ErrorCode::TokenExpired | ErrorCode::Unauthenticated,
@@ -170,12 +170,15 @@ pub fn sync_vault(
             for wire_item in pulled.items {
                 let mut theirs = Item::from_bytes(&wire_item.item)?;
                 theirs.rev = wire_item.rev;
-                let listed = newest
-                    .entries
-                    .iter()
-                    .any(|e| e.item_id == theirs.item_id && e.rev == theirs.rev);
+                let their_hash = theirs.latest_hash()?;
+                let listed = newest.entries.iter().any(|e| {
+                    e.item_id == theirs.item_id
+                        && e.rev == theirs.rev
+                        && e.version_hash == their_hash
+                });
                 if !listed {
-                    // Pushed by a device whose head isn't in yet; next time.
+                    // Pushed by a device whose head isn't in yet (or not
+                    // what the signed head describes); next time.
                     continue;
                 }
                 let local = vault.item(theirs.item_id).ok().cloned();
@@ -308,10 +311,11 @@ pub fn bootstrap_vault(
     for wire_item in pulled.items {
         let mut item = Item::from_bytes(&wire_item.item)?;
         item.rev = wire_item.rev;
+        let item_hash = item.latest_hash()?;
         if newest
             .entries
             .iter()
-            .any(|e| e.item_id == item.item_id && e.rev == item.rev)
+            .any(|e| e.item_id == item.item_id && e.rev == item.rev && e.version_hash == item_hash)
         {
             items.push(item);
         }

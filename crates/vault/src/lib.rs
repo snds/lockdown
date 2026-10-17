@@ -31,11 +31,14 @@
 //! - [`vault`] — [`Vault`]: create, update, open, purge, commit heads, load, save
 //! - [`identity`] — the adoption path: open or create the ecosystem identity,
 //!   the persona's Lockdown keys, and a vault that opens from the identity alone
+//! - [`identity_set`] — the identity's signed records under one hash-chained
+//!   manifest, as they travel between machines, with device revocations
 
 pub mod crown_jewel;
 pub mod error;
 pub mod field;
 pub mod identity;
+pub mod identity_set;
 pub mod item;
 pub mod keys;
 pub mod manifest;
@@ -54,12 +57,15 @@ pub use crown_jewel::{
 };
 pub use error::{Error, Result};
 pub use field::{FieldAad, FieldKind, FieldValue, PlainField, SCHEMA_V, SealedField};
+pub use identity_set::{IdentityManifest, RecordRef, RecordSet, Revocation, VaultBoundary};
 pub use item::{AttachmentRef, Item, ItemClass, ItemHeader, ItemKind, ItemState, ItemVersion};
 pub use keys::{
     AttachmentKey, ItemKey, KeyPlace, KeyPurpose, VaultKey, VersionKey, WrappedBy, WrappedKey,
     WrapperKind, unwrap_key, wrap_key,
 };
-pub use manifest::{Checkpoint, ManifestEntry, ManifestHead, Member, verify_chain};
+pub use manifest::{
+    Checkpoint, ManifestEntry, ManifestHead, Member, check_revocations, verify_chain,
+};
 pub use signer::Signer;
 pub use store::{Store, StoreError, StoreResult, VAULT_RECORD_V, VaultRecord};
 pub use vault::{Unlock, Vault, VaultContext};

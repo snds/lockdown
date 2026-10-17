@@ -12,8 +12,9 @@ use serde::de::DeserializeOwned;
 
 use crate::wire::{
     self, BEARER, CONTENT_TYPE, DeviceProofWire, ErrorBody, ErrorCode, HeadAccepted, HeadRefused,
-    HeadsSince, ItemPush, ItemsSince, LoginFinish, LoginFinishReply, LoginStart, LoginStartReply,
-    PushReply, RegisterFinish, RegisterStart, RegisterStartReply, VaultList,
+    HeadsSince, IdentityPush, IdentitySince, ItemPush, ItemsSince, LoginFinish, LoginFinishReply,
+    LoginStart, LoginStartReply, PushReply, RegisterFinish, RegisterStart, RegisterStartReply,
+    VaultList,
 };
 
 /// What can go wrong between client and server.
@@ -44,10 +45,15 @@ pub type Result<T> = std::result::Result<T, TransportError>;
 
 /// The authenticated calls of the protocol (`token` is the session).
 pub trait Transport {
-    /// `PUT /v1/account/identity`.
-    fn put_identity(&self, token: &str, backup: &[u8]) -> Result<()>;
-    /// `GET /v1/account/identity`; `None` when the account has none.
-    fn get_identity(&self, token: &str) -> Result<Option<Vec<u8>>>;
+    /// `GET /v1/identity?since=N`.
+    fn identity_since(&self, token: &str, since: u64) -> Result<IdentitySince>;
+    /// `PUT /v1/identity`. A refusal with a chain code comes back as
+    /// `Ok(Err(_))`; anything else is an error.
+    fn put_identity(
+        &self,
+        token: &str,
+        push: &IdentityPush,
+    ) -> Result<std::result::Result<HeadAccepted, HeadRefused>>;
     /// `GET /v1/vaults`.
     fn list_vaults(&self, token: &str) -> Result<VaultList>;
     /// `PUT /v1/vaults/{vault}`.
@@ -301,30 +307,38 @@ impl AuthRounds for HttpTransport {
 }
 
 impl Transport for HttpTransport {
-    fn put_identity(&self, token: &str, backup: &[u8]) -> Result<()> {
-        self.call_raw(
-            reqwest::Method::PUT,
-            "/v1/account/identity",
-            Some(token),
-            Some(backup.to_vec()),
-        )?;
-        Ok(())
-    }
-
-    fn get_identity(&self, token: &str) -> Result<Option<Vec<u8>>> {
-        match self.call_raw(
+    fn identity_since(&self, token: &str, since: u64) -> Result<IdentitySince> {
+        self.call::<(), _>(
             reqwest::Method::GET,
-            "/v1/account/identity",
+            &format!("/v1/identity?since={since}"),
             Some(token),
             None,
-        ) {
-            Ok((_, bytes)) => Ok(Some(bytes)),
-            Err(TransportError::Refused {
-                code: ErrorCode::NotFound,
-                ..
-            }) => Ok(None),
-            Err(e) => Err(e),
+        )
+    }
+
+    fn put_identity(
+        &self,
+        token: &str,
+        push: &IdentityPush,
+    ) -> Result<std::result::Result<HeadAccepted, HeadRefused>> {
+        let body = wire::encode(push).map_err(|e| TransportError::Decode(e.to_string()))?;
+        let (status, bytes) = self.send(
+            reqwest::Method::PUT,
+            "/v1/identity",
+            Some(token),
+            Some(body),
+        )?;
+        if (200..300).contains(&status) {
+            return Ok(Ok(
+                wire::decode(&bytes).map_err(|e| TransportError::Decode(e.to_string()))?
+            ));
         }
+        if status == 409
+            && let Ok(refused) = wire::decode::<HeadRefused>(&bytes)
+        {
+            return Ok(Err(refused));
+        }
+        Err(Self::refused(status, &bytes))
     }
 
     fn list_vaults(&self, token: &str) -> Result<VaultList> {

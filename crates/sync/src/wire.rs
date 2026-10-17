@@ -16,8 +16,8 @@
 //! | `POST /v1/account/register/finish` | [`RegisterFinish`] | empty | no |
 //! | `POST /v1/account/login/start` | [`LoginStart`] | [`LoginStartReply`] | no |
 //! | `POST /v1/account/login/finish` | [`LoginFinish`] | [`LoginFinishReply`] | no |
-//! | `PUT /v1/account/identity` | identity backup bytes | empty | yes |
-//! | `GET /v1/account/identity` | | identity backup bytes | yes |
+//! | `GET /v1/identity?since=N` | | [`IdentitySince`] | yes |
+//! | `PUT /v1/identity` | [`IdentityPush`] | [`HeadAccepted`] | yes |
 //! | `GET /v1/vaults` | | [`VaultList`] | yes |
 //! | `PUT /v1/vaults/{vault}` | vault record bytes | empty | yes |
 //! | `GET /v1/vaults/{vault}/heads?since=N` | | [`HeadsSince`] | yes |
@@ -26,9 +26,16 @@
 //! | `GET /v1/vaults/{vault}/items/{item}` | | [`ItemWire`] | yes |
 //! | `PUT /v1/vaults/{vault}/items/{item}` | [`ItemPush`] | [`PushReply`] | yes |
 //!
+//! The identity's signed record set travels the same way as vault heads
+//! (`lockdown_vault::identity_set`): the manifest bytes as the Identity
+//! Signing Key signed them, each record as bytes, and the server accepts a
+//! manifest only as the next page of the chain it holds (D71).
+//!
 //! A refusal is an HTTP error status with an [`ErrorBody`] whose
 //! [`ErrorCode`] a client can act on: `gap`, `fork` and `older_seq` for a
-//! head; `stale` for an item; `token_expired` to log in again.
+//! head or an identity manifest; `stale` for an item; `revoked_device`
+//! for anything signed by a device the identity revoked; `token_expired`
+//! to log in again.
 
 use lockdown_vault::{Hash32, Id};
 use serde::{Deserialize, Serialize};
@@ -82,6 +89,17 @@ pub enum ErrorCode {
     WrongVault,
     /// Item: the revision moved; the reply carries the server's copy.
     Stale,
+    /// Head, item or identity manifest: signed by a device the identity
+    /// manifest the server holds says is revoked (D73).
+    RevokedDevice,
+    /// Identity manifest: an entry names a record the server does not
+    /// hold and the push did not carry.
+    UnknownRecord,
+    /// Identity manifest: a new revocation's vault boundary isn't the
+    /// server's current head for that vault (another device wrote in
+    /// between), or a vault of the account has no boundary. List the
+    /// vaults again and re-sign.
+    BoundaryMoved,
     /// The server failed.
     Internal,
 }
@@ -181,6 +199,42 @@ pub struct LoginFinishReply {
     pub expires_at: i64,
     /// The profile the account was registered for.
     pub profile_id: Id,
+}
+
+// --- the identity's record set ----------------------------------------------
+
+/// One record of the identity, as the Identity Signing Key signed it.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct RecordWire {
+    /// Its path (`lockdown_vault::identity_set::RecordRef::path`).
+    pub path: String,
+    /// The signed bytes.
+    #[serde(with = "serde_bytes")]
+    pub body: Vec<u8>,
+}
+
+/// `GET /v1/identity?since=N`.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize, Default)]
+pub struct IdentitySince {
+    /// Every identity manifest with `seq > N`, oldest first, as signed bytes.
+    pub manifests: Vec<serde_bytes::ByteBuf>,
+    /// Every record the newest manifest lists.
+    pub records: Vec<RecordWire>,
+    /// The server's current `seq` (zero when it holds none).
+    pub current_seq: u64,
+    /// The server's current manifest hash.
+    pub current_hash: Option<Hash32>,
+}
+
+/// `PUT /v1/identity`: the next identity manifest and whichever records
+/// it lists that the server may not hold yet.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct IdentityPush {
+    /// The manifest, as signed.
+    #[serde(with = "serde_bytes")]
+    pub manifest: Vec<u8>,
+    /// Records to store alongside it.
+    pub records: Vec<RecordWire>,
 }
 
 // --- vaults ----------------------------------------------------------------

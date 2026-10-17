@@ -18,19 +18,20 @@
 //! - [`HeadMemory`] — what this device remembers about each vault's newest
 //!   accepted head, kept in a separate file so a vault file put back from
 //!   an old copy is caught ("Rollback attempt blocked")
-//! - [`KnownDevices`] — other devices' records learned from the identity's
-//!   signed backup, so their heads and versions verify here too
+//! - [`SyncedIdentity`] — the identity's signed record set as last accepted
+//!   from the server: every other machine's devices, and where a revoked
+//!   one's writes stop, so their heads and versions verify here too
 
-pub mod known_devices;
 pub mod memory;
 pub mod remembered;
 pub mod sqlite;
+pub mod synced_identity;
 
-pub use known_devices::KnownDevices;
 pub use lockdown_vault::store::{Store, StoreError, StoreResult, VAULT_RECORD_V, VaultRecord};
 pub use memory::MemoryStore;
 pub use remembered::{HeadMemory, RememberedHead, write_private};
 pub use sqlite::{SCHEMA_VERSION, SqliteStore};
+pub use synced_identity::{AcceptError, SyncedIdentity};
 
 /// The store's result type, for callers that used the old name.
 pub type Result<T> = StoreResult<T>;

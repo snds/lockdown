@@ -16,6 +16,15 @@
 //!   revision (zero for a new one) and its latest version is signed by a
 //!   device of the account; otherwise `stale` with the server's copy, and
 //!   the client merges.
+//! - An identity manifest (D71) is accepted when it is the next page of
+//!   the account's identity chain, every record it lists is at hand with
+//!   the hash it names, every signature checks out under the profile's
+//!   Identity Signing Key (pinned by the first manifest), the profile is
+//!   the account's, it was written by a device the chain has not revoked,
+//!   no revocation was taken back, and every new revocation names the
+//!   server's current head of every vault of the account as its boundary.
+//! - Anything signed by a device the identity manifest revoked is refused
+//!   with `revoked_device`: heads, items, identity manifests (D73).
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -30,16 +39,20 @@ use lockdown_crypto::VerifyingKey;
 use lockdown_crypto::auth::{OpaqueServer, device_pop_message};
 use lockdown_sync::wire::{
     self, BEARER, CONTENT_TYPE, ErrorBody, ErrorCode, HeadAccepted, HeadRefused, HeadsSince,
-    ItemPush, ItemWire, ItemsSince, LoginFinish, LoginFinishReply, LoginStart, LoginStartReply,
-    PushReply, RegisterFinish, RegisterStart, RegisterStartReply, VaultList, VaultSummary,
+    IdentityPush, IdentitySince, ItemPush, ItemWire, ItemsSince, LoginFinish, LoginFinishReply,
+    LoginStart, LoginStartReply, PushReply, RecordWire, RegisterFinish, RegisterStart,
+    RegisterStartReply, VaultList, VaultSummary,
 };
+use lockdown_vault::identity_set::{IdentityManifest, RecordSet};
 use lockdown_vault::item::ITEM_V;
 use lockdown_vault::manifest::MANIFEST_V;
 use lockdown_vault::{Id, Item, ManifestHead, VaultRecord};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
-use crate::storage::{PushResult, StorageError, VaultRow};
+use crate::storage::{
+    IdentityAccept, PushResult, RecordRow, RevocationRow, StorageError, VaultRow,
+};
 use crate::token::TokenError;
 use crate::{AppState, Discovery, PENDING_MAX, PENDING_TTL, PendingLogin};
 
@@ -461,35 +474,258 @@ pub async fn login_finish(
     }))
 }
 
-/// `PUT /v1/account/identity`: the identity backup, opaque to the server.
+/// `GET /v1/identity?since=N`: the identity manifests after `N` and the
+/// records the newest one lists.
+pub async fn identity_since(
+    State(state): State<Arc<AppState>>,
+    session: Session,
+    Query(since): Query<Since>,
+) -> ApiResult<Cbor<IdentitySince>> {
+    let st = state.storage.identity_state(session.account_id)?;
+    let heads = state
+        .storage
+        .identity_heads_since(session.account_id, since.since)?;
+    let mut records = Vec::new();
+    if let Some(newest) = heads.last() {
+        let manifest = IdentityManifest::from_bytes(&newest.body).map_err(|e| {
+            ApiError::internal(format!("a stored identity manifest didn't decode: {e}"))
+        })?;
+        records = state
+            .storage
+            .identity_records(session.account_id, &manifest.entries)?
+            .into_iter()
+            .map(|r| RecordWire {
+                path: r.path,
+                body: r.body,
+            })
+            .collect();
+    }
+    Ok(Cbor(IdentitySince {
+        manifests: heads
+            .into_iter()
+            .map(|h| serde_bytes::ByteBuf::from(h.body))
+            .collect(),
+        records,
+        current_seq: st.seq,
+        current_hash: st.hash,
+    }))
+}
+
+/// `PUT /v1/identity`: the next identity manifest with the records the
+/// server may lack (D71, D73).
 pub async fn put_identity(
     State(state): State<Arc<AppState>>,
     session: Session,
-    body: Bytes,
-) -> ApiResult<StatusCode> {
-    if body.is_empty() {
-        return Err(ApiError::bad_request("an identity backup can't be empty"));
+    Cbor(push): Cbor<IdentityPush>,
+) -> ApiResult<Cbor<HeadAccepted>> {
+    let manifest = IdentityManifest::from_bytes(&push.manifest)
+        .map_err(|_| ApiError::bad_request("the body isn't an identity manifest"))?;
+    manifest
+        .check_shape()
+        .map_err(|e| ApiError::bad_request(e.to_string()))?;
+    let account = state
+        .storage
+        .account(session.account_id)?
+        .ok_or_else(|| ApiError::not_found("this account"))?;
+    if manifest.profile_id != account.profile_id {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            ErrorCode::WrongVault,
+            "the identity manifest is for another profile than this account's",
+        ));
     }
-    state
-        .storage
-        .put_identity_backup(session.account_id, &body)?;
-    Ok(StatusCode::NO_CONTENT)
-}
+    let st = state.storage.identity_state(session.account_id)?;
+    let refused = |code: ErrorCode, message: String| {
+        ApiError::head_refused(HeadRefused {
+            code,
+            message,
+            current_seq: st.seq,
+            current_hash: st.hash,
+        })
+    };
+    // Cheap chain checks first, so a client that is merely behind learns
+    // that before anything is verified; storage re-checks atomically.
+    if st.seq == 0 {
+        if manifest.seq != 1 {
+            return Err(refused(
+                ErrorCode::Gap,
+                format!(
+                    "the server holds no identity manifest for this account yet; the first must be seq 1, not {}",
+                    manifest.seq
+                ),
+            ));
+        }
+    } else if manifest.seq <= st.seq {
+        return Err(refused(
+            ErrorCode::OlderSeq,
+            format!(
+                "the server is already at identity manifest {}; {} is not newer",
+                st.seq, manifest.seq
+            ),
+        ));
+    } else if manifest.seq > st.seq + 1 {
+        return Err(refused(
+            ErrorCode::Gap,
+            format!(
+                "the server is at identity manifest {}; {} would skip {}",
+                st.seq,
+                manifest.seq,
+                manifest.seq - st.seq - 1
+            ),
+        ));
+    } else if Some(manifest.prev_hash) != st.hash {
+        return Err(refused(
+            ErrorCode::Fork,
+            format!(
+                "identity manifest {} names a predecessor that isn't the server's current one ({}); another device moved first",
+                manifest.seq, st.seq
+            ),
+        ));
+    }
 
-/// `GET /v1/account/identity`.
-pub async fn get_identity(
-    State(state): State<Arc<AppState>>,
-    session: Session,
-) -> ApiResult<Response> {
-    let body = state
+    // Every listed record: pushed now (hash must match) or already held.
+    let mut pushed: std::collections::BTreeMap<String, Vec<u8>> = std::collections::BTreeMap::new();
+    for r in push.records {
+        pushed.insert(r.path, r.body);
+    }
+    let held = state
         .storage
-        .identity_backup(session.account_id)?
-        .ok_or_else(|| ApiError::not_found("this account has no identity backup yet"))?;
-    Ok((
-        [(header::CONTENT_TYPE, HeaderValue::from_static(CONTENT_TYPE))],
-        body,
-    )
-        .into_response())
+        .identity_records(session.account_id, &manifest.entries)?;
+    let mut records = std::collections::BTreeMap::new();
+    let mut new_rows = Vec::new();
+    for entry in &manifest.entries {
+        if let Some(body) = pushed.remove(&entry.path) {
+            if lockdown_crypto::hash::hash(&body) != entry.hash {
+                return Err(ApiError::bad_request(format!(
+                    "the record pushed at {} doesn't match the hash the manifest names",
+                    entry.path
+                )));
+            }
+            new_rows.push(RecordRow {
+                path: entry.path.clone(),
+                hash: entry.hash,
+                body: body.clone(),
+            });
+            records.insert(entry.path.clone(), body);
+        } else if let Some(row) = held.iter().find(|r| r.path == entry.path) {
+            records.insert(entry.path.clone(), row.body.clone());
+        } else {
+            return Err(refused(
+                ErrorCode::UnknownRecord,
+                format!(
+                    "the manifest lists {} but the server doesn't hold it; push the record with the manifest",
+                    entry.path
+                ),
+            ));
+        }
+    }
+    if !pushed.is_empty() {
+        return Err(ApiError::bad_request(
+            "a pushed record isn't listed by the manifest",
+        ));
+    }
+
+    // Everything signed, under the pinned key when there is one.
+    let set = RecordSet { manifest, records };
+    let verified = set.verify(st.isk_pub.as_ref()).map_err(|e| {
+        ApiError::new(
+            StatusCode::FORBIDDEN,
+            ErrorCode::BadSignature,
+            format!("the identity record set didn't check out: {e}"),
+        )
+    })?;
+    let manifest = &verified.manifest;
+
+    // The chain's own rules: the writer stands, revocations only grow,
+    // new boundaries are the server's current vault heads.
+    let previous = match state
+        .storage
+        .identity_heads_since(session.account_id, st.seq.saturating_sub(1))?
+        .pop()
+    {
+        Some(h) if st.seq > 0 => Some(IdentityManifest::from_bytes(&h.body).map_err(|e| {
+            ApiError::internal(format!("a stored identity manifest didn't decode: {e}"))
+        })?),
+        _ => None,
+    };
+    if let Some(prev) = &previous {
+        if prev.revocation(manifest.written_by).is_some() {
+            return Err(ApiError::new(
+                StatusCode::FORBIDDEN,
+                ErrorCode::RevokedDevice,
+                format!(
+                    "device {} was revoked from this identity; it can't write its records",
+                    manifest.written_by
+                ),
+            ));
+        }
+        manifest
+            .revocations_extend(prev)
+            .map_err(|e| ApiError::bad_request(e.to_string()))?;
+    }
+    if manifest.revocation(manifest.written_by).is_some() {
+        return Err(ApiError::bad_request(
+            "a device can't write the manifest that revokes it",
+        ));
+    }
+    let vaults = state.storage.vaults_of(session.account_id)?;
+    for r in &manifest.revocations {
+        let is_new = previous
+            .as_ref()
+            .is_none_or(|p| p.revocation(r.device_id).is_none());
+        if !is_new {
+            continue;
+        }
+        for v in &vaults {
+            match r.vaults.iter().find(|b| b.vault_id == v.vault_id) {
+                Some(b) if b.seq == v.head_seq => {}
+                Some(b) => {
+                    return Err(refused(
+                        ErrorCode::BoundaryMoved,
+                        format!(
+                            "the revocation of device {} stops at head {} of vault {}, but the server is at {}; list the vaults again and re-sign",
+                            r.device_id, b.seq, v.vault_id, v.head_seq
+                        ),
+                    ));
+                }
+                None => {
+                    return Err(refused(
+                        ErrorCode::BoundaryMoved,
+                        format!(
+                            "the revocation of device {} names no boundary for vault {}; list the vaults again and re-sign",
+                            r.device_id, v.vault_id
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+    let revoked: Vec<Id> = manifest.revocations.iter().map(|r| r.device_id).collect();
+    let rows: Vec<RevocationRow> = manifest
+        .revocations
+        .iter()
+        .flat_map(|r| {
+            r.vaults.iter().map(|b| RevocationRow {
+                device_id: r.device_id,
+                vault_id: b.vault_id,
+                boundary_seq: b.seq,
+            })
+        })
+        .collect();
+    match state.storage.accept_identity(
+        session.account_id,
+        IdentityAccept {
+            manifest,
+            body: &push.manifest,
+            records: &new_rows,
+            isk_pub: &verified.profile.isk_pub,
+            revoked: &revoked,
+            revocations: &rows,
+        },
+    )? {
+        Ok(accepted) => Ok(Cbor(accepted)),
+        Err(refused) => Err(ApiError::head_refused(refused)),
+    }
 }
 
 // --- vaults -----------------------------------------------------------------
@@ -503,6 +739,28 @@ fn owned_vault(state: &AppState, session: &Session, vault_id: Id) -> ApiResult<V
         return Err(ApiError::forbidden("that vault belongs to another account"));
     }
     Ok(row)
+}
+
+/// A device the identity revoked may not sign anything new (D73).
+fn check_not_revoked(
+    state: &AppState,
+    session: &Session,
+    device_id: Id,
+    vault_id: Id,
+) -> ApiResult<()> {
+    match state
+        .storage
+        .revoked_after(session.account_id, device_id, vault_id)?
+    {
+        Some(after) => Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            ErrorCode::RevokedDevice,
+            format!(
+                "device {device_id} was revoked from this identity (its last accepted head here was {after}); it can't write any more"
+            ),
+        )),
+        None => Ok(()),
+    }
 }
 
 fn device_key(state: &AppState, session: &Session, device_id: Id) -> ApiResult<VerifyingKey> {
@@ -624,6 +882,7 @@ pub async fn put_head(
         ));
     }
     owned_vault(&state, &session, vault_id)?;
+    check_not_revoked(&state, &session, head.signer, vault_id)?;
     let key = device_key(&state, &session, head.signer)?;
     head.verify_signature(&key).map_err(|_| {
         ApiError::new(
@@ -704,6 +963,7 @@ pub async fn push_item(
     let latest = item
         .latest()
         .map_err(|_| ApiError::bad_request("an item carries at least one version"))?;
+    check_not_revoked(&state, &session, latest.edited_by, vault_id)?;
     let key = device_key(&state, &session, latest.edited_by)?;
     latest.verify(&item.header(), &key).map_err(|_| {
         ApiError::new(

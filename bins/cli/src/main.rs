@@ -7,7 +7,8 @@
 //! nothing but that root and this device's keystore (D11). `code` and
 //! `match` need no vault. `account register` and `account login` make
 //! this device an account on a Lockdown server; `sync` pulls, merges and
-//! pushes (03-architecture §6). The SSH agent and local-socket pairing
+//! pushes (03-architecture §6); `device list` and `device revoke` manage
+//! the identity's devices (D73). The SSH agent and local-socket pairing
 //! are later.
 //!
 //! A password never arrives as an argument, where it would land in shell
@@ -74,6 +75,11 @@ enum Command {
     },
     /// Pull from the server, merge, push, and advance the vault head.
     Sync,
+    /// The devices enrolled in the identity.
+    Device {
+        #[command(subcommand)]
+        what: DeviceWhat,
+    },
     /// Print the current one-time code for an otpauth:// or steam:// URI.
     Code {
         /// The URI. The secret is read from it and never printed.
@@ -92,6 +98,19 @@ enum Command {
 enum AddWhat {
     /// A login: site, username, password.
     Login(AddLogin),
+}
+
+#[derive(Subcommand, Debug)]
+enum DeviceWhat {
+    /// List every device, this one and revoked ones marked.
+    List,
+    /// Revoke another device: nothing it signs from now on is accepted by
+    /// the server or by any other device. Needs the account.
+    Revoke {
+        /// The device id (or a unique prefix of at least 8 characters, or
+        /// its exact name), as `device list` prints it.
+        id: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -283,6 +302,13 @@ fn run(cli: Cli) -> Result<Vec<String>, String> {
             }
         }
         Command::Sync => App::open_for_sync(Paths::resolve(cli.root, cli.data)?, persona)?.sync(),
+        Command::Device { what } => {
+            let paths = Paths::resolve(cli.root, cli.data)?;
+            match what {
+                DeviceWhat::List => App::open_existing(paths, persona)?.device_lines(),
+                DeviceWhat::Revoke { id } => App::open_existing(paths, persona)?.device_revoke(&id),
+            }
+        }
     }
 }
 

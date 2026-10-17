@@ -1414,6 +1414,7 @@ dependencies = [
  "lockdown-vault",
  "rusqlite",
  "serde",
+ "serde_bytes",
  "tempfile",
  "thiserror",
 ]

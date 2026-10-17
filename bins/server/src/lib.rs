@@ -2,10 +2,11 @@
 //!
 //! One axum binary, the same code for cloud and self-host. It runs the
 //! OPAQUE server half for account login, hands out short-lived signed
-//! session tokens, stores each account's identity backup, and per vault
-//! orders item pushes by revision and accepts manifest heads only when
-//! they extend the chain by one, name the current head, and are signed by
-//! a device the account logged in with. It never holds a vault key, an
+//! session tokens, keeps each account's identity record set as a chain of
+//! signed identity manifests (and refuses writes from devices that chain
+//! revoked), and per vault orders item pushes by revision and accepts
+//! manifest heads only when they extend the chain by one, name the
+//! current head, and are signed by a device the account logged in with. It never holds a vault key, an
 //! item key, a password, a plain title or URL, or a device signing key;
 //! it orders writes and keeps receipts.
 //!
@@ -194,8 +195,8 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/v1/account/login/start", post(api::login_start))
         .route("/v1/account/login/finish", post(api::login_finish))
         .route(
-            "/v1/account/identity",
-            put(api::put_identity).get(api::get_identity),
+            "/v1/identity",
+            get(api::identity_since).put(api::put_identity),
         )
         .route("/v1/vaults", get(api::list_vaults))
         .route("/v1/vaults/{vault}", put(api::put_vault))

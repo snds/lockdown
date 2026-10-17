@@ -1,6 +1,8 @@
 //! The server's endpoints, driven in process through `tower::ServiceExt::oneshot`:
 //! the happy path, every distinct head refusal, a stale push and its merge
-//! instruction, calls without a session, and token expiry.
+//! instruction, calls without a session, token expiry, and the identity
+//! chain: pages accepted in order, the pinned signing key, and a revoked
+//! device refused on heads, items and manifests.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -12,13 +14,17 @@ use axum::http::{Request, StatusCode, header};
 use http_body_util::BodyExt;
 use lockdown_crypto::auth::{LoginClient, RegistrationClient, device_pop_message};
 use lockdown_crypto::identity::{AppDataKey, SymmetricKey};
+use lockdown_crypto::identity::{FileKeystore, Identity, Record};
 use lockdown_crypto::{Key32, SigningKey};
 use lockdown_server::{AppState, Config, app};
 use lockdown_sync::wire::{
     self, CONTENT_TYPE, DeviceProofWire, ErrorBody, ErrorCode, HeadAccepted, HeadRefused,
-    HeadsSince, ItemPush, ItemsSince, LoginFinish, LoginFinishReply, LoginStart, LoginStartReply,
-    PushReply, RegisterFinish, RegisterStart, RegisterStartReply, VaultList,
+    HeadsSince, IdentityPush, IdentitySince, ItemPush, ItemsSince, LoginFinish, LoginFinishReply,
+    LoginStart, LoginStartReply, PushReply, RecordWire, RegisterFinish, RegisterStart,
+    RegisterStartReply, VaultList,
 };
+use lockdown_vault::identity::identity_signing_key;
+use lockdown_vault::identity_set::{RecordSet, Revocation, VaultBoundary};
 use lockdown_vault::manifest::MANIFEST_V;
 use lockdown_vault::test_support::{sample_context, sample_login_fields};
 use lockdown_vault::{
@@ -459,21 +465,12 @@ async fn register_login_push_head_pull() {
     assert_eq!(vaults.vaults[0].head_seq, 1);
     assert_eq!(vaults.vaults[0].item_rev, 1);
 
-    // The identity backup round-trips, opaque.
-    let (status, _) = h
-        .call(
-            "PUT",
-            "/v1/account/identity",
-            Some(token),
-            b"backup-bytes".to_vec(),
-        )
-        .await;
-    assert_eq!(status, StatusCode::NO_CONTENT);
-    let (status, body) = h
-        .call("GET", "/v1/account/identity", Some(token), Vec::new())
-        .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(&body[..], b"backup-bytes");
+    // No identity manifest yet: an empty page, seq 0.
+    let since: IdentitySince = h
+        .cbor("GET", "/v1/identity?since=0", Some(token), &())
+        .await
+        .unwrap();
+    assert_eq!(since, IdentitySince::default());
 
     // Another account sees none of it.
     let other = Device::new();
@@ -689,7 +686,7 @@ async fn no_session_wrong_token_and_expiry_are_refused() {
     });
     h.register("me@example.com", "correct horse battery staple", Id::new())
         .await;
-    for path in ["/v1/vaults", "/v1/account/identity"] {
+    for path in ["/v1/vaults", "/v1/identity"] {
         let (status, body) = h.call("GET", path, None, Vec::new()).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
         assert_eq!(
@@ -883,4 +880,322 @@ async fn closed_signups_refuse_registration_but_not_login() {
         .await;
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["features"]["signups"], false);
+}
+
+/// `PUT /v1/identity` with the manifest and `records`.
+async fn put_identity(
+    h: &Harness,
+    token: &str,
+    set: &RecordSet,
+    records: &[&str],
+) -> Result<HeadAccepted, (StatusCode, ErrorCode, String)> {
+    let push = IdentityPush {
+        manifest: set.manifest.to_bytes().unwrap(),
+        records: records
+            .iter()
+            .map(|p| RecordWire {
+                path: (*p).to_string(),
+                body: set.records[*p].clone(),
+            })
+            .collect(),
+    };
+    let (status, bytes) = h
+        .call(
+            "PUT",
+            "/v1/identity",
+            Some(token),
+            wire::encode(&push).unwrap(),
+        )
+        .await;
+    if status == StatusCode::OK {
+        Ok(wire::decode(&bytes).unwrap())
+    } else {
+        let body: ErrorBody = wire::decode(&bytes).unwrap();
+        Err((status, body.code, body.message))
+    }
+}
+
+/// A `Device` record for a test device, signed by the identity's key, so
+/// the identity manifest can list it the way a kit enrolment would.
+fn device_record(
+    identity: &Identity,
+    device: &Device,
+    name: &str,
+    isk: &lockdown_crypto::SigningKey,
+) -> lockdown_crypto::identity::Device {
+    let mut record = identity.devices().next().unwrap().clone();
+    record.device_id = device.id;
+    record.device_pub = device.key().verifying_key().to_bytes();
+    record.name = name.into();
+    record.revoked_at = None;
+    record.sign(isk.inner()).unwrap();
+    record
+}
+
+fn set_with(
+    identity: &Identity,
+    devices: &[lockdown_crypto::identity::Device],
+    prev: Option<&lockdown_vault::identity_set::IdentityManifest>,
+    revocations: Vec<Revocation>,
+    isk: &lockdown_crypto::SigningKey,
+) -> RecordSet {
+    let mut set = RecordSet::from_records(
+        identity.profile(),
+        identity.personas().cloned(),
+        identity.devices().cloned().chain(devices.iter().cloned()),
+        identity.envelopes().cloned(),
+        identity.consents().cloned(),
+        prev,
+        revocations,
+        identity.device_id(),
+    )
+    .unwrap();
+    set.sign(isk).unwrap();
+    set
+}
+
+#[tokio::test]
+async fn the_identity_chain_is_ordered_pinned_and_revokes_devices() {
+    let dir = tempfile::tempdir().unwrap();
+    let keystore = FileKeystore::open_or_create(&dir.path().join("k.cbor")).unwrap();
+    let identity =
+        Identity::create(&dir.path().join("root"), "lockdown", "laptop", &keystore).unwrap();
+    let isk = identity_signing_key(&identity, &keystore).unwrap();
+    let h = harness(Config::default());
+    h.register(
+        "me@example.com",
+        "correct horse battery staple",
+        identity.profile().profile_id,
+    )
+    .await;
+    let (a, b) = (Device::new(), Device::new());
+    let token_a = h
+        .login("me@example.com", "correct horse battery staple", &a)
+        .await
+        .unwrap()
+        .token;
+    let token_b = h
+        .login("me@example.com", "correct horse battery staple", &b)
+        .await
+        .unwrap()
+        .token;
+    let record_a = device_record(&identity, &a, "laptop", &isk);
+    let record_b = device_record(&identity, &b, "phone", &isk);
+
+    // Page 1: the identity's own records plus A. Every record travels.
+    let first = set_with(
+        &identity,
+        std::slice::from_ref(&record_a),
+        None,
+        Vec::new(),
+        &isk,
+    );
+    let paths: Vec<&str> = first.records.keys().map(String::as_str).collect();
+    // A manifest listing a record the server lacks is refused by name.
+    let err = put_identity(&h, &token_a, &first, &paths[1..])
+        .await
+        .unwrap_err();
+    assert_eq!(err.1, ErrorCode::UnknownRecord, "{}", err.2);
+    let accepted = put_identity(&h, &token_a, &first, &paths).await.unwrap();
+    assert_eq!(accepted.seq, 1);
+    // The same page again: older_seq. Not the first page: gap.
+    let err = put_identity(&h, &token_a, &first, &[]).await.unwrap_err();
+    assert_eq!(err.1, ErrorCode::OlderSeq);
+    let mut skipped = set_with(
+        &identity,
+        std::slice::from_ref(&record_a),
+        Some(&first.manifest),
+        Vec::new(),
+        &isk,
+    );
+    skipped.manifest.seq = 5;
+    skipped.sign(&isk).unwrap();
+    let err = put_identity(&h, &token_a, &skipped, &[]).await.unwrap_err();
+    assert_eq!(err.1, ErrorCode::Gap);
+    // Another identity's key: refused, the chain is pinned to the first.
+    let other_ks = FileKeystore::open_or_create(&dir.path().join("k2.cbor")).unwrap();
+    let other = Identity::create(&dir.path().join("root2"), "lockdown", "x", &other_ks).unwrap();
+    let other_isk = identity_signing_key(&other, &other_ks).unwrap();
+    let mut forged = set_with(
+        &identity,
+        std::slice::from_ref(&record_a),
+        Some(&first.manifest),
+        Vec::new(),
+        &isk,
+    );
+    forged.sign(&other_isk).unwrap();
+    let err = put_identity(&h, &token_a, &forged, &[]).await.unwrap_err();
+    assert_eq!(err.1, ErrorCode::BadSignature, "{}", err.2);
+
+    // Page 2 adds B; only B's record needs to travel. A fork is refused.
+    let second = set_with(
+        &identity,
+        &[record_a.clone(), record_b.clone()],
+        Some(&first.manifest),
+        Vec::new(),
+        &isk,
+    );
+    let b_path = format!("devices/{}.cbor", b.id);
+    let accepted = put_identity(&h, &token_a, &second, &[&b_path])
+        .await
+        .unwrap();
+    assert_eq!(accepted.seq, 2);
+    let mut fork = set_with(
+        &identity,
+        &[record_a.clone(), record_b.clone()],
+        Some(&first.manifest),
+        Vec::new(),
+        &isk,
+    );
+    fork.manifest.seq = 3;
+    fork.sign(&isk).unwrap();
+    let err = put_identity(&h, &token_a, &fork, &[]).await.unwrap_err();
+    assert_eq!(err.1, ErrorCode::Fork);
+    // Pulling from 1 gives page 2 and the records it lists.
+    let since: IdentitySince = h
+        .cbor("GET", "/v1/identity?since=1", Some(&token_b), &())
+        .await
+        .unwrap();
+    assert_eq!(since.manifests.len(), 1);
+    assert_eq!(since.current_seq, 2);
+    assert_eq!(since.records.len(), second.records.len());
+    let pulled = RecordSet {
+        manifest: lockdown_vault::identity_set::IdentityManifest::from_bytes(&since.manifests[0])
+            .unwrap(),
+        records: since
+            .records
+            .into_iter()
+            .map(|r| (r.path, r.body))
+            .collect(),
+    };
+    let verified = pulled.verify(Some(&identity.profile().isk_pub)).unwrap();
+    assert_eq!(verified.devices.len(), 3);
+
+    // B makes the vault and writes head 1. Then A revokes B.
+    let mut local = LocalVault::new(b);
+    let vault_id = local.id();
+    let (status, _) = h
+        .call(
+            "PUT",
+            &format!("/v1/vaults/{vault_id}"),
+            Some(&token_b),
+            local.record(),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let mut item = local.new_item();
+    item.rev = push(&h, &token_b, vault_id, &item, 0).await.unwrap();
+    let head1 = local.head(1, Hash32::ZERO, &[&item]);
+    let accepted = put_head(&h, &token_b, &head1).await.unwrap();
+    let b_id = local.device.id;
+
+    let mut revoked_b = record_b.clone();
+    revoked_b.revoked_at = Some(Timestamp::now());
+    revoked_b.sign(isk.inner()).unwrap();
+    let revoke = |boundary: u64, prev: &lockdown_vault::identity_set::IdentityManifest| {
+        set_with(
+            &identity,
+            &[record_a.clone(), revoked_b.clone()],
+            Some(prev),
+            vec![Revocation {
+                device_id: b_id,
+                vaults: vec![VaultBoundary {
+                    vault_id,
+                    seq: boundary,
+                }],
+            }],
+            &isk,
+        )
+    };
+    // A boundary that isn't the server's head: refused, with the head.
+    let stale = revoke(0, &second.manifest);
+    let err = put_identity(&h, &token_a, &stale, &[&b_path])
+        .await
+        .unwrap_err();
+    assert_eq!(err.1, ErrorCode::BoundaryMoved, "{}", err.2);
+    // B can't write the manifest that revokes it.
+    let mut by_b = revoke(1, &second.manifest);
+    by_b.manifest.written_by = b_id;
+    by_b.sign(&isk).unwrap();
+    let err = put_identity(&h, &token_a, &by_b, &[&b_path])
+        .await
+        .unwrap_err();
+    assert_eq!(err.0, StatusCode::BAD_REQUEST, "{}", err.2);
+    let third = revoke(1, &second.manifest);
+    let accepted3 = put_identity(&h, &token_a, &third, &[&b_path])
+        .await
+        .unwrap();
+    assert_eq!(accepted3.seq, 3);
+
+    // B's next head, item push and identity manifest are refused as a
+    // revoked device; its head 1 is still served.
+    let head2 = local.head(2, accepted.hash, &[&item]);
+    let (status, bytes) = h
+        .call(
+            "PUT",
+            &format!("/v1/vaults/{vault_id}/heads"),
+            Some(&token_b),
+            head2.to_bytes().unwrap(),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        wire::decode::<ErrorBody>(&bytes).unwrap().code,
+        ErrorCode::RevokedDevice
+    );
+    let (status, bytes) = push(&h, &token_b, vault_id, &item, item.rev)
+        .await
+        .unwrap_err();
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        wire::decode::<ErrorBody>(&bytes).unwrap().code,
+        ErrorCode::RevokedDevice
+    );
+    let mut undo = set_with(
+        &identity,
+        &[record_a.clone(), record_b.clone()],
+        Some(&third.manifest),
+        Vec::new(),
+        &isk,
+    );
+    undo.manifest.written_by = b_id;
+    undo.sign(&isk).unwrap();
+    let err = put_identity(&h, &token_b, &undo, &[&b_path])
+        .await
+        .unwrap_err();
+    assert_eq!(err.1, ErrorCode::RevokedDevice, "{}", err.2);
+    // Nor may anyone else undo it.
+    let err = put_identity(
+        &h,
+        &token_a,
+        &set_with(
+            &identity,
+            &[record_a.clone(), record_b.clone()],
+            Some(&third.manifest),
+            Vec::new(),
+            &isk,
+        ),
+        &[&b_path],
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.0, StatusCode::BAD_REQUEST, "{}", err.2);
+    assert!(err.2.contains("can't be undone"), "{}", err.2);
+    let heads: HeadsSince = h
+        .cbor(
+            "GET",
+            &format!("/v1/vaults/{vault_id}/heads?since=0"),
+            Some(&token_a),
+            &(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(heads.heads.len(), 1, "B's history before revocation stands");
+
+    // A still writes: head 2 over the same item, signed by A.
+    let mut by_a = head2.clone();
+    by_a.signer = a.id;
+    by_a.sign(&a.key()).unwrap();
+    let accepted = put_head(&h, &token_a, &by_a).await.unwrap();
+    assert_eq!(accepted.seq, 2);
 }

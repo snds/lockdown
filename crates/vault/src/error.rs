@@ -85,6 +85,19 @@ pub enum Error {
         "signed by device {0}, which this vault doesn't know; enrol or learn that device first"
     )]
     UnknownDevice(Id),
+    /// A head signed by a device after it was revoked. Heads it signed up
+    /// to `after` still count; this one does not (D73).
+    #[error(
+        "manifest {seq} was signed by device {device} after that device was revoked (its last accepted head was {after}); refused"
+    )]
+    RevokedDevice {
+        /// The revoked device.
+        device: Id,
+        /// The head it tried to sign.
+        seq: u64,
+        /// The newest head it may have signed.
+        after: u64,
+    },
     /// A crown-jewel item was asked for but the vault holds no Crown-Jewel Key.
     #[error("this vault has no crown-jewel key; unlock the persona first")]
     NoCrownJewelKey,

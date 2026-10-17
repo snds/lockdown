@@ -2,8 +2,10 @@
 //! sync engine and the HTTP transport: A pushes; B pulls; both edit the
 //! same item; B's push is stale; the three-way merge resolves different
 //! fields and makes a conflict copy for the same one; manifest heads
-//! advance on both; a server put back from an older copy is refused as a
-//! rollback.
+//! advance on both; a head a revoked device signed after its revocation,
+//! let through by a server that should have refused it, is refused by
+//! the other device on pull; a server put back from an older copy is
+//! refused as a rollback.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -135,6 +137,7 @@ fn load_b(
             device_id: device_b.id,
             signer: Box::new(device_b.key()),
             known_devices: &known_fn,
+            revoked_after: &|_| None,
             last_accepted_seq: last_accepted,
         },
     )
@@ -335,6 +338,65 @@ fn two_stores_one_server_merge_conflict_and_rollback() {
         "Example, once more"
     );
     assert_eq!(state_a.synced_seq, state_b.synced_seq);
+
+    // Revocation on the client side (D73): A's synced identity says B is
+    // revoked after the server's current head. A server that fails to
+    // refuse B's next head (here: one that was never told) serves it, and
+    // A refuses it on pull without changing anything.
+    let boundary = state_a.synced_seq;
+    vault_a.revoke_device(device_b.id, boundary);
+    let base = vault_b.open_item(item).unwrap();
+    vault_b
+        .update_item(item, with(&base, "pw", "after revocation"))
+        .unwrap();
+    let report = sync_vault(&b.syncer(), &mut vault_b, &record, &mut state_b).unwrap();
+    assert_eq!(report.head_seq, boundary + 1, "the server took it");
+    let before = vault_a.seq();
+    let err = sync_vault(&a.syncer(), &mut vault_a, &record, &mut state_a).unwrap_err();
+    match err {
+        SyncError::Vault(lockdown_vault::Error::RevokedDevice { device, seq, after }) => {
+            assert_eq!(device, device_b.id);
+            assert_eq!(seq, boundary + 1);
+            assert_eq!(after, boundary);
+        }
+        other => panic!("expected a revoked-device refusal, got {other}"),
+    }
+    assert_eq!(vault_a.seq(), before, "nothing changed locally");
+    assert_eq!(
+        field(&vault_a.open_item(item).unwrap(), "pw"),
+        "a-one",
+        "B's late value never arrived"
+    );
+    // What B signed before the revocation still verifies on A's side.
+    vault_a.save(&mut store_a, &adk).unwrap();
+    let known = BTreeMap::from([(device_b.id, device_b.public())]);
+    let known_fn = |id: Id| known.get(&id).cloned();
+    let revoked = |id: Id| (id == device_b.id).then_some(boundary);
+    let reopened = Vault::load(
+        &store_a,
+        ctx.vault_id,
+        Unlock {
+            app_data_key: &adk,
+            crown_jewel_key: None,
+            device_id: device_a.id,
+            signer: Box::new(device_a.key()),
+            known_devices: &known_fn,
+            revoked_after: &revoked,
+            last_accepted_seq: boundary,
+        },
+    )
+    .unwrap();
+    assert_eq!(reopened.seq(), boundary);
+    // For the rest of the test, let A forget the revocation and catch up
+    // (a test convenience: the real A would stop here).
+    let mut vault_a = load_b(&store_a, &ctx, &adk, &device_a, &device_b, boundary);
+    vault_a.trust_device(device_b.id, device_b.public());
+    let report = sync_vault(&a.syncer(), &mut vault_a, &record, &mut state_a).unwrap();
+    assert_eq!(report.head_seq, boundary + 1);
+    assert_eq!(
+        field(&vault_a.open_item(item).unwrap(), "pw"),
+        "after revocation"
+    );
 
     // Rollback: a copy of the server from before the last heads, served
     // again. A device that has seen further refuses it and writes nothing.
