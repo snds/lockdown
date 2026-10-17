@@ -87,7 +87,7 @@ export function UnlockScreen({ reason, onOpened }: UnlockScreenProps) {
 
 function Frame({ children }: { children: React.ReactNode }) {
   return (
-    <main className="flex min-h-full items-center justify-center bg-surface-locked p-6">
+    <main className="flex min-h-full items-center justify-center bg-surface-locked/70 p-6">
       <section className="w-full max-w-sm rounded-xl border bg-card p-6 shadow-sm">{children}</section>
     </main>
   )

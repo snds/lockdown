@@ -16,6 +16,7 @@ import { DevicesView } from "@/features/devices/devices-view"
 import { RecoveryView } from "@/features/recovery/recovery-view"
 import { SettingsView } from "@/features/settings/settings-view"
 import { StatusView } from "@/features/status/status-view"
+import { LockedWash } from "@/features/unlock/locked-wash"
 import { UnlockScreen } from "@/features/unlock/unlock-screen"
 import { countViews } from "@/features/vault/list-model"
 import { VaultView } from "@/features/vault/vault-view"
@@ -69,7 +70,16 @@ function Root() {
   const counts = useMemo(() => countViews(rows ?? []), [rows])
 
   if (!status) {
-    return <UnlockScreen reason={lock?.reason ?? null} onOpened={setStatus} />
+    // Locked: the shell's shape stays, washed, with nothing readable in it;
+    // the unlock screen sits over it (brief §4).
+    return (
+      <div className="relative h-full">
+        <LockedWash />
+        <div className="absolute inset-0 overflow-y-auto">
+          <UnlockScreen reason={lock?.reason ?? null} onOpened={setStatus} />
+        </div>
+      </div>
+    )
   }
   return (
     <LockedProvider value={lock?.locked ?? false}>
