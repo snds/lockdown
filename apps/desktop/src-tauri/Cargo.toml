@@ -1,0 +1,55 @@
+[package]
+name = "lockdown-desktop"
+description = "The Lockdown desktop shell: Tauri 2 around lockdown-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "lockdown_desktop_lib"
+crate-type = ["rlib"]
+
+[[bin]]
+name = "lockdown-desktop"
+path = "src/main.rs"
+
+[features]
+# Tauri, and with it WebKitGTK on Linux, WebView2 on Windows and WKWebView
+# on macOS. Off by default so `cargo <anything> --workspace` stays pure
+# Rust (the same reason `ffi` and `wasm` sit outside default-members):
+# without it this crate is the clipboard rule and a stub `main`.
+# `tauri dev` and `tauri build` turn it on through tauri.conf.json
+# (`build.features`); the desktop CI job passes it by hand.
+shell = [
+    "dep:tauri",
+    "dep:tauri-build",
+    "dep:tauri-plugin-log",
+    "dep:tauri-plugin-opener",
+    "dep:tauri-plugin-clipboard-manager",
+    "dep:keyring",
+    "dep:log",
+]
+
+[build-dependencies]
+tauri-build = { version = "2.7.2", optional = true }
+
+[dependencies]
+lockdown-app.workspace = true
+blake3.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+zeroize.workspace = true
+# The shell proper.
+tauri = { version = "2.12.3", optional = true }
+tauri-plugin-log = { version = "2", optional = true }
+# Opens an item's site in the default browser (http and https only).
+tauri-plugin-opener = { version = "2", optional = true }
+# The copy path: a secret goes from the core to the clipboard without
+# touching the webview, and is cleared from here (clipboard.rs).
+tauri-plugin-clipboard-manager = { version = "2.5", optional = true }
+# OS keychain for the session token: macOS Keychain, Windows Credential
+# Manager, Secret Service on Linux (lockdown_app::secrets).
+keyring = { version = "3.6", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"], optional = true }
+log = { version = "0.4", optional = true }

@@ -7,7 +7,13 @@ all-features = true
 [advisories]
 # A yanked crate or a known vulnerability fails the build.
 yanked = "deny"
-ignore = []
+ignore = [
+    # proc-macro-error is unmaintained (no fix available). It reaches the
+    # tree only through the GTK bindings' derive macros behind
+    # lockdown-desktop's `shell` feature on Linux, at build time; it runs no
+    # code in the shipped binary. Drops out when gtk-rs moves off it.
+    { id = "RUSTSEC-2024-0370", reason = "build-time proc macro via gtk3-macros (Tauri on Linux); no runtime code" },
+]
 
 [licenses]
 # Every dependency must carry one of these licences.
@@ -30,6 +36,20 @@ allow = [
     "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8
+# The desktop shell (lockdown-desktop, feature `shell`) pulls five MPL-2.0
+# crates through Tauri: option-ext (via dirs) and the HTML/CSS parsers
+# Tauri's build step uses to inject the CSP (dom_query → selectors,
+# cssparser, cssparser-macros, dtoa-short). MPL-2.0 is weak copyleft at the
+# file level, not permissive, so it is not on the list above: each crate is
+# allowed by name here, unmodified, and nothing of ours is derived from it.
+# Flagged for Sean in docs/plan/10-desktop-shell.md (decisions proposed).
+exceptions = [
+    { allow = ["MPL-2.0"], crate = "option-ext" },
+    { allow = ["MPL-2.0"], crate = "selectors" },
+    { allow = ["MPL-2.0"], crate = "cssparser" },
+    { allow = ["MPL-2.0"], crate = "cssparser-macros" },
+    { allow = ["MPL-2.0"], crate = "dtoa-short" },
+]
 
 [bans]
 multiple-versions = "warn"

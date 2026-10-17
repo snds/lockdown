@@ -1,0 +1,18 @@
+/*
+ * The shared design system (unicron): Tailwind, the core tokens, Inter,
+ * the Material Symbols font, the dark variant, the base layer and the
+ * primitives' classes. Then Lockdown's own roles (app-extension.css).
+ */
+@import "@unicron/ui/styles";
+@import "./styles/app-extension.css";
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    overscroll-behavior: none;
+  }
+}

@@ -1,0 +1,11 @@
+# This directory is its own pnpm root (the extension harness under
+# extension/ is another). @snds/dsa is a git dependency whose `prepare`
+# script compiles TypeScript on install; nothing else may run a script.
+onlyBuiltDependencies:
+  - "@snds/dsa"
+
+overrides:
+  # The shared design system (03-architecture §9): @unicron/ui pins its
+  # tokens by exact version, which is not on a registry; point the
+  # dependency at the same release tarball (unicron docs/05-consuming.md §1).
+  "@unicron/tokens": https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.1.0/unicron-tokens-0.1.0.tgz

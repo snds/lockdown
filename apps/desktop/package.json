@@ -1,0 +1,53 @@
+{
+  "name": "lockdown-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "The Lockdown desktop shell: Tauri 2 around lockdown-app, a React UI built from @unicron/ui",
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "lint": "oxlint",
+    "test": "vitest run",
+    "tauri": "tauri",
+    "ds:scan": "dsa scan --config ../../dsa.config.json",
+    "ds:patterns": "dsa patterns --config ../../dsa.config.json",
+    "ds:ratchet": "dsa ratchet --config ../../dsa.config.json"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.9.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/api": "^2.12.3",
+    "@unicron/tokens": "https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.1.0/unicron-tokens-0.1.0.tgz",
+    "@unicron/ui": "https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.2.0/unicron-ui-0.2.0.tgz",
+    "next-themes": "^0.4.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "sonner": "^2.0.8",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@snds/dsa": "git+https://github.com/snds/dsa.git#cc4cb051cf6097f7810eacc770ebaaba3feb97ea",
+    "@tauri-apps/cli": "^2.12.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.0",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "jsdom": "^30.0.0",
+    "oxlint": "^1.81.0",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.0"
+  }
+}

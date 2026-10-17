@@ -1,0 +1,8 @@
+node_modules/
+dist/
+# Tauri regenerates these from the capabilities on every build.
+src-tauri/gen/schemas/
+src-tauri/target/
+# dsa output: scan and pattern reports are regenerated; only the ratchet baseline is tracked.
+.dsa/*
+!.dsa/baseline.json

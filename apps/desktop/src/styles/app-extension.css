@@ -1,0 +1,74 @@
+/*
+ * Lockdown's app-extension layer, over the shared core (@unicron/tokens).
+ *
+ * Tier 2 app roles only: which pane is chrome, what a selected row and a
+ * locked vault look like, one hue for "verified / secure", one for
+ * "danger / revoke", one for the Codes area. Every role aliases a tier-1
+ * (--g-*) or tier-2 (--*) token; no raw values; swaps only in .dark;
+ * exposed to Tailwind through this file's own @theme inline block
+ * (unicron docs/05-consuming.md §3; docs/plan/11-desktop-design-brief.md §8).
+ *
+ * The six security components (approval sheet, risk-tier badge, secret
+ * field, code display, large-type view, crown-jewel treatment) are unicron
+ * deliverables (03-architecture §9). Their colours come from core tier-2
+ * roles; the crown-jewel slots below stay empty until that spec lands.
+ */
+
+/* ── Tier 2 · App roles (light) ─────────────────────────────────────────── */
+:root {
+  --surface-chrome: var(--g-neutral-50); /* nav rail, list pane */
+  --surface-canvas: var(--g-neutral-0); /* detail pane */
+  --surface-selected: var(--g-neutral-100); /* the selected row */
+  --surface-locked: var(--g-neutral-100); /* the wash over the vault while locked */
+
+  /* "Locked / secure / verified": the manifest verified, the drill passed,
+     the vault locked as it should be. Always paired with a word. */
+  --secure: var(--g-green-500);
+  /* "Danger / revoke": revoking a device, moving an item to the trash. */
+  --danger: var(--destructive);
+  /* Needs attention: expiring, unverified, a conflict copy. */
+  --attention: var(--g-amber-500);
+  /* The one wayfinding hue: the Codes view and the palette's code rows. */
+  --area-codes: var(--g-blue-500);
+
+  /* The core's sidebar contract, re-pointed at the chrome pane. */
+  --sidebar: var(--surface-chrome);
+}
+
+/* ── Tier 2 · App roles (dark) ──────────────────────────────────────────── */
+.dark {
+  --surface-chrome: var(--g-neutral-900);
+  --surface-canvas: var(--g-neutral-950);
+  --surface-selected: var(--g-neutral-800);
+  --surface-locked: var(--g-neutral-900);
+  --secure: var(--g-green-400);
+  --danger: var(--destructive);
+  --attention: var(--g-amber-400);
+  --area-codes: var(--g-blue-400);
+  --sidebar: var(--surface-chrome);
+}
+
+/* ── Tier 3 · Lockdown-only component knobs ─────────────────────────────── */
+:root {
+  --c-shell-list-width: 22rem;
+  --c-list-row-selected: var(--surface-selected);
+
+  /* Crown-jewel treatment (03-architecture §9, design brief §9 q.7).
+     Left empty on purpose: the unicron spec under docs/specs/security/
+     decides the inverted `protected` surface, its ink and its border.
+     Nothing here may invent them first. */
+  --c-crown-jewel-surface: ;
+  --c-crown-jewel-ink: ;
+  --c-crown-jewel-border: ;
+}
+
+@theme inline {
+  --color-surface-chrome: var(--surface-chrome);
+  --color-surface-canvas: var(--surface-canvas);
+  --color-surface-selected: var(--surface-selected);
+  --color-surface-locked: var(--surface-locked);
+  --color-secure: var(--secure);
+  --color-danger: var(--danger);
+  --color-attention: var(--attention);
+  --color-area-codes: var(--area-codes);
+}

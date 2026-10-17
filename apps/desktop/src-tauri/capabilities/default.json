@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the webview may ask of the shell: the core events and window basics, nothing else. No shell, no fs, no http, no clipboard from the webview: every operation goes through a named command into lockdown-app, and the clipboard is written and cleared from the Rust side only.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
