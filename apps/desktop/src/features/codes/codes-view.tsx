@@ -1,0 +1,178 @@
+import { useMemo, useState, type FormEvent } from "react"
+
+import {
+  Button,
+  DialogAction,
+  DialogActions,
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  Icon,
+  Input,
+  ItemGroup,
+  NativeSelect,
+  NativeSelectOption,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  Spinner,
+} from "@unicron/ui"
+
+import { PaneHeader } from "@/components/master-detail"
+import { describeError, useClient } from "@/core/client"
+import type { ItemSummary } from "@/core/types"
+import { CodeDisplay } from "@/features/vault/code-display"
+
+import { codeKey, useCodes } from "./use-codes"
+
+interface CodesViewProps {
+  /** The vault's rows, so the add form can offer the Logins to put a code inside. */
+  rows: ItemSummary[]
+  onChanged: () => void
+  onNotice: (text: string) => void
+}
+
+/**
+ * The Codes view (brief §3.2): every code item and every code inside a
+ * Login, scanning fast, each with its countdown and Copy. Nothing here
+ * holds a seed; the core hands over values and timing only (D102).
+ */
+export function CodesView({ rows, onChanged, onNotice }: CodesViewProps) {
+  const { codes, error, secondsLeft, reload } = useCodes(true)
+  const [query, setQuery] = useState("")
+  const [adding, setAdding] = useState(false)
+
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!codes) return []
+    if (!q) return codes
+    return codes.filter((c) => [c.title, c.issuer ?? "", c.account ?? ""].some((s) => s.toLowerCase().includes(q)))
+  }, [codes, query])
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-surface-chrome">
+      <PaneHeader title="Codes">
+        <Button size="sm" onClick={() => setAdding(true)}>
+          <Icon name="add" data-icon="inline-start" />
+          Add a code
+        </Button>
+      </PaneHeader>
+      <div className="flex flex-col gap-2 px-4 pb-4">
+        <Input type="search" placeholder="Search issuers and accounts" aria-label="Search codes" value={query} onChange={(e) => setQuery(e.target.value)} />
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        {!codes && !error && <Spinner />}
+        {codes && codes.length === 0 && (
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Icon name="timer" />
+              </EmptyMedia>
+              <EmptyTitle>No codes yet</EmptyTitle>
+              <EmptyDescription>Add one by pasting its otpauth:// link. Scanning a QR code comes with the camera later.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )}
+        <ItemGroup role="list" aria-label="One-time codes">
+          {shown.map((c) => (
+            <CodeDisplay key={codeKey(c)} code={c} secondsLeft={secondsLeft[codeKey(c)] ?? c.seconds_left} density="list" onNotice={onNotice} />
+          ))}
+        </ItemGroup>
+      </div>
+      <AddCodeSheet
+        open={adding}
+        logins={rows.filter((r) => r.kind === "login" && r.state === "live")}
+        onClose={() => setAdding(false)}
+        onAdded={() => {
+          setAdding(false)
+          reload()
+          onChanged()
+        }}
+      />
+    </div>
+  )
+}
+
+function AddCodeSheet({ open, logins, onClose, onAdded }: { open: boolean; logins: ItemSummary[]; onClose: () => void; onAdded: () => void }) {
+  const client = useClient()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const form = e.currentTarget
+    const data = new FormData(form)
+    const text = (n: string) => String(data.get(n) ?? "").trim()
+    setBusy(true)
+    setError(null)
+    try {
+      await client.addCode({ uri: text("uri"), title: text("title") || undefined, into: text("into") || undefined })
+      form.reset()
+      onAdded()
+    } catch (err) {
+      setError(describeError(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent>
+        <form onSubmit={submit} className="flex h-full flex-col gap-4 p-4">
+          <SheetHeader className="p-0">
+            <SheetTitle>Add a code</SheetTitle>
+            <SheetDescription>Paste the otpauth:// or steam:// link the site gave you. The set-up is checked here before it is kept.</SheetDescription>
+          </SheetHeader>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="code-uri">Set-up link</FieldLabel>
+              <Input id="code-uri" name="uri" type="password" placeholder="otpauth://totp/…" required autoComplete="off" />
+              <FieldDescription>Kept masked while you type; it holds the code's secret.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="code-into">Inside a login</FieldLabel>
+              <NativeSelect id="code-into" name="into" defaultValue="">
+                <NativeSelectOption value="">Its own item</NativeSelectOption>
+                {logins.map((l) => (
+                  <NativeSelectOption key={l.id} value={l.id}>
+                    {l.title || l.site}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+              <FieldDescription>A code usually belongs to the login it protects.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="code-title">Title</FieldLabel>
+              <Input id="code-title" name="title" autoComplete="off" />
+              <FieldDescription>For a standalone code; left empty, the issuer and account are used.</FieldDescription>
+            </Field>
+          </FieldGroup>
+          {error && (
+            <FieldError role="alert" className="text-sm">
+              {error}
+            </FieldError>
+          )}
+          <DialogActions className="mt-auto">
+            <DialogAction kind="cancel" type="button" onClick={onClose} disabled={busy}>
+              Cancel
+            </DialogAction>
+            <DialogAction kind="confirm" type="submit" disabled={busy}>
+              Add
+            </DialogAction>
+          </DialogActions>
+        </form>
+      </SheetContent>
+    </Sheet>
+  )
+}
