@@ -143,6 +143,9 @@ async fn copy_secret(
 /// the same clipboard path and timer as `copy_secret`; the set-up never
 /// leaves the core. A code inside a crown jewel goes through the `Use`
 /// gate first (D101).
+// Three of the eight are Tauri's injected handles; the five the webview sends
+// mirror `copy_secret` plus `which` and `gate`.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn copy_code(
     app: State<'_, App>,
