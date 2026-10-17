@@ -14,7 +14,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**Plan set v0.1, 61 decisions, third Rust slice built (2026-10-17).** The workspace builds, lints clean and passes its tests on stable Rust. A vault round-trips through a plain SQLite file that holds ciphertext only, opens from the shared ecosystem identity and this device's keystore with no kit and no master password, and syncs: the `lockdown` command line registers an account with OPAQUE, a second device enrols through it, and the two push, pull and merge against the one server binary, with conflict copies where a field-level merge cannot decide and "Rollback attempt blocked" when the server falls behind. The matcher crosses into the browser over wasm with signed data and a Chromium-driven red team. Nothing ships yet. What is real and what is a skeleton is listed in [`docs/plan/07-workspace.md`](docs/plan/07-workspace.md).
+**Plan set v0.1, 82 decisions, fifth Rust slice built (2026-10-17).** The workspace builds, lints clean and passes its tests on stable Rust. A vault round-trips through a plain SQLite file that holds ciphertext only, opens from the shared ecosystem identity and this device's keystore with no kit and no master password, and syncs: the `lockdown` command line registers an account with OPAQUE, a second device enrols through it, and the two push, pull and merge against the one server binary, with conflict copies where a field-level merge cannot decide and "Rollback attempt blocked" when the server falls behind. Files attach to items in 1 MiB chunks under per-file keys and travel as content-addressed blobs. The server keeps a public, append-only log of every key and head it accepts, and every sync checks it: a shrunken, forked or rewritten log stops the sync, a device the identity doesn't list is named, and two devices catch a server that shows them different logs. The matcher crosses into the browser over wasm with signed data and a Chromium-driven red team. Nothing ships yet. What is real and what is a skeleton is listed in [`docs/plan/07-workspace.md`](docs/plan/07-workspace.md).
 
 | Real (with tests) | Skeleton (types, traits, one real rule each) |
 |---|---|
@@ -27,13 +27,16 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 ```
 crates/
   crypto        AEAD, Argon2id floors, HKDF, Ed25519, X-Wing, BLAKE3, CSPRNG,
-                OPAQUE login as a pure state machine                            (04-security §3–§5)
-  vault         items, fields, versions, crown-jewel class, manifest chain,
-                load/save through a store, the identity adoption path          (02-model, 01-identity §6–§8)
-  store         SQLite + in-memory stores (ciphertext only), rollback memory,
-                devices learned from the identity's signed records             (03-architecture §2, §11)
+                OPAQUE login as a pure state machine, the Merkle tree and proofs (04-security §3–§6)
+  vault         items, fields, versions, attachments, crown-jewel class, manifest
+                chain, load/save through a store, the identity adoption path,
+                the log leaf, tree head, citation and checkpoint shapes         (02-model, 01-identity §6–§8)
+  store         SQLite + in-memory stores (ciphertext only, blobs by hash),
+                rollback memory, the synced identity records, the pinned log
+                key and last tree head per server                               (03-architecture §2, §11)
   sync          the wire protocol, the HTTPS transport, pull/merge/push/head,
-                conflict copies, rollback and fork checks                       (03-architecture §6)
+                blobs riding with items, conflict copies, rollback and fork
+                checks, the key-transparency session and self-audit            (03-architecture §6, 04-security §6)
   matcher       URL rules, Public Suffix List, equivalent domains, lookalikes   (02-model §10)
   codes         TOTP, HOTP, 8-digit, Steam 5-character, otpauth:// / steam://   (02-model §4)
   cxf           FIDO CXF v1.0 read/write, CSV                                   (02-model §11)
@@ -43,8 +46,9 @@ crates/
   ffi           secret handles, redacted views, one-shot reveals                (03-architecture §3, §8)
   wasm          the matcher boundary and one-time codes over wasm-bindgen       (03-architecture §4, 09-extension-boundary)
 bins/
-  cli           `lockdown init | add login | edit | list | show | status | account register | account login | sync | kit create|verify | recover | device list|revoke | code | match`
-  server        axum: OPAQUE login, sessions, the identity record set, vault heads and items, SQLite (03-architecture §5, 05-self-host)
+  cli           `lockdown init | add login | edit | list | show | status | attach | attachments | fetch | account register | account login | sync | audit | checkpoint | kit create|verify | recover | device list|revoke | code | match`
+  server        axum: OPAQUE login, sessions, the identity record set, vault heads and items,
+                content-addressed blobs, the key-transparency log, SQLite       (03-architecture §5, 05-self-host)
 extension/      the wasm build script, the JSON schema, the Playwright red team  (09-extension-boundary)
 ```
 
@@ -56,7 +60,7 @@ Stable Rust (`rust-toolchain.toml`; MSRV 1.90) and network access to crates.io a
 
 ```sh
 cargo build                         # the default members: every pure-Rust crate
-cargo test --workspace              # 132 tests across 14 crates
+cargo test --workspace              # 152 tests across 14 crates
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 cargo deny check                    # cargo install cargo-deny --locked
@@ -66,11 +70,16 @@ echo 'hunter2' | cargo run -p lockdown-cli -- --root /tmp/snds/identity add logi
 cargo run -p lockdown-cli -- --root /tmp/snds/identity list
 cargo run -p lockdown-server -- --data /tmp/lockdown-server   # listens on 127.0.0.1:8787 (--listen, LOCKDOWN_LISTEN)
 echo 'a long account password' | cargo run -p lockdown-cli -- --root /tmp/snds/identity account register --server http://127.0.0.1:8787 --login me@example.com --password-stdin   # prints the recovery kit: a Secret Key and a recovery code; keep the page
-cargo run -p lockdown-cli -- --root /tmp/snds/identity sync
+cargo run -p lockdown-cli -- --root /tmp/snds/identity sync                  # checks the server's public log before and after
 cargo run -p lockdown-cli -- --root /tmp/snds/identity device list
+cargo run -p lockdown-cli -- --root /tmp/snds/identity attach <item-id> ./passport.pdf   # a file, sealed in chunks under its own key
+cargo run -p lockdown-cli -- --root /tmp/snds/identity attachments <item-id>
+cargo run -p lockdown-cli -- --root /tmp/snds/identity fetch <item-id> passport.pdf --out ./passport-copy.pdf
+cargo run -p lockdown-cli -- --root /tmp/snds/identity audit                 # every log entry about this account, verified
+cargo run -p lockdown-cli -- --root /tmp/snds/identity checkpoint            # a signed page to keep or verify on another device
 ```
 
-A second machine with nothing on it comes back with the recovery kit: `recover --server … --login … --password-stdin --kit-stdin`, giving the password, the Secret Key and the recovery code one per line; it enrols and pulls the vault. A machine that already holds the identity uses `account login` (with `--secret-key-stdin` on an account made before the kit existed). The Secret Key from the kit is needed beside the password to open the account on any new device. A lost device is cut off with `device revoke <id>`. The server is plain HTTP only on localhost; put TLS in front of it anywhere else (05-self-host §3).
+A second machine with nothing on it comes back with the recovery kit: `recover --server … --login … --password-stdin --kit-stdin`, giving the password, the Secret Key and the recovery code one per line; it enrols and pulls the vault. A machine that already holds the identity uses `account login` (with `--secret-key-stdin` on an account made before the kit existed). The Secret Key from the kit is needed beside the password to open the account on any new device. A lost device is cut off with `device revoke <id>`. `checkpoint --verify FILE` on a second device says whether the two saw the same server. The server is plain HTTP only on localhost; put TLS in front of it anywhere else (05-self-host §3).
 
 CI (`.github/workflows/ci.yml`) runs the same four checks on Ubuntu and macOS, plus `cargo-deny`, plus the wasm build and the browser red team.
 
