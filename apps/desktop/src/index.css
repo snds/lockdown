@@ -16,3 +16,11 @@
     overscroll-behavior: none;
   }
 }
+
+/* Printing the kit page (once-page.tsx) prints the page alone: the app
+   behind the dialog, the vault included, stays off the paper. */
+@media print {
+  body:has([data-print-page]) #root {
+    display: none;
+  }
+}

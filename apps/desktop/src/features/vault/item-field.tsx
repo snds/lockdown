@@ -11,6 +11,7 @@ import { describeError, useClient } from "@/core/client"
 import type { FieldView } from "@/core/types"
 
 import { CROWN_JEWEL_REVEAL_S } from "./crown-jewel"
+import { FieldLargeType } from "./large-type"
 
 export type { SecretFormat }
 
@@ -21,8 +22,8 @@ interface ItemFieldProps {
   onNotice: (text: string) => void
   /** How a value is drawn: as is, or in groups of four (cards, brief §3.1). */
   format?: SecretFormat
-  /** The `more` slot of a hidden field: large type, history. */
-  children?: React.ReactNode
+  /** Offer "Show large type" for this hidden field, named so ("Wi-Fi password · Home"). */
+  largeType?: string
 }
 
 function formatPlain(text: string, format: SecretFormat): string {
@@ -53,7 +54,7 @@ function formatPlain(text: string, format: SecretFormat): string {
  * outlive the gate's dialog or the OS prompt), and a copy fetches nothing
  * for the webview: the core copies by reference after its own `Use` gate.
  */
-export function ItemField({ itemId, field, onNotice, format = "plain", children }: ItemFieldProps) {
+export function ItemField({ itemId, field, onNotice, format = "plain", largeType }: ItemFieldProps) {
   const client = useClient()
   const gate = useGate()
   const { settings } = useSettings()
@@ -114,7 +115,7 @@ export function ItemField({ itemId, field, onNotice, format = "plain", children 
         locked={locked}
         description={error ?? undefined}
       >
-        {children}
+        {largeType && <FieldLargeType itemId={itemId} fieldId={fieldId} title={largeType} />}
       </SecretField>
     )
   }

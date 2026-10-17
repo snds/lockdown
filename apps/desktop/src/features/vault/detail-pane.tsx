@@ -11,6 +11,7 @@ import { ItemCodeDisplay } from "./code-display"
 import { ItemCrownJewel } from "./crown-jewel"
 import { kindLabel } from "./list-model"
 import { ItemField, type SecretFormat } from "./item-field"
+import { LargeTypeButton } from "./large-type"
 
 interface DetailPaneProps {
   /** The parent keys this pane by item and version, so a change remounts it. */
@@ -73,11 +74,21 @@ export function DetailPane({ id, onEdit, onTrashed, onNotice }: DetailPaneProps)
   }
   const title = item.fields.find((f) => f.field_id === "title")?.value ?? kindLabel(item.kind)
   const trashed = item.state === "trashed"
-  const field = (f: FieldView, format?: SecretFormat) => <ItemField key={f.field_id} itemId={item.id} field={f} onNotice={onNotice} format={format} />
+  const field = (f: FieldView, format?: SecretFormat, largeType?: string) => (
+    <ItemField key={f.field_id} itemId={item.id} field={f} onNotice={onNotice} format={format} largeType={largeType} />
+  )
   const codeBlocks = (item.fields.filter((f) => f.kind === "totp") ?? []).map((f) => {
     const view = codes.codes?.find((c) => c.field_id === f.field_id)
     return view ? (
-      <ItemCodeDisplay key={f.field_id} code={view} now={codes.now} expiresAt={codes.expiresAt[codeKey(view)] ?? null} />
+      <div key={f.field_id} className="flex flex-col items-start gap-1">
+        <ItemCodeDisplay code={view} now={codes.now} expiresAt={codes.expiresAt[codeKey(view)] ?? null} />
+        {item.kind === "code" && (
+          <LargeTypeButton
+            title={`Code · ${[view.issuer, view.account].filter(Boolean).join(" · ") || title}`}
+            getSecret={() => Promise.resolve(new TextEncoder().encode(view.current))}
+          />
+        )}
+      </div>
     ) : (
       <div key={f.field_id} className="text-sm text-muted-foreground">
         {codes.error ?? "Computing the code…"}
@@ -132,7 +143,7 @@ export function DetailPane({ id, onEdit, onTrashed, onNotice }: DetailPaneProps)
   )
 }
 
-type FieldRenderer = (f: FieldView, format?: SecretFormat) => ReactNode
+type FieldRenderer = (f: FieldView, format?: SecretFormat, largeType?: string) => ReactNode
 
 const isMeta = (f: FieldView) => f.field_id === "title"
 const isUrl = (f: FieldView) => f.kind === "url"
@@ -150,6 +161,7 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
 /** The layout per kind (brief §3.1). Unknown kinds render the generic field list. */
 function layoutFor(item: ItemDetail, field: FieldRenderer, codeBlocks: ReactNode[]): ReactNode {
   const fields = item.fields.filter((f) => !isMeta(f))
+  const title = item.fields.find((f) => f.field_id === "title")?.value ?? kindLabel(item.kind)
   switch (item.kind) {
     case "login": {
       const password = fields.find((f) => f.field_id === "pw")
@@ -186,6 +198,14 @@ function layoutFor(item: ItemDetail, field: FieldRenderer, codeBlocks: ReactNode
           </Block>
           {rest.length > 0 && <Block title="Details">{rest.map((f) => field(f))}</Block>}
         </>
+      )
+    }
+    case "wi-fi": {
+      // The network's password reads across a room: "Show large type" on the hidden fields (brief §3.1).
+      return fields.length ? (
+        <Block title="Network">{fields.map((f) => field(f, undefined, f.hidden ? `${f.label} · ${title}` : undefined))}</Block>
+      ) : (
+        <p className="text-sm text-muted-foreground">No fields of this kind yet.</p>
       )
     }
     case "note": {
