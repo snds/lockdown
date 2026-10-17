@@ -33,7 +33,9 @@ use std::time::{Duration, Instant, SystemTime};
 
 pub use approval::{Approval, ApprovalKind, Approver, GateInput, PasswordApprover, Route};
 pub use lock::{LockPolicy, LockReason};
+pub use lockdown_vault::{Change, FieldChange, FieldInput};
 pub use revealed::Revealed;
+pub use session::items::field_kind_named;
 pub use session::{Paths, device_name};
 pub use settings::{Density, RevealGesture, Settings};
 pub use types::*;
@@ -278,6 +280,29 @@ impl Core {
         let now = session::now_secs().max(0) as u64;
         self.session()?
             .code_now(id, field_id, now, next)
+            .map_err(AppError::refused)
+    }
+
+    /// Changes an item through the generic edit, after the `Use` gate when
+    /// the item is a crown jewel: replacing or removing a recovery phrase is
+    /// as weighty as copying it (D110).
+    fn edit_item(
+        &mut self,
+        id: &str,
+        title: Option<&str>,
+        changes: Vec<lockdown_vault::FieldChange>,
+        gate: &GateInput,
+    ) -> AppResult<u64> {
+        self.clock.touch(Instant::now());
+        if self
+            .session()?
+            .is_crown_jewel(id)
+            .map_err(AppError::refused)?
+        {
+            self.approve(ApprovalKind::Use, "change this protected item", gate)?;
+        }
+        self.session()?
+            .edit_item(id, title, changes)
             .map_err(AppError::refused)
     }
 
@@ -614,7 +639,49 @@ impl App {
         self.with_session(|s| s.audit())
     }
 
-    /// Adds a login. `password` is bytes a shell wipes afterwards.
+    /// Every kind's template, for a shell's "New item" list, editor and
+    /// detail. Static data: no vault needed.
+    pub fn templates(&self) -> Vec<TemplateView> {
+        session::items::templates()
+    }
+
+    /// The kinds a person may give a field they add by hand.
+    pub fn custom_kinds(&self) -> Vec<CustomKindView> {
+        session::items::custom_kinds()
+    }
+
+    /// Makes an item of `kind` from a shell's fields (D110): checked
+    /// against the kind's template; secrets arrive as bytes.
+    pub fn add_item(
+        &self,
+        kind: &str,
+        title: Option<&str>,
+        crown_jewel: bool,
+        changes: Vec<lockdown_vault::FieldChange>,
+    ) -> AppResult<String> {
+        let (kind, title) = (kind.to_string(), title.map(str::to_string));
+        self.with_session(move |s| {
+            s.add_item(&kind, title.as_deref(), crown_jewel, changes)
+                .map(|id| id.to_string())
+        })
+    }
+
+    /// Saves a new version of an item from an edit that names every field
+    /// (Keep for a secret the person did not retype). A crown jewel's edit
+    /// goes through the `Use` gate first. Returns the version number.
+    pub fn edit_item(
+        &self,
+        id: &str,
+        title: Option<&str>,
+        changes: Vec<lockdown_vault::FieldChange>,
+        gate: GateInput,
+    ) -> AppResult<u64> {
+        let (id, title) = (id.to_string(), title.map(str::to_string));
+        self.call(move |core| core.edit_item(&id, title.as_deref(), changes, &gate))
+    }
+
+    /// Adds a login. `password` is bytes a shell wipes afterwards. The
+    /// narrow form of [`Self::add_item`].
     pub fn add_login(
         &self,
         site: &str,
@@ -635,13 +702,15 @@ impl App {
     }
 
     /// Changes whichever of a login's title, username or password are
-    /// given; returns the new version number.
+    /// given, keeping the rest; returns the new version number. The narrow
+    /// form of [`Self::edit_item`], gated the same way.
     pub fn edit_login(
         &self,
         id: &str,
         title: Option<&str>,
         username: Option<&str>,
         password: Option<Vec<u8>>,
+        gate: GateInput,
     ) -> AppResult<u64> {
         let (id, title, username) = (
             id.to_string(),
@@ -649,13 +718,25 @@ impl App {
             username.map(str::to_string),
         );
         let password = password.map(zeroize::Zeroizing::new);
-        self.with_session(move |s| {
-            s.edit_login(
-                &id,
-                title.as_deref(),
-                username.as_deref(),
-                password.as_deref().map(|p| p.as_slice()),
-            )
+        self.call(move |core| {
+            core.clock.touch(Instant::now());
+            let session = core.session()?;
+            let item_id = lockdown_vault::Id::parse(&id)
+                .map_err(|_| AppError::refused(format!("'{id}' isn't an item id")))?;
+            let mut set = Vec::new();
+            if let Some(u) = username.as_deref() {
+                set.push(lockdown_vault::FieldChange::text("user", u));
+            }
+            if let Some(p) = password.as_deref() {
+                set.push(lockdown_vault::FieldChange::secret("pw", p));
+            }
+            if set.is_empty() && title.is_none() {
+                return Err(AppError::refused("nothing to change"));
+            }
+            let changes = session
+                .keep_all_but(item_id, set)
+                .map_err(AppError::refused)?;
+            core.edit_item(&id, title.as_deref(), changes, &gate)
         })
     }
 
@@ -887,8 +968,14 @@ mod tests {
             b"correct horse battery staple"
         );
 
-        app.edit_login(&id, Some("Example"), None, Some(b"hunter2".to_vec()))
-            .unwrap();
+        app.edit_login(
+            &id,
+            Some("Example"),
+            None,
+            Some(b"hunter2".to_vec()),
+            GateInput::default(),
+        )
+        .unwrap();
         assert_eq!(
             app.reveal(&id, "pw", GateInput::default())
                 .unwrap()
@@ -926,6 +1013,208 @@ mod tests {
         let err = app.restore(&id).unwrap_err();
         assert_eq!(err.code, ErrorCode::Refused);
         assert!(err.message.contains("isn't in the trash"), "{err}");
+    }
+
+    #[test]
+    fn every_kind_goes_through_one_path_and_secrets_never_cross_as_json() {
+        use lockdown_vault::{Change, FieldChange, FieldInput, FieldKind};
+        let (_dir, app) = fresh();
+        app.open_or_create(true).unwrap();
+        let templates = app.templates();
+        assert!(templates.iter().any(|t| t.kind == "wi-fi" && t.creatable));
+        assert!(templates.iter().all(|t| t.kind != "consent"));
+
+        // Wi-Fi: a generated password the shell never sent or saw.
+        let wifi = app
+            .add_item(
+                "wi-fi",
+                None,
+                false,
+                vec![
+                    FieldChange::text("wifi.ssid", "home-net"),
+                    FieldChange::new("wifi.passphrase", Change::Generate),
+                    FieldChange::text("wifi.security", "WPA3"),
+                    FieldChange::new("wifi.hidden", Change::Set(FieldInput::Flag(false))),
+                ],
+            )
+            .unwrap();
+        let generated = app
+            .reveal(&wifi, "wifi.passphrase", GateInput::default())
+            .unwrap();
+        assert_eq!(generated.expose().len(), 20);
+        let generated = String::from_utf8(generated.expose().to_vec()).unwrap();
+        let detail = app.show(&wifi, false).unwrap();
+        assert_eq!(
+            detail.fields[0].value.as_deref(),
+            Some("home-net"),
+            "the network names an empty title"
+        );
+        let json = serde_json::to_string(&detail).unwrap();
+        assert!(!json.contains(&generated));
+
+        // A card: the number masked, the brand worked out, the quick copy the number.
+        let card = app
+            .add_item(
+                "card",
+                Some("Everyday card"),
+                false,
+                vec![
+                    FieldChange::secret("card.number", b"4111 1111 1111 1111"),
+                    FieldChange::text("card.holder", "A. Person"),
+                    FieldChange::secret("card.cvc", b"123"),
+                    FieldChange::text("card.expiry", "2027-09"),
+                ],
+            )
+            .unwrap();
+        // A code from a bare set-up key, the core makes the link.
+        let code = app
+            .add_item(
+                "code",
+                Some("Forum"),
+                false,
+                vec![FieldChange::secret(
+                    "code.0",
+                    b"GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+                )],
+            )
+            .unwrap();
+        assert!(
+            app.codes()
+                .unwrap()
+                .iter()
+                .any(|c| c.item_id == code && c.issuer.as_deref() == Some("Forum"))
+        );
+        // A wallet: a crown jewel by default.
+        let phrase =
+            "abandon ability able about above absent absorb abstract absurd abuse access accident";
+        let wallet = app
+            .add_item(
+                "crypto-wallet",
+                Some("Cold wallet"),
+                false,
+                vec![
+                    FieldChange::secret("seed", phrase.as_bytes()),
+                    FieldChange::text("wallet.network", "Bitcoin"),
+                ],
+            )
+            .unwrap();
+
+        let rows = app.list().unwrap();
+        let row = |id: &str| rows.iter().find(|r| r.id == id).unwrap();
+        assert_eq!(row(&wifi).subtitle, "home-net");
+        assert_eq!(row(&wifi).views, ["wi-fi"]);
+        assert_eq!(row(&wifi).copy.as_ref().unwrap().label, "Wi-Fi password");
+        assert_eq!(row(&card).subtitle, "A. Person");
+        assert_eq!(row(&card).copy.as_ref().unwrap().field_id, "card.number");
+        assert_eq!(row(&code).copy.as_ref().unwrap().how, "code");
+        let w = row(&wallet);
+        assert!(w.crown_jewel);
+        assert!(
+            w.subtitle.is_empty() && w.username.is_empty() && w.site.is_empty(),
+            "title only"
+        );
+        let json = serde_json::to_string(&rows).unwrap();
+        for secret in ["4111", "123\"", phrase, generated.as_str(), "GEZDGNBV"] {
+            assert!(!json.contains(secret), "{secret} in the list");
+        }
+        let detail = app.show(&card, false).unwrap();
+        let brand = detail
+            .fields
+            .iter()
+            .find(|f| f.field_id == "card.type")
+            .unwrap();
+        assert_eq!(brand.value.as_deref(), Some("Visa"));
+        assert!(!serde_json::to_string(&detail).unwrap().contains("4111"));
+
+        // An edit: untouched secrets kept without being sent; a field of your own added.
+        let n = app
+            .edit_item(
+                &card,
+                None,
+                vec![
+                    FieldChange::keep("card.number"),
+                    FieldChange::keep("card.holder"),
+                    FieldChange::new("card.cvc", Change::Remove),
+                    FieldChange::text("card.expiry", "2028-01"),
+                    FieldChange::keep("card.type"),
+                    FieldChange::custom(
+                        "Bank phone",
+                        FieldKind::Phone,
+                        FieldInput::Text("+1 555 0100".into()),
+                    ),
+                ],
+                GateInput::default(),
+            )
+            .unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(
+            app.reveal(&card, "card.number", GateInput::default())
+                .unwrap()
+                .expose(),
+            b"4111 1111 1111 1111"
+        );
+        let detail = app.show(&card, false).unwrap();
+        assert!(detail.fields.iter().all(|f| f.field_id != "card.cvc"));
+        assert!(
+            detail
+                .fields
+                .iter()
+                .any(|f| f.field_id == "custom.0" && f.label == "Bank phone")
+        );
+        let forgot = app
+            .edit_item(
+                &card,
+                None,
+                vec![FieldChange::keep("card.number")],
+                GateInput::default(),
+            )
+            .unwrap_err();
+        assert!(
+            forgot.message.contains("doesn't say what to do"),
+            "{forgot}"
+        );
+
+        // Changing a crown jewel asks first; here (no platform check, no account) in the window.
+        let keep_all = vec![
+            FieldChange::keep("seed"),
+            FieldChange::text("wallet.network", "Ethereum"),
+        ];
+        let err = app
+            .edit_item(&wallet, None, keep_all.clone(), GateInput::default())
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::ApprovalNeeded);
+        let confirmed = GateInput {
+            password: None,
+            confirmed: true,
+        };
+        assert_eq!(
+            app.edit_item(&wallet, None, keep_all, confirmed.clone())
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            app.reveal(&wallet, "seed", confirmed).unwrap().expose(),
+            phrase.as_bytes(),
+            "the phrase was kept, never resent"
+        );
+
+        // Kinds a person can't make by hand, and a kind that doesn't exist.
+        assert!(app.add_item("passkey", Some("x"), false, vec![]).is_err());
+        assert!(app.add_item("consent", Some("x"), false, vec![]).is_err());
+        assert!(app.add_item("spaceship", Some("x"), false, vec![]).is_err());
+        // A secret sent as text is refused.
+        let err = app
+            .add_item(
+                "note",
+                Some("x"),
+                false,
+                vec![
+                    FieldChange::text("body", "fine"),
+                    FieldChange::custom("pin", FieldKind::Hidden, FieldInput::Text("1".into())),
+                ],
+            )
+            .unwrap_err();
+        assert!(err.message.contains("must arrive as bytes"), "{err}");
     }
 
     #[test]

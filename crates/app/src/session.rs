@@ -46,9 +46,10 @@ use lockdown_vault::identity::{
     persona_vaults, record_set,
 };
 use lockdown_vault::identity_set::{Revocation, VaultBoundary};
-use lockdown_vault::{FieldKind, FieldValue, Id, ItemClass, ItemState, PlainField, Vault};
+use lockdown_vault::{
+    FieldChange, FieldKind, FieldValue, Id, ItemClass, ItemState, PlainField, Vault,
+};
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroizing;
 
 use crate::Revealed;
 use crate::secrets;
@@ -59,6 +60,7 @@ use crate::types::{
 use crate::views;
 
 mod codes;
+pub mod items;
 mod transfer;
 
 const KEYSTORE_FILE: &str = "device-key.cbor";
@@ -483,7 +485,9 @@ impl Session {
     // --- items -------------------------------------------------------------
 
     /// Adds a login and returns its id. The password arrives as bytes a
-    /// shell read from its own field and wipes afterwards.
+    /// shell read from its own field and wipes afterwards. The narrow form
+    /// of [`Self::add_item`]: the site is checked as an origin first, and
+    /// left without a title the login takes the site's host.
     pub fn add_login(
         &mut self,
         site: &str,
@@ -491,71 +495,13 @@ impl Session {
         password: &[u8],
         title: Option<&str>,
     ) -> Result<Id, String> {
-        let password = text_secret(password)?;
-        let origin = lockdown_matcher::Origin::parse(site).map_err(|e| e.to_string())?;
-        let title = title
-            .map(str::trim)
-            .filter(|t| !t.is_empty())
-            .map(str::to_string)
-            .unwrap_or(origin.host.clone());
-        let fields = vec![
-            PlainField::text("title", "title", &title),
-            PlainField::url("url.0", site, "exact_host"),
-            PlainField::text("user", "username", username),
-            PlainField::hidden("pw", "password", &password),
+        lockdown_matcher::Origin::parse(site).map_err(|e| e.to_string())?;
+        let changes = vec![
+            FieldChange::text("url.0", site),
+            FieldChange::text("user", username),
+            FieldChange::secret("pw", password),
         ];
-        let id = self
-            .opened
-            .vault
-            .create_item(
-                lockdown_vault::ItemKind::Login,
-                lockdown_vault::ItemClass::Standard,
-                fields,
-            )
-            .map_err(|e| e.to_string())?;
-        self.save()?;
-        Ok(id)
-    }
-
-    /// Changes a login's title, username or password (whichever are given)
-    /// as a new version, and returns the version number.
-    pub fn edit_login(
-        &mut self,
-        id: &str,
-        title: Option<&str>,
-        username: Option<&str>,
-        password: Option<&[u8]>,
-    ) -> Result<u64, String> {
-        let item_id = parse_id(id)?;
-        let password = password.map(text_secret).transpose()?;
-        let mut fields = self.vault().open_item(item_id).map_err(|e| e.to_string())?;
-        let mut changed = false;
-        for (field_id, value) in [
-            ("title", title),
-            ("user", username),
-            ("pw", password.as_deref().map(|p| p.as_str())),
-        ] {
-            let Some(value) = value else { continue };
-            match fields.iter_mut().find(|f| f.field_id == field_id) {
-                Some(f) => f.value = FieldValue::Text(value.to_string()),
-                None => fields.push(match field_id {
-                    "pw" => PlainField::hidden("pw", "password", value),
-                    "user" => PlainField::text("user", "username", value),
-                    _ => PlainField::text("title", "title", value),
-                }),
-            }
-            changed = true;
-        }
-        if !changed {
-            return Err("nothing to change".into());
-        }
-        let n = self
-            .opened
-            .vault
-            .update_item(item_id, fields)
-            .map_err(|e| e.to_string())?;
-        self.save()?;
-        Ok(n)
+        self.add_item("login", title, false, changes)
     }
 
     /// Moves an item to the trash (its grace period starts; nothing is
@@ -623,7 +569,22 @@ impl Session {
                 expires_at: None,
                 warnings: Vec::new(),
                 views: Vec::new(),
+                subtitle: String::new(),
+                copy: items::copy_target(item.kind, &fields),
             };
+            let template = lockdown_vault::template_for(item.kind);
+            row.subtitle = template
+                .subtitle
+                .and_then(|s| text_of(&fields, s))
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| row.username.clone());
+            if row.crown_jewel {
+                // Never in search previews (02-model §3): a crown jewel's
+                // summary is its title, kind and facts, no field.
+                row.site.clear();
+                row.username.clear();
+                row.subtitle.clear();
+            }
             let mut has_password = false;
             for f in &fields {
                 match f.kind {
@@ -641,6 +602,7 @@ impl Session {
                     FieldKind::Hidden if f.field_id == "pw" => has_password = true,
                     FieldKind::Date
                         if f.field_id == "expires_at"
+                            || f.field_id == "card.expiry"
                             || f.label.to_ascii_lowercase().contains("expir") =>
                     {
                         if let FieldValue::Text(t) = &f.value {
@@ -1982,14 +1944,6 @@ fn text_of(fields: &[PlainField], field_id: &str) -> Option<String> {
             FieldValue::Text(t) => Some(t.clone()),
             _ => None,
         })
-}
-
-/// A secret a shell sent as bytes, as text for the field types, wiped on
-/// drop.
-fn text_secret(bytes: &[u8]) -> Result<Zeroizing<String>, String> {
-    std::str::from_utf8(bytes)
-        .map(|s| Zeroizing::new(s.to_string()))
-        .map_err(|_| "the secret isn't valid text".to_string())
 }
 
 /// Whether a field's value is a secret a shell gets only on `reveal`: a

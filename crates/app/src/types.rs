@@ -72,6 +72,92 @@ pub struct ItemSummary {
     pub warnings: Vec<String>,
     /// The smart views this row is in (`views::classify`).
     pub views: Vec<String>,
+    /// The template's plain field shown under the title (a network's name,
+    /// a card's holder), or the username; empty for a crown jewel, whose
+    /// summary carries its title only (02-model §3 "never in search previews").
+    pub subtitle: String,
+    /// What the row's quick copy takes, when the item holds it.
+    pub copy: Option<CopyTarget>,
+}
+
+/// The one value a row (and the quick-access palette) offers to copy: a
+/// secret through `copy_secret` or a code through `copy_code`, by id and
+/// field; never the value itself.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct CopyTarget {
+    pub field_id: String,
+    /// `secret` or `code`.
+    pub how: String,
+    /// What is copied, in plain words: `password`, `code`, `Wi-Fi password`, `card number`.
+    pub label: String,
+}
+
+/// One kind's template as a shell draws it (`lockdown_vault::template`).
+#[derive(Clone, Debug, Serialize)]
+pub struct TemplateView {
+    /// `ItemKind::as_str`.
+    pub kind: String,
+    /// Singular, in plain words: "Wi-Fi network".
+    pub name: String,
+    /// One line for the "New item" list.
+    pub summary: String,
+    /// Whether a person makes one by hand (not a passkey).
+    pub creatable: bool,
+    /// Always a crown jewel (the person cannot opt down).
+    pub crown_jewel: bool,
+    /// Whether this kind may ever be filled into a page.
+    pub autofill: bool,
+    /// The quick copy's field.
+    pub primary: Option<String>,
+    /// The plain field shown under the title.
+    pub subtitle: Option<String>,
+    pub fields: Vec<FieldTemplateView>,
+}
+
+/// One field of a template.
+#[derive(Clone, Debug, Serialize)]
+pub struct FieldTemplateView {
+    pub field_id: String,
+    pub label: String,
+    /// `text`, `multiline`, `secret`, `secret-multiline`, `url`, `email`,
+    /// `phone`, `number`, `date`, `month`, `select`, `boolean`, `totp`, `passkey`.
+    pub control: String,
+    /// The value crosses only through `reveal`, and is sent as bytes.
+    pub secret: bool,
+    pub required: bool,
+    /// Holding it makes the item a crown jewel.
+    pub crown_jewel: bool,
+    /// `fill`, `confirm` (a second deliberate action) or `never`.
+    pub fill: String,
+    /// The generator's rule, where it applies.
+    pub generator: Option<GeneratorView>,
+    /// A `select`'s choices.
+    pub options: Vec<String>,
+    /// The detail's heading for it.
+    pub section: String,
+    /// Shown in groups of four.
+    pub grouped: bool,
+    /// One line of help, or empty.
+    pub hint: String,
+}
+
+/// A generator rule, with its plain words.
+#[derive(Clone, Debug, Serialize)]
+pub struct GeneratorView {
+    pub length: u32,
+    pub symbols: bool,
+    pub unambiguous: bool,
+    /// "20 characters: letters, digits and symbols".
+    pub words: String,
+}
+
+/// A kind a person may give a field they add by hand.
+#[derive(Clone, Debug, Serialize)]
+pub struct CustomKindView {
+    /// The storage kind's name (`text`, `hidden`, …), as `FieldView.kind`.
+    pub kind: String,
+    /// Its word: "Secret", "Web address".
+    pub label: String,
 }
 
 /// One one-time code as the Codes view shows it: the current and next

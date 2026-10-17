@@ -155,6 +155,8 @@ mod tests {
             conflict_copy: false,
             warnings: Vec::new(),
             views: Vec::new(),
+            subtitle: String::new(),
+            copy: None,
         }
     }
 
