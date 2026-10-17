@@ -6,6 +6,7 @@ import type {
   ApprovalKind,
   ApprovalRoute,
   CodeView,
+  Copied,
   DeviceInfo,
   FieldChangeInput,
   GateInput,
@@ -46,21 +47,20 @@ export interface Client {
   list(): Promise<ItemSummary[]>
   show(id: string): Promise<ItemDetail>
   reveal(id: string, fieldId: string, gate?: GateInput): Promise<Uint8Array>
-  /** Copies on the Rust side; resolves to the seconds until the clipboard is cleared. */
-  copySecret(id: string, fieldId: string, clearAfterSecs?: number, gate?: GateInput): Promise<number>
+  /** Copies on the Rust side; resolves to the copy's clear time and generation, never the value. */
+  copySecret(id: string, fieldId: string, clearAfterSecs?: number, gate?: GateInput): Promise<Copied>
   /**
    * Copies the code valid now (or, with `which: "next"`, the one after it)
    * on the Rust side, with the same clipboard timer. A code inside a crown
    * jewel goes through the `Use` gate (D101).
    */
-  copyCode(itemId: string, fieldId: string, clearAfterSecs?: number, which?: "code" | "next", gate?: GateInput): Promise<number>
+  copyCode(itemId: string, fieldId: string, clearAfterSecs?: number, which?: "code" | "next", gate?: GateInput): Promise<Copied>
   /**
-   * Whether the clipboard still holds what the shell last copied. `hash` is
-   * the component's name for the copy (hex SHA-256 of the bytes it handed
-   * over), or `null` when the shell copied by reference; it is compared
-   * with the shell's own record only.
+   * Whether the clipboard still holds the shell's copy number `copy` (a
+   * `Copied.copy`). It is compared with the shell's own record only, so
+   * the answer is never about text the shell did not write.
    */
-  clipboardHolds(hash: string | null): Promise<boolean>
+  clipboardHolds(copy: number): Promise<boolean>
   /** Clears the clipboard now, only if it still holds what the shell wrote. */
   clipboardClear(): Promise<void>
   addLogin(input: { site: string; username: string; password: number[]; title?: string }): Promise<string>
@@ -136,7 +136,7 @@ export const tauriClient: Client = {
   reveal: (id, fieldId, gate) => callBytes("reveal", { id, fieldId, gate }),
   copySecret: (id, fieldId, clearAfterSecs, gate) => call("copy_secret", { id, fieldId, clearAfterSecs, gate }),
   copyCode: (itemId, fieldId, clearAfterSecs, which, gate) => call("copy_code", { itemId, fieldId, clearAfterSecs, which, gate }),
-  clipboardHolds: (hash) => call("clipboard_holds", { hash }),
+  clipboardHolds: (copy) => call("clipboard_holds", { copy }),
   clipboardClear: () => call("clipboard_clear"),
   addLogin: (input) => call("add_login", input),
   editLogin: (input) => call("edit_login", input),

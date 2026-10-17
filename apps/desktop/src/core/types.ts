@@ -69,6 +69,17 @@ export interface CopyTarget {
   label: string
 }
 
+/**
+ * A copy the shell made on the Rust side (`copy_secret`, `copy_code`):
+ * the seconds until its clear, and its generation, the name the webview
+ * holds for that copy when it asks `clipboard_holds`. Nothing in it is
+ * derived from the value.
+ */
+export interface Copied {
+  clears_in_secs: number
+  copy: number
+}
+
 export interface FieldView {
   field_id: string
   label: string

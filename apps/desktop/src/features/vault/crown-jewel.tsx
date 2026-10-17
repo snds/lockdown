@@ -4,9 +4,6 @@ import { CrownJewelSurface } from "@unicron/ui/security/crown-jewel"
 
 import { useGate } from "@/app/gate"
 
-/** The SecretField reveal lifetime inside the surface (`--c-crown-jewel-reveal-lifetime`, 20 s). */
-export const CROWN_JEWEL_REVEAL_S = 20
-
 interface ItemCrownJewelProps {
   /** Names the thing for the region and the gate's reason: the item's title. */
   title: string
@@ -19,13 +16,15 @@ interface ItemCrownJewelProps {
  * core's `approval_route` and judged by the core when the gated call
  * arrives (`app/gate.tsx`), the biometric named as the platform names it
  * (Touch ID, Windows Hello). Where this computer has no platform check
- * the route is the account password, and the surface's copy says so.
- * Nested SecretField, CodeDisplay and LargeTypeView read the surface and
- * switch to gated mode on their own.
+ * the route is the account password: `biometricName={null}`, and the
+ * surface's copy and announcement say the password is asked for both use
+ * and reveal. Nested SecretField, CodeDisplay and LargeTypeView read the
+ * surface and switch to gated mode on their own (a SecretField's reveal
+ * becomes a tap with the surface's 20 s lifetime).
  */
 export function ItemCrownJewel({ title, children }: ItemCrownJewelProps) {
   const gate = useGate()
-  const biometricName = gate.route?.route === "platform" ? gate.route.method : "your account password"
+  const biometricName = gate.route?.route === "platform" ? gate.route.method : null
   return (
     <CrownJewelSurface
       host="app"

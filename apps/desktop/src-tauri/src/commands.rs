@@ -119,11 +119,20 @@ async fn reveal(
     Ok(Response::new(revealed.into_bytes().to_vec()))
 }
 
+/// A copy the shell made: the seconds until its clear, for the control's
+/// countdown, and its generation, the webview's name for this copy when it
+/// asks `clipboard_holds` (unicron's SecretField hands it back as the
+/// opaque `hash` from `copyRef`). Nothing in it is derived from the value.
+#[derive(Serialize)]
+pub struct Copied {
+    clears_in_secs: u64,
+    copy: u64,
+}
+
 /// Copies one hidden field to the clipboard from the Rust side; the value
 /// never reaches the webview. Cleared after `clear_after_secs` (default
-/// 30, range 10–90) if the clipboard still holds it. Returns the seconds
-/// until the clear, for the control's countdown. A crown jewel's copy goes
-/// through the `Use` gate first (D101).
+/// 30, range 10–90) if the clipboard still holds it. A crown jewel's copy
+/// goes through the `Use` gate first (D101).
 #[tauri::command]
 async fn copy_secret(
     app: State<'_, App>,
@@ -133,7 +142,7 @@ async fn copy_secret(
     field_id: String,
     clear_after_secs: Option<u64>,
     gate: Option<GateInput>,
-) -> AppResult<u64> {
+) -> AppResult<Copied> {
     let gate = gate.unwrap_or_default();
     let revealed = blocking(&app, move |a| a.reveal_to_use(&id, &field_id, gate)).await?;
     copy_with_timer(&guard, &handle, revealed, clear_after_secs)
@@ -157,7 +166,7 @@ async fn copy_code(
     clear_after_secs: Option<u64>,
     which: Option<String>,
     gate: Option<GateInput>,
-) -> AppResult<u64> {
+) -> AppResult<Copied> {
     let next = which.as_deref() == Some("next");
     let gate = gate.unwrap_or_default();
     let revealed = blocking(&app, move |a| a.code_now(&item_id, &field_id, next, gate)).await?;
@@ -171,7 +180,7 @@ fn copy_with_timer(
     handle: &AppHandle,
     revealed: lockdown_app::Revealed,
     clear_after_secs: Option<u64>,
-) -> AppResult<u64> {
+) -> AppResult<Copied> {
     let text = std::str::from_utf8(revealed.expose())
         .map(|s| zeroize::Zeroizing::new(s.to_string()))
         .map_err(|_| failed("this field isn't text"))?;
@@ -195,26 +204,26 @@ fn copy_with_timer(
             guard.forget();
         }
     });
-    Ok(after.as_secs())
+    Ok(Copied {
+        clears_in_secs: after.as_secs(),
+        copy: generation,
+    })
 }
 
 /// Whether the clipboard still holds what Lockdown last copied, for the
 /// copy control's own countdown (unicron's SecretField asks before it
-/// says "Cleared"). `hash` is the hex SHA-256 the component computed for
-/// the bytes it handed over, or `null` when the shell copied by reference
-/// and the component never had them; it is compared with the shell's own
-/// record only, never with the clipboard (clipboard.rs).
+/// says "Cleared"). `copy` is the generation `copy_secret` returned for
+/// the copy the control made; it is compared with the shell's own record
+/// only, never with the clipboard (clipboard.rs), so the answer is only
+/// ever about the shell's own copy.
 #[tauri::command]
 async fn clipboard_holds(
     guard: State<'_, ClipboardGuard>,
     handle: AppHandle,
-    hash: Option<String>,
+    copy: Option<u64>,
 ) -> AppResult<bool> {
     let current = handle.clipboard().read_text().ok();
-    Ok(guard.holds(
-        current.as_deref().map(str::as_bytes),
-        hash.as_deref().filter(|h| !h.is_empty()),
-    ))
+    Ok(guard.holds(current.as_deref().map(str::as_bytes), copy))
 }
 
 /// Clears the clipboard now, under the same rule as the timer: only if it

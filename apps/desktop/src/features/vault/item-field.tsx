@@ -1,16 +1,14 @@
-import { useMemo, useRef, useState } from "react"
+import { useMemo, useState } from "react"
 
 import { Button, Icon, Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@unicron/ui"
-import { useCrownJewel } from "@unicron/ui/security/crown-jewel"
-import { SecretField, type SecretFieldHost, type SecretFormat } from "@unicron/ui/security/secret-field"
+import { SecretField, type SecretFieldReferenceHost, type SecretFormat } from "@unicron/ui/security/secret-field"
 
 import { useGate } from "@/app/gate"
 import { useLocked } from "@/app/locked"
 import { useSettings } from "@/app/settings"
-import { describeError, useClient } from "@/core/client"
+import { describeError, isAppError, useClient } from "@/core/client"
 import type { Control, FieldView } from "@/core/types"
 
-import { CROWN_JEWEL_REVEAL_S } from "./crown-jewel"
 import { ShowFieldLargeType } from "./large-type"
 
 export type { SecretFormat }
@@ -33,73 +31,54 @@ function formatPlain(text: string, format: SecretFormat): string {
   return text.replace(/\s+/g, "").replace(/(.{4})(?=.)/g, "$1 ")
 }
 
+/** The core's sentence for a failed reveal or copy, in place of the component's default words. */
+const coreWords = (e: unknown): string | undefined => (isAppError(e) ? e.message : undefined)
+
 /**
  * One field of an item. A plain field shows its value with Copy or Open.
- * A hidden field is unicron's `SecretField`, bound to this host:
+ * A hidden field is unicron's `SecretField`, bound to this host as a
+ * `SecretFieldReferenceHost` (@unicron/ui 0.7.0):
  *
  * - `getSecret` is the core's `reveal` (bytes, never a JSON string; the
- *   component decodes them for as long as they are drawn and zeroes them);
- * - `host.copy` ignores the bytes it is handed (zeroed at once) and asks
- *   the core to copy by id and field (`copy_secret`), so the value goes
- *   core → clipboard on the Rust side as before (D85); the component's
- *   copy path still fetches the bytes first, which is a contract gap
- *   recorded in 10-desktop-shell §3;
- * - `host.clipboardHolds` and `host.clear` are the shell's own clipboard
- *   rule (`clipboard_holds`, `clipboard_clear`), so "Cleared" is only ever
- *   said about our own value;
+ *   component decodes them for as long as they are drawn and zeroes them).
+ *   Only a reveal the person asked for calls it;
+ * - `host.copyRef` asks the core to copy by id and field (`copy_secret`),
+ *   so the value goes core → clipboard on the Rust side (D85) and no
+ *   bytes come to the webview for a copy. It resolves with the shell's
+ *   number for that copy, which the component hands back to
+ *   `host.clipboardHolds` at expiry; with `host.clear` that is the shell's
+ *   own clipboard rule (`clipboard_holds`, `clipboard_clear`), so
+ *   "Cleared" is only ever said about our own copy;
+ * - `errorText` is the core's sentence when a reveal or a copy fails;
  * - `revealMode` is the settings file's gesture (D97), `clipboardTimer`
  *   its timer, `locked` the core's lock state.
  *
  * A standard field needs no gate (the core gates nothing on it); inside a
- * `CrownJewelSurface` the surface gates use and reveal (`crown-jewel.tsx`),
- * the reveal is a tap with the crown-jewel lifetime (a hold cannot
- * outlive the gate's dialog or the OS prompt), and a copy fetches nothing
- * for the webview: the core copies by reference after its own `Use` gate.
+ * `CrownJewelSurface` the surface gates use and reveal (`crown-jewel.tsx`)
+ * and the component makes the reveal a tap with the crown-jewel lifetime
+ * on its own (a hold cannot outlive the gate's dialog or the OS prompt).
  */
 export function ItemField({ itemId, field, onNotice, format = "plain", largeType, control }: ItemFieldProps) {
   const client = useClient()
   const gate = useGate()
   const { settings } = useSettings()
   const locked = useLocked()
-  const crown = useCrownJewel()
   const [error, setError] = useState<string | null>(null)
-  /** True while the last copy went by reference (the component never had the bytes). */
-  const byReference = useRef(false)
   const fieldId = field.field_id
 
-  const getSecret = useMemo(
-    () => async () => {
-      setError(null)
-      if (gate.pendingProof() === "use") {
-        // A crown jewel's copy: the core copies by reference after its own
-        // `Use` gate; nothing is fetched for the webview.
-        byReference.current = true
-        return new Uint8Array()
-      }
-      byReference.current = false
-      try {
-        return await gate.run((g) => client.reveal(itemId, fieldId, g))
-      } catch (e) {
-        setError(describeError(e))
-        throw e
-      }
-    },
-    [client, gate, itemId, fieldId],
-  )
+  const getSecret = useMemo(() => () => gate.run((g) => client.reveal(itemId, fieldId, g)), [client, gate, itemId, fieldId])
 
-  const host = useMemo<SecretFieldHost>(
+  const host = useMemo<SecretFieldReferenceHost>(
     () => ({
-      copy: async (bytes) => {
-        bytes.fill(0)
-        try {
-          await gate.run((g) => client.copySecret(itemId, fieldId, settings.clipboard_clear_secs, g))
-        } catch (e) {
-          setError(describeError(e))
-          throw e
-        }
+      copyRef: async () => {
+        const { copy } = await gate.run((g) => client.copySecret(itemId, fieldId, settings.clipboard_clear_secs, g))
+        return { hash: String(copy) }
       },
       clear: () => client.clipboardClear(),
-      clipboardHolds: (hash) => client.clipboardHolds(byReference.current ? null : hash),
+      clipboardHolds: (hash) => {
+        const copy = Number(hash)
+        return Number.isSafeInteger(copy) ? client.clipboardHolds(copy) : Promise.resolve(false)
+      },
     }),
     [client, gate, itemId, fieldId, settings.clipboard_clear_secs],
   )
@@ -110,12 +89,11 @@ export function ItemField({ itemId, field, onNotice, format = "plain", largeType
         label={field.label}
         getSecret={getSecret}
         host={host}
-        revealMode={crown.gated ? "toggle" : settings.reveal}
-        revealLifetime={crown.gated ? CROWN_JEWEL_REVEAL_S : undefined}
+        revealMode={settings.reveal}
         clipboardTimer={settings.clipboard_clear_secs}
         format={format}
         locked={locked}
-        description={error ?? undefined}
+        errorText={coreWords}
       >
         {largeType && <ShowFieldLargeType itemId={itemId} fieldId={fieldId} title={largeType} />}
       </SecretField>

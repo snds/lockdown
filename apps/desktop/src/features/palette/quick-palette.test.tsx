@@ -81,7 +81,7 @@ describe("the quick-access palette (D111)", () => {
   })
 
   it("Ctrl+Enter copies the highlighted result's password through the core, by id and field", async () => {
-    const copySecret = vi.fn<Client["copySecret"]>(() => Promise.resolve(30))
+    const copySecret = vi.fn<Client["copySecret"]>(() => Promise.resolve({ clears_in_secs: 30, copy: 1 }))
     const onNotice = vi.fn()
     render(<Harness client={fakeClient({ templates: () => Promise.resolve(TEMPLATES), copySecret })} onOpen={() => {}} onNotice={onNotice} />)
     const user = userEvent.setup()
@@ -94,7 +94,7 @@ describe("the quick-access palette (D111)", () => {
 
   it("a crown jewel's copy asks first (the core's gate)", async () => {
     const copySecret = vi.fn<Client["copySecret"]>((_id, _f, _s, gate?: GateInput) =>
-      gate?.confirmed ? Promise.resolve(30) : Promise.reject({ code: "approval_needed", detail: "window", message: "confirm in this window to copy this protected value" }),
+      gate?.confirmed ? Promise.resolve({ clears_in_secs: 30, copy: 2 }) : Promise.reject({ code: "approval_needed", detail: "window", message: "confirm in this window to copy this protected value" }),
     )
     const rows = ROWS.map((r): ItemSummary => (r.id === "j1" ? { ...r, copy: { field_id: "seed", how: "secret", label: "recovery phrase" } } : r))
     const onNotice = vi.fn()

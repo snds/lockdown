@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 
 import { Dialog, DialogAction, DialogActions, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@unicron/ui"
-import { CrownJewelGate, type CrownJewelProofKind } from "@unicron/ui/security/crown-jewel"
+import { CrownJewelGate, crownJewelGateErrors, type CrownJewelProofKind } from "@unicron/ui/security/crown-jewel"
 
 import { isAppError, useClient } from "@/core/client"
 import type { ApprovalRoute, GateInput } from "@/core/types"
@@ -33,8 +33,6 @@ interface GateContextValue {
    * backs out. The core judges the proof when the call arrives (D101).
    */
   requestProof: (kind: CrownJewelProofKind, reason: string) => Promise<boolean>
-  /** The crown-jewel proof collected for the next call, if one is waiting. */
-  pendingProof: () => CrownJewelProofKind | null
   /** Which check `use` would go to on this computer, for the biometric's name. */
   route: ApprovalRoute | null
 }
@@ -42,7 +40,6 @@ interface GateContextValue {
 const GateContext = createContext<GateContextValue>({
   run: (call) => call({}),
   requestProof: () => Promise.resolve(true),
-  pendingProof: () => null,
   route: null,
 })
 
@@ -124,7 +121,7 @@ export function GateProvider({ children }: { children: ReactNode }) {
               await client.lock().catch(() => {})
               throw { code: "locked", message: "The password was wrong three times, so the vault locked." }
             }
-            const next = await ask("password", reason || "confirm it's you", attemptsLeft, `Password incorrect. ${attemptsLeft} ${attemptsLeft === 1 ? "try" : "tries"} left.`)
+            const next = await ask("password", reason || "confirm it's you", attemptsLeft, crownJewelGateErrors.wrongPassword(attemptsLeft))
             if (next === null) throw cancelled()
             gate = next
             continue
@@ -163,9 +160,9 @@ export function GateProvider({ children }: { children: ReactNode }) {
     setPending(null)
   }
 
-  const biometricName = route?.route === "platform" ? route.method : undefined
+  const biometricName = route?.route === "platform" ? route.method : null
   const value = useMemo<GateContextValue>(
-    () => ({ run, requestProof, pendingProof: () => (proof.current && Date.now() - proof.current.at <= PROOF_MS ? proof.current.kind : null), route }),
+    () => ({ run, requestProof, route }),
     [run, requestProof, route],
   )
   return (

@@ -26,7 +26,11 @@ function crownJewelClient(over: Partial<Client> = {}) {
         ? Promise.reject({ code: "refused", message: "the password didn't match" })
         : Promise.reject({ code: "approval_needed", detail: "password", message: "your account password is needed to reveal this protected value" }),
   )
-  const copySecret = vi.fn(() => Promise.resolve(30))
+  const copySecret = vi.fn<Client["copySecret"]>((_id, _f, _s, gate?: GateInput) =>
+    gate?.password === undefined || gate.password === "correct horse"
+      ? Promise.resolve({ clears_in_secs: 30, copy: 1 })
+      : Promise.reject({ code: "refused", message: "the password didn't match" }),
+  )
   const client = fakeClient({
     approvalRoute: (kind) => Promise.resolve(kind === "reveal" ? { route: "password", method: "password" } : { route: "platform", method: "Touch ID" }),
     reveal,
@@ -58,7 +62,8 @@ describe("the crown-jewel treatment on this host (D98, D101)", () => {
     expect(screen.getByRole("region", { name: "Crown jewel: Ledger" })).toBeInTheDocument()
     expect(screen.getByText("Crown jewel")).toBeInTheDocument()
 
-    // Inside the surface the reveal is a tap, whatever the setting says.
+    // Inside the surface the reveal is a tap, whatever the setting says
+    // (the default is hold): the component does it, the host forces nothing.
     await user.click(await screen.findByRole("button", { name: "Show Recovery phrase" }))
     const dialog = await screen.findByRole("dialog")
     expect(dialog).toHaveTextContent("Confirm it's you")
@@ -99,5 +104,34 @@ describe("the crown-jewel treatment on this host (D98, D101)", () => {
     await waitFor(() => expect(copySecret).toHaveBeenCalledWith("i1", "phrase", 30, {}))
     expect(reveal).not.toHaveBeenCalled()
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("copies after the password on a computer with no platform check: the proof rides the copy, still nothing fetched", async () => {
+    const { client, reveal, copySecret } = crownJewelClient({ approvalRoute: () => Promise.resolve({ route: "password", method: "password" }) })
+    mount(client)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole("button", { name: "Copy Recovery phrase" }))
+    const dialog = await screen.findByRole("dialog")
+    expect(dialog).toHaveTextContent("To use Ledger")
+    await user.type(screen.getByLabelText("Account password"), "correct horse")
+    await waitFor(() => expect(confirmButton()).toBeEnabled())
+    await user.click(confirmButton())
+    await waitFor(() => expect(copySecret).toHaveBeenCalledWith("i1", "phrase", 30, { password: "correct horse" }))
+    expect(reveal).not.toHaveBeenCalled()
+  })
+
+  it("names the platform's check where there is one, and says the password for both where there is none (`biometricName={null}`)", async () => {
+    const user = userEvent.setup()
+    const platform = mount(crownJewelClient().client)
+    await user.click(await screen.findByRole("button", { name: "What crown jewel means" }))
+    expect(await screen.findByText("To use it, Touch ID confirms it's you, every time.")).toBeInTheDocument()
+    platform.unmount()
+
+    const approvalRoute = vi.fn<Client["approvalRoute"]>(() => Promise.resolve({ route: "password", method: "password" }))
+    mount(crownJewelClient({ approvalRoute }).client)
+    await waitFor(() => expect(approvalRoute).toHaveBeenCalledWith("use"))
+    await user.click(screen.getByRole("button", { name: "What crown jewel means" }))
+    expect(await screen.findByText("To use it, show it in full or export it, you type your account password, every time.")).toBeInTheDocument()
+    expect(screen.queryByText(/your account password confirms/)).not.toBeInTheDocument()
   })
 })

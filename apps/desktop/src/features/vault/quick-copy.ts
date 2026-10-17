@@ -23,7 +23,7 @@ export function useQuickCopy(onNotice: (text: string) => void) {
       if (!target) return
       const secs = settings.clipboard_clear_secs
       try {
-        const clears =
+        const { clears_in_secs: clears } =
           target.how === "code"
             ? await gate.run((g) => client.copyCode(row.id, target.field_id, secs, "code", g))
             : await gate.run((g) => client.copySecret(row.id, target.field_id, secs, g))

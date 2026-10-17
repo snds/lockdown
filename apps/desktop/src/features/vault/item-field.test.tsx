@@ -66,16 +66,56 @@ describe("ItemField on unicron's SecretField (the host contract)", () => {
     await waitFor(() => expect(container.textContent).not.toContain(SECRET))
   })
 
-  it("copy goes core → clipboard (`copy_secret` with the settings' timer); nothing reaches navigator.clipboard", async () => {
-    const copySecret = vi.fn(() => Promise.resolve(45))
+  it("copy goes core → clipboard by reference (`copy_secret` with the settings' timer): no reveal, no getSecret, nothing through navigator.clipboard", async () => {
+    const copySecret = vi.fn<Client["copySecret"]>(() => Promise.resolve({ clears_in_secs: 45, copy: 7 }))
+    const reveal = vi.fn(secret)
     const writeText = vi.fn()
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
-    mount(fakeClient({ reveal: secret, copySecret, getSettings: () => Promise.resolve(settingsWith("toggle")) }))
+    const { container } = mount(fakeClient({ reveal, copySecret, getSettings: () => Promise.resolve(settingsWith("toggle")) }))
     const user = userEvent.setup()
     await user.click(await screen.findByRole("button", { name: "Copy Password" }))
     await waitFor(() => expect(copySecret).toHaveBeenCalledWith("i1", "pw", 45, {}))
+    expect(reveal).not.toHaveBeenCalled()
     expect(writeText).not.toHaveBeenCalled()
+    expect(container.textContent).not.toContain(SECRET)
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Copied. Clipboard clears in 45 seconds."))
+  })
+
+  it("at expiry the clear asks the shell about its own copy number, and clears only when the shell says it still holds it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const copySecret = vi.fn<Client["copySecret"]>(() => Promise.resolve({ clears_in_secs: 45, copy: 7 }))
+      const clipboardHolds = vi.fn<Client["clipboardHolds"]>(() => Promise.resolve(true))
+      const clipboardClear = vi.fn<Client["clipboardClear"]>(() => Promise.resolve())
+      mount(fakeClient({ copySecret, clipboardHolds, clipboardClear, getSettings: () => Promise.resolve(settingsWith("toggle")) }))
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      await user.click(await screen.findByRole("button", { name: "Copy Password" }))
+      await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Copied. Clipboard clears in 45 seconds."))
+      await vi.advanceTimersByTimeAsync(46_000)
+      await waitFor(() => expect(clipboardHolds).toHaveBeenCalledWith(7))
+      await waitFor(() => expect(clipboardClear).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Clipboard cleared."))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("leaves the clipboard alone when the shell's copy is no longer there", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const copySecret = vi.fn<Client["copySecret"]>(() => Promise.resolve({ clears_in_secs: 45, copy: 3 }))
+      const clipboardHolds = vi.fn<Client["clipboardHolds"]>(() => Promise.resolve(false))
+      const clipboardClear = vi.fn<Client["clipboardClear"]>(() => Promise.resolve())
+      mount(fakeClient({ copySecret, clipboardHolds, clipboardClear, getSettings: () => Promise.resolve(settingsWith("toggle")) }))
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      await user.click(await screen.findByRole("button", { name: "Copy Password" }))
+      await waitFor(() => expect(copySecret).toHaveBeenCalled())
+      await vi.advanceTimersByTimeAsync(46_000)
+      await waitFor(() => expect(clipboardHolds).toHaveBeenCalledWith(3))
+      expect(clipboardClear).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("a reveal that crosses the bridge (slower than a microtask) still shows: SecretField 0.5.0 keeps its value span mounted while loading", async () => {
@@ -85,12 +125,25 @@ describe("ItemField on unicron's SecretField (the host contract)", () => {
     await waitFor(() => expect(container.textContent).toContain(SECRET))
   })
 
-  it("shows the core's words under the field when a reveal is refused", async () => {
+  it("shows the core's sentence in the error state when a reveal is refused (`errorText`)", async () => {
     const reveal = vi.fn(() => Promise.reject({ code: "refused", message: "'pw' isn't a hidden field" }))
-    const { container } = mount(fakeClient({ reveal, getSettings: () => Promise.resolve(settingsWith("toggle")) }))
+    mount(fakeClient({ reveal, getSettings: () => Promise.resolve(settingsWith("toggle")) }))
     const user = userEvent.setup()
     await user.click(await screen.findByRole("button", { name: "Show Password" }))
-    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't read this field")
-    await waitFor(() => expect(container.textContent).toContain("isn't a hidden field"))
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("'pw' isn't a hidden field")
+    expect(alert).not.toHaveTextContent("Couldn't read this field")
+  })
+
+  it("shows the core's sentence when a copy is refused, and still fetches nothing", async () => {
+    const reveal = vi.fn(secret)
+    const copySecret = vi.fn<Client["copySecret"]>(() => Promise.reject({ code: "locked", message: "The vault is locked." }))
+    mount(fakeClient({ reveal, copySecret, getSettings: () => Promise.resolve(settingsWith("toggle")) }))
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole("button", { name: "Copy Password" }))
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("The vault is locked.")
+    expect(alert).not.toHaveTextContent("Couldn't copy this field")
+    expect(reveal).not.toHaveBeenCalled()
   })
 })
