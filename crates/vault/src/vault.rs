@@ -26,6 +26,7 @@ use zeroize::Zeroizing;
 use crate::attachment::{
     AttachmentMeta, AttachmentPlace, open_attachment, open_meta, seal_attachment,
 };
+use crate::compose::{FieldChange, compose_edit, compose_new};
 use crate::field::{FieldAad, PlainField, SCHEMA_V, SealedField};
 use crate::item::{
     AttachmentRef, ITEM_V, Item, ItemClass, ItemHeader, ItemKind, ItemState, ItemVersion,
@@ -481,6 +482,41 @@ impl Vault {
             .push(version);
         self.commit_head()?;
         Ok(n)
+    }
+
+    /// Makes an item of `kind` from what a shell sent, checked against the
+    /// kind's template ([`crate::compose::compose_new`]): the class comes
+    /// from the template's crown-jewel default or the person's opt-in.
+    pub fn add_item(
+        &mut self,
+        kind: ItemKind,
+        title: &str,
+        crown_jewel: bool,
+        changes: Vec<FieldChange>,
+    ) -> Result<Id> {
+        let (class, fields) = compose_new(kind, title, crown_jewel, changes)?;
+        self.create_item(kind, class, fields)
+    }
+
+    /// Saves a new version of a live item from an edit that names every
+    /// field ([`crate::compose::compose_edit`]); `title: None` keeps it.
+    /// Returns the version number.
+    pub fn edit_item(
+        &mut self,
+        item_id: Id,
+        title: Option<&str>,
+        changes: Vec<FieldChange>,
+    ) -> Result<u64> {
+        let item = self.item(item_id)?;
+        if !matches!(item.state, ItemState::Live | ItemState::Archived) {
+            return Err(Error::Invalid(
+                "this item is in the trash; restore it before changing it".into(),
+            ));
+        }
+        let kind = item.kind;
+        let existing = self.open_item(item_id)?;
+        let fields = compose_edit(kind, &existing, title, changes)?;
+        self.update_item(item_id, fields)
     }
 
     // --- attachments (02-model §6) ------------------------------------------
@@ -1188,6 +1224,7 @@ fn check_items_against_head(items: &BTreeMap<Id, Item>, head: &ManifestHead) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::field::FieldValue;
     use crate::test_support::{sample_context, sample_vault};
 
     fn login_fields(pw: &str) -> Vec<PlainField> {
@@ -1360,6 +1397,73 @@ mod tests {
         assert_eq!(vault.revoked_after(device), Some(2));
         vault.revoke_device(device, 1);
         assert_eq!(vault.revoked_after(device), Some(1));
+    }
+
+    #[test]
+    fn add_and_edit_go_through_the_template_and_seal_like_any_version() {
+        use crate::compose::{Change, FieldChange};
+        let mut vault = sample_vault();
+        let wallet = vault
+            .add_item(
+                ItemKind::CryptoWallet,
+                "Cold wallet",
+                false,
+                vec![
+                    FieldChange::secret("seed", b"abandon ability able about above absent absorb abstract absurd abuse access accident"),
+                    FieldChange::text("wallet.network", "Bitcoin"),
+                ],
+            )
+            .unwrap();
+        let item = vault.item(wallet).unwrap();
+        assert_eq!(
+            item.class,
+            ItemClass::CrownJewel,
+            "the seed's default (02-model §3)"
+        );
+        assert_eq!(
+            item.item_key.as_ref().unwrap().wrapped_by.kind,
+            WrapperKind::CrownJewel
+        );
+        let n = vault
+            .edit_item(
+                wallet,
+                Some("Cold wallet (2026)"),
+                vec![
+                    FieldChange::keep("seed"),
+                    FieldChange::new("wallet.network", Change::Remove),
+                    FieldChange::new("wallet.password", Change::Generate),
+                ],
+            )
+            .unwrap();
+        assert_eq!(n, 2);
+        let fields = vault.open_item(wallet).unwrap();
+        let ids: Vec<&str> = fields.iter().map(|f| f.field_id.as_str()).collect();
+        assert_eq!(ids, ["title", "seed", "wallet.password"]);
+        assert_eq!(
+            fields[1].value,
+            FieldValue::Text("abandon ability able about above absent absorb abstract absurd abuse access accident".into()),
+            "kept, never resent"
+        );
+        // The first version is still there, unchanged.
+        assert_eq!(vault.open_version(wallet, 1).unwrap().len(), 3);
+        vault.verify(0).unwrap();
+
+        // A refused edit writes nothing.
+        let heads = vault.heads.len();
+        assert!(vault.edit_item(wallet, None, vec![]).is_err());
+        assert_eq!(vault.heads.len(), heads);
+        vault.trash_item(wallet).unwrap();
+        let err = vault
+            .edit_item(
+                wallet,
+                None,
+                vec![
+                    FieldChange::keep("seed"),
+                    FieldChange::keep("wallet.password"),
+                ],
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("restore it"), "{err}");
     }
 
     #[test]

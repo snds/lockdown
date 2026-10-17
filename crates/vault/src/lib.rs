@@ -26,6 +26,8 @@
 //! - [`field`] — plain and sealed fields and the field associated data
 //! - [`item`] — the item envelope, kinds, classes, states, versions
 //! - [`crown_jewel`] — the crown-jewel rules and default classification
+//! - [`template`] — every kind's fields as data: control, required, crown jewel, fill rule, generator
+//! - [`compose`] — a shell's add or edit checked against the template, with an explicit keep for secrets
 //! - [`manifest`] — the signed, hash-chained manifest head and chain check
 //! - [`signer`] — who signs heads and versions: the device's key
 //! - [`store`] — the local store contract a vault loads from and saves to
@@ -38,6 +40,7 @@
 //!   the citation a vault head carries, and the exported checkpoint
 
 pub mod attachment;
+pub mod compose;
 pub mod crown_jewel;
 pub mod error;
 pub mod field;
@@ -48,6 +51,7 @@ pub mod keys;
 pub mod manifest;
 pub mod signer;
 pub mod store;
+pub mod template;
 pub mod test_support;
 pub mod transparency;
 pub mod vault;
@@ -61,6 +65,7 @@ pub use attachment::{
     AttachmentMeta, AttachmentPlace, CHUNK_SIZE, SealedAttachment, open_attachment, padded_size,
     seal_attachment,
 };
+pub use compose::{Change, FieldChange, FieldInput, compose_edit, compose_new};
 pub use crown_jewel::{
     CROWN_JEWEL_RULES, Classify, CrownJewelDefault, LoginRole, crown_jewel_default,
 };
@@ -77,5 +82,6 @@ pub use manifest::{
 };
 pub use signer::Signer;
 pub use store::{Store, StoreError, StoreResult, VAULT_RECORD_V, VaultRecord};
+pub use template::{CUSTOM_KINDS, Control, FieldTemplate, Fill, TEMPLATES, Template, template_for};
 pub use transparency::{LogEntry, LogLeaf, SignedTreeHead, SthRef, TreeHead};
 pub use vault::{AttachmentInfo, Unlock, Vault, VaultContext};
