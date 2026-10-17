@@ -10,9 +10,11 @@
 //! fields. The transport, the offline queue, the key-transparency check and
 //! the checkpoint proof are not built yet (they need the server).
 
+pub mod wire;
+
 use std::collections::BTreeMap;
 
-use lockdown_vault::PlainField;
+use lockdown_vault::{Item, PlainField};
 use serde::{Deserialize, Serialize};
 
 /// A server-assigned, monotonically rising revision of one item.
@@ -26,10 +28,13 @@ pub struct Revision(pub u64);
 pub enum PushOutcome {
     /// Stored; this is the new revision.
     Accepted(Revision),
-    /// The revision moved; here is what the server holds now.
+    /// The revision moved; here is what the server holds now. The client
+    /// merges field by field against it and pushes again.
     Refused {
         /// The server's current revision.
         current: Revision,
+        /// The item at that revision, as the server holds it (ciphertext).
+        theirs: Box<Item>,
     },
 }
 

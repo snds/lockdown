@@ -1,0 +1,809 @@
+//! What the server keeps, behind [`Storage`]: accounts (login name, profile
+//! id, OPAQUE password file), the devices each account logged in with,
+//! the account's identity backup, and per vault the record, the item
+//! envelopes with their revisions and the signed head chain. All of it is
+//! ciphertext or signed public structure (05-self-host §2); the server
+//! holds no key and reads no field.
+//!
+//! [`SqliteStorage`] is the one backend today: a single file, WAL mode,
+//! every rule that must hold across rows (the head chain, the item
+//! revision) checked inside one transaction.
+//!
+//! ```text
+//! schema_version   (version)
+//! accounts         (account_id, login UNIQUE, profile_id, password_file, created_at)
+//! devices          (account_id, device_id, device_pub, first_seen)
+//! identity_backups (account_id, body, updated_at)
+//! vaults           (vault_id, account_id, record, head_seq, head_hash, item_rev)
+//! heads            (vault_id, seq, hash, body)
+//! items            (vault_id, item_id, rev, body)
+//! ```
+
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+use lockdown_sync::wire::{ErrorCode, HeadAccepted, HeadRefused};
+use lockdown_vault::{Hash32, Id, Item, ManifestHead};
+use rusqlite::{Connection, OptionalExtension, params};
+
+/// The schema this build writes and the highest it reads.
+pub const SCHEMA_VERSION: u32 = 1;
+
+/// What can go wrong in storage.
+#[derive(Debug, thiserror::Error)]
+pub enum StorageError {
+    /// Registration: the login name is already an account.
+    #[error("that login name is already an account")]
+    LoginTaken,
+    /// A device id already registered with a different key.
+    #[error("device {0} is already registered with another key")]
+    DeviceKeyMismatch(Id),
+    /// A vault that belongs to another account.
+    #[error("vault {0} belongs to another account")]
+    Forbidden(Id),
+    /// Not there.
+    #[error("{0} wasn't found")]
+    NotFound(String),
+    /// The database said no.
+    #[error("the server's database failed: {0}")]
+    Backend(String),
+    /// The database was written by a newer schema than this build reads.
+    #[error(
+        "the server's database uses schema {found}, newer than this build understands ({supported})"
+    )]
+    SchemaTooNew {
+        /// What the file says.
+        found: u32,
+        /// What this build reads.
+        supported: u32,
+    },
+}
+
+/// The storage result type.
+pub type Result<T> = std::result::Result<T, StorageError>;
+
+/// One account.
+#[derive(Clone, Debug)]
+pub struct Account {
+    /// The server's id for it.
+    pub account_id: Id,
+    /// The login name.
+    pub login: String,
+    /// The profile it was registered for.
+    pub profile_id: Id,
+    /// The OPAQUE password file.
+    pub password_file: Vec<u8>,
+}
+
+/// One vault as the server knows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VaultRow {
+    /// The vault.
+    pub vault_id: Id,
+    /// Who owns it.
+    pub account_id: Id,
+    /// Its record bytes.
+    pub record: Vec<u8>,
+    /// The newest accepted head's `seq`; zero before the first.
+    pub head_seq: u64,
+    /// The newest accepted head's hash.
+    pub head_hash: Option<Hash32>,
+    /// The newest item revision assigned.
+    pub item_rev: u64,
+}
+
+/// One head as stored.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HeadRow {
+    /// Its `seq`.
+    pub seq: u64,
+    /// Its hash.
+    pub hash: Hash32,
+    /// The signed bytes.
+    pub body: Vec<u8>,
+}
+
+/// One item as stored.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ItemRow {
+    /// The item.
+    pub item_id: Id,
+    /// Its revision.
+    pub rev: u64,
+    /// The envelope bytes.
+    pub body: Vec<u8>,
+}
+
+/// What a push did.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PushResult {
+    /// Stored at this revision.
+    Accepted(u64),
+    /// `if_match` was not the current revision; here is the current item.
+    Stale(ItemRow),
+    /// `if_match` was non-zero but the server holds no such item.
+    Unknown,
+}
+
+/// The server's store.
+pub trait Storage: Send + Sync {
+    /// Creates an account. [`StorageError::LoginTaken`] if the login exists.
+    fn create_account(&self, login: &str, profile_id: Id, password_file: &[u8]) -> Result<Account>;
+    /// The account filed under a login name.
+    fn account_by_login(&self, login: &str) -> Result<Option<Account>>;
+    /// An account by id.
+    fn account(&self, account_id: Id) -> Result<Option<Account>>;
+    /// Records a device the account logged in with. The same id with a
+    /// different key is [`StorageError::DeviceKeyMismatch`].
+    fn register_device(&self, account_id: Id, device_id: Id, device_pub: &[u8; 32]) -> Result<()>;
+    /// The public key of a device the account logged in with.
+    fn device_pub(&self, account_id: Id, device_id: Id) -> Result<Option<[u8; 32]>>;
+    /// Replaces the account's identity backup.
+    fn put_identity_backup(&self, account_id: Id, body: &[u8]) -> Result<()>;
+    /// The account's identity backup.
+    fn identity_backup(&self, account_id: Id) -> Result<Option<Vec<u8>>>;
+    /// Creates a vault for the account or replaces its record. A vault
+    /// another account owns is [`StorageError::Forbidden`].
+    fn put_vault(&self, account_id: Id, vault_id: Id, record: &[u8]) -> Result<()>;
+    /// A vault.
+    fn vault(&self, vault_id: Id) -> Result<Option<VaultRow>>;
+    /// Every vault of an account, in id order.
+    fn vaults_of(&self, account_id: Id) -> Result<Vec<VaultRow>>;
+    /// Every head with `seq > since`, oldest first.
+    fn heads_since(&self, vault_id: Id, since: u64) -> Result<Vec<HeadRow>>;
+    /// Accepts a head if it extends the chain by exactly one, names the
+    /// current head as `prev_hash`, and every entry matches an item the
+    /// server holds at that revision. The caller has already checked the
+    /// signature and the entries' order. Atomic.
+    fn accept_head(
+        &self,
+        vault_id: Id,
+        head: &ManifestHead,
+        body: &[u8],
+    ) -> Result<std::result::Result<HeadAccepted, HeadRefused>>;
+    /// One item.
+    fn item(&self, vault_id: Id, item_id: Id) -> Result<Option<ItemRow>>;
+    /// Every item with `rev > since`, lowest revision first.
+    fn items_since(&self, vault_id: Id, since: u64) -> Result<Vec<ItemRow>>;
+    /// Stores an item if `if_match` is its current revision (zero for a
+    /// new one) and assigns the next revision. Atomic.
+    fn push_item(
+        &self,
+        vault_id: Id,
+        item_id: Id,
+        body: &[u8],
+        if_match: u64,
+    ) -> Result<PushResult>;
+    /// Writes a consistent copy of the whole store to `path` (the backup
+    /// job's primitive, 05-self-host §4).
+    fn snapshot_to(&self, path: &Path) -> Result<()>;
+}
+
+/// The SQLite backend.
+pub struct SqliteStorage {
+    path: Option<PathBuf>,
+    conn: Mutex<Connection>,
+}
+
+impl std::fmt::Debug for SqliteStorage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.path {
+            Some(p) => write!(f, "SqliteStorage({})", p.display()),
+            None => f.write_str("SqliteStorage(memory)"),
+        }
+    }
+}
+
+fn backend(e: rusqlite::Error) -> StorageError {
+    StorageError::Backend(e.to_string())
+}
+
+fn parse_id(text: &str) -> Result<Id> {
+    Id::parse(text).map_err(|_| StorageError::Backend(format!("'{text}' isn't an id in the store")))
+}
+
+fn hash_from(bytes: Option<Vec<u8>>) -> Result<Option<Hash32>> {
+    match bytes {
+        None => Ok(None),
+        Some(b) => {
+            let arr: [u8; 32] = b
+                .try_into()
+                .map_err(|_| StorageError::Backend("a stored hash isn't 32 bytes".into()))?;
+            Ok(Some(Hash32(arr)))
+        }
+    }
+}
+
+fn to_i64(n: u64, what: &str) -> Result<i64> {
+    i64::try_from(n).map_err(|_| StorageError::Backend(format!("{what} past i64")))
+}
+
+fn to_u64(n: i64) -> u64 {
+    u64::try_from(n).unwrap_or(0)
+}
+
+fn now() -> i64 {
+    lockdown_vault::Timestamp::now().0
+}
+
+/// `(account_id, record, head_seq, head_hash, item_rev)` as SQLite returns them.
+type VaultColumns = (String, Vec<u8>, i64, Option<Vec<u8>>, i64);
+
+impl SqliteStorage {
+    /// Opens the store at `path`, creating the file and its schema if they
+    /// are not there. The file is made readable only by the user.
+    pub fn open(path: &Path) -> Result<Self> {
+        if let Some(dir) = path.parent()
+            && !dir.as_os_str().is_empty()
+        {
+            crate::keys::create_private_dir(dir)
+                .map_err(|e| StorageError::Backend(e.to_string()))?;
+        }
+        if !path.exists() {
+            crate::keys::write_private(path, &[])
+                .map_err(|e| StorageError::Backend(e.to_string()))?;
+        }
+        let conn = Connection::open(path).map_err(backend)?;
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .map_err(backend)?;
+        conn.pragma_update(None, "synchronous", "FULL")
+            .map_err(backend)?;
+        Self::with_connection(conn, Some(path.to_path_buf()))
+    }
+
+    /// A store that lives only in memory, for tests.
+    pub fn open_in_memory() -> Result<Self> {
+        Self::with_connection(Connection::open_in_memory().map_err(backend)?, None)
+    }
+
+    fn with_connection(conn: Connection, path: Option<PathBuf>) -> Result<Self> {
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .map_err(backend)?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
+             CREATE TABLE IF NOT EXISTS accounts (
+                 account_id    TEXT PRIMARY KEY NOT NULL,
+                 login         TEXT NOT NULL UNIQUE,
+                 profile_id    TEXT NOT NULL,
+                 password_file BLOB NOT NULL,
+                 created_at    INTEGER NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS devices (
+                 account_id TEXT NOT NULL REFERENCES accounts(account_id),
+                 device_id  TEXT NOT NULL,
+                 device_pub BLOB NOT NULL,
+                 first_seen INTEGER NOT NULL,
+                 PRIMARY KEY (account_id, device_id)
+             );
+             CREATE TABLE IF NOT EXISTS identity_backups (
+                 account_id TEXT PRIMARY KEY NOT NULL REFERENCES accounts(account_id),
+                 body       BLOB NOT NULL,
+                 updated_at INTEGER NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS vaults (
+                 vault_id   TEXT PRIMARY KEY NOT NULL,
+                 account_id TEXT NOT NULL REFERENCES accounts(account_id),
+                 record     BLOB NOT NULL,
+                 head_seq   INTEGER NOT NULL DEFAULT 0,
+                 head_hash  BLOB,
+                 item_rev   INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE TABLE IF NOT EXISTS heads (
+                 vault_id TEXT NOT NULL REFERENCES vaults(vault_id),
+                 seq      INTEGER NOT NULL,
+                 hash     BLOB NOT NULL,
+                 body     BLOB NOT NULL,
+                 PRIMARY KEY (vault_id, seq)
+             );
+             CREATE TABLE IF NOT EXISTS items (
+                 vault_id TEXT NOT NULL REFERENCES vaults(vault_id),
+                 item_id  TEXT NOT NULL,
+                 rev      INTEGER NOT NULL,
+                 body     BLOB NOT NULL,
+                 PRIMARY KEY (vault_id, item_id)
+             );
+             CREATE INDEX IF NOT EXISTS items_by_rev ON items (vault_id, rev);",
+        )
+        .map_err(backend)?;
+        let found: Option<u32> = conn
+            .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
+            .map_err(backend)?;
+        match found {
+            None => {
+                conn.execute(
+                    "INSERT INTO schema_version (version) VALUES (?1)",
+                    params![SCHEMA_VERSION],
+                )
+                .map_err(backend)?;
+            }
+            Some(v) if v > SCHEMA_VERSION => {
+                return Err(StorageError::SchemaTooNew {
+                    found: v,
+                    supported: SCHEMA_VERSION,
+                });
+            }
+            Some(_) => {}
+        }
+        Ok(Self {
+            path,
+            conn: Mutex::new(conn),
+        })
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Connection> {
+        // A poisoned lock means a handler panicked mid-call; the database
+        // itself is transactional, so carrying on is safe.
+        self.conn
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn read_account(
+        row: &rusqlite::Row<'_>,
+    ) -> rusqlite::Result<(String, String, String, Vec<u8>)> {
+        Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+    }
+
+    fn account_from(parts: (String, String, String, Vec<u8>)) -> Result<Account> {
+        Ok(Account {
+            account_id: parse_id(&parts.0)?,
+            login: parts.1,
+            profile_id: parse_id(&parts.2)?,
+            password_file: parts.3,
+        })
+    }
+
+    fn vault_in(conn: &Connection, vault_id: Id) -> Result<Option<VaultRow>> {
+        let row: Option<VaultColumns> = conn
+            .query_row(
+                "SELECT account_id, record, head_seq, head_hash, item_rev FROM vaults WHERE vault_id = ?1",
+                params![vault_id.to_string()],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .optional()
+            .map_err(backend)?;
+        match row {
+            None => Ok(None),
+            Some((account, record, head_seq, head_hash, item_rev)) => Ok(Some(VaultRow {
+                vault_id,
+                account_id: parse_id(&account)?,
+                record,
+                head_seq: to_u64(head_seq),
+                head_hash: hash_from(head_hash)?,
+                item_rev: to_u64(item_rev),
+            })),
+        }
+    }
+
+    fn item_in(conn: &Connection, vault_id: Id, item_id: Id) -> Result<Option<ItemRow>> {
+        let row: Option<(i64, Vec<u8>)> = conn
+            .query_row(
+                "SELECT rev, body FROM items WHERE vault_id = ?1 AND item_id = ?2",
+                params![vault_id.to_string(), item_id.to_string()],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(backend)?;
+        Ok(row.map(|(rev, body)| ItemRow {
+            item_id,
+            rev: to_u64(rev),
+            body,
+        }))
+    }
+}
+
+impl Storage for SqliteStorage {
+    fn create_account(&self, login: &str, profile_id: Id, password_file: &[u8]) -> Result<Account> {
+        let conn = self.lock();
+        let account_id = Id::new();
+        let result = conn.execute(
+            "INSERT INTO accounts (account_id, login, profile_id, password_file, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                account_id.to_string(),
+                login,
+                profile_id.to_string(),
+                password_file,
+                now()
+            ],
+        );
+        match result {
+            Ok(_) => Ok(Account {
+                account_id,
+                login: login.to_string(),
+                profile_id,
+                password_file: password_file.to_vec(),
+            }),
+            Err(rusqlite::Error::SqliteFailure(e, _))
+                if e.code == rusqlite::ErrorCode::ConstraintViolation =>
+            {
+                Err(StorageError::LoginTaken)
+            }
+            Err(e) => Err(backend(e)),
+        }
+    }
+
+    fn account_by_login(&self, login: &str) -> Result<Option<Account>> {
+        let conn = self.lock();
+        let row = conn
+            .query_row(
+                "SELECT account_id, login, profile_id, password_file FROM accounts WHERE login = ?1",
+                params![login],
+                Self::read_account,
+            )
+            .optional()
+            .map_err(backend)?;
+        row.map(Self::account_from).transpose()
+    }
+
+    fn account(&self, account_id: Id) -> Result<Option<Account>> {
+        let conn = self.lock();
+        let row = conn
+            .query_row(
+                "SELECT account_id, login, profile_id, password_file FROM accounts WHERE account_id = ?1",
+                params![account_id.to_string()],
+                Self::read_account,
+            )
+            .optional()
+            .map_err(backend)?;
+        row.map(Self::account_from).transpose()
+    }
+
+    fn register_device(&self, account_id: Id, device_id: Id, device_pub: &[u8; 32]) -> Result<()> {
+        let conn = self.lock();
+        let existing: Option<Vec<u8>> = conn
+            .query_row(
+                "SELECT device_pub FROM devices WHERE account_id = ?1 AND device_id = ?2",
+                params![account_id.to_string(), device_id.to_string()],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(backend)?;
+        match existing {
+            Some(key) if key == device_pub => Ok(()),
+            Some(_) => Err(StorageError::DeviceKeyMismatch(device_id)),
+            None => {
+                conn.execute(
+                    "INSERT INTO devices (account_id, device_id, device_pub, first_seen) VALUES (?1, ?2, ?3, ?4)",
+                    params![
+                        account_id.to_string(),
+                        device_id.to_string(),
+                        &device_pub[..],
+                        now()
+                    ],
+                )
+                .map_err(backend)?;
+                Ok(())
+            }
+        }
+    }
+
+    fn device_pub(&self, account_id: Id, device_id: Id) -> Result<Option<[u8; 32]>> {
+        let conn = self.lock();
+        let key: Option<Vec<u8>> = conn
+            .query_row(
+                "SELECT device_pub FROM devices WHERE account_id = ?1 AND device_id = ?2",
+                params![account_id.to_string(), device_id.to_string()],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(backend)?;
+        match key {
+            None => Ok(None),
+            Some(k) => Ok(Some(k.try_into().map_err(|_| {
+                StorageError::Backend("a stored device key isn't 32 bytes".into())
+            })?)),
+        }
+    }
+
+    fn put_identity_backup(&self, account_id: Id, body: &[u8]) -> Result<()> {
+        let conn = self.lock();
+        conn.execute(
+            "INSERT OR REPLACE INTO identity_backups (account_id, body, updated_at) VALUES (?1, ?2, ?3)",
+            params![account_id.to_string(), body, now()],
+        )
+        .map_err(backend)?;
+        Ok(())
+    }
+
+    fn identity_backup(&self, account_id: Id) -> Result<Option<Vec<u8>>> {
+        let conn = self.lock();
+        conn.query_row(
+            "SELECT body FROM identity_backups WHERE account_id = ?1",
+            params![account_id.to_string()],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(backend)
+    }
+
+    fn put_vault(&self, account_id: Id, vault_id: Id, record: &[u8]) -> Result<()> {
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(backend)?;
+        match Self::vault_in(&tx, vault_id)? {
+            Some(row) if row.account_id != account_id => {
+                return Err(StorageError::Forbidden(vault_id));
+            }
+            Some(_) => {
+                tx.execute(
+                    "UPDATE vaults SET record = ?2 WHERE vault_id = ?1",
+                    params![vault_id.to_string(), record],
+                )
+                .map_err(backend)?;
+            }
+            None => {
+                tx.execute(
+                    "INSERT INTO vaults (vault_id, account_id, record) VALUES (?1, ?2, ?3)",
+                    params![vault_id.to_string(), account_id.to_string(), record],
+                )
+                .map_err(backend)?;
+            }
+        }
+        tx.commit().map_err(backend)
+    }
+
+    fn vault(&self, vault_id: Id) -> Result<Option<VaultRow>> {
+        Self::vault_in(&self.lock(), vault_id)
+    }
+
+    fn vaults_of(&self, account_id: Id) -> Result<Vec<VaultRow>> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT vault_id, record, head_seq, head_hash, item_rev FROM vaults WHERE account_id = ?1 ORDER BY vault_id",
+            )
+            .map_err(backend)?;
+        let rows = stmt
+            .query_map(params![account_id.to_string()], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, Vec<u8>>(1)?,
+                    r.get::<_, i64>(2)?,
+                    r.get::<_, Option<Vec<u8>>>(3)?,
+                    r.get::<_, i64>(4)?,
+                ))
+            })
+            .map_err(backend)?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (vault_id, record, head_seq, head_hash, item_rev) = row.map_err(backend)?;
+            out.push(VaultRow {
+                vault_id: parse_id(&vault_id)?,
+                account_id,
+                record,
+                head_seq: to_u64(head_seq),
+                head_hash: hash_from(head_hash)?,
+                item_rev: to_u64(item_rev),
+            });
+        }
+        Ok(out)
+    }
+
+    fn heads_since(&self, vault_id: Id, since: u64) -> Result<Vec<HeadRow>> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT seq, hash, body FROM heads WHERE vault_id = ?1 AND seq > ?2 ORDER BY seq",
+            )
+            .map_err(backend)?;
+        let rows = stmt
+            .query_map(
+                params![vault_id.to_string(), to_i64(since, "a sequence")?],
+                |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, Vec<u8>>(1)?,
+                        r.get::<_, Vec<u8>>(2)?,
+                    ))
+                },
+            )
+            .map_err(backend)?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (seq, hash, body) = row.map_err(backend)?;
+            out.push(HeadRow {
+                seq: to_u64(seq),
+                hash: hash_from(Some(hash))?.expect("some"),
+                body,
+            });
+        }
+        Ok(out)
+    }
+
+    fn accept_head(
+        &self,
+        vault_id: Id,
+        head: &ManifestHead,
+        body: &[u8],
+    ) -> Result<std::result::Result<HeadAccepted, HeadRefused>> {
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(backend)?;
+        let vault = Self::vault_in(&tx, vault_id)?
+            .ok_or_else(|| StorageError::NotFound(format!("vault {vault_id}")))?;
+        let refuse = |code: ErrorCode, message: String| HeadRefused {
+            code,
+            message,
+            current_seq: vault.head_seq,
+            current_hash: vault.head_hash,
+        };
+        if vault.head_seq == 0 {
+            if head.seq != 1 {
+                return Ok(Err(refuse(
+                    ErrorCode::Gap,
+                    format!(
+                        "the server holds no head for this vault yet; the first must be seq 1, not {}",
+                        head.seq
+                    ),
+                )));
+            }
+            if head.prev_hash != Hash32::ZERO {
+                return Ok(Err(refuse(
+                    ErrorCode::Fork,
+                    "the first head must name no predecessor".into(),
+                )));
+            }
+        } else {
+            if head.seq <= vault.head_seq {
+                return Ok(Err(refuse(
+                    ErrorCode::OlderSeq,
+                    format!(
+                        "the server is already at seq {}; seq {} is not newer",
+                        vault.head_seq, head.seq
+                    ),
+                )));
+            }
+            if head.seq > vault.head_seq + 1 {
+                return Ok(Err(refuse(
+                    ErrorCode::Gap,
+                    format!(
+                        "the server is at seq {}; seq {} would skip {}",
+                        vault.head_seq,
+                        head.seq,
+                        head.seq - vault.head_seq - 1
+                    ),
+                )));
+            }
+            if Some(head.prev_hash) != vault.head_hash {
+                return Ok(Err(refuse(
+                    ErrorCode::Fork,
+                    format!(
+                        "seq {} names a predecessor that isn't the server's head {}; another device moved first",
+                        head.seq, vault.head_seq
+                    ),
+                )));
+            }
+        }
+        for entry in &head.entries {
+            let Some(row) = Self::item_in(&tx, vault_id, entry.item_id)? else {
+                return Ok(Err(refuse(
+                    ErrorCode::UnknownItem,
+                    format!(
+                        "the head lists item {} but the server doesn't hold it; push the item first",
+                        entry.item_id
+                    ),
+                )));
+            };
+            if row.rev != entry.rev {
+                return Ok(Err(refuse(
+                    ErrorCode::UnknownItem,
+                    format!(
+                        "the head lists item {} at revision {} but the server holds revision {}",
+                        entry.item_id, entry.rev, row.rev
+                    ),
+                )));
+            }
+            let item = Item::from_bytes(&row.body).map_err(|e| {
+                StorageError::Backend(format!("stored item {} didn't decode: {e}", entry.item_id))
+            })?;
+            let hash = item
+                .latest_hash()
+                .map_err(|e| StorageError::Backend(e.to_string()))?;
+            if hash != entry.version_hash
+                || item.state != entry.state
+                || item.is_shredded() != entry.shredded
+            {
+                return Ok(Err(refuse(
+                    ErrorCode::UnknownItem,
+                    format!(
+                        "the head describes item {} differently from the envelope the server holds at revision {}",
+                        entry.item_id, row.rev
+                    ),
+                )));
+            }
+        }
+        let hash = head
+            .hash()
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
+        let seq = to_i64(head.seq, "a sequence")?;
+        tx.execute(
+            "INSERT INTO heads (vault_id, seq, hash, body) VALUES (?1, ?2, ?3, ?4)",
+            params![vault_id.to_string(), seq, &hash.0[..], body],
+        )
+        .map_err(backend)?;
+        tx.execute(
+            "UPDATE vaults SET head_seq = ?2, head_hash = ?3 WHERE vault_id = ?1",
+            params![vault_id.to_string(), seq, &hash.0[..]],
+        )
+        .map_err(backend)?;
+        tx.commit().map_err(backend)?;
+        Ok(Ok(HeadAccepted {
+            seq: head.seq,
+            hash,
+        }))
+    }
+
+    fn item(&self, vault_id: Id, item_id: Id) -> Result<Option<ItemRow>> {
+        Self::item_in(&self.lock(), vault_id, item_id)
+    }
+
+    fn items_since(&self, vault_id: Id, since: u64) -> Result<Vec<ItemRow>> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare("SELECT item_id, rev, body FROM items WHERE vault_id = ?1 AND rev > ?2 ORDER BY rev")
+            .map_err(backend)?;
+        let rows = stmt
+            .query_map(
+                params![vault_id.to_string(), to_i64(since, "a revision")?],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, i64>(1)?,
+                        r.get::<_, Vec<u8>>(2)?,
+                    ))
+                },
+            )
+            .map_err(backend)?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (item_id, rev, body) = row.map_err(backend)?;
+            out.push(ItemRow {
+                item_id: parse_id(&item_id)?,
+                rev: to_u64(rev),
+                body,
+            });
+        }
+        Ok(out)
+    }
+
+    fn push_item(
+        &self,
+        vault_id: Id,
+        item_id: Id,
+        body: &[u8],
+        if_match: u64,
+    ) -> Result<PushResult> {
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(backend)?;
+        let vault = Self::vault_in(&tx, vault_id)?
+            .ok_or_else(|| StorageError::NotFound(format!("vault {vault_id}")))?;
+        let current = Self::item_in(&tx, vault_id, item_id)?;
+        match &current {
+            None if if_match != 0 => return Ok(PushResult::Unknown),
+            Some(row) if row.rev != if_match => return Ok(PushResult::Stale(row.clone())),
+            _ => {}
+        }
+        let rev = vault.item_rev + 1;
+        let rev_i = to_i64(rev, "a revision")?;
+        tx.execute(
+            "INSERT OR REPLACE INTO items (vault_id, item_id, rev, body) VALUES (?1, ?2, ?3, ?4)",
+            params![vault_id.to_string(), item_id.to_string(), rev_i, body],
+        )
+        .map_err(backend)?;
+        tx.execute(
+            "UPDATE vaults SET item_rev = ?2 WHERE vault_id = ?1",
+            params![vault_id.to_string(), rev_i],
+        )
+        .map_err(backend)?;
+        tx.commit().map_err(backend)?;
+        Ok(PushResult::Accepted(rev))
+    }
+
+    fn snapshot_to(&self, path: &Path) -> Result<()> {
+        let conn = self.lock();
+        let target = path
+            .to_str()
+            .ok_or_else(|| StorageError::Backend("the snapshot path isn't UTF-8".into()))?;
+        conn.execute("VACUUM INTO ?1", params![target])
+            .map_err(backend)?;
+        Ok(())
+    }
+}

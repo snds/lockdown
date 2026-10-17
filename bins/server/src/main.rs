@@ -1,118 +1,119 @@
-//! `lockdown-server`: the server (03-architecture §5; 05-self-host.md; D7).
+//! The `lockdown-server` binary: flags and environment in, the axum
+//! server out. The library (`lockdown_server`) holds everything else so
+//! tests can run the same server in process.
 //!
-//! **Status: skeleton.** One axum binary, the same code for cloud and
-//! self-host. Today it answers `/healthz` and `/.well-known/lockdown`
-//! (the discovery document a client reads to learn which features this
-//! install offers). Items, manifests, OPAQUE, the key-transparency log,
-//! checkpoints, blobs and push arrive in order. The server never holds a
-//! vault key, an item key, a password, a plain title or URL, or a device
-//! signing key; it orders writes and keeps receipts.
+//! ```text
+//! lockdown-server [--listen ADDR] [--data DIR] [--server-key PATH]
+//!                 [--session-ttl SECS] [--signups open|closed]
+//! ```
+//!
+//! Every flag has an environment variable (`LOCKDOWN_LISTEN`,
+//! `LOCKDOWN_DATA`, `LOCKDOWN_SERVER_KEY`, `LOCKDOWN_SESSION_TTL`,
+//! `LOCKDOWN_SIGNUPS`) so a container needs no command line.
 
-use axum::routing::get;
-use axum::{Json, Router};
-use serde::Serialize;
+use std::path::PathBuf;
+use std::process::ExitCode;
+use std::sync::Arc;
+use std::time::Duration;
 
-/// What `/.well-known/lockdown` says about this install.
-#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
-pub struct Discovery {
-    /// The discovery document version.
-    pub v: u16,
-    /// The API versions this server speaks.
-    pub api: Vec<u16>,
-    /// Features this install offers. Differ by configuration, never by fork (D7).
-    pub features: Features,
+use clap::{Parser, ValueEnum};
+use lockdown_server::keys::ServerKeys;
+use lockdown_server::storage::SqliteStorage;
+use lockdown_server::{AppState, Config};
+
+/// The Lockdown server: one binary for cloud and self-host.
+#[derive(Parser, Debug)]
+#[command(name = "lockdown-server", version, about)]
+struct Cli {
+    /// Address and port to listen on.
+    #[arg(long, env = "LOCKDOWN_LISTEN", default_value = "127.0.0.1:8787")]
+    listen: String,
+    /// Where the database lives. Default: the platform data directory,
+    /// `lockdown-server` under it.
+    #[arg(long, env = "LOCKDOWN_DATA", value_name = "DIR")]
+    data: Option<PathBuf>,
+    /// The server key file (token key and OPAQUE setup), made on first
+    /// run. Default: `server-key.cbor` in the data directory.
+    #[arg(long, env = "LOCKDOWN_SERVER_KEY", value_name = "PATH")]
+    server_key: Option<PathBuf>,
+    /// How long a session token lives, in seconds.
+    #[arg(long, env = "LOCKDOWN_SESSION_TTL", default_value_t = 8 * 60 * 60)]
+    session_ttl: u64,
+    /// Whether new accounts may register.
+    #[arg(long, env = "LOCKDOWN_SIGNUPS", value_enum, default_value_t = Signups::Open)]
+    signups: Signups,
 }
 
-/// Feature flags a client reads before relying on a server.
-#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
-pub struct Features {
-    /// OPAQUE account login (04-security §3).
-    pub opaque: bool,
-    /// Key-transparency log with published checkpoints (04-security §6).
-    pub key_transparency: bool,
-    /// Manifest-head anti-rollback checkpoints (02-model §8).
-    pub checkpoints: bool,
-    /// Attachment blobs.
-    pub blobs: bool,
-    /// Content-free push pings.
-    pub push: bool,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum Signups {
+    Open,
+    Closed,
 }
 
-/// The discovery document this build serves.
-pub fn discovery() -> Discovery {
-    Discovery {
-        v: 1,
-        api: vec![],
-        features: Features {
-            opaque: false,
-            key_transparency: false,
-            checkpoints: false,
-            blobs: false,
-            push: false,
-        },
+fn default_data_dir() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()) {
+        return Some(PathBuf::from(dir).join("snds").join("lockdown-server"));
     }
+    if let Some(local) = std::env::var_os("LOCALAPPDATA").filter(|v| !v.is_empty()) {
+        return Some(PathBuf::from(local).join("snds").join("lockdown-server"));
+    }
+    std::env::var_os("HOME")
+        .filter(|v| !v.is_empty())
+        .map(|home| {
+            PathBuf::from(home)
+                .join(".local")
+                .join("share")
+                .join("snds")
+                .join("lockdown-server")
+        })
 }
 
-async fn healthz() -> &'static str {
-    "ok"
-}
-
-async fn well_known() -> Json<Discovery> {
-    Json(discovery())
-}
-
-/// The router, so tests can drive it without a socket.
-pub fn app() -> Router {
-    Router::new()
-        .route("/healthz", get(healthz))
-        .route("/.well-known/lockdown", get(well_known))
-}
-
-#[tokio::main]
-async fn main() {
-    let addr = std::env::var("LOCKDOWN_LISTEN").unwrap_or_else(|_| "127.0.0.1:8787".to_string());
-    let listener = match tokio::net::TcpListener::bind(&addr).await {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("lockdown-server: couldn't listen on {addr}: {e}");
-            std::process::exit(1);
-        }
+fn run(cli: Cli) -> Result<(), String> {
+    let data = match cli.data {
+        Some(d) => d,
+        None => default_data_dir().ok_or("no data directory: pass --data or set LOCKDOWN_DATA")?,
     };
-    eprintln!("lockdown-server listening on {addr}");
-    if let Err(e) = axum::serve(listener, app()).await {
-        eprintln!("lockdown-server: {e}");
-        std::process::exit(1);
-    }
+    let key_path = cli
+        .server_key
+        .unwrap_or_else(|| data.join("server-key.cbor"));
+    let storage =
+        SqliteStorage::open(&data.join("lockdown-server.sqlite")).map_err(|e| e.to_string())?;
+    let keys = ServerKeys::load_or_create(&key_path).map_err(|e| e.to_string())?;
+    let config = Config {
+        session_ttl: Duration::from_secs(cli.session_ttl),
+        signups_open: cli.signups == Signups::Open,
+        ..Config::default()
+    };
+    let state = Arc::new(AppState::new(Box::new(storage), keys, config));
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("couldn't start the runtime: {e}"))?;
+    runtime.block_on(async move {
+        let listener = tokio::net::TcpListener::bind(&cli.listen)
+            .await
+            .map_err(|e| format!("couldn't listen on {}: {e}", cli.listen))?;
+        eprintln!(
+            "lockdown-server listening on {} (data {}, signups {:?})",
+            cli.listen,
+            data.display(),
+            cli.signups
+        );
+        lockdown_server::serve(listener, state, async {
+            let _ = tokio::signal::ctrl_c().await;
+            eprintln!("lockdown-server: stopping");
+        })
+        .await
+        .map_err(|e| e.to_string())
+    })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
-    use http_body_util::BodyExt;
-    use tower::ServiceExt;
-
-    #[tokio::test]
-    async fn healthz_and_discovery_answer() {
-        let res = app()
-            .oneshot(Request::get("/healthz").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
-
-        let res = app()
-            .oneshot(
-                Request::get("/.well-known/lockdown")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
-        let body = res.into_body().collect().await.unwrap().to_bytes();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["v"], 1);
-        assert_eq!(json["features"]["opaque"], false);
+fn main() -> ExitCode {
+    match run(Cli::parse()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("lockdown-server: {e}");
+            ExitCode::FAILURE
+        }
     }
 }

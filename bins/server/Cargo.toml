@@ -7,16 +7,33 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[lib]
+name = "lockdown_server"
+path = "src/lib.rs"
+
 [[bin]]
 name = "lockdown-server"
 path = "src/main.rs"
 
 [dependencies]
+lockdown-crypto.workspace = true
+lockdown-vault.workspace = true
+lockdown-sync.workspace = true
 axum.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["sync", "signal"] }
+rusqlite.workspace = true
+clap = { workspace = true, features = ["env"] }
+data-encoding.workspace = true
 serde.workspace = true
+serde_bytes.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 tower.workspace = true
 http-body-util.workspace = true
+tempfile.workspace = true
+ciborium.workspace = true
+# Test speed only: the lowered Argon2id floor for the in-process OPAQUE
+# clients the tests drive (07-workspace §2). Never in an app.
+lockdown-crypto = { workspace = true, features = ["insecure-test-kdf"] }

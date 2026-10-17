@@ -10,5 +10,7 @@ repository.workspace = true
 [dependencies]
 lockdown-vault.workspace = true
 lockdown-store.workspace = true
+lockdown-crypto.workspace = true
 serde.workspace = true
+serde_bytes.workspace = true
 thiserror.workspace = true
