@@ -1,12 +1,12 @@
 # Desktop shell: the first Tauri window
 
-_Status: built, third slice, 2026-10-17 (the second slice's IA, now on unicron's six security components from `@unicron/ui` 0.4.0 / `@unicron/tokens` 0.2.0: SecretField, CodeDisplay, the CrownJewel treatment and gate, LargeTypeView, ApprovalSheet as a seam, RiskTierBadge; plus the locked wash, the idle-lock toast, restore from the trash and conflict resolution). Companion to [`11-desktop-design-brief.md`](11-desktop-design-brief.md), which owns how it will look; this page owns how it is built. What is real: `crates/app` (`lockdown-app`) and `apps/desktop` (web UI + `src-tauri`), with the gates in CI's `desktop` job._
+_Status: built, fourth slice, 2026-10-17: every kind a person makes by hand is creatable, viewable and editable through one generic path driven by the core's per-kind templates, with a password generator in the core and the in-app quick-access palette (§10), on `@unicron/ui` 0.6.0 / `@unicron/tokens` 0.3.0. The third slice put the second slice's IA on unicron's six security components (SecretField, CodeDisplay, the CrownJewel treatment and gate, LargeTypeView, ApprovalSheet as a seam, RiskTierBadge) with the locked wash, the idle-lock toast, restore from the trash and conflict resolution. Companion to [`11-desktop-design-brief.md`](11-desktop-design-brief.md), which owns how it will look; this page owns how it is built. What is real: `crates/app` (`lockdown-app`) and `apps/desktop` (web UI + `src-tauri`), with the gates in CI's `desktop` job._
 
 ## For future agent
 
 - **TL;DR:** The desktop app is three layers: the core crates, one command layer (`lockdown-app`) that owns the lock timer and the secret-handling rules, and a Tauri 2 shell that maps each command to the webview and supplies only what a shell must (keychain, clipboard, browser, window). The UI is unicron primitives and unicron's six security components, bound to this host in one adapter module each, with Lockdown's app-extension roles and no visual design of its own. Copy never shows the webview a secret; reveal shows bytes for thirty seconds (twenty inside a crown jewel); the core locks on idle, hidden window and sleep whatever the UI does.
 - **Reads before this:** [`03-architecture.md`](03-architecture.md) §8–§10, [`07-workspace.md`](07-workspace.md) §1, decisions D11, D15, D47, D61, D68, D69, D70, D73, D74, and the brief.
-- **Not here:** the components themselves (unicron, `docs/specs/security/`; this page owns only how the shell binds them, §3 and §5), passkeys, the quick-access palette, persona switching, the extension frame, mobile.
+- **Not here:** the components themselves (unicron, `docs/specs/security/`; this page owns only how the shell binds them, §3 and §5), passkey creation, the system-wide hotkey, persona switching, the extension frame, mobile.
 
 ## 1. Layout
 
@@ -15,7 +15,8 @@ crates/app/                      lockdown-app: the command layer (Rust, no UI)
   src/lib.rs                     App handle + the worker thread; AppError, ErrorCode; the gates
   src/session.rs                 the open session: identity, store, keys, vault, account, sync, kit, devices, audit
   src/session/codes.rs           codes(): current + next + seconds, never the seed; add_code; code_now (D102)
-  src/session/transfer.rs        import / export through lockdown-cxf (D103)
+  src/session/transfer.rs        import / export through lockdown-cxf (D103); crown jewels classed on import
+  src/session/items.rs           add_item / edit_item on every kind, templates to shells, a bare set-up key made a link (D110)
   src/settings.rs                Settings: settings.cbor beside remembered.cbor (D100)
   src/approval.rs                ApprovalKind, Approver, PasswordApprover, route() (D101)
   src/views.rs                   the smart views, classified once for every shell (D104)
@@ -23,6 +24,9 @@ crates/app/                      lockdown-app: the command layer (Rust, no UI)
   src/revealed.rs                Revealed: secret bytes, zeroed on drop, never Display
   src/secrets.rs                 SecretStore: where the shell keeps the session token
   src/types.rs                   what crosses to a shell (Status, ItemSummary, ItemDetail, CodeView, …)
+crates/vault/src/template.rs     every kind's fields as data: control, required, crown jewel, fill rule, generator, section (§10)
+crates/vault/src/compose.rs      a shell's add or edit checked against the template; an edit names every field (D110)
+crates/crypto/src/generator.rs   the password generator (D112)
 crates/platform-auth/            lockdown-platform-auth: Touch ID / Windows Hello, no Lockdown deps (D101)
 apps/desktop/
   package.json, pnpm-lock.yaml   pnpm 10 root for the web UI (its own, like extension/)
@@ -37,10 +41,15 @@ apps/desktop/
   src/app/settings.tsx           the settings file as React context; density → <html data-density>
   src/app/gate.tsx               the approval gate on unicron's CrownJewelGate: collects a proof, the core judges it, calls again
   src/app/locked.ts              the core's lock state as context, for the components that mask on `locked`
+  src/app/templates.tsx          the core's templates as context, loaded once (D110)
   src/app/shell.tsx              the sidebar: personas, All items, smart views, Devices · Recovery · Status · Settings
   src/components/master-detail.tsx
   src/features/unlock/           first run (first-run.tsx: three screens + the proof panel), the lock screen, locked-wash.tsx
-  src/features/vault/            list (list-model.ts, item-row), detail layouts by kind, login editor
+  src/features/vault/            list (list-model.ts, item-row on ItemMain with its copy button), detail layouts by kind
+    item-editor.tsx              the one editor for every kind (editor-model.ts: rows and the change list; field-control.tsx)
+    new-item-menu.tsx            "New item": every creatable kind from the templates
+    quick-copy.ts                a row's one copy through copy_secret / copy_code and the gates
+  src/features/palette/          the quick-access palette on CommandDialog (palette-model.ts: what it searches)
     item-field.tsx               one field: plain rows, or unicron's SecretField bound to reveal / copy_secret / clipboard_holds
     code-display.tsx             unicron's CodeDisplay fed by `codes`, copy through copy_code
     crown-jewel.tsx              unicron's CrownJewelSurface with host="app"; the proof routed through app/gate.tsx
@@ -58,6 +67,7 @@ apps/desktop/
     src/lib.rs                   run(): plugins, keychain, App::start, the platform approver, window events
     src/approver.rs              PlatformApprover over lockdown-platform-auth (no Tauri needed)
     src/commands.rs              one #[tauri::command] per operation, all off the main thread
+    src/items.rs                 add_item / edit_item's field changes from JSON (secrets as byte arrays), tested without Tauri
     src/clipboard.rs             the clipboard rule (§3) incl. clipboard_holds, unit-tested without Tauri
     tauri.conf.json              window, CSP, build.features = ["shell"]
     capabilities/default.json    core:default only
@@ -88,8 +98,11 @@ Every row is one `App` method (Rust), one `#[tauri::command]`, and one `Client` 
 | `show` | `show(id, false)` | yes | `ItemDetail` | hidden fields carry a mask only |
 | `reveal` | `reveal(id, field)` | yes | **bytes** (`ArrayBuffer`) | one hidden field; refused for plain fields |
 | `copy_secret` | `reveal(id, field)` + clipboard | yes | seconds until clear | the value never reaches the webview (§3) |
-| `add_login` | `add_login(site, user, bytes, title)` | yes | item id | password arrives as bytes |
-| `edit_login` | `edit_login(id, title?, user?, bytes?)` | yes | version number | a new version; history kept |
+| `add_login` | `add_login(site, user, bytes, title)` | yes | item id | password arrives as bytes; now the narrow form of `add_item` |
+| `edit_login` | `edit_login(id, title?, user?, bytes?, gate)` | yes | version number | a new version; history kept; every other field kept; a crown jewel's through the `Use` gate (D110) |
+| `templates` | `templates()`, `custom_kinds()` | no | `{ kinds: TemplateView[], custom_kinds }` | every kind's fields as the core holds them (§10); static |
+| `add_item` | `add_item(kind, title?, crown_jewel, changes)` | yes | item id | any creatable kind; `fields` is a list of `{ field_id?, label?, kind?, action, text? \| secret? \| flag? }`, a secret always a byte array (D110) |
+| `edit_item` | `edit_item(id, title?, changes, gate)` | yes | version number | names every field the item has: `keep` (a secret not retyped never crosses back), `set`, `generate`, `remove`; a crown jewel's through the `Use` gate |
 | `trash` | `trash(id)` | yes | — | soft delete; grace period |
 | `restore` | `restore(id)` | yes | — | a trashed item comes back live, history kept; refused for a live or purged one |
 | `status` | `status()` | yes | `Status` | identity, device, persona, vault head, devices, account, the server's log as last verified (`AccountStatus.transparency`) |
@@ -120,7 +133,7 @@ Every row is one `App` method (Rust), one `#[tauri::command]`, and one `Client` 
 
 A call on a locked vault answers `{ code: "locked" }`; the UI shows the unlock screen. Other codes: `not_set_up`, `refused` (the core's words), `stopped`, and `approval_needed` with `detail: "password" | "window"`: a gated call that nothing confirmed yet; `app/gate.tsx` asks and calls again with a `gate` (`{ password }` or `{ confirmed: true }`). The platform check (Touch ID, Windows Hello) never reaches the webview: the core runs it on the worker thread and answers confirmed or refused.
 
-`list` now returns trashed items too (`state: "trashed"`), each row carrying the facts the smart views are built from (`methods`, `passkeys`, `codes`, `expires_at`, `conflict_copy`, `warnings`, `views`; D104). `ItemSummary.views` is computed in `lockdown_app::views` so every shell draws the same sidebar.
+`list` now returns trashed items too (`state: "trashed"`), each row carrying the facts the smart views are built from (`methods`, `passkeys`, `codes`, `expires_at`, `conflict_copy`, `warnings`, `views`; D104). `ItemSummary.views` is computed in `lockdown_app::views` so every shell draws the same sidebar. Since the fourth slice a row also carries `subtitle` (the template's plain field: a network's name, a card's holder) and `copy` (the quick copy's field and how: `secret` or `code`); a crown jewel's row carries no field at all (D113).
 
 ## 3. Secret handling, as implemented
 
@@ -181,7 +194,7 @@ Sean's answers (D92–D99) are in the shell; the brief's screen inventory (§3.2
 
 Host-contract gaps found binding them, for unicron: (1) SecretField's copy path fetches the bytes before `host.copy` (§3); (2) SecretField 0.4.0 dropped any reveal slower than a microtask (§3; fixed upstream in unicron 0.5.0); (3) the gate is judged by the core at call time, not by `CrownJewelGate.onConfirm` at proof time, so the host re-asks with `error` / `attemptsLeft` itself; (4) `CrownJewelSurface.biometricName` has no "no biometric on this device" form, so on a computer without one the host passes "your account password" and the explain copy reads with it; (5) CodeDisplay's `onCopy` hands the host the value as a string, which this host ignores (it copies by id and field); (6) the SecretField shows its own generic error words, so the core's sentence is passed through `description`.
 
-Still open for the brief: persona switching, item editors for kinds other than Login, the quick-access palette, approvals once the core carries requests, the skew notice.
+Still open for the brief: persona switching, the system-wide palette hotkey, approvals once the core carries requests, the skew notice, the Wi-Fi guest QR card, attachments in the editor.
 
 ## 6. How to run
 
@@ -208,11 +221,11 @@ Linux needs the WebKitGTK stack before anything with `--features shell`: `libweb
 
 ## 8. Measurement
 
-`dsa.config.json` at the repo root scans `apps/desktop/src/**/*.tsx` against `@unicron/ui`; the ratchet baseline is committed at `apps/desktop/.dsa/baseline.json` (the reports beside it are regenerated and ignored). First scan, 2026-10-17: 21 `className` overrides on system components, 0 style overrides, 0 spread props, 0 look-alikes; one pattern candidate (`Field` + label + input, three times across two files). Third slice: 15 overrides (the placeholders' rows went with them), 0 / 0 / 0; the baseline moved down to 15. The scripts run from `apps/desktop` with `--config ../../dsa.config.json`; the pin on `@snds/dsa` is the same commit unicron uses, and pnpm 10.28 records it in the lockfile as the GitHub tarball of that commit.
+`dsa.config.json` at the repo root scans `apps/desktop/src/**/*.tsx` against `@unicron/ui`; the ratchet baseline is committed at `apps/desktop/.dsa/baseline.json` (the reports beside it are regenerated and ignored). First scan, 2026-10-17: 21 `className` overrides on system components, 0 style overrides, 0 spread props, 0 look-alikes; one pattern candidate (`Field` + label + input, three times across two files). Third slice: 15 overrides (the placeholders' rows went with them), 0 / 0 / 0; the baseline moved down to 15. Fourth slice: 4 (the Login sheet's three went with it; "Add a code" moved to the same sized dialog as the editor; the kit page takes `DialogContent size`; the list skeletons take the `data-row` knob; the detail's `ItemGroup` keeps its own gap), 0 / 0 / 0; the baseline moved down to 4. The four left: the sidebar's `Separator` and Lock `Button`, the master–detail `Empty`, the unlock screen's `TabsList`. The scripts run from `apps/desktop` with `--config ../../dsa.config.json`; the pin on `@snds/dsa` is the same commit unicron uses, and pnpm 10.28 records it in the lockfile as the GitHub tarball of that commit.
 
 ## 9. Decisions proposed
 
-The first shell's rows landed as D83–D91. The second slice added D100 (the settings file), D101 (approval kinds, routes and fallbacks), D102 (what `codes` exposes), D103 (import/export, export gated) and D104 (smart views classified in the core). The third slice added D105 (copy stays core-side under unicron's SecretField; `clipboard_holds` answers from the shell's own record; a crown jewel's copy fetches nothing for the webview), D106 (the crown-jewel proof is collected by the component's gate and judged by the core at call time; three wrong passwords lock the vault; inside the surface a reveal is a tap with the 20 s lifetime; a code inside a crown jewel is gated for copy), D107 (the idle-lock toast with "Stay unlocked" and the locked wash), D108 (restore from the trash; a conflict is resolved by keeping one copy and trashing the other, after a confirm) and D109 ("Fix clock" opens the OS date settings where a URL exists; large type on desktop is a 120 s sheet; a code's large type is the code valid when pressed); see `decisions.md`. Each user-visible one is **flagged for Sean** there. One build note, not a decision row: between 0.4.0 and 0.5.0 the pinned `@unicron/ui` carried a pnpm patch for the slow-reveal bug (§3); 0.5.0 ships the fix and the patch is gone. The platform check is compile-checked for macOS and Windows and run only on Linux here (where it is absent by design); the first run on real hardware should confirm the prompt and that cancelling is a no.
+The fourth slice added D110 (every kind through one generic path from the core's templates; an edit names every field), D111 (the quick-access palette), D112 (the password generator), D113 (a crown jewel's summary carries no field; rows carry their quick copy) and D114 (the editor's behaviour); see §10. The first shell's rows landed as D83–D91. The second slice added D100 (the settings file), D101 (approval kinds, routes and fallbacks), D102 (what `codes` exposes), D103 (import/export, export gated) and D104 (smart views classified in the core). The third slice added D105 (copy stays core-side under unicron's SecretField; `clipboard_holds` answers from the shell's own record; a crown jewel's copy fetches nothing for the webview), D106 (the crown-jewel proof is collected by the component's gate and judged by the core at call time; three wrong passwords lock the vault; inside the surface a reveal is a tap with the 20 s lifetime; a code inside a crown jewel is gated for copy), D107 (the idle-lock toast with "Stay unlocked" and the locked wash), D108 (restore from the trash; a conflict is resolved by keeping one copy and trashing the other, after a confirm) and D109 ("Fix clock" opens the OS date settings where a URL exists; large type on desktop is a 120 s sheet; a code's large type is the code valid when pressed); see `decisions.md`. Each user-visible one is **flagged for Sean** there. One build note, not a decision row: between 0.4.0 and 0.5.0 the pinned `@unicron/ui` carried a pnpm patch for the slow-reveal bug (§3); 0.5.0 ships the fix and the patch is gone. The platform check is compile-checked for macOS and Windows and run only on Linux here (where it is absent by design); the first run on real hardware should confirm the prompt and that cancelling is a no.
 
 The first shell's rows, as proposed then (numbered D83–D91 when accepted; each user-visible or a security default, so **flagged for Sean**):
 
@@ -227,3 +240,69 @@ The first shell's rows, as proposed then (numbered D83–D91 when accepted; each
 | D89 | **Tauri behind the `shell` feature** (§7). | Keeps the root `--workspace` gates free of a platform SDK without editing the existing CI job. | A developer who runs `cargo run -p lockdown-desktop` without the feature gets a stub that says so. |
 | D90 | **Five MPL-2.0 crates allowed by name in `deny.toml`** (`option-ext` via `dirs`; `selectors`, `cssparser`, `cssparser-macros`, `dtoa-short` via Tauri's build-time CSP injection). | Tauri cannot be built without them; MPL-2.0 is file-level weak copyleft and none of those files is modified or derived from. Not added to the permissive allow-list, which stays as it was. | If the project wants a permissive-only tree, the desktop shell needs another toolkit. |
 | D91 | **The webview's unavoidable strings** are named, not hidden: a typed password between keystroke and submit, a revealed value while drawn. Both are dropped at once afterwards; the native shells use native fields. | Honesty about what a web engine can do. | None beyond the statement. |
+
+## 10. Fourth slice: every kind, one editor, the palette
+
+**What changed.** Before this slice the shell could make and change Logins and add Codes. Now every kind a person makes by hand (sixteen of the eighteen in `ItemKind`) is made, shown and changed through one path: `lockdown_vault::template` holds each kind's fields as data, `lockdown_vault::compose` checks what a shell sends against it, `Session::add_item` / `edit_item` and `App::add_item` / `edit_item` carry it, and the `templates`, `add_item` and `edit_item` commands expose it. `add_login` and `edit_login` stay and now ride the same path; `add_code` stays as it was (it can put a code inside an existing Login). A Passkey is view only (a site makes it through a provider); a Consent record is hidden. Rows: D110–D114.
+
+### 10.1 The templates
+
+The table is data in `crates/vault/src/template.rs` (tested against the crown-jewel classifier and the fill rules, and its field ids are the ones `lockdown-cxf` already wrote, so imported and hand-made items have the same shape). Every template but a Note's ends with **Notes** (Markdown, several lines). `title` is common to every item and passed on its own. **CJ** marks the field (or kind) that is a crown jewel by default (02-model §3); **Gen** the fields the generator offers, with its rule (D112); **Fill** the fields ever put into a page (`fill`, or `confirm` = only after a second deliberate action); everything else is never filled.
+
+| Kind (shown as) | Fields, in order (required in **bold**) | CJ | Gen | Fill | Quick copy |
+|---|---|---|---|---|---|
+| Login | Username, Password, One-time code (link or bare key), Website | — | Password: strong | Username, Password: fill; code: confirm | password (else its code) |
+| One-time code | **Set-up key** (link or bare key) | — | — | confirm | code |
+| Payment card | **Card number** (groups of four), Name on card, Expires (month), Security code, PIN, Brand (worked out from the number when empty) | — | — | number, name, expiry, code: confirm | card number |
+| Note | Note (Markdown body) | — | — | never | — |
+| Wi-Fi network | **Network name**, Password, Security (WPA3 · WPA2/WPA3 · WPA2 · WPA · WEP · Open · Enterprise), Hidden network, Enterprise identity | — | Password: readable | never | Wi-Fi password |
+| Identity | Given, middle, family name; Email; Phone; Street, City, State or region, Postal code, Country | — | — | all: fill | — |
+| Document | Document type (Passport · Driver's licence · ID card · Contract · Certificate · Other), Number, Issued by, Issued, Expires | — | — | never | — |
+| Bank account | Bank, Account holder, Account number (secret, groups of four), Routing or sort code, IBAN (secret), SWIFT or BIC, Branch, PIN | — | — | never | account number |
+| Crypto wallet | **Recovery phrase** (several lines, masked), Wallet password, Wallet app, Network, Address | **the kind, and the phrase** | Wallet password: strong | never | — |
+| SSH key | **Private key** (several lines, masked), Passphrase, Public key, Fingerprint, Key type (Ed25519 · ECDSA · RSA · Other), Allowed hosts | — | Passphrase: strong | never | — |
+| API key | **Key or token**, Secret, Type (Bearer token · Basic · HMAC · Other), Host name, Scopes, Expires, Rotation note | — | — | never | key |
+| Server | **Address**, Port, Username, Password, Admin console | — | Password: strong | Username, Password: fill | password |
+| Database | Database type (PostgreSQL · MySQL · MariaDB · SQL Server · Oracle · SQLite · MongoDB · Redis · Other), Server, Port, Database name, Username, Password, Connection options | — | Password: strong | never | password |
+| Software licence | **Licence key** (several lines, masked), Licensed to, Registered email, Version, Publisher, Download page, Purchased, Expires | — | — | never | licence key |
+| Membership | Organization, Member name, Member number, PIN, Member since, Expires, Website | — | — | never | — |
+| Custom item | (nothing but Notes; the person adds fields) | — | — | never | — |
+| Passkey (view only) | Website, User name, Display name; credential, user handle and private key (never shown, never typed) | — | — | key: confirm | — |
+| Consent record (hidden) | — | — | — | never | — |
+
+Controls: text, several lines, secret, secret over several lines, web address, email, phone, number, date, month, a choice, yes or no, one-time code, passkey material. Number, several lines and a choice are stored as `text` and told apart by the template (no schema change; D110). **Fields of your own** ("Add a field of your own", on any item) take one of seven kinds: Text, Secret, Web address, Email, Phone, Date, Yes or no; they are numbered `custom.<n>` and a secret one offers the strong generator. A template designer (a person's own kinds with their own field lists) is a follow-up. An "Expires" date puts the item in the Expiring view, as before.
+
+### 10.2 Making and changing an item
+
+- **The editor** (`features/vault/item-editor.tsx`) is unicron's `DialogContent size="lg"`, one form for every kind: Title, then the template's sections in order, then any other field the item holds (an import's second website, passkey material: keep or remove only), then the fields added by hand, then "Add a field of your own". On a new item a switch "Keep as a crown jewel" (opt-in; cannot be undone later, because moving an item between key branches is a re-wrap the vault doesn't do yet); a Crypto wallet says instead that it is always one. Title may be left empty for a Login (the website's host), a Server (its address), a Code (its issuer) and a Wi-Fi network (its name).
+- **Secrets** are unicron's `SecretField` in edit mode. On an item that holds one it starts empty and says "Left empty, it stays as it is", and the edit sends `keep` for it, so its bytes never cross back to the core and were never sent to the webview. **Generate** replaces the control with the rule in words and Undo; the core makes the value on save, so this window never holds it until a reveal or a copy (D112). **Remove** is explicit. A secret over several lines (a private key, a recovery phrase, a licence key) is a masked textarea (`data-masked`, `-webkit-text-security`), because a password input drops line breaks; a Show control lifts the mask. Typed secrets go as byte arrays once and the arrays are zeroed when the call returns; the rows are wiped on save and on close (D91 still holds for keystrokes).
+- **The edit names every field** the item has (`keep`, `set`, `generate`, `remove`); the core refuses an edit that leaves one out, a secret sent as text, a value that doesn't fit its control (a date, a month, a choice, an email, a phone, digits, a web address), a required field removed or emptied, and Keep or Remove on a field the item doesn't have. A refused edit writes nothing; the core's words show under the form.
+- **A one-time code** is pasted as its `otpauth://` / `steam://` link or as the bare set-up key; the core turns a bare key into a standard six-digit, thirty-second link named after the item, after `lockdown-codes` has checked it.
+- **A crown jewel's edit** goes through the `Use` gate, like its copy (D110).
+- **"New item"** lists the sixteen creatable kinds with their plain names and an icon each (unicron `Icon`, Material Symbols: key, timer, credit_card, sticky_note_2, wifi, badge, description, account_balance, account_balance_wallet, terminal, api, dns, database, license, card_membership, category). "Add a code" in the Codes view stays, for putting a code inside a Login, now in the same sized dialog.
+
+### 10.3 What each kind looks like
+
+Every detail is drawn from the template: fields under their section headings in the template's order, the template's labels (an older item's lower-case labels read the same), then "Other fields", then "Your fields", then Notes. Particular layouts: **Login** keeps its methods block (username, password, passkeys, codes), then Websites, then the rest; **Code** the code display full width with "Show large type", then its masked set-up; **Note** the body as text (Markdown is shown as written, not rendered; no rich editor); **Wi-Fi** Network with "Show large type" on the password, Hidden network as Yes / No; **Card** the number in groups of four, security code and PIN masked, and the line on the second press before any fill; **Passkey** its facts, the key said to be kept by the provider, no Edit. A kind with no template falls back to the plain field list. Empty states: "Nothing filled in yet", "An empty note"; a failed open names the item id and the core's words; the editor says "Loading the item kinds…" until the templates arrive and shows their error if they don't. Every secret copies by id and field through `copy_secret` (codes through `copy_code`); nothing in this slice copies a secret in the webview.
+
+### 10.4 The quick-access palette
+
+⌘K on macOS, Ctrl+K elsewhere, anywhere in the unlocked app (and the bolt button in the vault's header), on unicron's `CommandDialog` + `Command`. It searches the item summaries the list already holds, with the list's rule (every word a plain substring): title, username, the website's host, the template's subtitle and the kind's name. It never sees a field value; a crown jewel's summary has no field, so it is found by title and kind (D113). Trashed items are left out. **Enter** opens the item in All items. **⌘↵ / Ctrl+Enter**, or the copy control on a result, copies the item's one quick copy: the password (a Login, a Server, a Database), the code (a Code, or a Login with only a code), the Wi-Fi password, the card number, the API key, the account number, the licence key, through `copy_secret` / `copy_code` with the settings' clipboard timer. The palette closes first, so a crown jewel's ask (the `Use` gate: the platform check, the password, or the window confirm) opens over the app; backing out copies nothing and says so. While locked the palette isn't mounted. The vault list's rows carry the same copy button, beside unicron's `ItemMain`. A system-wide hotkey (the palette without the window) is a follow-up: it needs the global-shortcut plugin, a named capability beyond `core:default` (D88), and the palette in a window of its own (D111).
+
+### 10.5 Export and import of the new kinds
+
+Building this showed that a CXF export carried only what CXF's credential types hold, so a Wi-Fi password, an SSH key, a wallet's phrase, Notes on most kinds and every field added by hand were dropped silently. Each item now carries a Lockdown extension (`design.snds.lockdown.fields`) with its kind and every field no credential type holds; an import from Lockdown reads it back (the kind, the labels, the values), and a broken one is reported by title and left out, never guessed at. Import also classes a crown jewel by the template (a wallet comes back as one).
+
+### 10.6 Gaps found
+
+**In the plan, not built here:** the Wi-Fi guest QR and printable card; attachments in the editor (the vault has them, no UI); Identity subtypes (person, address, business, vehicle, passport, licence) with their own field sets; per-URL match rules in the editor (new websites get `exact_host`); generator options (length, classes) and a strength word (`SecretField`'s `strength` wants a core estimator, none exists yet); moving an existing item into or out of the crown-jewel class; Markdown rendering for notes. **Still open from 02-model §3:** crown jewels are in the bulk export today (behind the `Reveal` gate), where the plan keeps them out unless opted in per item; that is a user-visible change and is left for Sean.
+
+**Host-contract gaps in unicron, found binding this slice** (component, what it lacks, what the shell did):
+
+1. `SecretField` edit mode is one line only: no several-line secret (private keys, recovery phrases). The shell uses `Textarea` with `data-masked` and its own Show control.
+2. `SecretField` edit mode takes no `required` / `name`, so the browser's form check doesn't see it. The shell marks the label "(needed)" and the core refuses a missing required field.
+3. `SecretField` edit mode's `strength` is "computed by the host's core"; with no estimator in the core the meter is left off.
+4. `CommandItem` has no slot for a secondary action. The shell puts an `IconButton` (out of the tab order, its click stopped from selecting the row) inside a `CommandShortcut`, and handles ⌘↵ / Ctrl+Enter on the `Command`.
+5. `CommandItem`'s `value` doubles as its search text, so an item keyed by id matches on the id's letters; the shell passes `Command`'s `filter` with its own word list.
+6. `Skeleton` has no size for a list row; the shell uses the `data-row` density knob instead of a `className`.
+7. `DialogContent`'s `size` names skip a step against Tailwind's (`xl` is `max-w-2xl`), so the kit page, which was `max-w-xl`, is a little wider at `size="xl"`.
