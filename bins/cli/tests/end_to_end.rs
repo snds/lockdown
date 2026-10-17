@@ -56,7 +56,10 @@ fn init_add_list_show_status_across_processes() {
     assert!(ok, "{err}");
     assert!(out.starts_with("identity created, vault created"), "{out}");
     assert!(out.contains("managed by lockdown"), "{out}");
-    assert!(out.contains("device         test-laptop"), "{out}");
+    assert!(
+        out.contains("device         Lockdown on test-laptop"),
+        "{out}"
+    );
     assert!(out.contains("vault head     seq 1 "), "{out}");
     assert!(root.join("FORMAT").exists());
     assert!(data.join("vault.sqlite").exists());

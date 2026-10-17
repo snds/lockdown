@@ -91,20 +91,27 @@ fn beside(root: &Path) -> PathBuf {
 }
 
 /// A name for this device in the identity's device list and on conflict
-/// copies.
+/// copies: `Lockdown on <hostname>` (D68), or plain `Lockdown` when the
+/// hostname can't be read, so a laptop with two ecosystem apps shows as
+/// two devices told apart by app.
 pub fn device_name() -> String {
+    match hostname() {
+        Some(host) => format!("Lockdown on {host}"),
+        None => "Lockdown".to_string(),
+    }
+}
+
+/// The machine's hostname, if it can be read.
+fn hostname() -> Option<String> {
     for var in ["HOSTNAME", "COMPUTERNAME"] {
         if let Some(name) = std::env::var_os(var).filter(|v| !v.is_empty()) {
-            return name.to_string_lossy().into_owned();
+            return Some(name.to_string_lossy().into_owned());
         }
     }
-    if let Ok(name) = std::fs::read_to_string("/etc/hostname") {
-        let name = name.trim();
-        if !name.is_empty() {
-            return name.to_string();
-        }
-    }
-    "this device".to_string()
+    std::fs::read_to_string("/etc/hostname")
+        .ok()
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
 }
 
 /// The account this device uses, as kept in `sync.cbor`. The session
@@ -248,6 +255,24 @@ impl App {
             .remember_identity(identity.head())
             .map_err(|e| e.to_string())?;
         let mut identity = identity;
+
+        // D68: carry an older `<hostname>` record forward to `Lockdown on
+        // <hostname>`. The crate has no rename call, so the record is
+        // updated through the derived ISK (identity::rename_this_device);
+        // best-effort, so a device whose identity another app manages, or
+        // a read before the name settled, still works.
+        let want = device_name();
+        let current = identity
+            .devices()
+            .find(|d| d.device_id == identity.device_id())
+            .map(|d| d.name.clone());
+        if current.as_deref() != Some(want.as_str())
+            && matches!(identity.profile().manager.as_deref(), None | Some(APP))
+            && let Ok(Some(head)) =
+                identity::rename_this_device(&mut identity, keystore.as_ref(), &want)
+        {
+            let _ = memory.remember_identity(head);
+        }
 
         let persona_id = match persona {
             Some(selector) => find_persona(&identity, selector),

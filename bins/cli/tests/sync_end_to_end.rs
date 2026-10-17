@@ -249,7 +249,10 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
         ],
         Some(&format!("{PASSWORD}{secret_key}\n{recovery_code}\n")),
     );
-    assert!(out.contains("recovered: this device (phone)"), "{out}");
+    assert!(
+        out.contains("recovered: this device (Lockdown on phone)"),
+        "{out}"
+    );
     assert!(out.contains("pulled (1 live items)"), "{out}");
     let out = b.ok(&["list"], None);
     assert!(out.contains(&id), "the vault came with the recovery: {out}");
@@ -264,7 +267,7 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
     let out = b.ok(&["show", &id, "--reveal"], None);
     assert!(out.contains("password: first secret"), "{out}");
     let out = b.ok(&["status"], None);
-    assert!(out.contains("device         phone"), "{out}");
+    assert!(out.contains("device         Lockdown on phone"), "{out}");
     assert!(
         out.contains("devices        2 in the identity (0 revoked); identity manifest seq 3"),
         "{out}"
@@ -285,7 +288,7 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
     let out = b.ok(&["list"], None);
     let copies: Vec<&str> = out
         .lines()
-        .filter(|l| l.contains("(conflict copy from phone, "))
+        .filter(|l| l.contains("(conflict copy from Lockdown on phone, "))
         .collect();
     assert_eq!(copies.len(), 1, "{out}");
     assert_eq!(out.lines().count(), 2, "{out}");
@@ -305,7 +308,10 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
         "{out}"
     );
     let out = a.ok(&["list"], None);
-    assert!(out.contains("(conflict copy from phone, "), "{out}");
+    assert!(
+        out.contains("(conflict copy from Lockdown on phone, "),
+        "{out}"
+    );
     assert_eq!(out.lines().count(), 2, "{out}");
     let out = a.ok(&["status"], None);
     assert!(out.contains("vault head     seq 3 "), "{out}");
@@ -327,14 +333,17 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
     let out = a.ok(&["device", "list"], None);
     assert_eq!(out.lines().count(), 2, "{out}");
     assert!(out.contains("[this device]"), "{out}");
-    let phone_line = out.lines().find(|l| l.contains("  phone  ")).unwrap();
+    let phone_line = out
+        .lines()
+        .find(|l| l.contains("Lockdown on phone"))
+        .unwrap();
     let phone_id = phone_line.split_whitespace().next().unwrap().to_string();
     let (ok, _, err) = a.run(&["device", "revoke", "nobody"], None);
     assert!(!ok);
     assert!(err.contains("no device 'nobody'"), "{err}");
-    let out = a.ok(&["device", "revoke", "phone"], None);
+    let out = a.ok(&["device", "revoke", &phone_id], None);
     assert!(
-        out.contains(&format!("device {phone_id} (phone) revoked")),
+        out.contains(&format!("device {phone_id} (Lockdown on phone) revoked")),
         "{out}"
     );
     assert!(out.contains("heads after seq 3 are refused"), "{out}");
@@ -362,7 +371,10 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
         "{out}"
     );
     let out = a.ok(&["list"], None);
-    assert!(out.contains("(conflict copy from phone, "), "{out}");
+    assert!(
+        out.contains("(conflict copy from Lockdown on phone, "),
+        "{out}"
+    );
     assert_eq!(out.lines().count(), 2, "{out}");
     let out = a.ok(&["show", &id, "--reveal"], None);
     assert!(out.contains("password: laptop secret"), "{out}");

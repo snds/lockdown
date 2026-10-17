@@ -50,10 +50,29 @@ else
   cargo build -p lockdown-wasm --target wasm32-unknown-unknown
 fi
 
+# The artefact is under cargo's target directory, which CARGO_TARGET_DIR
+# (or a config) can move away from "$root/target". Ask cargo where it is
+# rather than assuming (jq when it is on PATH, else a sed fallback over the
+# same JSON), then read the built file from there.
+if command -v jq >/dev/null 2>&1; then
+  target_dir="$(cargo metadata --format-version 1 --no-deps 2>/dev/null | jq -r .target_directory)"
+else
+  target_dir="$(cargo metadata --format-version 1 --no-deps 2>/dev/null \
+    | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')"
+fi
+if [ -z "$target_dir" ]; then
+  echo "build-wasm: couldn't read cargo's target directory from 'cargo metadata'" >&2
+  exit 2
+fi
+wasm="$target_dir/wasm32-unknown-unknown/$profile/lockdown_wasm.wasm"
+if [ ! -f "$wasm" ]; then
+  echo "build-wasm: built wasm not found at $wasm" >&2
+  exit 2
+fi
+
 rm -rf "$out"
 mkdir -p "$out"
-wasm-bindgen --target web --out-dir "$out" --out-name lockdown_wasm \
-  "$root/target/wasm32-unknown-unknown/$profile/lockdown_wasm.wasm"
+wasm-bindgen --target web --out-dir "$out" --out-name lockdown_wasm "$wasm"
 
 # wasm-opt is optional: smaller output when binaryen is installed, same
 # behaviour when it is not.
