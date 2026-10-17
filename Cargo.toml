@@ -12,6 +12,7 @@ members = [
     "crates/approval",
     "crates/bridge-host",
     "crates/app",
+    "crates/platform-auth",
     "crates/ffi",
     "crates/wasm",
     "bins/cli",
@@ -35,6 +36,7 @@ default-members = [
     "crates/approval",
     "crates/bridge-host",
     "crates/app",
+    "crates/platform-auth",
     "bins/cli",
     "bins/server",
 ]
@@ -65,6 +67,7 @@ lockdown-policy = { path = "crates/policy", version = "0.1.0" }
 lockdown-approval = { path = "crates/approval", version = "0.1.0" }
 lockdown-bridge-host = { path = "crates/bridge-host", version = "0.1.0" }
 lockdown-app = { path = "crates/app", version = "0.1.0" }
+lockdown-platform-auth = { path = "crates/platform-auth", version = "0.1.0" }
 lockdown-ffi = { path = "crates/ffi", version = "0.1.0" }
 lockdown-server = { path = "bins/server", version = "0.1.0" }
 

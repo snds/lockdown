@@ -5,6 +5,7 @@
 //! ever a JavaScript string on its way out: `reveal` answers with raw
 //! bytes, `copy_secret` never answers with the value at all.
 
+pub mod approver;
 pub mod clipboard;
 
 #[cfg(feature = "shell")]
@@ -76,6 +77,11 @@ mod shell {
                 lockdown_app::secrets::install(Box::new(Keychain));
                 let paths = paths()?;
                 let core = App::start(paths, None, LockPolicy::default());
+                // Touch ID / Windows Hello where the machine has it; else
+                // approvals go to the password (D101).
+                if let Some(platform) = super::approver::PlatformApprover::detect() {
+                    core.set_approver(Box::new(platform))?;
+                }
                 app.manage(core);
                 app.manage(super::clipboard::ClipboardGuard::default());
                 Ok(())

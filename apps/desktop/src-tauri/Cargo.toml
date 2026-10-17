@@ -37,6 +37,8 @@ tauri-build = { version = "2.7.2", optional = true }
 
 [dependencies]
 lockdown-app.workspace = true
+# Touch ID / Windows Hello for approvals (D99, D101); nothing on Linux.
+lockdown-platform-auth.workspace = true
 blake3.workspace = true
 serde.workspace = true
 serde_json.workspace = true

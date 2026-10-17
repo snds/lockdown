@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use lockdown_app::{App, ErrorCode, LockPolicy, Paths};
+use lockdown_app::{App, ApprovalKind, ErrorCode, GateInput, LockPolicy, Paths, Route};
 use lockdown_server::{AppState, Config, RunningServer, run_in_background};
 use lockdown_store::TransparencyMemory;
 use lockdown_vault::transparency::{LogEntry, LogLeaf};
@@ -212,4 +212,72 @@ fn a_tree_head_smaller_than_the_remembered_one_is_a_rollback() {
     // The memory stands: the bigger tree is still what this device holds.
     let memory = TransparencyMemory::open(&data.join("transparency.cbor")).unwrap();
     assert_eq!(memory.view(&url).unwrap().sth.size, 10);
+}
+
+#[test]
+fn with_an_account_the_reveal_gate_is_the_password_checked_by_opaque() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_state, running) = server();
+    let url = running.url();
+    let a = device(dir.path(), "a");
+    a.open_or_create(true).unwrap();
+    a.account_register(&url, LOGIN, PASSWORD, None).unwrap();
+    a.add_login("https://example.com", "me", b"pw".to_vec(), None)
+        .unwrap();
+
+    let (route, method) = a.approval_route(ApprovalKind::Reveal).unwrap();
+    assert_eq!((route, method.as_str()), (Route::Password, "password"));
+    // Nothing typed yet: the shell is told to ask for the password.
+    let err = a.export_items("csv", GateInput::default()).unwrap_err();
+    assert_eq!(err.code, ErrorCode::ApprovalNeeded);
+    assert_eq!(err.detail.as_deref(), Some("password"));
+    // Confirming in the window is not a password.
+    let err = a
+        .export_items(
+            "csv",
+            GateInput {
+                password: None,
+                confirmed: true,
+            },
+        )
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::ApprovalNeeded);
+    // A wrong password is refused in plain words; nothing is exported.
+    let err = a
+        .export_items(
+            "csv",
+            GateInput {
+                password: Some("not it".into()),
+                confirmed: false,
+            },
+        )
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::Refused);
+    assert_eq!(err.message, "the password didn't match");
+    // The right one opens the gate.
+    let csv = a
+        .export_items(
+            "csv",
+            GateInput {
+                password: Some(PASSWORD.into()),
+                confirmed: false,
+            },
+        )
+        .unwrap();
+    assert!(
+        std::str::from_utf8(csv.expose())
+            .unwrap()
+            .contains("example.com")
+    );
+    let ok = a
+        .approve(
+            ApprovalKind::Approve,
+            "revoke",
+            GateInput {
+                password: Some(PASSWORD.into()),
+                confirmed: false,
+            },
+        )
+        .unwrap();
+    assert_eq!(ok.method, "password");
 }

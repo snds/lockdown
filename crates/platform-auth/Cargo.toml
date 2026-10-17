@@ -1,0 +1,19 @@
+[package]
+name = "lockdown-platform-auth"
+description = "The platform's own 'is it you?' check for approvals (D99, D101): Touch ID through LocalAuthentication on macOS, Windows Hello through UserConsentVerifier on Windows, nothing on Linux. No Lockdown dependencies, so it compile-checks for every target on its own"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSError"] }
+objc2-local-authentication = { version = "0.3", default-features = false, features = ["std", "block2", "LAContext", "LAError"] }
+block2 = "0.6"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Security_Credentials_UI", "Foundation"] }

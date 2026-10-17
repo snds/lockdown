@@ -2964,7 +2964,9 @@ name = "lockdown-app"
 version = "0.1.0"
 dependencies = [
  "ecosystem-identity",
+ "lockdown-codes",
  "lockdown-crypto",
+ "lockdown-cxf",
  "lockdown-matcher",
  "lockdown-server",
  "lockdown-store",
@@ -3067,6 +3069,7 @@ dependencies = [
  "blake3",
  "keyring",
  "lockdown-app",
+ "lockdown-platform-auth",
  "log",
  "serde",
  "serde_json",
@@ -3106,6 +3109,17 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "url",
+]
+
+[[package]]
+name = "lockdown-platform-auth"
+version = "0.1.0"
+dependencies = [
+ "block2",
+ "objc2",
+ "objc2-foundation",
+ "objc2-local-authentication",
+ "windows",
 ]
 
 [[package]]
@@ -3635,6 +3649,17 @@ dependencies = [
  "bitflags 2.13.2",
  "objc2",
  "objc2-core-foundation",
+]
+
+[[package]]
+name = "objc2-local-authentication"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e48e0b8b339e0d9d2ed4416b7f93f9d4daadff7d4dd797f89867cde11aeac607"
+dependencies = [
+ "block2",
+ "objc2",
+ "objc2-foundation",
 ]
 
 [[package]]
