@@ -8,6 +8,8 @@ import { codeKey, useCodes } from "@/features/codes/use-codes"
 import { whenLocal } from "@/lib/format"
 
 import { ItemCodeDisplay } from "./code-display"
+import { RiskTierBadge } from "@unicron/ui/security/risk-tier-badge"
+
 import { ItemCrownJewel } from "./crown-jewel"
 import { kindLabel } from "./list-model"
 import { ItemField, type SecretFormat } from "./item-field"
@@ -101,7 +103,10 @@ export function DetailPane({ id, onEdit, onTrashed, onNotice }: DetailPaneProps)
     <article className="flex flex-col gap-4 p-4 md:p-6">
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="truncate text-xl font-semibold tracking-tight">{title}</h2>
+          <h2 className="flex items-center gap-2 truncate text-xl font-semibold tracking-tight">
+            {title}
+            {item.tier && <RiskTierBadge tier={item.tier} verified={item.tier_verified} size="md" explain />}
+          </h2>
           <p className="text-sm text-muted-foreground">
             {kindLabel(item.kind)} · version {item.version} · edited {whenLocal(item.edited_at)}
             {trashed ? " · in the trash" : ""}

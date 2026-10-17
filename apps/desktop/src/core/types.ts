@@ -66,6 +66,9 @@ export interface FieldView {
   mask: string | null
 }
 
+/** The bridge tiers' internal ids (D96); people see the badge's words, never these. */
+export type RiskTier = "standard" | "official" | "tolerated"
+
 export interface ItemDetail {
   id: string
   kind: string
@@ -74,6 +77,14 @@ export interface ItemDetail {
   edited_at: number
   crown_jewel: boolean
   fields: FieldView[]
+  /**
+   * The bridge tier an item carries, from its signed manifest. Not in the
+   * Rust `ItemDetail` yet: the vault model has no tier, so no item sends
+   * one; the detail draws `RiskTierBadge` the moment one arrives.
+   */
+  tier?: RiskTier | null
+  /** The manifest check's answer; left out while it runs. */
+  tier_verified?: boolean
 }
 
 /** One one-time code now: values and timing, never the set-up. */
