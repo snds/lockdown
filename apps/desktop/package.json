@@ -27,7 +27,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/api": "^2.12.3",
     "@unicron/tokens": "https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.3.0/unicron-tokens-0.3.0.tgz",
-    "@unicron/ui": "https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.5.0/unicron-ui-0.5.0.tgz",
+    "@unicron/ui": "https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.6.0/unicron-ui-0.6.0.tgz",
     "next-themes": "^0.4.6",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
