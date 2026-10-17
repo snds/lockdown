@@ -6,76 +6,21 @@
 //! 1. **Confusables.** Both labels reduce to the same *skeleton* after
 //!    mapping lookalike characters (Cyrillic `а` → `a`, `1` → `l`, `rn` → `m`,
 //!    …) but are not the same string. Internationalised labels are decoded
-//!    from punycode first.
+//!    from punycode first. The table is data ([`Confusables`]) and ships in
+//!    the signed matcher data file.
 //! 2. **Typo-squats.** Labels of six or more characters at edit distance one.
 //! 3. **Decoys.** The trusted label appears as a whole hyphen-separated part
 //!    (`paypal-secure`), or the trusted registrable domain is a leading
 //!    sub-domain of the host (`paypal.com.evil.net`).
 //!
-//! The table is deliberately small and conservative. It is not the full
-//! Unicode confusables list; that lands as data when the extension does.
+//! The `_with` functions take the table in force; the plain ones use the
+//! built-in table.
 
-/// Maps one character to its Latin lookalike, if it has one.
-fn confusable(c: char) -> Option<&'static str> {
-    Some(match c {
-        // Cyrillic
-        'а' => "a",
-        'е' => "e",
-        'о' => "o",
-        'р' => "p",
-        'с' => "c",
-        'у' => "y",
-        'х' => "x",
-        'і' => "i",
-        'ј' => "j",
-        'ѕ' => "s",
-        'һ' => "h",
-        'ԁ' => "d",
-        'ԛ' => "q",
-        'ԝ' => "w",
-        'ɡ' => "g",
-        'ӏ' => "l",
-        'ԍ' => "g",
-        // Greek
-        'ο' => "o",
-        'α' => "a",
-        'ν' => "v",
-        'ι' => "i",
-        'κ' => "k",
-        'ρ' => "p",
-        'τ' => "t",
-        'υ' => "u",
-        'χ' => "x",
-        // Latin with marks that render close to plain letters
-        'ı' => "i",
-        'ł' => "l",
-        'ɩ' => "i",
-        // Digits and symbols
-        '0' => "o",
-        '1' => "l",
-        '|' => "l",
-        '5' => "s",
-        '3' => "e",
-        _ => return None,
-    })
-}
+pub use crate::confusables::Confusables;
 
-/// The skeleton of a label: lowercase, punycode decoded, confusables
-/// mapped, and `rn` / `vv` / `cl` sequences folded to `m` / `w` / `d`.
+/// The skeleton of a label under the built-in table.
 pub fn skeleton(label: &str) -> String {
-    let decoded = if label.starts_with("xn--") {
-        idna::domain_to_unicode(label).0
-    } else {
-        label.to_string()
-    };
-    let mut out = String::with_capacity(decoded.len());
-    for c in decoded.chars().flat_map(char::to_lowercase) {
-        match confusable(c) {
-            Some(s) => out.push_str(s),
-            None => out.push(c),
-        }
-    }
-    out.replace("rn", "m").replace("vv", "w").replace("cl", "d")
+    Confusables::builtin().skeleton(label)
 }
 
 /// Levenshtein distance, for short labels.
@@ -95,19 +40,24 @@ fn edit_distance(a: &str, b: &str) -> usize {
     prev[b.len()]
 }
 
-/// Whether `candidate` (a registrable label) imitates `trusted`.
-pub fn label_imitates(candidate: &str, trusted: &str) -> bool {
+/// Whether `candidate` (a registrable label) imitates `trusted`, under `table`.
+pub fn label_imitates_with(table: &Confusables, candidate: &str, trusted: &str) -> bool {
     let (c, t) = (candidate.to_ascii_lowercase(), trusted.to_ascii_lowercase());
     if c == t || t.is_empty() {
         return false;
     }
-    if skeleton(&c) == skeleton(&t) {
+    if table.skeleton(&c) == table.skeleton(&t) {
         return true;
     }
     if t.chars().count() >= 6 && edit_distance(&c, &t) == 1 {
         return true;
     }
     c.split('-').any(|part| part == t)
+}
+
+/// [`label_imitates_with`] under the built-in table.
+pub fn label_imitates(candidate: &str, trusted: &str) -> bool {
+    label_imitates_with(Confusables::builtin(), candidate, trusted)
 }
 
 /// The registrable domain and its left-most label for a host.
@@ -118,9 +68,9 @@ fn parts(host: &str) -> Option<(String, String)> {
     Some((domain, label))
 }
 
-/// Whether `candidate_host` imitates `trusted_host`: a label lookalike, or
-/// the trusted registrable domain used as a leading sub-domain.
-pub fn host_imitates(candidate_host: &str, trusted_host: &str) -> bool {
+/// Whether `candidate_host` imitates `trusted_host`, under `table`: a label
+/// lookalike, or the trusted registrable domain used as a leading sub-domain.
+pub fn host_imitates_with(table: &Confusables, candidate_host: &str, trusted_host: &str) -> bool {
     let Some((trusted_domain, trusted_label)) = parts(trusted_host) else {
         return false;
     };
@@ -135,7 +85,12 @@ pub fn host_imitates(candidate_host: &str, trusted_host: &str) -> bool {
     if candidate_domain == trusted_domain {
         return false;
     }
-    label_imitates(&candidate_label, &trusted_label)
+    label_imitates_with(table, &candidate_label, &trusted_label)
+}
+
+/// [`host_imitates_with`] under the built-in table.
+pub fn host_imitates(candidate_host: &str, trusted_host: &str) -> bool {
+    host_imitates_with(Confusables::builtin(), candidate_host, trusted_host)
 }
 
 #[cfg(test)]
@@ -165,5 +120,15 @@ mod tests {
         assert!(!host_imitates("shop.paypal.com", "www.paypal.com"));
         assert!(!host_imitates("127.0.0.1", "www.paypal.com"));
         assert_eq!(edit_distance("kitten", "sitting"), 3);
+    }
+
+    #[test]
+    fn an_empty_table_still_catches_typos_and_decoys_but_not_homoglyphs() {
+        let none = Confusables::none();
+        // `paypa1` is at edit distance one from `paypal`, so the typo rule
+        // still fires; the homoglyph `pаypal` (Cyrillic а) does not.
+        assert!(label_imitates_with(&none, "paypa1", "paypal"));
+        assert!(!label_imitates_with(&none, "xn--pypal-4ve", "paypal"));
+        assert!(label_imitates_with(&none, "paypal-secure", "paypal"));
     }
 }

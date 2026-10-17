@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 
 use lockdown_matcher::wire::{self, *};
-use lockdown_matcher::{EquivalentDomains, FillKind, MatchDecision, MatchRule};
+use lockdown_matcher::{DataState, FillKind, MatchDecision, MatchRule, MatcherData};
 use serde_json::Value;
 
 const DECIDE_REQUEST: &str = include_str!("../../../extension/schema/decide-request.schema.json");
@@ -20,6 +20,8 @@ const RO_REQUEST: &str =
 const RO_RESPONSE: &str =
     include_str!("../../../extension/schema/related-origins-response.schema.json");
 const WIRE_ERROR: &str = include_str!("../../../extension/schema/wire-error.schema.json");
+const DATA_STATUS: &str = include_str!("../../../extension/schema/data-status.schema.json");
+const MATCHER_DATA: &str = include_str!("../../../extension/schema/matcher-data.schema.json");
 
 fn schema(text: &str) -> Value {
     serde_json::from_str(text).expect("schema file is JSON")
@@ -105,7 +107,7 @@ fn decide_request_and_response_match_their_schemas() {
         );
     }
     let root = schema(DECIDE_RESPONSE);
-    let res = wire::decide(&req, &EquivalentDomains::curated()).unwrap();
+    let res = wire::decide(&req, &MatcherData::builtin().unwrap()).unwrap();
     check_with_defs(
         &root,
         &root,
@@ -199,12 +201,45 @@ fn related_origins_and_errors_match_their_schemas() {
             current: "https://example.com".into(),
             rule: MatchRule::ExactHost,
         },
-        &EquivalentDomains::none(),
+        &MatcherData::empty(),
     )
     .unwrap_err();
     check(
         &schema(WIRE_ERROR),
         &serde_json::to_value(&err).unwrap(),
         "wire-error",
+    );
+}
+
+#[test]
+fn data_status_and_the_payload_match_their_schemas() {
+    let status = DataStatus::of(&DataState::builtin().unwrap());
+    check(
+        &schema(DATA_STATUS),
+        &serde_json::to_value(&status).unwrap(),
+        "data-status",
+    );
+    // The editable source is an instance of the payload schema: every
+    // required field present, every known field declared.
+    let source: Value = serde_json::from_str(lockdown_matcher::CURATED_JSON).unwrap();
+    let payload_schema = schema(MATCHER_DATA);
+    for r in payload_schema["required"].as_array().unwrap() {
+        assert!(
+            source.get(r.as_str().unwrap()).is_some(),
+            "{r} missing from the source"
+        );
+    }
+    for k in ["matcher_data", "published", "groups", "confusables"] {
+        assert!(source.get(k).is_some(), "{k} missing from the source");
+        assert!(
+            payload_schema["properties"].get(k).is_some(),
+            "{k} missing from the schema"
+        );
+    }
+    let built = MatcherData::builtin().unwrap();
+    assert_eq!(built.version, source["matcher_data"].as_u64().unwrap());
+    assert_eq!(
+        built.equivalent.len(),
+        source["groups"].as_array().unwrap().len()
     );
 }

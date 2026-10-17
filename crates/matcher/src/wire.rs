@@ -14,9 +14,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    EquivalentDomains, FillContext, FillKind, FillVerdict, MatchDecision, MatchError, MatchRule,
-    Origin, SavedUrl,
+    FillContext, FillKind, FillVerdict, MatchDecision, MatchError, MatchRule, MatcherData, Origin,
+    SavedUrl,
     related_origins::{RelatedOriginsCache, RelatedOriginsDoc},
+    signed::DataError,
 };
 
 /// The schema version stamped on every response.
@@ -170,6 +171,16 @@ pub struct WireError {
     pub message: String,
 }
 
+impl From<DataError> for WireError {
+    fn from(e: DataError) -> Self {
+        Self {
+            v: SCHEMA_VERSION,
+            code: e.code().into(),
+            message: e.to_string(),
+        }
+    }
+}
+
 impl From<MatchError> for WireError {
     fn from(e: MatchError) -> Self {
         let code = match &e {
@@ -184,11 +195,47 @@ impl From<MatchError> for WireError {
     }
 }
 
-/// Runs `decide` on a wire request under `equiv`.
-pub fn decide(req: &DecideRequest, equiv: &EquivalentDomains) -> Result<DecideResponse, WireError> {
+/// `load_matcher_data` and `matcher_data_status`: what the host learns
+/// about the data in force.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct DataStatus {
+    /// Schema version.
+    pub v: u32,
+    /// The data version in force (`matcher_data` in the payload).
+    pub version: u64,
+    /// The newest version loaded or remembered: what the host persists.
+    pub newest_loaded: u64,
+    /// Which trusted key signed the data in force.
+    pub key_id: String,
+    /// The `published` label of the data in force.
+    pub published: String,
+    /// How many equivalent-domain groups are in force.
+    pub groups: usize,
+    /// How many confusable characters are mapped.
+    pub confusables: usize,
+}
+
+impl DataStatus {
+    /// Describes a state.
+    pub fn of(state: &crate::DataState) -> Self {
+        let d = state.data();
+        Self {
+            v: SCHEMA_VERSION,
+            version: d.version,
+            newest_loaded: state.newest_loaded(),
+            key_id: d.key_id.clone(),
+            published: d.published.clone(),
+            groups: d.equivalent.len(),
+            confusables: d.confusables.len(),
+        }
+    }
+}
+
+/// Runs `decide` on a wire request under the data in force.
+pub fn decide(req: &DecideRequest, data: &MatcherData) -> Result<DecideResponse, WireError> {
     let saved = SavedUrl::parse(&req.saved, req.rule)?;
     let current = Origin::parse(&req.current)?;
-    let decision = crate::decide(&saved, &current, equiv);
+    let decision = crate::decide_with(&saved, &current, data);
     Ok(DecideResponse {
         v: SCHEMA_VERSION,
         decision,
@@ -244,7 +291,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(req.rule, MatchRule::ExactHost);
-        let res = decide(&req, &EquivalentDomains::curated()).unwrap();
+        let res = decide(&req, &MatcherData::builtin().unwrap()).unwrap();
         let json = serde_json::to_value(&res).unwrap();
         assert_eq!(json["v"], 1);
         assert_eq!(json["decision"], "equivalent");
@@ -261,7 +308,7 @@ mod tests {
         };
         // "not a url at all" parses as a host with spaces? No: the url crate
         // refuses spaces in a host.
-        let err = decide(&req, &EquivalentDomains::none()).unwrap_err();
+        let err = decide(&req, &MatcherData::empty()).unwrap_err();
         assert_eq!(err.code, "not_a_url");
         assert_eq!(err.v, SCHEMA_VERSION);
     }

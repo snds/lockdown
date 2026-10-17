@@ -14,3 +14,9 @@ url.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+# The signed data file (docs/plan/09-extension-boundary.md §2): canonical
+# CBOR payload, Ed25519 signature, hex-encoded dev key files.
+ciborium.workspace = true
+serde_bytes.workspace = true
+ed25519-dalek.workspace = true
+data-encoding.workspace = true

@@ -12,5 +12,7 @@ The JSON shapes `lockdown-wasm` takes and returns, as JSON Schema (draft 2020-12
 | `related-origins-response.schema.json` | `related_origins(request)` | core → page |
 | `code-response.schema.json` | `WasmSession.code(handle, now_secs)` | core → page |
 | `wire-error.schema.json` | any call, as the thrown `Error`'s message (JSON text) | core → page |
+| `matcher-data.schema.json` | the payload inside the signed data file `load_matcher_data(bytes)` verifies | file → core |
+| `data-status.schema.json` | `load_matcher_data(bytes)` and `matcher_data_status()` | core → page |
 
 Stability rule: within one `v`, fields are only added, never renamed, removed or retyped; readers ignore fields they do not know. A breaking change bumps `v` and the old shape stays readable for one release. See `docs/plan/09-extension-boundary.md`.

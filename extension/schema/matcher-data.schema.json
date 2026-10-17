@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lockdown.snds.design/schema/v1/matcher-data.schema.json",
+  "title": "MatcherPayload",
+  "description": "The payload inside the signed matcher data file (crates/matcher/src/signed.rs). On disk it is canonical CBOR inside an Ed25519-signed envelope; this schema describes the payload's logical shape, which is also what crates/matcher/data/matcher-data.json holds as the editable source. Unknown fields pass through verification and are kept.",
+  "type": "object",
+  "required": ["matcher_data"],
+  "additionalProperties": true,
+  "properties": {
+    "matcher_data": { "type": "integer", "minimum": 1, "description": "Monotonic data version. Raised on every change, never reused. A loader refuses a version below the newest it has loaded or been told about." },
+    "published": { "type": "string", "description": "A date label for people; not compared." },
+    "note": { "type": "string" },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "domains"],
+        "properties": {
+          "name": { "type": "string" },
+          "domains": { "type": "array", "items": { "type": "string" }, "description": "Registrable domains (eTLD+1) that share logins." }
+        }
+      }
+    },
+    "confusables": {
+      "type": "object",
+      "properties": {
+        "map": { "type": "object", "additionalProperties": { "type": "string" }, "description": "One character (as a one-character string) to its Latin lookalike." },
+        "folds": { "type": "array", "items": { "type": "array", "items": { "type": "string" }, "minItems": 2, "maxItems": 2 }, "description": "Sequence folds applied in order after the map, such as [\"rn\", \"m\"]." }
+      }
+    }
+  }
+}

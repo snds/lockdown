@@ -25,18 +25,23 @@ use std::collections::BTreeMap;
 
 use lockdown_codes::Code;
 pub use lockdown_ffi::{FfiError, RedactedView, SecretHandle, SecretRegistry};
-use lockdown_matcher::EquivalentDomains;
 use lockdown_matcher::wire::{
-    self, DecideRequest, DecideResponse, FillRequest, FillResponse, RelatedOriginsRequest,
-    RelatedOriginsResponse, SCHEMA_VERSION, WireError,
+    self, DataStatus, DecideRequest, DecideResponse, FillRequest, FillResponse,
+    RelatedOriginsRequest, RelatedOriginsResponse, SCHEMA_VERSION, WireError,
 };
+use lockdown_matcher::{DataError, DataState, MatcherData, TrustedKeys};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 thread_local! {
-    /// The matcher data in force for this module instance: the curated
-    /// groups until the host loads a newer signed file.
-    static EQUIVALENT: RefCell<EquivalentDomains> = RefCell::new(EquivalentDomains::curated());
+    /// The matcher data in force for this module instance: the built-in
+    /// signed file until the host loads a newer one. The downgrade floor
+    /// lives here for the life of the instance; the host persists it
+    /// (`matcher_data_status().newest_loaded`) and hands it back through
+    /// `set_matcher_data_floor` after a restart.
+    static DATA: RefCell<DataState> = RefCell::new(
+        DataState::builtin().unwrap_or_else(|_| DataState::new(MatcherData::empty()))
+    );
 }
 
 fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsError> {
@@ -69,7 +74,53 @@ pub fn schema_version() -> u32 {
 
 /// The Rust side of `decide`, for native tests and callers.
 pub fn decide_wire(req: &DecideRequest) -> Result<DecideResponse, WireError> {
-    EQUIVALENT.with(|e| wire::decide(req, &e.borrow()))
+    DATA.with(|d| wire::decide(req, d.borrow().data()))
+}
+
+/// The Rust side of `load_matcher_data`: verifies `bytes` against the
+/// build's trusted keys, refuses a downgrade, and makes it the data in force.
+pub fn load_matcher_data_wire(bytes: &[u8]) -> Result<DataStatus, DataError> {
+    DATA.with(|d| {
+        let mut d = d.borrow_mut();
+        d.load(bytes, &TrustedKeys::builtin())?;
+        Ok(DataStatus::of(&d))
+    })
+}
+
+/// `load_matcher_data(bytes)` → `{v, version, newest_loaded, key_id,
+/// published, groups, confusables}`. Throws a wire error with code
+/// `bad_signature`, `unknown_key`, `downgrade` or `bad_data`; the data in
+/// force is unchanged then.
+#[wasm_bindgen]
+pub fn load_matcher_data(bytes: &[u8]) -> Result<JsValue, JsError> {
+    let status = load_matcher_data_wire(bytes).map_err(|e| wire_err(e.into()))?;
+    to_js(&status)
+}
+
+/// The Rust side of `matcher_data_status`.
+pub fn matcher_data_status_wire() -> DataStatus {
+    DATA.with(|d| DataStatus::of(&d.borrow()))
+}
+
+/// `matcher_data_status()` → the same object `load_matcher_data` returns,
+/// for the data in force now. `newest_loaded` is what the host persists.
+#[wasm_bindgen]
+pub fn matcher_data_status() -> Result<JsValue, JsError> {
+    to_js(&matcher_data_status_wire())
+}
+
+/// `set_matcher_data_floor(version)`: the host's remembered newest version
+/// from an earlier run. Never lowers the floor. Returns the floor in force.
+#[wasm_bindgen]
+pub fn set_matcher_data_floor(version: f64) -> Result<f64, JsError> {
+    if !version.is_finite() || version < 0.0 {
+        return Err(JsError::new("version must be a non-negative number"));
+    }
+    DATA.with(|d| {
+        let mut d = d.borrow_mut();
+        d.raise_floor(version as u64);
+        Ok(d.newest_loaded() as f64)
+    })
 }
 
 /// `decide({saved, current, rule?})` → `{v, decision, saved, current}`.
@@ -230,6 +281,31 @@ mod tests {
         assert!(s.is_empty());
         assert_eq!(s.secrets().redacted(h), Err(FfiError::InvalidHandle));
         assert_eq!(s.code_at(c, 59), Err(FfiError::InvalidHandle));
+    }
+
+    #[test]
+    fn loading_data_refuses_a_downgrade_and_keeps_the_floor() {
+        let before = matcher_data_status_wire();
+        assert_eq!(before.key_id, lockdown_matcher::signed::DEV_KEY_ID);
+        // The built-in file loads again (same version).
+        let again = load_matcher_data_wire(lockdown_matcher::signed::BUILTIN_SIGNED).unwrap();
+        assert_eq!(again.version, before.version);
+        // A tampered copy is refused and nothing changes.
+        let mut bad = lockdown_matcher::signed::BUILTIN_SIGNED.to_vec();
+        let mid = bad.len() / 2;
+        bad[mid] ^= 0x01;
+        let err = load_matcher_data_wire(&bad).unwrap_err();
+        assert!(matches!(err.code(), "bad_signature" | "bad_data"));
+        assert_eq!(matcher_data_status_wire().version, before.version);
+        // A remembered floor above the built-in version makes the built-in
+        // file a downgrade.
+        DATA.with(|d| d.borrow_mut().raise_floor(before.version + 10));
+        let err = load_matcher_data_wire(lockdown_matcher::signed::BUILTIN_SIGNED).unwrap_err();
+        assert!(matches!(err, DataError::Downgrade { .. }));
+        assert_eq!(
+            matcher_data_status_wire().newest_loaded,
+            before.version + 10
+        );
     }
 
     #[test]

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lockdown.snds.design/schema/v1/data-status.schema.json",
+  "title": "DataStatus",
+  "description": "What load_matcher_data returns and matcher_data_status reports: the data in force and the downgrade floor. The host persists newest_loaded and hands it back through set_matcher_data_floor after a restart.",
+  "type": "object",
+  "required": ["v", "version", "newest_loaded", "key_id", "published", "groups", "confusables"],
+  "properties": {
+    "v": { "type": "integer", "const": 1 },
+    "version": { "type": "integer", "minimum": 0, "description": "matcher_data of the data in force." },
+    "newest_loaded": { "type": "integer", "minimum": 0, "description": "The newest version loaded or remembered. Persist this." },
+    "key_id": { "type": "string", "description": "The trusted key that signed the data in force; dev-* only in development builds." },
+    "published": { "type": "string" },
+    "groups": { "type": "integer", "minimum": 0 },
+    "confusables": { "type": "integer", "minimum": 0 }
+  }
+}

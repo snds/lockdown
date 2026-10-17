@@ -17,15 +17,19 @@
 //! confirmation (the DEF CON 33 clickjacking lesson). Related origins from
 //! `/.well-known/webauthn` count for passkeys only, capped at five labels.
 
+pub mod confusables;
 pub mod lookalike;
 pub mod related_origins;
+pub mod signed;
 pub mod wire;
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+pub use confusables::Confusables;
 pub use related_origins::RelatedOriginsCache;
+pub use signed::{DataError, DataState, MatcherData, TrustedKeys};
 
 /// What can go wrong when parsing a URL.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -184,8 +188,11 @@ pub struct EquivalentDomains {
     index: BTreeMap<String, usize>,
 }
 
-/// The curated seed list shipped with the crate.
-pub const CURATED_JSON: &str = include_str!("../data/equivalent-domains.json");
+/// The source of the signed data file: the curated groups and the
+/// confusables table, as edited. What ships is the signed form
+/// ([`signed::BUILTIN_SIGNED`]); this text is for people and for the
+/// `sign-data` example.
+pub const CURATED_JSON: &str = include_str!("../data/matcher-data.json");
 
 impl EquivalentDomains {
     /// An empty set: no equivalence at all.
@@ -193,10 +200,14 @@ impl EquivalentDomains {
         Self::default()
     }
 
-    /// The curated groups. The seed cannot fail to parse; the crate's tests
-    /// check it, so this falls back to an empty set rather than panicking.
+    /// The curated groups from the built-in **signed** data, verified once
+    /// per process. The built-in file cannot fail to verify (the crate's
+    /// tests check it), so this falls back to an empty set rather than
+    /// panicking.
     pub fn curated() -> Self {
-        Self::from_json(CURATED_JSON).unwrap_or_default()
+        MatcherData::builtin()
+            .map(|d| d.equivalent)
+            .unwrap_or_default()
     }
 
     /// Groups from a JSON document of the seed's shape.
@@ -248,8 +259,23 @@ impl EquivalentDomains {
     }
 }
 
-/// Decides how `saved` relates to `current`, under `equiv`.
+/// Decides how `saved` relates to `current`, under `equiv` and the built-in
+/// confusables table. Hosts that load signed data use [`decide_with`].
 pub fn decide(saved: &SavedUrl, current: &Origin, equiv: &EquivalentDomains) -> MatchDecision {
+    decide_under(saved, current, equiv, Confusables::builtin())
+}
+
+/// Decides how `saved` relates to `current` under the data in force.
+pub fn decide_with(saved: &SavedUrl, current: &Origin, data: &MatcherData) -> MatchDecision {
+    decide_under(saved, current, &data.equivalent, &data.confusables)
+}
+
+fn decide_under(
+    saved: &SavedUrl,
+    current: &Origin,
+    equiv: &EquivalentDomains,
+    confusables: &Confusables,
+) -> MatchDecision {
     if saved.rule == MatchRule::Never {
         return MatchDecision::NoMatch;
     }
@@ -276,7 +302,7 @@ pub fn decide(saved: &SavedUrl, current: &Origin, equiv: &EquivalentDomains) -> 
             return MatchDecision::Equivalent;
         }
     }
-    if lookalike::host_imitates(&current.host, &s.host) {
+    if lookalike::host_imitates_with(confusables, &current.host, &s.host) {
         return MatchDecision::Lookalike;
     }
     MatchDecision::NoMatch

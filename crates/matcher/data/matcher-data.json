@@ -1,0 +1,205 @@
+{
+  "matcher_data": 1,
+  "published": "2026-10-17",
+  "note": "Source of the signed matcher data file (docs/plan/09-extension-boundary.md §2). `matcher_data` is the monotonic version: raise it on every change, never reuse a number. Edit this file, then run `cargo run -p lockdown-matcher --example sign-data` to regenerate matcher-data.signed.cbor; the crate's tests fail when the two disagree. Groups: a login saved on one domain in a group is offered on the others (02-model §10, rule `equivalent`); on by default, a person can turn a group off or add their own. Confusables: characters that render like a Latin letter, mapped to it, plus the sequence folds the skeleton applies after mapping.",
+  "groups": [
+    {
+      "name": "google",
+      "domains": [
+        "google.com",
+        "youtube.com",
+        "gmail.com",
+        "google.co.uk",
+        "google.de",
+        "google.fr",
+        "google.ca",
+        "google.com.au"
+      ]
+    },
+    {
+      "name": "amazon",
+      "domains": [
+        "amazon.com",
+        "amazon.co.uk",
+        "amazon.de",
+        "amazon.fr",
+        "amazon.ca",
+        "amazon.co.jp",
+        "amazon.com.au",
+        "amazon.it",
+        "amazon.es",
+        "amazon.in"
+      ]
+    },
+    {
+      "name": "microsoft",
+      "domains": [
+        "microsoft.com",
+        "live.com",
+        "outlook.com",
+        "hotmail.com",
+        "office.com",
+        "microsoftonline.com",
+        "xbox.com",
+        "skype.com"
+      ]
+    },
+    {
+      "name": "apple",
+      "domains": [
+        "apple.com",
+        "icloud.com"
+      ]
+    },
+    {
+      "name": "meta",
+      "domains": [
+        "facebook.com",
+        "messenger.com",
+        "instagram.com"
+      ]
+    },
+    {
+      "name": "ebay",
+      "domains": [
+        "ebay.com",
+        "ebay.co.uk",
+        "ebay.de",
+        "ebay.fr",
+        "ebay.ca",
+        "ebay.com.au"
+      ]
+    },
+    {
+      "name": "paypal",
+      "domains": [
+        "paypal.com",
+        "paypal.me"
+      ]
+    },
+    {
+      "name": "yahoo",
+      "domains": [
+        "yahoo.com",
+        "yahoo.co.uk",
+        "yahoo.co.jp",
+        "aol.com"
+      ]
+    },
+    {
+      "name": "steam",
+      "domains": [
+        "steampowered.com",
+        "steamcommunity.com"
+      ]
+    },
+    {
+      "name": "github",
+      "domains": [
+        "github.com",
+        "githubusercontent.com"
+      ]
+    },
+    {
+      "name": "atlassian",
+      "domains": [
+        "atlassian.com",
+        "atlassian.net",
+        "bitbucket.org",
+        "trello.com"
+      ]
+    },
+    {
+      "name": "zoom",
+      "domains": [
+        "zoom.us",
+        "zoom.com"
+      ]
+    },
+    {
+      "name": "disney",
+      "domains": [
+        "disneyplus.com",
+        "disney.com",
+        "hulu.com",
+        "espn.com"
+      ]
+    },
+    {
+      "name": "proton",
+      "domains": [
+        "proton.me",
+        "protonmail.com",
+        "pm.me"
+      ]
+    },
+    {
+      "name": "wikimedia",
+      "domains": [
+        "wikipedia.org",
+        "wikimedia.org",
+        "wiktionary.org",
+        "wikidata.org"
+      ]
+    },
+    {
+      "name": "netflix",
+      "domains": [
+        "netflix.com",
+        "nflxext.com"
+      ]
+    }
+  ],
+  "confusables": {
+    "map": {
+      "а": "a",
+      "е": "e",
+      "о": "o",
+      "р": "p",
+      "с": "c",
+      "у": "y",
+      "х": "x",
+      "і": "i",
+      "ј": "j",
+      "ѕ": "s",
+      "һ": "h",
+      "ԁ": "d",
+      "ԛ": "q",
+      "ԝ": "w",
+      "ɡ": "g",
+      "ӏ": "l",
+      "ԍ": "g",
+      "ο": "o",
+      "α": "a",
+      "ν": "v",
+      "ι": "i",
+      "κ": "k",
+      "ρ": "p",
+      "τ": "t",
+      "υ": "u",
+      "χ": "x",
+      "ı": "i",
+      "ł": "l",
+      "ɩ": "i",
+      "0": "o",
+      "1": "l",
+      "|": "l",
+      "5": "s",
+      "3": "e"
+    },
+    "folds": [
+      [
+        "rn",
+        "m"
+      ],
+      [
+        "vv",
+        "w"
+      ],
+      [
+        "cl",
+        "d"
+      ]
+    ]
+  }
+}
