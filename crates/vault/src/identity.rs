@@ -416,16 +416,22 @@ fn recovery_rank(state: &RecoveryState) -> u8 {
 }
 
 /// Merges a verified record set from the server into the local identity
-/// store (D71). The set is the one linearised truth, so its record wins
-/// wherever both sides hold a path, with two exceptions that keep the
-/// rules of the records themselves: a device the local store already
-/// holds as revoked stays revoked, and a profile whose local recovery
-/// state is further along (a kit made here and not pushed yet) stays.
-/// Records only this store holds are kept (and go up in the next push),
-/// unless `previously_synced` listed them and the set no longer does:
-/// then they were retired on another machine and are removed here, which
-/// the crate's store records as a tombstone (D29). Device wraps are never
-/// touched. Nothing is written when nothing changes.
+/// store (D71), three ways, with `previously_synced` (the set this device
+/// accepted last) as the base:
+///
+/// - a record the server changed since the base replaces the local one
+///   (the server's chain is the one linearised history), with two
+///   exceptions that keep the records' own rules: a device the local
+///   store holds as revoked stays revoked, and a profile whose local
+///   recovery state is further along stays;
+/// - a record the server did not change since the base leaves a local
+///   change alone (it goes up in the next push);
+/// - a record only this store holds is kept, unless the base listed it
+///   and the set no longer does: then it was retired on another machine
+///   and is removed here, which the crate's store records as a tombstone
+///   (D29).
+///
+/// Device wraps are never touched. Nothing is written when nothing changes.
 pub fn merge_records(
     identity: &mut Identity,
     keystore: &dyn DeviceKeystore,
@@ -441,12 +447,26 @@ pub fn merge_records(
         this_device_revoked: remote.is_revoked(identity.device_id()),
         ..Default::default()
     };
+    let base_hash = |path: &str| {
+        previously_synced.and_then(|p| p.entries.iter().find(|e| e.path == path).map(|e| e.hash))
+    };
+    let remote_hash = |path: &str| {
+        remote
+            .manifest
+            .entries
+            .iter()
+            .find(|e| e.path == path)
+            .map(|e| e.hash)
+    };
+    // The server changed the record since this device last synced (or
+    // this device never synced it): the server's copy counts.
+    let remote_changed = |path: &str| base_hash(path) != remote_hash(path);
     let retired: BTreeSet<&str> = previously_synced
         .map(|prev| {
             prev.entries
                 .iter()
                 .map(|e| e.path.as_str())
-                .filter(|p| !remote.manifest.entries.iter().any(|e| e.path == *p))
+                .filter(|p| remote_hash(p).is_none())
                 .collect()
         })
         .unwrap_or_default();
@@ -454,21 +474,26 @@ pub fn merge_records(
     let head = write_identity_store(identity, keystore, |contents, _isk| {
         let local = contents.profile()?.clone();
         if local != remote.profile
+            && remote_changed(crate::identity_set::PROFILE_PATH)
             && recovery_rank(&local.recovery) <= recovery_rank(&remote.profile.recovery)
         {
             contents.profile = Some(remote.profile.clone());
             taken += 1;
         }
         for (id, persona) in &remote.personas {
-            if contents.personas.get(id) != Some(persona) {
+            let path = format!("personas/{id}.cbor");
+            let mine = contents.personas.get(id);
+            if mine != Some(persona) && (mine.is_none() || remote_changed(&path)) {
                 contents.personas.insert(*id, persona.clone());
                 taken += 1;
             }
         }
         for (id, device) in &remote.devices {
+            let path = format!("devices/{id}.cbor");
             match contents.devices.get(id) {
                 Some(mine) if mine == device => {}
                 Some(mine) if mine.revoked_at.is_some() && device.revoked_at.is_none() => {}
+                Some(_) if !remote_changed(&path) => {}
                 _ => {
                     contents.devices.insert(*id, device.clone());
                     taken += 1;
@@ -476,13 +501,17 @@ pub fn merge_records(
             }
         }
         for (name, envelope) in &remote.envelopes {
-            if contents.envelopes.get(name) != Some(envelope) {
+            let path = format!("envelopes/{name}");
+            let mine = contents.envelopes.get(name);
+            if mine != Some(envelope) && (mine.is_none() || remote_changed(&path)) {
                 contents.put_envelope(envelope.clone());
                 taken += 1;
             }
         }
         for (name, consent) in &remote.consents {
-            if contents.consents.get(name) != Some(consent) {
+            let path = format!("consents/{name}");
+            let mine = contents.consents.get(name);
+            if mine != Some(consent) && (mine.is_none() || remote_changed(&path)) {
                 contents.consents.insert(name.clone(), consent.clone());
                 taken += 1;
             }

@@ -1,8 +1,9 @@
 //! Two devices as two `lockdown` processes against a server on a random
-//! port: register → sync → a second device enrols through the account →
-//! sync → conflicting edits → sync → the conflict copy shows in `list` →
-//! the first device revokes the second → the second can neither write
-//! nor open, while its history before the revocation still stands.
+//! port: register (the recovery kit is made) → sync → a second device
+//! recovers with the kit on an empty root and gets the vault → sync →
+//! conflicting edits → sync → the conflict copy shows in `list` → the
+//! first device revokes the second → the second can neither write nor
+//! open, while its history before the revocation still stands.
 
 use std::io::Write;
 use std::path::Path;
@@ -67,8 +68,14 @@ const PASSWORD: &str = "correct horse battery staple\n";
 #[test]
 fn two_devices_register_sync_conflict_and_list_the_copy() {
     let dir = tempfile::tempdir().unwrap();
-    let server =
-        run_in_background(Arc::new(AppState::in_memory(Config::default()).unwrap())).unwrap();
+    // This walkthrough logs in many times in a few seconds (register,
+    // kit verify, recover attempts, re-register); the login brake (D57) is
+    // loosened so the test isn't throttled.
+    let config = Config {
+        per_login: (100, 10.0),
+        ..Config::default()
+    };
+    let server = run_in_background(Arc::new(AppState::in_memory(config).unwrap())).unwrap();
     let url = server.url();
     let a = device(dir.path(), "laptop");
     let b = device(dir.path(), "phone");
@@ -91,6 +98,50 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
         Some(PASSWORD),
     );
     assert!(out.contains("registered"), "{out}");
+    assert!(out.contains("LOCKDOWN RECOVERY KIT"), "{out}");
+    let field = |label: &str| -> String {
+        out.lines()
+            .find(|l| l.starts_with(label))
+            .unwrap_or_else(|| panic!("no {label} in {out}"))
+            .split_whitespace()
+            .last()
+            .unwrap()
+            .to_string()
+    };
+    let secret_key = field("Secret Key:");
+    let recovery_code = field("Recovery code:");
+    assert!(secret_key.starts_with("A1-"), "{secret_key}");
+    assert_eq!(recovery_code.len(), 39, "{recovery_code}");
+    let out = a.ok(&["status"], None);
+    assert!(out.contains("recovery kit: Created"), "{out}");
+
+    // The kit, typed back: a wrong code is refused, the right one opens,
+    // and with the password the Secret Key is checked against the slot.
+    let (ok, _, err) = a.run(
+        &["kit", "verify", "--kit-stdin"],
+        Some(&format!("{secret_key}\n{}0000\n", &recovery_code[..35])),
+    );
+    assert!(!ok);
+    assert!(err.contains("recovery code didn't open"), "{err}");
+    let out = a.ok(
+        &[
+            "kit",
+            "verify",
+            "--kit-stdin",
+            "--password-stdin",
+            "--drill",
+        ],
+        Some(&format!("{PASSWORD}{secret_key}\n{recovery_code}\n")),
+    );
+    assert!(out.contains("recovery code: opens this identity"), "{out}");
+    assert!(out.contains("Secret Key: opens the account slot"), "{out}");
+    assert!(out.contains("drill recorded"), "{out}");
+    let out = a.ok(&["status"], None);
+    assert!(out.contains("recovery kit: Drilled"), "{out}");
+    let (ok, _, err) = a.run(&["kit", "create"], None);
+    assert!(!ok);
+    assert!(err.contains("already has a recovery kit"), "{err}");
+
     let out = a.ok(
         &[
             "add",
@@ -117,7 +168,9 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
     );
     assert!(out.contains("vault head     seq 1 "), "{out}");
 
-    // Registering again under the same name is refused.
+    // Registering again under the same name is refused. The identity now
+    // has a kit, so its Secret Key is required and then the server says
+    // the name is taken.
     let (ok, _, err) = a.run(
         &[
             "account",
@@ -131,37 +184,75 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
         Some(PASSWORD),
     );
     assert!(!ok);
-    assert!(err.contains("already an account"), "{err}");
-
-    // B: nothing local. A wrong password is just "didn't go through".
-    let (ok, _, err) = b.run(
+    assert!(err.contains("give its Secret Key"), "{err}");
+    let (ok, _, err) = a.run(
         &[
             "account",
-            "login",
+            "register",
             "--server",
             &url,
             "--login",
             "me@example.com",
             "--password-stdin",
+            "--secret-key-stdin",
         ],
-        Some("wrong horse\n"),
+        Some(&format!("{PASSWORD}{secret_key}\n")),
+    );
+    assert!(!ok);
+    assert!(err.contains("already an account"), "{err}");
+
+    // B: nothing local. A wrong password is just "didn't go through"; a
+    // wrong recovery code is refused after the login, with nothing written
+    // and nothing the server could learn from it.
+    let (ok, _, err) = b.run(
+        &[
+            "recover",
+            "--server",
+            &url,
+            "--login",
+            "me@example.com",
+            "--password-stdin",
+            "--kit-stdin",
+        ],
+        Some(&format!("wrong horse\n{secret_key}\n{recovery_code}\n")),
     );
     assert!(!ok);
     assert!(err.contains("didn't go through"), "{err}");
     assert!(!b.root.exists(), "a failed login creates nothing");
-    let out = b.ok(
+    let (ok, _, err) = b.run(
         &[
-            "account",
-            "login",
+            "recover",
             "--server",
             &url,
             "--login",
             "me@example.com",
             "--password-stdin",
+            "--kit-stdin",
         ],
-        Some(PASSWORD),
+        Some(&format!(
+            "{PASSWORD}{secret_key}\n{}0000\n",
+            &recovery_code[..35]
+        )),
     );
-    assert!(out.contains("now enrolled"), "{out}");
+    assert!(!ok);
+    assert!(err.contains("recovery kit didn't open"), "{err}");
+    assert!(!b.root.exists(), "a wrong kit creates nothing");
+    let out = b.ok(
+        &[
+            "recover",
+            "--server",
+            &url,
+            "--login",
+            "me@example.com",
+            "--password-stdin",
+            "--kit-stdin",
+        ],
+        Some(&format!("{PASSWORD}{secret_key}\n{recovery_code}\n")),
+    );
+    assert!(out.contains("recovered: this device (phone)"), "{out}");
+    assert!(out.contains("pulled (1 live items)"), "{out}");
+    let out = b.ok(&["list"], None);
+    assert!(out.contains(&id), "the vault came with the recovery: {out}");
     let out = b.ok(&["sync"], None);
     assert!(
         out.contains("pushed 0, pulled 0, merged 0; vault head seq 1"),
@@ -175,7 +266,7 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
     let out = b.ok(&["status"], None);
     assert!(out.contains("device         phone"), "{out}");
     assert!(
-        out.contains("devices        2 in the identity (0 revoked); identity manifest seq 2"),
+        out.contains("devices        2 in the identity (0 revoked); identity manifest seq 3"),
         "{out}"
     );
 
@@ -219,7 +310,7 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
     let out = a.ok(&["status"], None);
     assert!(out.contains("vault head     seq 3 "), "{out}");
     assert!(
-        out.contains("devices        2 in the identity (0 revoked); identity manifest seq 2"),
+        out.contains("devices        2 in the identity (0 revoked); identity manifest seq 3"),
         "the phone's record reached the laptop through the synced set: {out}"
     );
 
@@ -251,7 +342,7 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
     assert!(out.contains("[revoked 20"), "{out}");
     let out = a.ok(&["status"], None);
     assert!(
-        out.contains("devices        2 in the identity (1 revoked); identity manifest seq 3"),
+        out.contains("devices        2 in the identity (1 revoked); identity manifest seq 4"),
         "{out}"
     );
 

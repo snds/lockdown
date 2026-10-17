@@ -21,9 +21,11 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use ecosystem_identity::keys::Irk;
 use ecosystem_identity::keystore::DeviceKeystore;
+use ecosystem_identity::records::{KeyEnvelope, KeyRef, KeyRefKind, Purpose, RecoveryState};
 use ecosystem_identity::{
-    AccountAuth, AccountCredentials, ExportKey, FileKeystore, Identity, default_root,
+    AccountAuth, AccountCredentials, ExportKey, FileKeystore, Identity, RecoveryKit, default_root,
 };
 use lockdown_crypto::auth::{DeviceBinding, OpaqueAccountAuth};
 use lockdown_store::{HeadMemory, RememberedHead, SqliteStore, SyncedIdentity, write_private};
@@ -591,21 +593,55 @@ impl App {
     // --- the account --------------------------------------------------------
 
     /// `lockdown account register`: makes the account on `server` under
-    /// `login` with OPAQUE, writes the identity's account unlock slot,
-    /// uploads the identity backup, and keeps the session.
+    /// `login` with OPAQUE, writes the identity's account unlock slot with
+    /// the recovery kit's Secret Key mixed in (04-security §3; D70),
+    /// publishes the identity's records, and keeps the session. When the
+    /// identity has no kit yet one is made here and returned as text, to
+    /// be shown or saved once; when it has one, its Secret Key must be
+    /// given (`secret_key`).
     pub fn account_register(
         &mut self,
         server: &str,
         login: &str,
         password: &str,
-    ) -> Result<Vec<String>, String> {
+        secret_key: Option<&str>,
+    ) -> Result<(Vec<String>, Option<String>), String> {
         let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
         let mut auth = OpaqueAccountAuth::new(transport, login, self.device_binding());
+        let profile_id = self.identity.profile().profile_id;
+        let (sk, kit_text) = if self.identity.profile().recovery == RecoveryState::None {
+            if secret_key.is_some() {
+                return Err(
+                    "this identity has no recovery kit yet, so there is no Secret Key to give; leave it out and the kit is made here"
+                        .into(),
+                );
+            }
+            let kit = self
+                .identity
+                .create_recovery_kit()
+                .map_err(|e| e.to_string())?;
+            self.memory
+                .remember_identity(self.identity.head())
+                .map_err(|e| e.to_string())?;
+            let text = render_kit(&kit, Some((login, server)), &device_name());
+            (*kit.secret_key().expose(), Some(text))
+        } else {
+            let Some(text) = secret_key else {
+                return Err(
+                    "this identity already has a recovery kit; give its Secret Key with --secret-key-stdin or LOCKDOWN_SECRET_KEY so the account is protected by it"
+                        .into(),
+                );
+            };
+            (secret_key_bytes(profile_id, text)?, None)
+        };
         // Registers the password with the server and writes the `account`
-        // wrap of the root key under the Account Unlock Key (04-security §3).
-        // The Secret Key half waits for the recovery-kit commands.
+        // wrap of the root key under the Account Unlock Key: HKDF over the
+        // OPAQUE export key and the Secret Key (04-security §3 step 4).
         self.identity
-            .enable_account_unlock(&mut auth, password, None)
+            .enable_account_unlock(&mut auth, password, Some(&sk))
+            .map_err(|e| e.to_string())?;
+        self.memory
+            .remember_identity(self.identity.head())
             .map_err(|e| e.to_string())?;
         let (_export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
         sync_identity_records(
@@ -627,24 +663,32 @@ impl App {
         };
         cfg.save(&self.paths.sync_file())?;
         self.sync = Some(cfg);
-        Ok(vec![
-            format!("account {login} registered at {server}"),
-            "session kept; run `lockdown sync` to push the vault".into(),
-        ])
+        let mut lines = vec![format!("account {login} registered at {server}")];
+        if kit_text.is_some() {
+            lines.push(
+                "a recovery kit was made; its Secret Key now protects the account together with the password"
+                    .into(),
+            );
+        }
+        lines.push("session kept; run `lockdown sync` to push the vault".into());
+        Ok((lines, kit_text))
     }
 
     /// `lockdown account login` on a device that already holds the
     /// identity: a fresh session, and the identity's records brought in
-    /// step with the server.
+    /// step with the server. An account slot written without a Secret Key
+    /// (D60) is upgraded here when the kit exists and its Secret Key is
+    /// given; otherwise the person is told what is still open (D70).
     pub fn account_login(
         &mut self,
         server: &str,
         login: &str,
         password: &str,
+        secret_key: Option<&str>,
     ) -> Result<Vec<String>, String> {
         let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
         let mut auth = OpaqueAccountAuth::new(transport, login, self.device_binding());
-        let (_export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
+        let (export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
         if session.profile_id != self.identity.profile().profile_id {
             return Err(format!(
                 "the account '{login}' belongs to another profile ({}), not the identity at {}",
@@ -660,6 +704,35 @@ impl App {
             &mut self.synced,
             &mut self.memory,
         )?;
+        let mut lines = vec![format!("logged in as {login} at {server}")];
+        if slot_opens_without_secret_key(&self.identity, &export_key) {
+            match (self.identity.profile().recovery, secret_key) {
+                (RecoveryState::None, _) => lines.push(
+                    "notice: this account can still be opened with the password alone; run `lockdown kit create` to make the recovery kit and protect the account with its Secret Key"
+                        .into(),
+                ),
+                (_, None) => lines.push(
+                    "notice: this account can still be opened with the password alone; run `lockdown account login --secret-key-stdin` with the Secret Key from your recovery kit to finish protecting it"
+                        .into(),
+                ),
+                (_, Some(text)) => {
+                    let sk = secret_key_bytes(self.identity.profile().profile_id, text)?;
+                    self.upgrade_account_slot(export_key, password, &sk)?;
+                    sync_identity_records(
+                        auth.rounds(),
+                        &session.token,
+                        &mut self.identity,
+                        self.keystore.as_ref(),
+                        &mut self.synced,
+                        &mut self.memory,
+                    )?;
+                    lines.push(
+                        "account slot upgraded: the Secret Key from the kit is now needed beside the password"
+                            .into(),
+                    );
+                }
+            }
+        }
         let vaults = match &self.sync {
             Some(old) if old.server == auth.rounds().base() && old.login == login => {
                 old.vaults.clone()
@@ -677,47 +750,350 @@ impl App {
         };
         cfg.save(&self.paths.sync_file())?;
         self.sync = Some(cfg);
-        Ok(vec![format!("logged in as {login} at {server}")])
+        Ok(lines)
+    }
+
+    /// Rewrites the account slot with the Secret Key mixed in (D70): the
+    /// old `account` envelope is retired, which the identity store records
+    /// as a tombstone (D29), and a new one is written under the Account
+    /// Unlock Key over the same OPAQUE registration: `export_key` is the
+    /// one the login just produced, so no second round trip and no second
+    /// registration.
+    fn upgrade_account_slot(
+        &mut self,
+        export_key: ExportKey,
+        password: &str,
+        secret_key: &[u8; 16],
+    ) -> Result<(), String> {
+        let profile_id = self.identity.profile().profile_id;
+        if account_envelope(&self.identity).is_some() {
+            let irk_id = self.identity.irk_id().map_err(|e| e.to_string())?;
+            self.identity
+                .retire_envelope(irk_id, KeyRef::new(KeyRefKind::Account, profile_id))
+                .map_err(|e| e.to_string())?;
+        }
+        let mut prepared = PreparedExportKey(Some(export_key));
+        self.identity
+            .enable_account_unlock(&mut prepared, password, Some(secret_key))
+            .map_err(|e| e.to_string())?;
+        self.memory
+            .remember_identity(self.identity.head())
+            .map_err(|e| e.to_string())
+    }
+
+    // --- the recovery kit ---------------------------------------------------
+
+    /// `lockdown kit create`: makes the recovery kit (04-security §8) and
+    /// returns its printable text, shown or saved once and never kept by
+    /// Lockdown. With an account, the account password is needed: the
+    /// slot is rewritten with the new Secret Key (D70). A kit that exists
+    /// is replaced only with `replace`, and the old page stops working.
+    pub fn kit_create(
+        &mut self,
+        replace: bool,
+        password: Option<&str>,
+        check_target: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(String, Vec<String>), String> {
+        // Whatever the kit will be delivered to must be free *before* the
+        // account slot is rewritten: a kit that is made but not delivered
+        // would leave the slot on a Secret Key no page carries.
+        check_target()?;
+        if self.identity.profile().recovery != RecoveryState::None && !replace {
+            return Err(
+                "this identity already has a recovery kit; `lockdown kit verify` checks it, `lockdown kit create --replace` makes a new one (the old page stops working)"
+                    .into(),
+            );
+        }
+        let mut auth = match &self.sync {
+            Some(cfg) => {
+                let Some(password) = password else {
+                    return Err(
+                        "this device has an account, so the new Secret Key must go into its slot: pass the account password with --password-stdin or LOCKDOWN_PASSWORD"
+                            .into(),
+                    );
+                };
+                let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
+                let mut auth = OpaqueAccountAuth::new(transport, &cfg.login, self.device_binding());
+                // The password is checked before anything changes; the
+                // export key from this one login rewrites the slot.
+                let (export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
+                Some((auth, session, export_key))
+            }
+            None => None,
+        };
+        let kit = self
+            .identity
+            .create_recovery_kit()
+            .map_err(|e| e.to_string())?;
+        self.memory
+            .remember_identity(self.identity.head())
+            .map_err(|e| e.to_string())?;
+        let mut notes = Vec::new();
+        let login = self
+            .sync
+            .as_ref()
+            .map(|c| (c.login.clone(), c.server.clone()));
+        if let Some((auth, session, export_key)) = auth.take() {
+            let password = password.expect("checked above");
+            self.upgrade_account_slot(export_key, password, kit.secret_key().expose())?;
+            let auth = auth;
+            sync_identity_records(
+                auth.rounds(),
+                &session.token,
+                &mut self.identity,
+                self.keystore.as_ref(),
+                &mut self.synced,
+                &mut self.memory,
+            )?;
+            notes.push(
+                "the account's slot now needs this Secret Key beside the password; other devices learn it at their next sync"
+                    .into(),
+            );
+        } else {
+            notes.push(
+                "no account on this device yet; `lockdown account register` will ask for this Secret Key"
+                    .into(),
+            );
+        }
+        let text = render_kit(
+            &kit,
+            login.as_ref().map(|(l, s)| (l.as_str(), s.as_str())),
+            &device_name(),
+        );
+        Ok((text, notes))
+    }
+
+    /// `lockdown kit verify`: types the kit back in and checks it opens
+    /// this identity, changing nothing (04-security §9). The recovery code
+    /// is checked against the kit wrap of the root key; the Secret Key
+    /// against the account slot when the account password is given too.
+    /// With `drill`, a passing check is recorded on the profile.
+    pub fn kit_verify(
+        &mut self,
+        secret_key: &str,
+        recovery_code: &str,
+        password: Option<&str>,
+        drill: bool,
+    ) -> Result<Vec<String>, String> {
+        let profile = self.identity.profile().clone();
+        if profile.recovery == RecoveryState::None {
+            return Err("this identity has no recovery kit yet; run `lockdown kit create`".into());
+        }
+        let kit = RecoveryKit::from_text(profile.profile_id, secret_key, recovery_code)
+            .map_err(|e| e.to_string())?;
+        let kit_ref = KeyRef::new(KeyRefKind::Kit, profile.profile_id);
+        let envelope = self
+            .identity
+            .envelopes()
+            .find(|e| e.purpose == Purpose::Irk && e.wrapped_by == kit_ref)
+            .ok_or("this identity holds no kit wrap of its root key")?;
+        let kit_key = kit.kit_key(&profile.kdf).map_err(|e| e.to_string())?;
+        let opened: Result<Irk, _> = ecosystem_identity::keys::unwrap_key(
+            envelope,
+            &kit_key,
+            &ecosystem_identity::keys::aad(profile.profile_id, None, envelope.key_id, Purpose::Irk),
+        );
+        let irk = opened.map_err(|_| {
+            "the recovery code didn't open this identity: check it against the page, letter by letter"
+                .to_string()
+        })?;
+        let derived = ecosystem_identity::signing_key(&irk).map_err(|e| e.to_string())?;
+        if derived.verifying_key().to_bytes() != profile.isk_pub {
+            return Err("the recovery code opened a key, but not this identity's".into());
+        }
+        drop(irk);
+        let mut lines = vec!["recovery code: opens this identity".to_string()];
+        match (&self.sync, password) {
+            (Some(cfg), Some(password)) => {
+                let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
+                let mut auth = OpaqueAccountAuth::new(transport, &cfg.login, self.device_binding());
+                let (export_key, _) = auth.sign_in(password).map_err(|e| e.to_string())?;
+                let Some(account) = account_envelope(&self.identity) else {
+                    return Err("this identity has no account slot".into());
+                };
+                let auk = ecosystem_identity::kdf::account_unlock_key(
+                    export_key.expose(),
+                    Some(kit.secret_key().expose()),
+                    &profile.profile_id,
+                )
+                .map_err(|e| e.to_string())?;
+                let opened: Result<Irk, _> = ecosystem_identity::keys::unwrap_key(
+                    account,
+                    &auk,
+                    &ecosystem_identity::keys::aad(
+                        profile.profile_id,
+                        None,
+                        account.key_id,
+                        Purpose::Irk,
+                    ),
+                );
+                if opened.is_err() {
+                    return Err(
+                        "the Secret Key and password didn't open the account slot: check the Secret Key against the page"
+                            .into(),
+                    );
+                }
+                lines.push("Secret Key: opens the account slot with the password".into());
+            }
+            _ => lines.push(
+                "Secret Key: well formed (give the account password too to check it against the account slot)"
+                    .into(),
+            ),
+        }
+        if drill {
+            self.identity
+                .mark_recovery_drilled()
+                .map_err(|e| e.to_string())?;
+            self.memory
+                .remember_identity(self.identity.head())
+                .map_err(|e| e.to_string())?;
+            if let Some(cfg) = &self.sync {
+                let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
+                let token = cfg.session_token()?.to_string();
+                sync_identity_records(
+                    &transport,
+                    &token,
+                    &mut self.identity,
+                    self.keystore.as_ref(),
+                    &mut self.synced,
+                    &mut self.memory,
+                )?;
+            }
+            lines.push("drill recorded: the profile now says the kit was tried and works".into());
+        }
+        Ok(lines)
+    }
+
+    /// `lockdown recover` on a device with no identity (01-identity §8 row
+    /// 3): logs in with the password (for the session only), pulls the
+    /// identity's record set, rebuilds the root key from the kit, enrols
+    /// this device, publishes the records that list it, and pulls the
+    /// vault. A wrong kit changes nothing here and tells the server
+    /// nothing: the only round trip is the login.
+    pub fn recover(
+        paths: Paths,
+        server: &str,
+        login: &str,
+        password: &str,
+        secret_key: &str,
+        recovery_code: &str,
+    ) -> Result<Vec<String>, String> {
+        Self::check_root_empty(&paths)?;
+        let keystore = Rc::new(
+            FileKeystore::open_or_create(&paths.data.join(KEYSTORE_FILE))
+                .map_err(|e| e.to_string())?,
+        );
+        let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
+        let mut auth = OpaqueAccountAuth::new(transport, login, binding_of(&keystore));
+        let (_export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
+        let mut synced = SyncedIdentity::open(&paths.data.join(IDENTITY_SYNC_FILE), None)
+            .map_err(|e| e.to_string())?;
+        pull_identity(auth.rounds(), &session.token, &mut synced, None)
+            .map_err(|e| e.to_string())?;
+        let verified = synced.verified().cloned().ok_or_else(|| {
+            format!("the account '{login}' has no identity records on {server} yet")
+        })?;
+        if verified.profile.profile_id != session.profile_id {
+            return Err("the server's identity records are for another profile".into());
+        }
+        let kit = RecoveryKit::from_text(verified.profile.profile_id, secret_key, recovery_code)
+            .map_err(|e| e.to_string())?;
+        let backup = verified.to_backup();
+        let mut identity = Identity::recover_with_kit(
+            &paths.root,
+            APP,
+            &device_name(),
+            keystore.as_ref(),
+            &kit,
+            &backup,
+        )
+        .map_err(|e| match e {
+            ecosystem_identity::Error::KitRejected => {
+                "the recovery kit didn't open this identity: check the recovery code against the page, letter by letter; nothing was changed"
+                    .to_string()
+            }
+            other => other.to_string(),
+        })?;
+        let mut memory =
+            HeadMemory::open(&paths.data.join(MEMORY_FILE)).map_err(|e| e.to_string())?;
+        memory
+            .remember_identity(identity.head())
+            .map_err(|e| e.to_string())?;
+        sync_identity_records(
+            auth.rounds(),
+            &session.token,
+            &mut identity,
+            keystore.as_ref(),
+            &mut synced,
+            &mut memory,
+        )?;
+        let cfg = SyncConfig {
+            v: SYNC_V,
+            server: auth.rounds().base().to_string(),
+            login: login.to_string(),
+            profile_id: session.profile_id,
+            token: session.token,
+            expires_at: session.expires_at,
+            vaults: BTreeMap::new(),
+        };
+        cfg.save(&paths.sync_file())?;
+        drop(identity);
+        // The vault: pulled the way `init` does on a device with an account.
+        let app = Self::init(paths.clone(), None)?;
+        let mut lines = vec![format!(
+            "recovered: this device ({}) is enrolled in the identity at {} through the recovery kit; logged in as {login} at {server}",
+            device_name(),
+            paths.root.display()
+        )];
+        lines.push(format!(
+            "vault {}: {} ({} live items)",
+            app.vault().context().vault_id,
+            if app.vault_created() {
+                "created (the account had none)"
+            } else {
+                "pulled"
+            },
+            app.vault()
+                .items()
+                .filter(|i| i.state == ItemState::Live && !i.kind.hidden())
+                .count()
+        ));
+        Ok(lines)
+    }
+
+    fn check_root_empty(paths: &Paths) -> Result<(), String> {
+        match ecosystem_identity::Store::at(&paths.root)
+            .probe()
+            .map_err(|e| e.to_string())?
+        {
+            ecosystem_identity::store::Probe::Missing => Ok(()),
+            _ => Err(format!(
+                "an ecosystem identity already exists at {} but this device isn't enrolled in it; \
+                 enrol it from another ecosystem app running on this device, or with the recovery kit",
+                paths.root.display()
+            )),
+        }
     }
 
     /// `lockdown account login` on a device with no identity: logs in
     /// with the password, pulls the identity's record set, opens the root
-    /// key through the account slot (04-security §3) and enrols this
-    /// device, then publishes the record set that lists it. The vault
-    /// arrives with the first `lockdown sync`.
+    /// key through the account slot with the kit's Secret Key (04-security
+    /// §3) and enrols this device, then publishes the record set that
+    /// lists it. The vault arrives with the first `lockdown sync`.
     pub fn enrol_from_account(
         paths: Paths,
         server: &str,
         login: &str,
         password: &str,
+        secret_key: Option<&str>,
     ) -> Result<Vec<String>, String> {
-        match ecosystem_identity::Store::at(&paths.root)
-            .probe()
-            .map_err(|e| e.to_string())?
-        {
-            ecosystem_identity::store::Probe::Missing => {}
-            _ => {
-                return Err(format!(
-                    "an ecosystem identity already exists at {} but this device isn't enrolled in it; \
-                     enrol it from another ecosystem app running on this device, or with the recovery kit",
-                    paths.root.display()
-                ));
-            }
-        }
+        Self::check_root_empty(&paths)?;
         let keystore = Rc::new(
             FileKeystore::open_or_create(&paths.data.join(KEYSTORE_FILE))
                 .map_err(|e| e.to_string())?,
         );
-        let signing = keystore.clone();
-        let binding = DeviceBinding {
-            device_id: keystore.device_id(),
-            device_pub: keystore.device_pub(),
-            sign: Box::new(move |m| {
-                DeviceKeystore::sign(signing.as_ref(), m).map_err(lockdown_crypto::Error::from)
-            }),
-        };
         let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
-        let mut auth = OpaqueAccountAuth::new(transport, login, binding);
+        let mut auth = OpaqueAccountAuth::new(transport, login, binding_of(&keystore));
         let (export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
         let mut synced = SyncedIdentity::open(&paths.data.join(IDENTITY_SYNC_FILE), None)
             .map_err(|e| e.to_string())?;
@@ -730,6 +1106,10 @@ impl App {
             return Err("the server's identity records are for another profile".into());
         }
         let backup = verified.to_backup();
+        let sk = match secret_key {
+            Some(text) => Some(secret_key_bytes(verified.profile.profile_id, text)?),
+            None => None,
+        };
         let mut prepared = PreparedExportKey(Some(export_key));
         let mut identity = Identity::recover_with_account(
             &paths.root,
@@ -739,11 +1119,21 @@ impl App {
             AccountCredentials {
                 auth: &mut prepared,
                 password,
-                secret_key: None,
+                secret_key: sk.as_ref(),
             },
             &backup,
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| match (e, sk.is_some()) {
+            (ecosystem_identity::Error::WrongKey, false) => {
+                "this account's slot needs the Secret Key from the recovery kit beside the password: pass it with --secret-key-stdin or LOCKDOWN_SECRET_KEY (or use `lockdown recover` with the whole kit)"
+                    .to_string()
+            }
+            (ecosystem_identity::Error::WrongKey, true) => {
+                "the password and Secret Key didn't open the account slot: check the Secret Key against the page"
+                    .to_string()
+            }
+            (other, _) => other.to_string(),
+        })?;
         let mut memory =
             HeadMemory::open(&paths.data.join(MEMORY_FILE)).map_err(|e| e.to_string())?;
         memory
@@ -1136,9 +1526,99 @@ fn pull_new_vaults(
     Ok(pulled)
 }
 
+/// This device's binding for the OPAQUE client, from its keystore.
+fn binding_of(keystore: &Rc<FileKeystore>) -> DeviceBinding {
+    let signing = keystore.clone();
+    DeviceBinding {
+        device_id: keystore.device_id(),
+        device_pub: keystore.device_pub(),
+        sign: Box::new(move |m| {
+            DeviceKeystore::sign(signing.as_ref(), m).map_err(lockdown_crypto::Error::from)
+        }),
+    }
+}
+
+/// The printable recovery kit (D69). Shown once; Lockdown keeps no copy.
+pub fn render_kit(kit: &RecoveryKit, account: Option<(&str, &str)>, device: &str) -> String {
+    let (login, server) = account.unwrap_or(("(none yet)", "(none yet)"));
+    let today = lockdown_sync::engine::civil_date(lockdown_vault::Timestamp::now().0);
+    format!(
+        "\
+LOCKDOWN RECOVERY KIT
+=====================
+Keep this page somewhere safe, away from your devices. You need it only
+when every device is gone, or a brand-new device has no old device nearby.
+
+Secret Key:     {sk}
+Recovery code:  {code}
+
+Login name:     {login}
+Server:         {server}
+Profile:        {profile}
+Made:           {today} on {device}
+
+To get back in on a new device:
+  lockdown recover --server {server} --login {login} --password-stdin --kit-stdin
+and give it your password, the Secret Key and the recovery code, one per line.
+Lockdown never asks for this page in an email, a message or a web form.
+",
+        sk = kit.secret_key_text(),
+        code = kit.recovery_code_text(),
+        profile = kit.profile_id(),
+    )
+}
+
+/// The Secret Key's bytes from its printed form. The crate parses a kit
+/// as a whole, so a well-formed recovery code of zeros stands in for the
+/// half that isn't needed here (08-identity-proposal §8).
+fn secret_key_bytes(profile_id: Id, text: &str) -> Result<[u8; 16], String> {
+    let kit = RecoveryKit::from_text(profile_id, text, &"0".repeat(32))
+        .map_err(|e| format!("the Secret Key isn't readable: {e}"))?;
+    Ok(*kit.secret_key().expose())
+}
+
+/// The identity's `account` wrap of the root key, if it has one.
+fn account_envelope(identity: &Identity) -> Option<&KeyEnvelope> {
+    let account_ref = KeyRef::new(KeyRefKind::Account, identity.profile().profile_id);
+    identity
+        .envelopes()
+        .find(|e| e.purpose == Purpose::Irk && e.wrapped_by == account_ref)
+}
+
+/// Whether the account slot opens from the login's export key alone, with
+/// no Secret Key: the shape D60 wrote, to be upgraded (D70).
+fn slot_opens_without_secret_key(identity: &Identity, export_key: &ExportKey) -> bool {
+    let profile_id = identity.profile().profile_id;
+    let Some(envelope) = account_envelope(identity) else {
+        return false;
+    };
+    let Ok(auk) =
+        ecosystem_identity::kdf::account_unlock_key(export_key.expose(), None, &profile_id)
+    else {
+        return false;
+    };
+    let opened: Result<Irk, _> = ecosystem_identity::keys::unwrap_key(
+        envelope,
+        &auk,
+        &ecosystem_identity::keys::aad(profile_id, None, envelope.key_id, Purpose::Irk),
+    );
+    opened.is_ok()
+}
+
 /// An [`AccountAuth`] that hands over one export key already obtained
-/// from a login, so enrolling a new device needs one OPAQUE round, not two.
+/// from a login, so enrolling a new device, or rewriting the account slot
+/// on one that is enrolled, needs one OPAQUE round, not two. Its
+/// `register` is the same hand-over: the account exists on the server
+/// already, and the slot is what is being (re)written.
 struct PreparedExportKey(Option<ExportKey>);
+
+impl PreparedExportKey {
+    fn take(&mut self) -> ecosystem_identity::Result<ExportKey> {
+        self.0.take().ok_or_else(|| {
+            ecosystem_identity::Error::Invalid("the export key was already used".into())
+        })
+    }
+}
 
 impl AccountAuth for PreparedExportKey {
     fn register(
@@ -1146,9 +1626,7 @@ impl AccountAuth for PreparedExportKey {
         _profile_id: &Id,
         _password: &str,
     ) -> ecosystem_identity::Result<ExportKey> {
-        Err(ecosystem_identity::Error::Unsupported(
-            "this login was already run; register through the server".into(),
-        ))
+        self.take()
     }
 
     fn login(
@@ -1156,9 +1634,7 @@ impl AccountAuth for PreparedExportKey {
         _profile_id: &Id,
         _password: &str,
     ) -> ecosystem_identity::Result<ExportKey> {
-        self.0.take().ok_or_else(|| {
-            ecosystem_identity::Error::Invalid("the export key was already used".into())
-        })
+        self.take()
     }
 }
 

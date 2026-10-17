@@ -11,8 +11,14 @@
 //! the identity's devices (D73). The SSH agent and local-socket pairing
 //! are later.
 //!
-//! A password never arrives as an argument, where it would land in shell
-//! history and `ps`: `--password-stdin` or `LOCKDOWN_PASSWORD`.
+//! `kit create`, `kit verify` and `recover` are the recovery kit (D69,
+//! D70): the Secret Key half protects the account slot beside the password.
+//!
+//! A password, a Secret Key or a recovery code never arrives as an
+//! argument, where it would land in shell history and `ps`: they are read
+//! from standard input (`--password-stdin`, `--secret-key-stdin`,
+//! `--kit-stdin`, one per line in that order) or from `LOCKDOWN_PASSWORD`,
+//! `LOCKDOWN_SECRET_KEY` and `LOCKDOWN_RECOVERY_CODE`.
 
 mod app;
 
@@ -80,6 +86,15 @@ enum Command {
         #[command(subcommand)]
         what: DeviceWhat,
     },
+    /// The recovery kit: one printed page with the Secret Key and the
+    /// recovery code.
+    Kit {
+        #[command(subcommand)]
+        what: KitWhat,
+    },
+    /// On a device with nothing on it: get the identity and the vault back
+    /// from the server with the recovery kit and the account password.
+    Recover(RecoverArgs),
     /// Print the current one-time code for an otpauth:// or steam:// URI.
     Code {
         /// The URI. The secret is read from it and never printed.
@@ -114,6 +129,60 @@ enum DeviceWhat {
 }
 
 #[derive(Subcommand, Debug)]
+enum KitWhat {
+    /// Make the recovery kit and print it (or save it where you say). With
+    /// an account, the account password is needed: its slot takes the
+    /// new Secret Key.
+    Create {
+        /// Replace a kit that exists. The old page stops working.
+        #[arg(long)]
+        replace: bool,
+        /// Write the kit to this file (readable only by you) instead of
+        /// printing it. Refused if the file exists.
+        #[arg(long, value_name = "FILE")]
+        save: Option<PathBuf>,
+        /// Read the account password from standard input (else
+        /// LOCKDOWN_PASSWORD).
+        #[arg(long)]
+        password_stdin: bool,
+    },
+    /// Type the kit back in and check it opens this identity. Changes
+    /// nothing unless --drill.
+    Verify {
+        /// Read the Secret Key and the recovery code from standard input,
+        /// one per line (else LOCKDOWN_SECRET_KEY and LOCKDOWN_RECOVERY_CODE).
+        #[arg(long)]
+        kit_stdin: bool,
+        /// Also give the account password (first line of standard input,
+        /// or LOCKDOWN_PASSWORD) to check the Secret Key against the
+        /// account slot.
+        #[arg(long)]
+        password_stdin: bool,
+        /// Record a passing check on the profile (the recovery drill).
+        #[arg(long)]
+        drill: bool,
+    },
+}
+
+#[derive(Args, Debug)]
+struct RecoverArgs {
+    /// The server, as a URL (https://host[:port]).
+    #[arg(long, value_name = "URL")]
+    server: String,
+    /// The login name the account is filed under.
+    #[arg(long, value_name = "NAME")]
+    login: String,
+    /// Read the account password from the first line of standard input
+    /// (else LOCKDOWN_PASSWORD).
+    #[arg(long)]
+    password_stdin: bool,
+    /// Read the Secret Key and the recovery code from the next two lines
+    /// of standard input (else LOCKDOWN_SECRET_KEY and LOCKDOWN_RECOVERY_CODE).
+    #[arg(long)]
+    kit_stdin: bool,
+}
+
+#[derive(Subcommand, Debug)]
 enum AccountWhat {
     /// Make an account on a server for this identity (OPAQUE: the
     /// password never leaves this device).
@@ -135,6 +204,15 @@ struct AccountArgs {
     /// Without it, the LOCKDOWN_PASSWORD environment variable is used.
     #[arg(long)]
     password_stdin: bool,
+    /// Read the kit's Secret Key from the next line of standard input
+    /// (else LOCKDOWN_SECRET_KEY). Needed to enrol a new device through the
+    /// account, and to register when a kit already exists.
+    #[arg(long)]
+    secret_key_stdin: bool,
+    /// Registration only: write the recovery kit that is made to this file
+    /// (readable only by you) instead of printing it.
+    #[arg(long, value_name = "FILE")]
+    kit_file: Option<PathBuf>,
 }
 
 #[derive(Args, Debug)]
@@ -193,22 +271,133 @@ fn match_line(saved: &str, current: &str) -> Result<String, String> {
     Ok(format!("{decision:?}"))
 }
 
+/// Secrets read from standard input, one per line, in the order the flags
+/// name them: password, Secret Key, recovery code. Each is taken at most
+/// once; the environment stands in for a line that was not asked for.
+struct Secrets {
+    lines: std::vec::IntoIter<String>,
+}
+
+impl Secrets {
+    /// Reads standard input when any `*_stdin` flag asks for it.
+    fn read(any_stdin: bool) -> Result<Self, String> {
+        let mut text = String::new();
+        if any_stdin {
+            std::io::stdin()
+                .read_to_string(&mut text)
+                .map_err(|e| format!("couldn't read from stdin: {e}"))?;
+        }
+        Ok(Self {
+            lines: text
+                .lines()
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+                .into_iter(),
+        })
+    }
+
+    fn take(
+        &mut self,
+        from_stdin: bool,
+        var: &str,
+        what: &str,
+        flag: &str,
+    ) -> Result<String, String> {
+        if from_stdin {
+            return match self.lines.next() {
+                Some(line) if !line.trim().is_empty() => Ok(line),
+                _ => Err(format!("no {what} on stdin")),
+            };
+        }
+        match std::env::var(var) {
+            Ok(v) if !v.trim().is_empty() => Ok(v),
+            _ => Err(format!("no {what} given: pass {flag} or set {var}")),
+        }
+    }
+
+    fn password(&mut self, from_stdin: bool) -> Result<String, String> {
+        self.take(
+            from_stdin,
+            "LOCKDOWN_PASSWORD",
+            "password",
+            "--password-stdin",
+        )
+    }
+
+    fn secret_key(&mut self, from_stdin: bool) -> Result<String, String> {
+        self.take(
+            from_stdin,
+            "LOCKDOWN_SECRET_KEY",
+            "Secret Key",
+            "--secret-key-stdin (or --kit-stdin)",
+        )
+    }
+
+    fn recovery_code(&mut self, from_stdin: bool) -> Result<String, String> {
+        self.take(
+            from_stdin,
+            "LOCKDOWN_RECOVERY_CODE",
+            "recovery code",
+            "--kit-stdin",
+        )
+    }
+
+    /// The Secret Key when asked for or set in the environment; `None`
+    /// when neither.
+    fn secret_key_if_given(&mut self, from_stdin: bool) -> Result<Option<String>, String> {
+        if from_stdin || std::env::var_os("LOCKDOWN_SECRET_KEY").is_some_and(|v| !v.is_empty()) {
+            self.secret_key(from_stdin).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// The password when asked for or set in the environment.
+    fn password_if_given(&mut self, from_stdin: bool) -> Result<Option<String>, String> {
+        if from_stdin || std::env::var_os("LOCKDOWN_PASSWORD").is_some_and(|v| !v.is_empty()) {
+            self.password(from_stdin).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 /// The password, from stdin or the environment, never from an argument.
 fn read_password(from_stdin: bool) -> Result<String, String> {
-    if from_stdin {
-        let mut text = String::new();
-        std::io::stdin()
-            .read_to_string(&mut text)
-            .map_err(|e| format!("couldn't read the password from stdin: {e}"))?;
-        let line = text.lines().next().unwrap_or("").to_string();
-        if line.is_empty() {
-            return Err("no password on stdin".into());
-        }
-        return Ok(line);
+    Secrets::read(from_stdin)?.password(from_stdin)
+}
+
+/// Refuses a save target that is already taken, before anything is
+/// written, so a kit that can't be delivered never rewrites the slot.
+fn kit_target_free(save: Option<&PathBuf>) -> Result<(), String> {
+    match save {
+        Some(path) if path.exists() => Err(format!(
+            "{} exists already; choose another file for the kit",
+            path.display()
+        )),
+        _ => Ok(()),
     }
-    match std::env::var("LOCKDOWN_PASSWORD") {
-        Ok(p) if !p.is_empty() => Ok(p),
-        _ => Err("no password given: pass --password-stdin or set LOCKDOWN_PASSWORD".into()),
+}
+
+/// Writes the recovery kit where the person said (readable only by them;
+/// never over a file that exists), or returns it to print.
+fn deliver_kit(text: String, save: Option<&PathBuf>) -> Result<Vec<String>, String> {
+    match save {
+        Some(path) => {
+            if path.exists() {
+                return Err(format!(
+                    "{} exists already; choose another file for the kit",
+                    path.display()
+                ));
+            }
+            lockdown_store::write_private(path, text.as_bytes())
+                .map_err(|e| format!("couldn't write the kit to {}: {e}", path.display()))?;
+            Ok(vec![format!(
+                "recovery kit saved to {} (readable only by you); print it and put the page away",
+                path.display()
+            )])
+        }
+        None => Ok(text.lines().map(str::to_string).collect()),
     }
 }
 
@@ -280,26 +469,97 @@ fn run(cli: Cli) -> Result<Vec<String>, String> {
             let paths = Paths::resolve(cli.root, cli.data)?;
             match what {
                 AccountWhat::Register(args) => {
-                    let password = read_password(args.password_stdin)?;
-                    App::open_existing(paths, persona)?.account_register(
+                    let mut secrets = Secrets::read(args.password_stdin || args.secret_key_stdin)?;
+                    let password = secrets.password(args.password_stdin)?;
+                    let secret_key = secrets.secret_key_if_given(args.secret_key_stdin)?;
+                    let (mut lines, kit) = App::open_existing(paths, persona)?.account_register(
                         &args.server,
                         &args.login,
                         &password,
-                    )
+                        secret_key.as_deref(),
+                    )?;
+                    if let Some(text) = kit {
+                        lines.push(String::new());
+                        lines.extend(deliver_kit(text, args.kit_file.as_ref())?);
+                    }
+                    Ok(lines)
                 }
                 AccountWhat::Login(args) => {
-                    let password = read_password(args.password_stdin)?;
+                    let mut secrets = Secrets::read(args.password_stdin || args.secret_key_stdin)?;
+                    let password = secrets.password(args.password_stdin)?;
+                    let secret_key = secrets.secret_key_if_given(args.secret_key_stdin)?;
                     if app::root_is_empty(&paths)? {
-                        App::enrol_from_account(paths, &args.server, &args.login, &password)
+                        App::enrol_from_account(
+                            paths,
+                            &args.server,
+                            &args.login,
+                            &password,
+                            secret_key.as_deref(),
+                        )
                     } else {
                         App::open_existing(paths, persona)?.account_login(
                             &args.server,
                             &args.login,
                             &password,
+                            secret_key.as_deref(),
                         )
                     }
                 }
             }
+        }
+        Command::Kit { what } => {
+            let paths = Paths::resolve(cli.root, cli.data)?;
+            match what {
+                KitWhat::Create {
+                    replace,
+                    save,
+                    password_stdin,
+                } => {
+                    let mut secrets = Secrets::read(password_stdin)?;
+                    let password = secrets.password_if_given(password_stdin)?;
+                    let target = save.clone();
+                    let (text, notes) = App::open_existing(paths, persona)?.kit_create(
+                        replace,
+                        password.as_deref(),
+                        || kit_target_free(target.as_ref()),
+                    )?;
+                    let mut lines = deliver_kit(text, save.as_ref())?;
+                    lines.push(String::new());
+                    lines.extend(notes);
+                    Ok(lines)
+                }
+                KitWhat::Verify {
+                    kit_stdin,
+                    password_stdin,
+                    drill,
+                } => {
+                    let mut secrets = Secrets::read(kit_stdin || password_stdin)?;
+                    let password = secrets.password_if_given(password_stdin)?;
+                    let secret_key = secrets.secret_key(kit_stdin)?;
+                    let recovery_code = secrets.recovery_code(kit_stdin)?;
+                    App::open_existing(paths, persona)?.kit_verify(
+                        &secret_key,
+                        &recovery_code,
+                        password.as_deref(),
+                        drill,
+                    )
+                }
+            }
+        }
+        Command::Recover(args) => {
+            let paths = Paths::resolve(cli.root, cli.data)?;
+            let mut secrets = Secrets::read(args.password_stdin || args.kit_stdin)?;
+            let password = secrets.password(args.password_stdin)?;
+            let secret_key = secrets.secret_key(args.kit_stdin)?;
+            let recovery_code = secrets.recovery_code(args.kit_stdin)?;
+            App::recover(
+                paths,
+                &args.server,
+                &args.login,
+                &password,
+                &secret_key,
+                &recovery_code,
+            )
         }
         Command::Sync => App::open_for_sync(Paths::resolve(cli.root, cli.data)?, persona)?.sync(),
         Command::Device { what } => {
@@ -388,8 +648,28 @@ mod tests {
                 .get_arguments()
                 .all(|a| a.get_id() != "password")
         );
+        for args in [
+            RecoverArgs::augment_args(clap::Command::new("x")),
+            AccountArgs::augment_args(clap::Command::new("x")),
+        ] {
+            assert!(
+                args.get_arguments()
+                    .all(|a| !["secret_key", "recovery_code", "kit"].contains(&a.get_id().as_str()))
+            );
+        }
         // With neither source set, a clear error.
         unsafe { std::env::remove_var("LOCKDOWN_PASSWORD") };
         assert!(read_password(false).is_err());
+    }
+
+    #[test]
+    fn stdin_secrets_come_in_the_flag_order() {
+        let mut secrets = Secrets {
+            lines: vec!["pw".to_string(), "A1-x".to_string(), "code".to_string()].into_iter(),
+        };
+        assert_eq!(secrets.password(true).unwrap(), "pw");
+        assert_eq!(secrets.secret_key(true).unwrap(), "A1-x");
+        assert_eq!(secrets.recovery_code(true).unwrap(), "code");
+        assert!(secrets.recovery_code(true).is_err());
     }
 }
