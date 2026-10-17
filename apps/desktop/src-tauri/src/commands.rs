@@ -187,6 +187,41 @@ fn copy_with_timer(
     Ok(after.as_secs())
 }
 
+/// Whether the clipboard still holds what Lockdown last copied, for the
+/// copy control's own countdown (unicron's SecretField asks before it
+/// says "Cleared"). `hash` is the hex SHA-256 the component computed for
+/// the bytes it handed over, or `null` when the shell copied by reference
+/// and the component never had them; it is compared with the shell's own
+/// record only, never with the clipboard (clipboard.rs).
+#[tauri::command]
+async fn clipboard_holds(
+    guard: State<'_, ClipboardGuard>,
+    handle: AppHandle,
+    hash: Option<String>,
+) -> AppResult<bool> {
+    let current = handle.clipboard().read_text().ok();
+    Ok(guard.holds(
+        current.as_deref().map(str::as_bytes),
+        hash.as_deref().filter(|h| !h.is_empty()),
+    ))
+}
+
+/// Clears the clipboard now, under the same rule as the timer: only if it
+/// still holds what Lockdown wrote. The component's countdown calls this
+/// at expiry; the shell's own timer runs regardless.
+#[tauri::command]
+async fn clipboard_clear(guard: State<'_, ClipboardGuard>, handle: AppHandle) -> AppResult<()> {
+    let current = handle.clipboard().read_text().ok();
+    if guard.holds(current.as_deref().map(str::as_bytes), None) {
+        handle
+            .clipboard()
+            .clear()
+            .map_err(|e| failed(format!("couldn't clear the clipboard: {e}")))?;
+        guard.forget();
+    }
+    Ok(())
+}
+
 /// Sleeps on the async runtime without pulling tokio into this crate's
 /// dependencies by name.
 async fn tokio_sleep(d: Duration) {
@@ -477,6 +512,8 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         reveal,
         copy_secret,
         copy_code,
+        clipboard_holds,
+        clipboard_clear,
         add_login,
         edit_login,
         trash,

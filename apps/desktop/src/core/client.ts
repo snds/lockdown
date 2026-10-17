@@ -48,6 +48,15 @@ export interface Client {
   copySecret(id: string, fieldId: string, clearAfterSecs?: number, gate?: GateInput): Promise<number>
   /** Copies the code valid now on the Rust side, with the same clipboard timer. */
   copyCode(itemId: string, fieldId: string, clearAfterSecs?: number): Promise<number>
+  /**
+   * Whether the clipboard still holds what the shell last copied. `hash` is
+   * the component's name for the copy (hex SHA-256 of the bytes it handed
+   * over), or `null` when the shell copied by reference; it is compared
+   * with the shell's own record only.
+   */
+  clipboardHolds(hash: string | null): Promise<boolean>
+  /** Clears the clipboard now, only if it still holds what the shell wrote. */
+  clipboardClear(): Promise<void>
   addLogin(input: { site: string; username: string; password: number[]; title?: string }): Promise<string>
   editLogin(input: { id: string; title?: string; username?: string; password?: number[] }): Promise<number>
   trash(id: string): Promise<void>
@@ -108,6 +117,8 @@ export const tauriClient: Client = {
   reveal: (id, fieldId, gate) => callBytes("reveal", { id, fieldId, gate }),
   copySecret: (id, fieldId, clearAfterSecs, gate) => call("copy_secret", { id, fieldId, clearAfterSecs, gate }),
   copyCode: (itemId, fieldId, clearAfterSecs) => call("copy_code", { itemId, fieldId, clearAfterSecs }),
+  clipboardHolds: (hash) => call("clipboard_holds", { hash }),
+  clipboardClear: () => call("clipboard_clear"),
   addLogin: (input) => call("add_login", input),
   editLogin: (input) => call("edit_login", input),
   trash: (id) => call("trash", { id }),

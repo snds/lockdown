@@ -9,17 +9,37 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use sha2::{Digest, Sha256};
+
 /// The default time a copied secret stays on the clipboard.
 pub const DEFAULT_CLEAR_AFTER: Duration = Duration::from_secs(30);
 /// The shortest and longest a person may set (design brief §4).
 pub const MIN_CLEAR_AFTER: Duration = Duration::from_secs(10);
 pub const MAX_CLEAR_AFTER: Duration = Duration::from_secs(90);
 
-/// What the shell remembers about the last copy.
+/// What the shell remembers about the last copy: two hashes of the text
+/// (BLAKE3 for the shell's own timer, SHA-256 so unicron's SecretField,
+/// which names a copy by the hex SHA-256 of the bytes it handed over, can
+/// ask about the right one) and a generation number. Never the text.
 #[derive(Default)]
 pub struct ClipboardGuard {
     generation: AtomicU64,
-    written: Mutex<Option<[u8; 32]>>,
+    written: Mutex<Option<Written>>,
+}
+
+#[derive(Clone, Copy)]
+struct Written {
+    blake3: [u8; 32],
+    sha256: [u8; 32],
+}
+
+fn sha256_hex_of(digest: &[u8; 32]) -> String {
+    digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The hex SHA-256 of `text`, as unicron's SecretField computes it.
+pub fn sha256_hex(text: &[u8]) -> String {
+    sha256_hex_of(&Sha256::digest(text).into())
 }
 
 impl ClipboardGuard {
@@ -28,9 +48,37 @@ impl ClipboardGuard {
     pub fn note_written(&self, text: &[u8]) -> u64 {
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         if let Ok(mut w) = self.written.lock() {
-            *w = Some(*blake3::hash(text).as_bytes());
+            *w = Some(Written {
+                blake3: *blake3::hash(text).as_bytes(),
+                sha256: Sha256::digest(text).into(),
+            });
         }
         generation
+    }
+
+    /// Whether the clipboard that now holds `current` still holds what the
+    /// shell last wrote (`clipboard_holds`, for the component's own timer).
+    /// With `hash` (a hex SHA-256) the question is about that copy in
+    /// particular: a field asking about an older copy after a newer one
+    /// hears no. The hash is only ever compared with the shell's own
+    /// record, never used to test what the clipboard holds, so the
+    /// webview cannot use this to recognise text it did not copy.
+    pub fn holds(&self, current: Option<&[u8]>, hash: Option<&str>) -> bool {
+        let Some(current) = current else {
+            return false;
+        };
+        let Ok(w) = self.written.lock() else {
+            return false;
+        };
+        let Some(written) = w.as_ref() else {
+            return false;
+        };
+        if let Some(hash) = hash
+            && !hash.eq_ignore_ascii_case(&sha256_hex_of(&written.sha256))
+        {
+            return false;
+        }
+        written.blake3 == *blake3::hash(current).as_bytes()
     }
 
     /// Whether the timer of copy `generation` may clear the clipboard that
@@ -44,7 +92,9 @@ impl ClipboardGuard {
             return false;
         };
         match self.written.lock() {
-            Ok(w) => w.as_ref() == Some(blake3::hash(current).as_bytes()),
+            Ok(w) => w
+                .as_ref()
+                .is_some_and(|w| w.blake3 == *blake3::hash(current).as_bytes()),
             Err(_) => false,
         }
     }
@@ -85,6 +135,34 @@ mod tests {
         assert!(guard.should_clear(second, Some(b"correct horse")));
         guard.forget();
         assert!(!guard.should_clear(second, Some(b"correct horse")));
+    }
+
+    #[test]
+    fn clipboard_holds_answers_for_the_shells_own_copy_only() {
+        let guard = ClipboardGuard::default();
+        // Nothing written yet: nothing is ours.
+        assert!(!guard.holds(Some(b"hunter2"), None));
+        guard.note_written(b"hunter2");
+        let ours = sha256_hex(b"hunter2");
+        assert!(guard.holds(Some(b"hunter2"), None));
+        assert!(guard.holds(Some(b"hunter2"), Some(&ours)));
+        assert!(guard.holds(Some(b"hunter2"), Some(&ours.to_uppercase())));
+        // The person copied their own text since.
+        assert!(!guard.holds(Some(b"a shopping list"), Some(&ours)));
+        assert!(!guard.holds(None, Some(&ours)));
+        // A field asking about an older copy after a newer one hears no,
+        // even while the newer one is still there.
+        guard.note_written(b"correct horse");
+        assert!(!guard.holds(Some(b"correct horse"), Some(&ours)));
+        assert!(guard.holds(Some(b"correct horse"), Some(&sha256_hex(b"correct horse"))));
+        // A hash of text the shell never wrote is never confirmed, whatever
+        // the clipboard holds: no oracle.
+        assert!(!guard.holds(
+            Some(b"a shopping list"),
+            Some(&sha256_hex(b"a shopping list"))
+        ));
+        guard.forget();
+        assert!(!guard.holds(Some(b"correct horse"), None));
     }
 
     #[test]

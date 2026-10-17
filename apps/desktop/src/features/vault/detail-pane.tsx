@@ -10,7 +10,7 @@ import { whenLocal } from "@/lib/format"
 import { CodeDisplay } from "./code-display"
 import { CrownJewel } from "./crown-jewel"
 import { kindLabel } from "./list-model"
-import { SecretField, type SecretFormat } from "./secret-field"
+import { ItemField, type SecretFormat } from "./item-field"
 
 interface DetailPaneProps {
   /** The parent keys this pane by item and version, so a change remounts it. */
@@ -73,7 +73,7 @@ export function DetailPane({ id, onEdit, onTrashed, onNotice }: DetailPaneProps)
   }
   const title = item.fields.find((f) => f.field_id === "title")?.value ?? kindLabel(item.kind)
   const trashed = item.state === "trashed"
-  const field = (f: FieldView, format?: SecretFormat) => <SecretField key={f.field_id} itemId={item.id} field={f} onNotice={onNotice} format={format} />
+  const field = (f: FieldView, format?: SecretFormat) => <ItemField key={f.field_id} itemId={item.id} field={f} onNotice={onNotice} format={format} />
   const codeBlocks = (item.fields.filter((f) => f.kind === "totp") ?? []).map((f) => {
     const view = codes.codes?.find((c) => c.field_id === f.field_id)
     return view ? (

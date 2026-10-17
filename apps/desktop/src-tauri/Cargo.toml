@@ -40,6 +40,8 @@ lockdown-app.workspace = true
 # Touch ID / Windows Hello for approvals (D99, D101); nothing on Linux.
 lockdown-platform-auth.workspace = true
 blake3.workspace = true
+# unicron's SecretField names a copy by the hex SHA-256 of its bytes (clipboard.rs).
+sha2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 zeroize.workspace = true

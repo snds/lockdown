@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import { GateProvider } from "@/app/gate"
 import { useLockWatch } from "@/app/lock-watch"
+import { LockedProvider } from "@/app/locked"
 import { SettingsProvider } from "@/app/settings"
 import { AppShell, type Nav } from "@/app/shell"
 import { describeError, useClient } from "@/core/client"
@@ -71,16 +72,18 @@ function Root() {
     return <UnlockScreen reason={lock?.reason ?? null} onOpened={setStatus} />
   }
   return (
-    <AppShell nav={nav} personas={personas} counts={counts} onNavigate={setNav} onLock={lockNow}>
-      {nav.area === "vault" && (
-        <VaultView view={nav.view} rows={rows} error={rowsError} onChanged={reload} onAddCode={() => setNav({ area: "codes", view: nav.view })} onNotice={notice} />
-      )}
-      {nav.area === "codes" && <CodesView rows={rows ?? []} onChanged={reload} onNotice={notice} />}
-      {nav.area === "devices" && <DevicesView status={status} onChanged={refreshStatus} onNotice={notice} />}
-      {nav.area === "recovery" && <RecoveryView status={status} onChanged={refreshStatus} onNotice={notice} />}
-      {nav.area === "status" && <StatusView status={status} onStatus={setStatus} onNotice={notice} />}
-      {nav.area === "settings" && <SettingsView status={status} lock={lock} onLock={setLock} onChanged={refreshStatus} onNotice={notice} />}
-    </AppShell>
+    <LockedProvider value={lock?.locked ?? false}>
+      <AppShell nav={nav} personas={personas} counts={counts} onNavigate={setNav} onLock={lockNow}>
+        {nav.area === "vault" && (
+          <VaultView view={nav.view} rows={rows} error={rowsError} onChanged={reload} onAddCode={() => setNav({ area: "codes", view: nav.view })} onNotice={notice} />
+        )}
+        {nav.area === "codes" && <CodesView rows={rows ?? []} onChanged={reload} onNotice={notice} />}
+        {nav.area === "devices" && <DevicesView status={status} onChanged={refreshStatus} onNotice={notice} />}
+        {nav.area === "recovery" && <RecoveryView status={status} onChanged={refreshStatus} onNotice={notice} />}
+        {nav.area === "status" && <StatusView status={status} onStatus={setStatus} onNotice={notice} />}
+        {nav.area === "settings" && <SettingsView status={status} lock={lock} onLock={setLock} onChanged={refreshStatus} onNotice={notice} />}
+      </AppShell>
+    </LockedProvider>
   )
 }
 

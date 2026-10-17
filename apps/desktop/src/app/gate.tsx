@@ -27,9 +27,11 @@ export type Gated<T> = (gate: GateInput) => Promise<T>
 
 interface GateContextValue {
   run: <T>(call: Gated<T>) => Promise<T>
+  /** The crown-jewel proof collected for the next call, if one is waiting (`use` or `reveal`). */
+  pendingProof: () => "use" | "reveal" | null
 }
 
-const GateContext = createContext<GateContextValue>({ run: (call) => call({}) })
+const GateContext = createContext<GateContextValue>({ run: (call) => call({}), pendingProof: () => null })
 
 interface Pending {
   kind: "password" | "window"
@@ -81,7 +83,7 @@ export function GateProvider({ children }: { children: ReactNode }) {
     close(pending?.kind === "password" ? { password } : { confirmed: true })
   }
 
-  const value = useMemo(() => ({ run }), [run])
+  const value = useMemo(() => ({ run, pendingProof: () => null }), [run])
   return (
     <GateContext.Provider value={value}>
       {children}
