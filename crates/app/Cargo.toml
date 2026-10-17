@@ -1,0 +1,26 @@
+[package]
+name = "lockdown-app"
+description = "The app on top of the core: one command surface the desktop shell uses today and the mobile shells later, with the lock timer and the secret-handling rules enforced here, not in a shell"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+lockdown-crypto.workspace = true
+lockdown-vault.workspace = true
+lockdown-store.workspace = true
+lockdown-sync.workspace = true
+lockdown-matcher.workspace = true
+ecosystem-identity.workspace = true
+serde.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+serde_json.workspace = true
+# Test speed only: the identity crate's lowered Argon2id floor, so a test
+# creates an identity in milliseconds. Never enabled in an app build.
+ecosystem-identity = { workspace = true, features = ["insecure-test-kdf"] }
+lockdown-crypto = { workspace = true, features = ["insecure-test-kdf"] }
