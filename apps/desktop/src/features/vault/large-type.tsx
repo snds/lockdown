@@ -24,7 +24,7 @@ interface LargeTypeButtonProps {
  * the screen awake and raising brightness are a phone's hooks; on desktop
  * they are no-ops, left out here.
  */
-export function LargeTypeButton({ title, getSecret, groupSize = 3 }: LargeTypeButtonProps) {
+export function ShowLargeType({ title, getSecret, groupSize = 3 }: LargeTypeButtonProps) {
   const [open, setOpen] = useState(false)
   return (
     <>
@@ -38,9 +38,9 @@ export function LargeTypeButton({ title, getSecret, groupSize = 3 }: LargeTypeBu
 }
 
 /** Large type for one hidden field of an item, through the core's `reveal`. */
-export function FieldLargeType({ itemId, fieldId, title }: { itemId: string; fieldId: string; title: string }) {
+export function ShowFieldLargeType({ itemId, fieldId, title }: { itemId: string; fieldId: string; title: string }) {
   const client = useClient()
   const gate = useGate()
   const getSecret = useCallback(() => gate.run((g) => client.reveal(itemId, fieldId, g)), [client, gate, itemId, fieldId])
-  return <LargeTypeButton title={title} getSecret={getSecret} />
+  return <ShowLargeType title={title} getSecret={getSecret} />
 }

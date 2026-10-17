@@ -137,3 +137,29 @@ export function groupRows(rows: ItemSummary[], groupBy: GroupBy): RowGroup[] {
 export function buildList(rows: ItemSummary[], view: ListView, query: string, sort: SortKey, groupBy: GroupBy): RowGroup[] {
   return groupRows(sortRows(searchRows(rowsIn(rows, view), query), sort), groupBy)
 }
+
+/** The marker a conflict copy's title carries (`lockdown_app::views::CONFLICT_MARK`, D58). */
+export const CONFLICT_MARK = " (conflict copy from "
+
+/** The title both copies share: the marker and what follows it stripped. */
+export function baseTitle(title: string): string {
+  const at = title.indexOf(CONFLICT_MARK)
+  return at < 0 ? title : title.slice(0, at)
+}
+
+/**
+ * The other half of a conflict (D58): for a conflict copy, the live item it
+ * was split from; for an item that has conflict copies, the newest of them.
+ * `null` when the item is in no conflict, or its other half is gone.
+ */
+export function conflictPair(rows: ItemSummary[], id: string): ItemSummary | null {
+  const me = rows.find((r) => r.id === id)
+  if (!me) return null
+  const live = rows.filter((r) => r.id !== id && r.state === "live" && r.kind === me.kind)
+  if (me.conflict_copy) {
+    const base = baseTitle(me.title)
+    return live.find((r) => !r.conflict_copy && r.title === base) ?? null
+  }
+  const copies = live.filter((r) => r.conflict_copy && baseTitle(r.title) === me.title)
+  return copies.sort((a, b) => b.edited_at - a.edited_at)[0] ?? null
+}

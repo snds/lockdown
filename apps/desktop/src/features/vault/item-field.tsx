@@ -11,7 +11,7 @@ import { describeError, useClient } from "@/core/client"
 import type { FieldView } from "@/core/types"
 
 import { CROWN_JEWEL_REVEAL_S } from "./crown-jewel"
-import { FieldLargeType } from "./large-type"
+import { ShowFieldLargeType } from "./large-type"
 
 export type { SecretFormat }
 
@@ -115,7 +115,7 @@ export function ItemField({ itemId, field, onNotice, format = "plain", largeType
         locked={locked}
         description={error ?? undefined}
       >
-        {largeType && <FieldLargeType itemId={itemId} fieldId={fieldId} title={largeType} />}
+        {largeType && <ShowFieldLargeType itemId={itemId} fieldId={fieldId} title={largeType} />}
       </SecretField>
     )
   }

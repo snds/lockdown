@@ -178,11 +178,16 @@ export function VaultView({ view, rows, error, onChanged, onAddCode, onNotice }:
             <DetailPane
               key={`${selected}:${version}`}
               id={selected}
+              rows={rows ?? []}
               onEdit={(item) => setEditor({ open: true, item })}
               onTrashed={() => {
                 setSelected(null)
                 bump()
                 onNotice("Moved to the trash.")
+              }}
+              onChanged={(text) => {
+                bump()
+                onNotice(text)
               }}
               onNotice={onNotice}
             />

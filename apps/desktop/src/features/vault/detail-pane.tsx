@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from "react"
 import { Badge, Button, Dialog, DialogAction, DialogActions, DialogContent, DialogDescription, DialogHeader, DialogTitle, Icon, ItemGroup, Spinner } from "@unicron/ui"
 
 import { describeError, useClient } from "@/core/client"
-import type { FieldView, ItemDetail } from "@/core/types"
+import type { FieldView, ItemDetail, ItemSummary } from "@/core/types"
 import { codeKey, useCodes } from "@/features/codes/use-codes"
 import { whenLocal } from "@/lib/format"
 
@@ -11,30 +11,40 @@ import { ItemCodeDisplay } from "./code-display"
 import { RiskTierBadge } from "@unicron/ui/security/risk-tier-badge"
 
 import { ItemCrownJewel } from "./crown-jewel"
-import { kindLabel } from "./list-model"
+import { conflictPair, kindLabel } from "./list-model"
 import { ItemField, type SecretFormat } from "./item-field"
-import { LargeTypeButton } from "./large-type"
+import { ShowLargeType } from "./large-type"
 
 interface DetailPaneProps {
   /** The parent keys this pane by item and version, so a change remounts it. */
   id: string
+  /** The list's rows, for the conflict's other half (D58). */
+  rows: ItemSummary[]
   onEdit: (item: ItemDetail) => void
   onTrashed: () => void
+  /** The item came back from the trash, or a conflict was resolved: reload, keep the selection. */
+  onChanged: (notice: string) => void
   onNotice: (text: string) => void
 }
+
+type Resolve = "keep-this" | "keep-other" 
 
 /**
  * One item in full, laid out by kind (brief §3.1): a Login's methods block
  * first (password, passkeys, codes), then its URLs, then the rest; a Code's
  * display full width; a Note's body; a Card's number in groups of four
  * with CVC and PIN masked; every other kind as its field list. A crown
- * jewel's whole detail sits under the treatment (D98).
+ * jewel's whole detail sits under the treatment (D98). A trashed item
+ * offers Restore; a conflict (D58) offers to keep this copy or the other,
+ * which trashes the loser after a confirm, so nothing is destroyed.
  */
-export function DetailPane({ id, onEdit, onTrashed, onNotice }: DetailPaneProps) {
+export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice }: DetailPaneProps) {
   const client = useClient()
   const [item, setItem] = useState<ItemDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [confirm, setConfirm] = useState(false)
+  const [resolving, setResolving] = useState<Resolve | null>(null)
+  const other = conflictPair(rows, id)
 
   useEffect(() => {
     let live = true
@@ -55,6 +65,32 @@ export function DetailPane({ id, onEdit, onTrashed, onNotice }: DetailPaneProps)
       await client.trash(id)
       setConfirm(false)
       onTrashed()
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }
+
+  const restore = async () => {
+    try {
+      await client.restore(id)
+      onChanged("Restored.")
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }
+
+  /** Keep one copy of a conflict: the other goes to the trash, readable there through its grace period. */
+  const resolve = async (which: Resolve) => {
+    if (!other) return
+    setResolving(null)
+    try {
+      if (which === "keep-this") {
+        await client.trash(other.id)
+        onChanged("Kept this copy; the other is in the trash.")
+      } else {
+        await client.trash(id)
+        onTrashed()
+      }
     } catch (e) {
       setError(describeError(e))
     }
@@ -85,7 +121,7 @@ export function DetailPane({ id, onEdit, onTrashed, onNotice }: DetailPaneProps)
       <div key={f.field_id} className="flex flex-col items-start gap-1">
         <ItemCodeDisplay code={view} now={codes.now} expiresAt={codes.expiresAt[codeKey(view)] ?? null} />
         {item.kind === "code" && (
-          <LargeTypeButton
+          <ShowLargeType
             title={`Code · ${[view.issuer, view.account].filter(Boolean).join(" · ") || title}`}
             getSecret={() => Promise.resolve(new TextEncoder().encode(view.current))}
           />
@@ -112,6 +148,14 @@ export function DetailPane({ id, onEdit, onTrashed, onNotice }: DetailPaneProps)
             {trashed ? " · in the trash" : ""}
           </p>
         </div>
+        {trashed && (
+          <div className="flex shrink-0 items-center gap-1">
+            <Button variant="outline" size="sm" onClick={restore}>
+              <Icon name="restore_from_trash" data-icon="inline-start" />
+              Restore
+            </Button>
+          </div>
+        )}
         {!trashed && (
           <div className="flex shrink-0 items-center gap-1">
             {item.kind === "login" && (
@@ -127,7 +171,48 @@ export function DetailPane({ id, onEdit, onTrashed, onNotice }: DetailPaneProps)
           </div>
         )}
       </header>
+      {!trashed && other && (
+        <section aria-label="Resolve the conflict" className="flex flex-col gap-2 rounded-xl border p-3 text-sm">
+          <p className="flex items-center gap-2">
+            <Badge variant="outline">Needs attention</Badge>
+            <span>
+              Two devices changed this item at the same time, so both versions were kept (D58). Keep one; the other goes to the trash,
+              where it stays readable through its grace period.
+            </span>
+          </p>
+          <p className="text-muted-foreground">
+            The other copy: "{other.title}", edited {whenLocal(other.edited_at)}.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => setResolving("keep-this")}>
+              Keep this copy
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setResolving("keep-other")}>
+              Keep the other
+            </Button>
+          </div>
+        </section>
+      )}
       {item.crown_jewel ? <ItemCrownJewel title={title}>{body}</ItemCrownJewel> : body}
+      <Dialog open={resolving !== null} onOpenChange={(o) => !o && setResolving(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{resolving === "keep-this" ? "Keep this copy?" : "Keep the other copy?"}</DialogTitle>
+            <DialogDescription>
+              {resolving === "keep-this" ? `"${other?.title}"` : `"${title}"`} moves to the trash. Nothing is destroyed: it stays readable in
+              Deleted through its grace period and can be restored from there.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogActions>
+            <DialogAction kind="cancel" onClick={() => setResolving(null)}>
+              Cancel
+            </DialogAction>
+            <DialogAction kind="destructive" onClick={() => resolving && void resolve(resolving)}>
+              {resolving === "keep-this" ? "Trash the other" : "Trash this copy"}
+            </DialogAction>
+          </DialogActions>
+        </DialogContent>
+      </Dialog>
       <Dialog open={confirm} onOpenChange={setConfirm}>
         <DialogContent>
           <DialogHeader>
