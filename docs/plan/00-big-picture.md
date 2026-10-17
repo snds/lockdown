@@ -5,7 +5,7 @@ _Status: plan set v0.1, 2026-10-15. Start here. Then read the rest of `docs/plan
 ## For future agent
 
 - **TL;DR:** Lockdown is a cross-platform password manager, passkey provider, and authenticator that meets the incumbents on every feature and beats them on trust. It is one of three apps in an ecosystem (with Mailbird and Synapse) that each work alone and work better together. The decisions are in `decisions.md`; the evidence is in `../research/2026-10-15/`.
-- **Where we are:** research done, thirty-seven decisions recorded. The identity crate is built and lives at `snds/ecosystem-identity` (D34). The Rust workspace is scaffolded (D35, `07-workspace.md`): matcher, codes, vault model, CXF and crypto helpers are real; the rest are compile-clean skeletons. D36 and D37 accepted by default under D38 (security details are the building session's call, batched for the audit).
+- **Where we are:** research done, sixty-eight decisions recorded. The identity crate lives at `snds/ecosystem-identity` (D34). The Rust workspace (`07-workspace.md`) now has a SQLite vault store, the identity adoption path, a server with OPAQUE login and verifiable sync, the extension matcher boundary with signed data and a browser red team, and a CLI that drives all of it; 125 tests. Security-model details are decided by the building session under D38 and batched as audit items; the rows flagged for Sean are the user-visible ones.
 
 ## What it is
 
