@@ -136,3 +136,31 @@ None needed. No envelope with the new purposes exists in any identity store yet;
 
 1. Whether `KeyRefKind::Item` should carry the item id (as proposed, mirroring D20) or a separate Item Key id. Lockdown uses the item id; it keeps the item's own envelope self-describing.
 2. Whether `Purpose::Share` should be the Vault Key's purpose when wrapped to a member's receiving key, or `Purpose::Vault` with `wrapped_by: peer`. Lockdown leans to the second: the purpose says what the key is, `wrapped_by` says who opens it.
+
+## 8. A second proposal: the record set, revocation, and the ISK signer (from slice 3)
+
+_Added 2026-10-17 by the session that built the recovery kit and the cross-machine identity sync (`07-workspace.md` §4 steps 6 and 7; D70–D74). As in §1–§7, nothing here is implemented in the crate; Lockdown runs on its own types until the owner accepts, amends or declines. These are additive and independent of §2–§6._
+
+### 8.1 A signed, server-orderable record set
+
+Lockdown needs the identity's records to travel between machines as one signed, append-only unit the server can order but never rewrite (D71). The crate's `Backup` is a flat snapshot with no sequence, no `prev_hash` and no signature over the set as a whole, so two machines' backups can't be told apart by age and a hostile server could mix them. Lockdown built `lockdown_vault::identity_set` on top of the crate's records: an `IdentityManifest { v, profile_id, seq, prev_hash, entries: [{path, hash}], revocations, written_by, written_at, sig }`, signed by the ISK and hash-chained, listing each record by its store path and BLAKE3 hash.
+
+**Ask:** the crate owns this, so every ecosystem app syncs records the same way. The natural home is a `manifest`-shaped record the crate already signs with the ISK, extended with the per-device revocation boundary below, plus a builder (`Identity::record_set(prev, revocations)`) and a verifier (`RecordSet::verify(expected_isk)`) that reuse the crate's own record verification. Until then Lockdown's `identity_set` is the reference.
+
+### 8.2 Device revocation with a per-vault boundary
+
+The crate's `Device` already carries `revoked_at`, but nothing says *where* a revoked device's writes stop, and `device_keys` trusts every device's key revoked or not (07-workspace §5 q.6, now closed locally). Lockdown added, outside the crate, a `Revocation { device_id, vaults: [{vault_id, seq}] }` carried by the identity manifest: the newest head `seq` that device may have signed in each vault. The rule is monotonic — a revocation never comes back, a boundary never moves (D73).
+
+**Ask:** a `Device` method or a manifest field for the boundary, and a crate rule that a revocation is append-only, so `device_keys` can answer "trusted, and up to which head" rather than a bare key. Lockdown's `check_revocations` and `Vault::revoke_device` are the reference.
+
+### 8.3 A signer the app can borrow without re-deriving the ISK
+
+Revoking, renaming and signing the manifest need the ISK, which the crate derives from the IRK (`signing_key`) but exposes only as a free function over an `Irk` the app has to unwrap itself (D72). Lockdown does exactly that — keystore → device wrap → `signing_key` → check against `isk_pub` — but it means the app touches the root key for an ordinary record edit.
+
+**Ask:** record-editing calls on `Identity` that sign with the ISK internally and never hand it out: `Identity::revoke_device(device_id)`, `Identity::rename_device(device_id, name)`, and the record-set builder of §8.1. Then the app never re-derives a signing key, and §4's "these envelopes may be ISK- **or** device-signed" question stays the only place the app signs at all.
+
+### 8.4 A structured machine label on `Device`
+
+D68/D74 name a device `Lockdown on <hostname>` by convention in the `name` field. A first-class optional field (`Device.machine: Option<String>`, the hostname alone) would let every app show "<app> on <machine>" without parsing a display string, and let a future UI group an identity's devices by machine.
+
+**Ask:** an additive `Device.machine` with the usual `skip_serializing_if`, set at enrolment. Until then `name` carries both.

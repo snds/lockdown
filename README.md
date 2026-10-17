@@ -43,8 +43,8 @@ crates/
   ffi           secret handles, redacted views, one-shot reveals                (03-architecture §3, §8)
   wasm          the matcher boundary and one-time codes over wasm-bindgen       (03-architecture §4, 09-extension-boundary)
 bins/
-  cli           `lockdown init | add login | edit | list | show | status | account register | account login | sync | code | match`
-  server        axum: OPAQUE login, sessions, vault heads and items, SQLite     (03-architecture §5, 05-self-host)
+  cli           `lockdown init | add login | edit | list | show | status | account register | account login | sync | kit create|verify | recover | device list|revoke | code | match`
+  server        axum: OPAQUE login, sessions, the identity record set, vault heads and items, SQLite (03-architecture §5, 05-self-host)
 extension/      the wasm build script, the JSON schema, the Playwright red team  (09-extension-boundary)
 ```
 
@@ -56,7 +56,7 @@ Stable Rust (`rust-toolchain.toml`; MSRV 1.90) and network access to crates.io a
 
 ```sh
 cargo build                         # the default members: every pure-Rust crate
-cargo test --workspace              # 125 tests across 14 crates
+cargo test --workspace              # 132 tests across 14 crates
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 cargo deny check                    # cargo install cargo-deny --locked
@@ -65,11 +65,12 @@ cargo run -p lockdown-cli -- --root /tmp/snds/identity init            # creates
 echo 'hunter2' | cargo run -p lockdown-cli -- --root /tmp/snds/identity add login --site https://example.com --username me --password-stdin
 cargo run -p lockdown-cli -- --root /tmp/snds/identity list
 cargo run -p lockdown-server -- --data /tmp/lockdown-server   # listens on 127.0.0.1:8787 (--listen, LOCKDOWN_LISTEN)
-echo 'a long account password' | cargo run -p lockdown-cli -- --root /tmp/snds/identity account register --server http://127.0.0.1:8787 --login me@example.com --password-stdin
+echo 'a long account password' | cargo run -p lockdown-cli -- --root /tmp/snds/identity account register --server http://127.0.0.1:8787 --login me@example.com --password-stdin   # prints the recovery kit: a Secret Key and a recovery code; keep the page
 cargo run -p lockdown-cli -- --root /tmp/snds/identity sync
+cargo run -p lockdown-cli -- --root /tmp/snds/identity device list
 ```
 
-A second machine (or a second root on this one) joins with `account login` on an empty root, then `sync`. The server is plain HTTP only on localhost; put TLS in front of it anywhere else (05-self-host §3).
+A second machine with nothing on it comes back with the recovery kit: `recover --server … --login … --password-stdin --kit-stdin`, giving the password, the Secret Key and the recovery code one per line; it enrols and pulls the vault. A machine that already holds the identity uses `account login` (with `--secret-key-stdin` on an account made before the kit existed). The Secret Key from the kit is needed beside the password to open the account on any new device. A lost device is cut off with `device revoke <id>`. The server is plain HTTP only on localhost; put TLS in front of it anywhere else (05-self-host §3).
 
 CI (`.github/workflows/ci.yml`) runs the same four checks on Ubuntu and macOS, plus `cargo-deny`, plus the wasm build and the browser red team.
 
