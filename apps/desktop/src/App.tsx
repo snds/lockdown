@@ -8,11 +8,13 @@ import { GateProvider } from "@/app/gate"
 import { useLockWatch } from "@/app/lock-watch"
 import { LockedProvider } from "@/app/locked"
 import { SettingsProvider } from "@/app/settings"
+import { TemplatesProvider } from "@/app/templates"
 import { AppShell, type Nav } from "@/app/shell"
 import { describeError, useClient } from "@/core/client"
 import type { ItemSummary, LockState, PersonaInfo, Status } from "@/core/types"
 import { CodesView } from "@/features/codes/codes-view"
 import { DevicesView } from "@/features/devices/devices-view"
+import { QuickPalette } from "@/features/palette/quick-palette"
 import { RecoveryView } from "@/features/recovery/recovery-view"
 import { SettingsView } from "@/features/settings/settings-view"
 import { StatusView } from "@/features/status/status-view"
@@ -36,12 +38,15 @@ function Root() {
   const [rows, setRows] = useState<ItemSummary[] | null>(null)
   const [rowsError, setRowsError] = useState<string | null>(null)
   const [personas, setPersonas] = useState<PersonaInfo[]>([])
+  const [selected, setSelected] = useState<string | null>(null)
+  const [palette, setPalette] = useState(false)
 
   const onLockState = useCallback((state: LockState) => {
     setLock(state)
     if (state.locked) {
       setStatus(null)
       setRows(null)
+      setPalette(false)
     }
   }, [])
   useLockWatch(onLockState)
@@ -66,7 +71,9 @@ function Root() {
     reload()
   }
   const lockNow = () => client.lock().then(() => setStatus(null)).catch((e) => toast.error(describeError(e)))
-  const notice = (text: string) => toast(text)
+  const notice = useCallback((text: string) => {
+    toast(text)
+  }, [])
   const counts = useMemo(() => countViews(rows ?? []), [rows])
 
   if (!status) {
@@ -85,7 +92,16 @@ function Root() {
     <LockedProvider value={lock?.locked ?? false}>
       <AppShell nav={nav} personas={personas} counts={counts} onNavigate={setNav} onLock={lockNow}>
         {nav.area === "vault" && (
-          <VaultView view={nav.view} rows={rows} error={rowsError} onChanged={reload} onAddCode={() => setNav({ area: "codes", view: nav.view })} onNotice={notice} />
+          <VaultView
+            view={nav.view}
+            rows={rows}
+            error={rowsError}
+            onChanged={reload}
+            onNotice={notice}
+            selected={selected}
+            onSelect={setSelected}
+            onPalette={() => setPalette(true)}
+          />
         )}
         {nav.area === "codes" && <CodesView rows={rows ?? []} onChanged={reload} />}
         {nav.area === "devices" && <DevicesView status={status} onChanged={refreshStatus} onNotice={notice} />}
@@ -93,6 +109,16 @@ function Root() {
         {nav.area === "status" && <StatusView status={status} onStatus={setStatus} onNotice={notice} />}
         {nav.area === "settings" && <SettingsView status={status} lock={lock} onLock={setLock} onChanged={refreshStatus} onNotice={notice} />}
       </AppShell>
+      <QuickPalette
+        open={palette}
+        onOpenChange={setPalette}
+        rows={rows ?? []}
+        onOpen={(id) => {
+          setNav({ area: "vault", view: "all" })
+          setSelected(id)
+        }}
+        onNotice={notice}
+      />
     </LockedProvider>
   )
 }
@@ -102,9 +128,11 @@ export default function App() {
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <TooltipProvider>
         <SettingsProvider>
-          <GateProvider>
-            <Root />
-          </GateProvider>
+          <TemplatesProvider>
+            <GateProvider>
+              <Root />
+            </GateProvider>
+          </TemplatesProvider>
         </SettingsProvider>
         <Toaster position="bottom-center" />
       </TooltipProvider>

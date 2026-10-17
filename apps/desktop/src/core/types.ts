@@ -55,6 +55,18 @@ export interface ItemSummary {
   conflict_copy: boolean
   warnings: string[]
   views: SmartView[]
+  /** The template's plain field under the title, or the username; empty for a crown jewel (title only). */
+  subtitle: string
+  /** What the row's quick copy takes (palette, copy button), when the item holds it. */
+  copy: CopyTarget | null
+}
+
+/** One value a row offers to copy, by id and field: never the value. */
+export interface CopyTarget {
+  field_id: string
+  how: "secret" | "code"
+  /** In plain words: `password`, `code`, `Wi-Fi password`, `card number`. */
+  label: string
 }
 
 export interface FieldView {
@@ -209,4 +221,88 @@ export interface ApprovalRoute {
   route: "platform" | "password" | "window"
   /** `Touch ID`, `Windows Hello`, `password` or `window`. */
   method: string
+}
+
+// --- templates (lockdown_vault::template, D110) ------------------------------------
+
+export type Control =
+  | "text"
+  | "multiline"
+  | "secret"
+  | "secret-multiline"
+  | "url"
+  | "email"
+  | "phone"
+  | "number"
+  | "date"
+  | "month"
+  | "select"
+  | "boolean"
+  | "totp"
+  | "passkey"
+
+export interface GeneratorView {
+  length: number
+  symbols: boolean
+  unambiguous: boolean
+  /** "20 characters: letters, digits and symbols". */
+  words: string
+}
+
+export interface FieldTemplateView {
+  field_id: string
+  label: string
+  control: Control
+  /** Sent as bytes; comes back only through `reveal`. */
+  secret: boolean
+  required: boolean
+  crown_jewel: boolean
+  fill: "fill" | "confirm" | "never"
+  generator: GeneratorView | null
+  options: string[]
+  section: string
+  grouped: boolean
+  hint: string
+}
+
+export interface TemplateView {
+  kind: string
+  /** Singular, plain words: "Wi-Fi network". */
+  name: string
+  summary: string
+  creatable: boolean
+  /** Always a crown jewel; the person cannot opt down. */
+  crown_jewel: boolean
+  autofill: boolean
+  primary: string | null
+  subtitle: string | null
+  fields: FieldTemplateView[]
+}
+
+export interface CustomKindView {
+  /** A `FieldView.kind`: `text`, `hidden`, `url`, … */
+  kind: string
+  label: string
+}
+
+export interface Templates {
+  kinds: TemplateView[]
+  custom_kinds: CustomKindView[]
+}
+
+/**
+ * One field of an add or an edit (src-tauri/src/items.rs). An edit names
+ * every field the item has: `keep` for a secret the person did not
+ * retype, so it never crosses back. A secret is a byte array, never a string.
+ */
+export interface FieldChangeInput {
+  /** Omitted for a field the person adds by hand. */
+  field_id?: string
+  label?: string
+  /** For a field added by hand: a `CustomKindView.kind`. */
+  kind?: string
+  action: "keep" | "set" | "generate" | "remove"
+  text?: string
+  secret?: number[]
+  flag?: boolean
 }

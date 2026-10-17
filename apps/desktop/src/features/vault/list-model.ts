@@ -91,11 +91,11 @@ export function countViews(rows: ItemSummary[]): Record<ListView, number> {
   return counts
 }
 
-/** A search over the words a row shows: title, site, username. */
+/** A search over the words a row shows: title, site, username, and the subtitle its template names (a network, a card's holder). */
 export function searchRows(rows: ItemSummary[], query: string): ItemSummary[] {
   const q = query.trim().toLowerCase()
   if (!q) return rows
-  return rows.filter((r) => [r.title, r.site, r.username].some((s) => s.toLowerCase().includes(q)))
+  return rows.filter((r) => [r.title, r.site, r.username, r.subtitle].some((s) => s.toLowerCase().includes(q)))
 }
 
 const byTitle = (a: ItemSummary, b: ItemSummary) =>

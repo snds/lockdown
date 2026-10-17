@@ -8,7 +8,7 @@ import { useGate } from "@/app/gate"
 import { useLocked } from "@/app/locked"
 import { useSettings } from "@/app/settings"
 import { describeError, useClient } from "@/core/client"
-import type { FieldView } from "@/core/types"
+import type { Control, FieldView } from "@/core/types"
 
 import { CROWN_JEWEL_REVEAL_S } from "./crown-jewel"
 import { ShowFieldLargeType } from "./large-type"
@@ -24,6 +24,8 @@ interface ItemFieldProps {
   format?: SecretFormat
   /** Offer "Show large type" for this hidden field, named so ("Wi-Fi password · Home"). */
   largeType?: string
+  /** The template's control, when the field is in one: how a plain value is drawn (yes / no, paragraphs). */
+  control?: Control
 }
 
 function formatPlain(text: string, format: SecretFormat): string {
@@ -54,7 +56,7 @@ function formatPlain(text: string, format: SecretFormat): string {
  * outlive the gate's dialog or the OS prompt), and a copy fetches nothing
  * for the webview: the core copies by reference after its own `Use` gate.
  */
-export function ItemField({ itemId, field, onNotice, format = "plain", largeType }: ItemFieldProps) {
+export function ItemField({ itemId, field, onNotice, format = "plain", largeType, control }: ItemFieldProps) {
   const client = useClient()
   const gate = useGate()
   const { settings } = useSettings()
@@ -120,7 +122,9 @@ export function ItemField({ itemId, field, onNotice, format = "plain", largeType
     )
   }
 
-  const value = formatPlain(field.value ?? "", format)
+  const boolean = control === "boolean" || field.kind === "boolean"
+  const multiline = control === "multiline" || (field.value ?? "").includes("\n")
+  const value = boolean ? (field.value === "true" ? "Yes" : "No") : formatPlain(field.value ?? "", format)
   const copyPlain = async () => {
     if (!field.value) return
     try {
@@ -134,9 +138,7 @@ export function ItemField({ itemId, field, onNotice, format = "plain", largeType
     <Item variant="outline" size="sm" data-row="">
       <ItemContent>
         <ItemDescription>{field.label}</ItemDescription>
-        <ItemTitle>
-          <code>{value}</code>
-        </ItemTitle>
+        <ItemTitle>{multiline ? <span className="whitespace-pre-wrap">{value}</span> : boolean ? value : <code>{value}</code>}</ItemTitle>
         {error && <ItemDescription role="alert">{error}</ItemDescription>}
       </ItemContent>
       <ItemActions>
@@ -146,7 +148,8 @@ export function ItemField({ itemId, field, onNotice, format = "plain", largeType
             Open
           </Button>
         ) : (
-          field.value && (
+          field.value &&
+          !boolean && (
             <Button variant="ghost" size="sm" onClick={copyPlain}>
               <Icon name="content_copy" data-icon="inline-start" />
               Copy

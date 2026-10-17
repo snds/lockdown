@@ -2,8 +2,13 @@ import { useMemo, useState, type FormEvent } from "react"
 
 import {
   Button,
+  Dialog,
   DialogAction,
   DialogActions,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
   Empty,
   EmptyDescription,
   EmptyHeader,
@@ -18,11 +23,6 @@ import {
   Input,
   NativeSelect,
   NativeSelectOption,
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
   Spinner,
 } from "@unicron/ui"
 
@@ -91,7 +91,7 @@ export function CodesView({ rows, onChanged }: CodesViewProps) {
           ))}
         </CodeDisplayList>
       </div>
-      <AddCodeSheet
+      <AddCodeDialog
         open={adding}
         logins={rows.filter((r) => r.kind === "login" && r.state === "live")}
         onClose={() => setAdding(false)}
@@ -105,7 +105,7 @@ export function CodesView({ rows, onChanged }: CodesViewProps) {
   )
 }
 
-function AddCodeSheet({ open, logins, onClose, onAdded }: { open: boolean; logins: ItemSummary[]; onClose: () => void; onAdded: () => void }) {
+function AddCodeDialog({ open, logins, onClose, onAdded }: { open: boolean; logins: ItemSummary[]; onClose: () => void; onAdded: () => void }) {
   const client = useClient()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -127,13 +127,13 @@ function AddCodeSheet({ open, logins, onClose, onAdded }: { open: boolean; login
     }
   }
   return (
-    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent>
-        <form onSubmit={submit} className="flex h-full flex-col gap-4 p-4">
-          <SheetHeader className="p-0">
-            <SheetTitle>Add a code</SheetTitle>
-            <SheetDescription>Paste the otpauth:// or steam:// link the site gave you. The set-up is checked here before it is kept.</SheetDescription>
-          </SheetHeader>
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent size="md">
+        <form onSubmit={submit} className="grid gap-4">
+          <DialogHeader>
+            <DialogTitle>Add a code</DialogTitle>
+            <DialogDescription>Paste the otpauth:// or steam:// link the site gave you. The set-up is checked here before it is kept.</DialogDescription>
+          </DialogHeader>
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="code-uri">Set-up link</FieldLabel>
@@ -158,12 +158,8 @@ function AddCodeSheet({ open, logins, onClose, onAdded }: { open: boolean; login
               <FieldDescription>For a standalone code; left empty, the issuer and account are used.</FieldDescription>
             </Field>
           </FieldGroup>
-          {error && (
-            <FieldError role="alert" className="text-sm">
-              {error}
-            </FieldError>
-          )}
-          <DialogActions className="mt-auto">
+          {error && <FieldError role="alert">{error}</FieldError>}
+          <DialogActions>
             <DialogAction kind="cancel" type="button" onClick={onClose} disabled={busy}>
               Cancel
             </DialogAction>
@@ -172,7 +168,7 @@ function AddCodeSheet({ open, logins, onClose, onAdded }: { open: boolean; login
             </DialogAction>
           </DialogActions>
         </form>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }

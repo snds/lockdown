@@ -16,6 +16,8 @@ function row(over: Partial<ItemSummary> & { id: string; title: string; kind: str
     conflict_copy: false,
     warnings: [],
     views: [],
+    subtitle: "",
+    copy: null,
     ...over,
   }
 }

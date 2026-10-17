@@ -44,7 +44,7 @@ export function OncePage({ page, onClose }: OncePageProps) {
   const recoveryCode = useCallback(() => Promise.resolve(encoder.encode(typed(values.recoveryCode ?? ""))), [encoder, values.recoveryCode])
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent data-print-page="" className="max-w-xl">
+      <DialogContent data-print-page="" size="xl">
         <DialogHeader>
           <DialogTitle>{page?.title}</DialogTitle>
           <DialogDescription>

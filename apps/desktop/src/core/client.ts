@@ -7,6 +7,7 @@ import type {
   ApprovalRoute,
   CodeView,
   DeviceInfo,
+  FieldChangeInput,
   GateInput,
   ImportReport,
   ItemDetail,
@@ -19,6 +20,7 @@ import type {
   Settings,
   Status,
   SyncOutcome,
+  Templates,
 } from "./types"
 import { splitOncePage } from "./secret-bytes"
 
@@ -62,7 +64,16 @@ export interface Client {
   /** Clears the clipboard now, only if it still holds what the shell wrote. */
   clipboardClear(): Promise<void>
   addLogin(input: { site: string; username: string; password: number[]; title?: string }): Promise<string>
-  editLogin(input: { id: string; title?: string; username?: string; password?: number[] }): Promise<number>
+  editLogin(input: { id: string; title?: string; username?: string; password?: number[]; gate?: GateInput }): Promise<number>
+  /** Every kind's template and the kinds a field added by hand may take (static). */
+  templates(): Promise<Templates>
+  /** Makes an item of any creatable kind; resolves to its id. */
+  addItem(input: { kind: string; title?: string; crownJewel?: boolean; fields: FieldChangeInput[] }): Promise<string>
+  /**
+   * Saves a new version from an edit naming every field (`keep` for a secret
+   * not retyped). A crown jewel's edit goes through the `Use` gate (D110).
+   */
+  editItem(input: { id: string; title?: string; changes: FieldChangeInput[] }, gate?: GateInput): Promise<number>
   trash(id: string): Promise<void>
   /** Brings a trashed item back from Deleted, as it was. */
   restore(id: string): Promise<void>
@@ -129,6 +140,9 @@ export const tauriClient: Client = {
   clipboardClear: () => call("clipboard_clear"),
   addLogin: (input) => call("add_login", input),
   editLogin: (input) => call("edit_login", input),
+  templates: () => call("templates"),
+  addItem: (input) => call("add_item", input),
+  editItem: (input, gate) => call("edit_item", { ...input, gate }),
   trash: (id) => call("trash", { id }),
   restore: (id) => call("restore", { id }),
   codes: () => call("codes"),

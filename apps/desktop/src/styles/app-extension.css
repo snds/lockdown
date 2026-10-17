@@ -84,6 +84,14 @@
   padding-top: var(--c-group-pad-y);
 }
 
+/* A secret over several lines (a private key, a recovery phrase) is typed
+   into a textarea, because a one-line password input drops line breaks;
+   `data-masked` draws it as dots in every engine the shell runs on
+   (WKWebView, WebView2, WebKitGTK), and the editor's Show control lifts it. */
+textarea[data-masked] {
+  -webkit-text-security: disc;
+}
+
 @theme inline {
   --color-surface-chrome: var(--surface-chrome);
   --color-surface-canvas: var(--surface-canvas);
