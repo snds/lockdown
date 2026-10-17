@@ -19,6 +19,7 @@
 //! - [`hash`] — BLAKE3 hashing, keyed hashing, and key derivation
 //! - [`merkle`] — the RFC 6962-style tree and proofs behind the key-transparency log
 //! - [`rand`] — random bytes from the operating system
+//! - [`generator`] — the password generator: uniform draws from that source under a rule
 //! - [`secret`] — key and plaintext types that zero their memory on drop
 //! - [`auth`] — account login: OPAQUE (RFC 9807) as a pure state machine, behind [`AccountAuth`]
 //! - [`cbor`] — canonical CBOR, the encoding every piece of associated data uses
@@ -26,6 +27,7 @@
 pub mod aead;
 pub mod auth;
 pub mod error;
+pub mod generator;
 pub mod hash;
 pub mod kdf;
 pub mod kem;
