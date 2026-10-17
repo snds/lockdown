@@ -19,7 +19,7 @@
 //! - [`hash`] — BLAKE3 hashing, keyed hashing, and key derivation
 //! - [`rand`] — random bytes from the operating system
 //! - [`secret`] — key and plaintext types that zero their memory on drop
-//! - [`auth`] — account login behind [`AccountAuth`]; OPAQUE arrives with the server
+//! - [`auth`] — account login: OPAQUE (RFC 9807) as a pure state machine, behind [`AccountAuth`]
 //! - [`cbor`] — canonical CBOR, the encoding every piece of associated data uses
 
 pub mod aead;

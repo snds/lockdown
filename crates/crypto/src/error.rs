@@ -19,6 +19,11 @@ pub enum Error {
     /// Password-stretching parameters below the floor were refused.
     #[error("the password-stretching settings ({0}) are weaker than the floor and were refused")]
     KdfBelowFloor(String),
+    /// An account login did not go through. One message for every cause
+    /// (wrong password, unknown login, a password file that is not the
+    /// one this password made), so nothing is learned from the difference.
+    #[error("the login didn't go through: check the login name and password")]
+    LoginFailed,
     /// The operating system gave no random bytes.
     #[error("the device couldn't make a random number")]
     Random,

@@ -73,6 +73,12 @@ ed25519-dalek = { version = "3.0", default-features = false, features = ["fast",
 x-wing = { version = "0.1", default-features = false, features = ["zeroize", "getrandom"] }
 blake3 = "1.8"
 getrandom = "0.3"
+# OPAQUE (RFC 9807) for account login (04-security §3). `opaque-ke` still
+# builds on the previous RustCrypto generation (digest 0.10, sha2 0.10,
+# curve25519-dalek 4), so those appear twice in the lock file until it
+# moves; `deny.toml` warns on duplicates and does not fail on them.
+opaque-ke = { version = "4.0.1", default-features = false, features = ["ristretto255"] }
+sha2_010 = { package = "sha2", version = "0.10", default-features = false }
 zeroize = { version = "1.9", features = ["derive"] }
 secrecy = "0.10"
 

@@ -10,6 +10,9 @@ repository.workspace = true
 [dependencies]
 ecosystem-identity.workspace = true
 chacha20poly1305.workspace = true
+argon2.workspace = true
+opaque-ke.workspace = true
+sha2_010.workspace = true
 ed25519-dalek.workspace = true
 blake3.workspace = true
 getrandom.workspace = true
