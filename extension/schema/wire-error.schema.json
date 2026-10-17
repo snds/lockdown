@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lockdown.snds.design/schema/v1/wire-error.schema.json",
+  "title": "WireError",
+  "description": "Carried as the message of the thrown Error, as JSON text.",
+  "type": "object",
+  "required": ["v", "code", "message"],
+  "properties": {
+    "v": { "type": "integer", "const": 1 },
+    "code": { "type": "string", "enum": ["not_a_url", "bad_data", "bad_request", "bad_signature", "unknown_key", "downgrade", "invalid_handle"] },
+    "message": { "type": "string" }
+  }
+}

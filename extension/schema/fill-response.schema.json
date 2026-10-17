@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lockdown.snds.design/schema/v1/fill-response.schema.json",
+  "title": "FillResponse",
+  "type": "object",
+  "required": ["v", "verdict"],
+  "properties": {
+    "v": { "type": "integer", "const": 1 },
+    "verdict": { "type": "string", "enum": ["fill", "confirm", "refuse"] },
+    "reason": { "type": "string", "description": "Plain-language text to show for confirm and refuse; absent for fill." }
+  }
+}

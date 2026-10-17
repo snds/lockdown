@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lockdown.snds.design/schema/v1/related-origins-request.schema.json",
+  "title": "RelatedOriginsRequest",
+  "description": "May this origin use the relying party's passkeys? The page passes the /.well-known/webauthn document it fetched.",
+  "type": "object",
+  "required": ["rp_id", "fetched_at", "now", "max_age_secs", "origin"],
+  "properties": {
+    "rp_id": { "type": "string" },
+    "origins": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "fetched_at": { "type": "integer", "minimum": 0, "description": "Seconds since the epoch when the document was fetched." },
+    "now": { "type": "integer", "minimum": 0 },
+    "max_age_secs": { "type": "integer", "minimum": 0 },
+    "origin": { "type": "string", "description": "The origin asking." }
+  }
+}

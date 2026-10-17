@@ -7,5 +7,27 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 lockdown-ffi.workspace = true
+lockdown-matcher.workspace = true
+lockdown-codes.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# The boundary. Versions are pinned here, not in the workspace table, so the
+# installed `wasm-bindgen` CLI (which must match exactly) has one place to
+# read them from: `extension/build-wasm.sh` checks this line.
+wasm-bindgen = "=0.2.129"
+serde-wasm-bindgen = "0.6.5"
+
+# `getrandom` reaches the wasm build through the crypto stack behind
+# `lockdown-ffi`. On `wasm32-unknown-unknown` it needs the `wasm_js` backend
+# turned on by a feature (0.4) and, for 0.3, a `--cfg getrandom_backend="wasm_js"`
+# flag too; `extension/build-wasm.sh` passes that flag.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+getrandom04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
+# `uuid` (through the identity crate) wants to be told the same thing.
+uuid = { version = "1", default-features = false, features = ["js"] }

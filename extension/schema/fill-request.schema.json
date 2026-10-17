@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lockdown.snds.design/schema/v1/fill-request.schema.json",
+  "title": "FillRequest",
+  "description": "May the extension fill this field now? The page reports what it measured; the core decides.",
+  "type": "object",
+  "required": ["top", "frame", "field_visible", "user_confirmed", "kind", "decision"],
+  "properties": {
+    "top": { "type": "string", "description": "The top-level page's address." },
+    "frame": { "type": "string", "description": "The address of the frame holding the field; equal to top when there is no frame." },
+    "field_visible": { "type": "boolean", "description": "The field and every ancestor are visible, on screen and not covered by anything, whatever the coverer's opacity or pointer-events." },
+    "user_confirmed": { "type": "boolean", "description": "The person already took a deliberate action for this fill." },
+    "kind": { "type": "string", "enum": ["login", "code", "card", "passkey", "identity"] },
+    "decision": { "type": "string", "enum": ["exact", "base_domain", "equivalent", "lookalike", "no_match"], "description": "What decide returned for the item on this frame." }
+  }
+}

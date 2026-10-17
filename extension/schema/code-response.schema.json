@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lockdown.snds.design/schema/v1/code-response.schema.json",
+  "title": "CodeResponse",
+  "description": "The one-time code for a handle. The seed never crosses; only the digits to fill.",
+  "type": "object",
+  "required": ["v", "code"],
+  "properties": {
+    "v": { "type": "integer", "const": 1 },
+    "code": { "type": "string" },
+    "seconds_left": { "type": "integer", "minimum": 0, "description": "Absent for counter-based codes." },
+    "issuer": { "type": "string" },
+    "account": { "type": "string" }
+  }
+}

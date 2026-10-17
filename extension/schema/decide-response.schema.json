@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lockdown.snds.design/schema/v1/decide-response.schema.json",
+  "title": "DecideResponse",
+  "type": "object",
+  "required": ["v", "decision", "saved", "current"],
+  "properties": {
+    "v": { "type": "integer", "const": 1 },
+    "decision": {
+      "type": "string",
+      "enum": ["exact", "base_domain", "equivalent", "lookalike", "no_match"],
+      "description": "lookalike is a hard stop; no_match means do not offer."
+    },
+    "saved": { "$ref": "#/$defs/origin" },
+    "current": { "$ref": "#/$defs/origin" }
+  },
+  "$defs": {
+    "origin": {
+      "type": "object",
+      "required": ["scheme", "host", "port", "path", "registrable_domain"],
+      "properties": {
+        "scheme": { "type": "string" },
+        "host": { "type": "string", "description": "Lowercase ASCII; punycode for internationalised names." },
+        "port": { "type": ["integer", "null"], "minimum": 0, "maximum": 65535 },
+        "path": { "type": "string" },
+        "registrable_domain": { "type": ["string", "null"], "description": "eTLD+1 by the Public Suffix List; null for IP literals, localhost and bare suffixes." }
+      }
+    }
+  }
+}

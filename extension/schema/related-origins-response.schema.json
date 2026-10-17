@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lockdown.snds.design/schema/v1/related-origins-response.schema.json",
+  "title": "RelatedOriginsResponse",
+  "type": "object",
+  "required": ["v", "allowed", "effective"],
+  "properties": {
+    "v": { "type": "integer", "const": 1 },
+    "allowed": { "type": "boolean" },
+    "effective": { "type": "array", "items": { "type": "string" }, "description": "The origins that survived the five-label cap, as scheme://host[:port]; empty when the document is stale." }
+  }
+}

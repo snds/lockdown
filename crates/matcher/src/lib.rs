@@ -19,6 +19,7 @@
 
 pub mod lookalike;
 pub mod related_origins;
+pub mod wire;
 
 use std::collections::BTreeMap;
 
@@ -55,8 +56,10 @@ pub enum MatchRule {
     Never,
 }
 
-/// How a saved URL relates to the page.
+/// How a saved URL relates to the page. On the wire: `exact`,
+/// `base_domain`, `equivalent`, `lookalike`, `no_match`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MatchDecision {
     /// Same host (and port, if the saved URL names one).
     Exact,

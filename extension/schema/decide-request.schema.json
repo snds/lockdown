@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lockdown.snds.design/schema/v1/decide-request.schema.json",
+  "title": "DecideRequest",
+  "description": "How does a saved address relate to the page? Text without a scheme is read as https://.",
+  "type": "object",
+  "required": ["saved", "current"],
+  "properties": {
+    "saved": { "type": "string", "description": "The address saved on the item." },
+    "current": { "type": "string", "description": "The page's address." },
+    "rule": {
+      "type": "string",
+      "enum": ["exact_host", "base_domain", "equivalent", "starts_with", "never"],
+      "default": "exact_host",
+      "description": "The item's rule for this address."
+    }
+  }
+}
