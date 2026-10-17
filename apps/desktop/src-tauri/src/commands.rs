@@ -230,22 +230,26 @@ async fn clipboard_holds(
 /// the `Copied` that `copy_secret` or `copy_code` gave the control): only
 /// while that copy is still the shell's last write and still on the
 /// clipboard (`ClipboardGuard::may_clear`). A component's countdown calls
-/// this at expiry; the shell's own timer runs regardless.
+/// this at expiry; the shell's own timer runs regardless. Answers whether
+/// it cleared, so the control says "Cleared" only when it did.
 #[tauri::command]
 async fn clipboard_clear(
     guard: State<'_, ClipboardGuard>,
     handle: AppHandle,
     copy: u64,
-) -> AppResult<()> {
+) -> AppResult<bool> {
     let current = handle.clipboard().read_text().ok();
-    if guard.may_clear(copy, current.as_deref().map(str::as_bytes)) {
-        handle
-            .clipboard()
-            .clear()
-            .map_err(|e| failed(format!("couldn't clear the clipboard: {e}")))?;
-        guard.forget();
+    if !guard.may_clear(copy, current.as_deref().map(str::as_bytes)) {
+        // Another copy since, or the person copied something else: left alone,
+        // and the component says nothing (it says "Cleared" only on `true`).
+        return Ok(false);
     }
-    Ok(())
+    handle
+        .clipboard()
+        .clear()
+        .map_err(|e| failed(format!("couldn't clear the clipboard: {e}")))?;
+    guard.forget();
+    Ok(true)
 }
 
 /// Sleeps on the async runtime without pulling tokio into this crate's

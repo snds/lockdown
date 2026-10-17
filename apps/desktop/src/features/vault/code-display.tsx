@@ -51,15 +51,19 @@ export function ItemCodeDisplay({ code, now, expiresAt, density = "detail" }: It
     try {
       const { copy: n } = await gate.run((g) => client.copyCode(code.item_id, code.field_id, settings.clipboard_clear_secs, which, g))
       lastCopy.current = n
+      // The shell's copy number is the reference: it comes back at the countdown's end.
+      return { hash: String(n) }
     } catch (e) {
       toast.error(describeError(e))
       throw e
     }
   }
 
-  const clear = () => {
-    const n = lastCopy.current
-    if (n !== null) void client.clipboardClear(n).catch(() => {})
+  // Resolves whether the shell cleared, so the component says "Cleared" only when it did.
+  const clear = (ref?: { hash?: string }) => {
+    const n = ref?.hash !== undefined ? Number(ref.hash) : lastCopy.current
+    if (n === null || !Number.isSafeInteger(n)) return Promise.resolve(false)
+    return client.clipboardClear(n).catch(() => false)
   }
 
   const advance = async () => {

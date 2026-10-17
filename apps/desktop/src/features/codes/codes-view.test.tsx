@@ -86,7 +86,7 @@ describe("the Codes view on unicron's CodeDisplay", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       const copyCode = vi.fn<Client["copyCode"]>(() => Promise.resolve({ clears_in_secs: 30, copy: 7 }))
-      const clipboardClear = vi.fn<Client["clipboardClear"]>(() => Promise.resolve())
+      const clipboardClear = vi.fn<Client["clipboardClear"]>(() => Promise.resolve(true))
       render(
         <ClientProvider value={fakeClient({ codes: () => Promise.resolve([code({ seconds_left: 25 })]), copyCode, clipboardClear })}>
           <CodesView rows={[]} onChanged={() => {}} />
@@ -100,6 +100,30 @@ describe("the Codes view on unicron's CodeDisplay", () => {
       await vi.advanceTimersByTimeAsync(31_000)
       await waitFor(() => expect(clipboardClear).toHaveBeenCalledWith(7))
       expect(clipboardClear).toHaveBeenCalledTimes(1)
+      await waitFor(() => expect(list.textContent).toContain("Cleared"))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("when the shell leaves the clipboard alone (the person copied something else), the code never says Cleared", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const copyCode = vi.fn<Client["copyCode"]>(() => Promise.resolve({ clears_in_secs: 30, copy: 8 }))
+      const clipboardClear = vi.fn<Client["clipboardClear"]>(() => Promise.resolve(false))
+      render(
+        <ClientProvider value={fakeClient({ codes: () => Promise.resolve([code({ seconds_left: 25 })]), copyCode, clipboardClear })}>
+          <CodesView rows={[]} onChanged={() => {}} />
+        </ClientProvider>,
+      )
+      const list = await screen.findByRole("list", { name: "One-time codes" })
+      await waitFor(() => expect(list.querySelector('[data-slot="code-display-copy"]')).toBeInTheDocument())
+      await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(list.querySelector('[data-slot="code-display-copy"]') as HTMLElement)
+      await waitFor(() => expect(copyCode).toHaveBeenCalled())
+      await vi.advanceTimersByTimeAsync(31_000)
+      await waitFor(() => expect(clipboardClear).toHaveBeenCalledWith(8))
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(list.textContent).not.toContain("Cleared")
     } finally {
       vi.useRealTimers()
     }

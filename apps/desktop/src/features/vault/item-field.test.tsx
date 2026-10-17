@@ -86,7 +86,7 @@ describe("ItemField on unicron's SecretField (the host contract)", () => {
     try {
       const copySecret = vi.fn<Client["copySecret"]>(() => Promise.resolve({ clears_in_secs: 45, copy: 7 }))
       const clipboardHolds = vi.fn<Client["clipboardHolds"]>(() => Promise.resolve(true))
-      const clipboardClear = vi.fn<Client["clipboardClear"]>(() => Promise.resolve())
+      const clipboardClear = vi.fn<Client["clipboardClear"]>(() => Promise.resolve(true))
       mount(fakeClient({ copySecret, clipboardHolds, clipboardClear, getSettings: () => Promise.resolve(settingsWith("toggle")) }))
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
       await user.click(await screen.findByRole("button", { name: "Copy Password" }))
@@ -106,7 +106,7 @@ describe("ItemField on unicron's SecretField (the host contract)", () => {
     try {
       const copySecret = vi.fn<Client["copySecret"]>(() => Promise.resolve({ clears_in_secs: 45, copy: 3 }))
       const clipboardHolds = vi.fn<Client["clipboardHolds"]>(() => Promise.resolve(false))
-      const clipboardClear = vi.fn<Client["clipboardClear"]>(() => Promise.resolve())
+      const clipboardClear = vi.fn<Client["clipboardClear"]>(() => Promise.resolve(true))
       mount(fakeClient({ copySecret, clipboardHolds, clipboardClear, getSettings: () => Promise.resolve(settingsWith("toggle")) }))
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
       await user.click(await screen.findByRole("button", { name: "Copy Password" }))

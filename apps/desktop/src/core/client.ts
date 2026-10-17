@@ -68,7 +68,8 @@ export interface Client {
    * clipboard, so one control's countdown never clears a later copy or the
    * person's own text.
    */
-  clipboardClear(copy: number): Promise<void>
+  /** Clears the clipboard only for copy `copy`; resolves whether it did. */
+  clipboardClear(copy: number): Promise<boolean>
   addLogin(input: { site: string; username: string; password: number[]; title?: string }): Promise<string>
   editLogin(input: { id: string; title?: string; username?: string; password?: number[]; gate?: GateInput }): Promise<number>
   /** Every kind's template and the kinds a field added by hand may take (static). */

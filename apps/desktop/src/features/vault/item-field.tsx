@@ -80,7 +80,9 @@ export function ItemField({ itemId, field, onNotice, format = "plain", largeType
         lastCopy.current = copy
         return { hash: String(copy) }
       },
-      clear: () => (lastCopy.current === null ? Promise.resolve() : client.clipboardClear(lastCopy.current)),
+      clear: async () => {
+        if (lastCopy.current !== null) await client.clipboardClear(lastCopy.current)
+      },
       clipboardHolds: (hash) => {
         const copy = Number(hash)
         return Number.isSafeInteger(copy) ? client.clipboardHolds(copy) : Promise.resolve(false)
