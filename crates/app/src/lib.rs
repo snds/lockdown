@@ -452,7 +452,10 @@ impl App {
         })
     }
 
-    /// Pull, merge, push, head.
+    /// Key transparency, then pull, merge, push, head, then key
+    /// transparency again (as `lockdown sync` does). A log the server
+    /// can't prove honest comes back as [`ErrorCode::Refused`] with the
+    /// audit's own words, before anything is written.
     pub fn sync(&self) -> AppResult<SyncOutcome> {
         self.with_session(|s| s.sync())
     }

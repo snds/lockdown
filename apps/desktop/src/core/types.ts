@@ -61,6 +61,14 @@ export interface ItemDetail {
   fields: FieldView[]
 }
 
+/** The server's key-transparency log as this device last verified it. */
+export interface TransparencyView {
+  log_size: number
+  root_prefix: string
+  audited: number
+  checked_at: number | null
+}
+
 export interface AccountStatus {
   server: string
   login: string
@@ -68,6 +76,7 @@ export interface AccountStatus {
   synced_rev: number
   last_sync_at: number | null
   session_expires_at: number
+  transparency: TransparencyView | null
 }
 
 export interface Status {
@@ -106,6 +115,7 @@ export interface SyncOutcome {
   conflict_copies: string[]
   head_seq: number
   rounds: number
+  transparency: TransparencyView
   lines: string[]
 }
 

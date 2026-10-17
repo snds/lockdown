@@ -31,7 +31,7 @@ import {
 
 import { describeError, useClient } from "@/core/client"
 import { decodeAndWipe } from "@/core/secret-bytes"
-import type { DeviceInfo, LockState, OncePage as OncePageData, Status } from "@/core/types"
+import type { DeviceInfo, LockState, OncePage as OncePageData, Status, TransparencyView } from "@/core/types"
 import { dateLocal, shortId, whenLocal } from "@/lib/format"
 
 import { OncePage, type ShownPage } from "./once-page"
@@ -68,6 +68,8 @@ export function StatusView({ status, lock, onStatus, onLock, onLockNow, onNotice
   const [revoking, setRevoking] = useState<DeviceInfo | null>(null)
   const [dialog, setDialog] = useState<"register" | "login" | "kit-create" | "kit-verify" | null>(null)
   const [once, setOnce] = useState<ShownPage | null>(null)
+  /** The core's words when the last sync stopped at the server's log; cleared by a sync that passed. */
+  const [syncRefusal, setSyncRefusal] = useState<string | null>(null)
   const showOnce = (page: OncePageData) =>
     setOnce({ title: "Your recovery kit", lines: page.lines, text: page.page.length ? decodeAndWipe(page.page) : null })
 
@@ -93,6 +95,19 @@ export function StatusView({ status, lock, onStatus, onLock, onLockNow, onNotice
       setBusy(null)
     }
   }
+
+  /** Sync, with the key-transparency outcome kept beside the account facts. */
+  const syncNow = () =>
+    run("sync", async () => {
+      try {
+        const outcome = await client.sync()
+        setSyncRefusal(null)
+        return outcome.lines
+      } catch (e) {
+        setSyncRefusal(describeError(e))
+        return
+      }
+    })
 
   const setIdle = (value: string) =>
     run("policy", async () => {
@@ -133,7 +148,7 @@ export function StatusView({ status, lock, onStatus, onLock, onLockNow, onNotice
         title="Account and sync"
         actions={
           status.account ? (
-            <Button size="sm" onClick={() => run("sync", async () => (await client.sync()).lines)} disabled={busy !== null}>
+            <Button size="sm" onClick={syncNow} disabled={busy !== null}>
               {busy === "sync" ? <Spinner /> : <Icon name="sync" data-icon="inline-start" />}
               Sync now
             </Button>
@@ -157,6 +172,16 @@ export function StatusView({ status, lock, onStatus, onLock, onLockNow, onNotice
             <Fact label="Last sync" value={whenLocal(status.account.last_sync_at)} />
             <Fact label="Session until" value={whenLocal(status.account.session_expires_at)} />
             <Fact label="Identity records" value={`manifest seq ${status.identity_seq}`} />
+            <Fact
+              label="Transparency log"
+              value={transparencyLine(status.account.transparency)}
+              tone={status.account.transparency ? "secure" : "attention"}
+            />
+            {syncRefusal && (
+              <p role="alert" className="text-sm text-attention">
+                Sync refused: {syncRefusal}
+              </p>
+            )}
             <div className="pt-1">
               <Button size="sm" variant="ghost-muted" onClick={() => setDialog("login")}>
                 Log in again
@@ -311,6 +336,12 @@ export function StatusView({ status, lock, onStatus, onLock, onLockNow, onNotice
       </Dialog>
     </div>
   )
+}
+
+/** "N entries, checked <time>": the server's public log as this device last verified it (D78, D79). */
+function transparencyLine(view: TransparencyView | null): string {
+  if (!view) return "not checked yet; the next sync verifies it"
+  return `${view.log_size} entries, checked ${whenLocal(view.checked_at)}`
 }
 
 function Section({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {

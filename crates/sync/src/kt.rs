@@ -30,11 +30,12 @@
 //! | `GET /v1/kt/consistency?from=M&to=N` | [`ConsistencyProofWire`] | no |
 //! | `GET /v1/kt/entries?from=I` | [`AccountEntries`] (the account's leaves at index ≥ I) | yes |
 
+use ecosystem_identity::Identity;
 use lockdown_crypto::VerifyingKey;
 use lockdown_crypto::merkle;
-use lockdown_store::ServerView;
+use lockdown_store::{ServerView, SyncedIdentity};
 use lockdown_vault::transparency::{LogEntry, LogLeaf, SignedTreeHead, SthRef};
-use lockdown_vault::{Hash32, Id};
+use lockdown_vault::{Hash32, Id, Timestamp, Vault};
 use serde::{Deserialize, Serialize};
 
 use crate::SyncError;
@@ -113,6 +114,54 @@ pub trait AuditExpectations {
     fn vault_head(&self, vault_id: Id, seq: u64) -> Option<Hash32>;
 }
 
+/// What a device that holds an ecosystem identity knows, as the audit
+/// needs it: the identity's devices (its own records and the set last
+/// accepted from the server), the identity manifest it accepted, and the
+/// vault it has open. The one [`AuditExpectations`] the command line and
+/// the app both audit with, so the two never disagree about what counts.
+pub struct DeviceExpectations<'a> {
+    /// The identity on this device.
+    pub identity: &'a Identity,
+    /// The identity's signed record set as last accepted from the server.
+    pub synced: &'a SyncedIdentity,
+    /// The vault this device holds, with the newest `seq` of it the server
+    /// confirmed to this device; `None` before a vault is pulled.
+    pub vault: Option<(&'a Vault, u64)>,
+}
+
+impl AuditExpectations for DeviceExpectations<'_> {
+    fn device_key(&self, device_id: Id) -> Option<[u8; 32]> {
+        if let Some(d) = self.identity.devices().find(|d| d.device_id == device_id) {
+            return Some(d.device_pub);
+        }
+        self.synced
+            .device_keys()
+            .get(&device_id)
+            .map(|k| k.to_bytes())
+    }
+
+    fn own_device(&self) -> Id {
+        self.identity.device_id()
+    }
+
+    fn identity_head(&self) -> Option<(u64, Hash32)> {
+        let m = self.synced.manifest()?;
+        Some((m.seq, m.hash().ok()?))
+    }
+
+    /// Only heads the server confirmed to this device count: heads after
+    /// `synced_seq` are provisional offline heads that the next sync
+    /// replaces with the server's chain (D55), so the log may well name
+    /// another device's head at that `seq`.
+    fn vault_head(&self, vault_id: Id, seq: u64) -> Option<Hash32> {
+        let (vault, synced_seq) = self.vault?;
+        if vault.context().vault_id != vault_id || seq > synced_seq {
+            return None;
+        }
+        vault.head_at(seq).and_then(|h| h.hash().ok())
+    }
+}
+
 /// One audited entry, for `lockdown audit` to print.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct AuditedEntry {
@@ -140,8 +189,8 @@ fn refuse(msg: String) -> SyncError {
 pub struct KtSession<'a> {
     transport: &'a dyn Transport,
     token: &'a str,
-    /// The view as verified: the pinned key, the STH, and the audit
-    /// position; what the caller remembers afterwards.
+    /// The view as verified: the pinned key, the STH, when it was checked,
+    /// and the audit position; what the caller remembers afterwards.
     pub view: ServerView,
 }
 
@@ -181,6 +230,7 @@ impl<'a> KtSession<'a> {
             audited: 0,
             identity_logged: None,
             own_device_logged: false,
+            checked_at: Some(Timestamp::now().0),
         };
         if let Some(r) = remembered {
             view.audited = r.audited;

@@ -83,6 +83,22 @@ pub struct ItemDetail {
     pub fields: Vec<FieldView>,
 }
 
+/// The server's key-transparency log as this device last verified it
+/// (04-security §6; D78, D79): what a Status screen shows beside the
+/// account, and what a sync reports.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct TransparencyView {
+    /// How many entries the log had under the newest tree head verified.
+    pub log_size: u64,
+    /// The first sixteen hex characters of that tree head's root.
+    pub root_prefix: String,
+    /// The log index this account's own entries were audited through.
+    pub audited: u64,
+    /// When this device last verified the tree head, seconds since the
+    /// Unix epoch; `None` for a view remembered before the time was kept.
+    pub checked_at: Option<i64>,
+}
+
 /// The account on the server, as the status shows it.
 #[derive(Clone, Debug, Serialize)]
 pub struct AccountStatus {
@@ -94,6 +110,9 @@ pub struct AccountStatus {
     pub last_sync_at: Option<i64>,
     /// When the session token runs out.
     pub session_expires_at: i64,
+    /// The server's log as last verified here; `None` until the first
+    /// sync checks it.
+    pub transparency: Option<TransparencyView>,
 }
 
 /// `status`.
@@ -129,7 +148,8 @@ pub struct DeviceInfo {
     pub this_device: bool,
 }
 
-/// What a sync did.
+/// What a sync did. A sync that got this far verified the server's log
+/// before and after; a refused check never produces one.
 #[derive(Clone, Debug, Serialize)]
 pub struct SyncOutcome {
     pub pushed: usize,
@@ -138,6 +158,8 @@ pub struct SyncOutcome {
     pub conflict_copies: Vec<String>,
     pub head_seq: u64,
     pub rounds: u32,
+    /// The log as verified after the sync.
+    pub transparency: TransparencyView,
     pub lines: Vec<String>,
 }
 

@@ -5,8 +5,9 @@
 //!
 //! Per server: the log key pinned the first time it was seen (a change is
 //! refused, never silently taken), the newest signed tree head verified
-//! here, how far the account's own log entries were audited, and the
-//! newest identity head and this device's own key as the log showed them.
+//! here and when, how far the account's own log entries were audited, and
+//! the newest identity head and this device's own key as the log showed
+//! them.
 //! The memory only moves forward: an STH smaller than the remembered one,
 //! or the same size with another root, is refused here as well as in the
 //! sync step, so a rolled-back log is caught even by a caller that forgot
@@ -43,6 +44,10 @@ pub struct ServerView {
     /// Whether this device's own key was seen in the log.
     #[serde(default)]
     pub own_device_logged: bool,
+    /// When this device last verified the tree head (seconds since the
+    /// Unix epoch); `None` in a file written before the field existed.
+    #[serde(default)]
+    pub checked_at: Option<i64>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -172,6 +177,7 @@ mod tests {
             audited,
             identity_logged: None,
             own_device_logged: false,
+            checked_at: None,
         };
         memory
             .remember("https://s.example/", view(2, 2, 1))

@@ -34,8 +34,8 @@ use lockdown_store::{
 };
 use lockdown_sync::wire::ErrorCode;
 use lockdown_sync::{
-    AuditExpectations, HttpTransport, KtSession, SyncReport, Syncer, Transport, VaultSyncState,
-    pull_identity, push_identity,
+    AuditExpectations, DeviceExpectations, HttpTransport, KtSession, SyncReport, Syncer, Transport,
+    VaultSyncState, pull_identity, push_identity,
 };
 use lockdown_vault::identity::{
     self, APP, DeviceTrust, OpenVault, default_persona, device_keys, find_persona,
@@ -202,62 +202,6 @@ pub struct App {
     opened: OpenVault,
     /// Whether this run created the identity.
     pub identity_created: bool,
-}
-
-/// What this device knows, for the key-transparency audit: its identity's
-/// devices (local and synced), the identity manifest it accepted, and the
-/// vault it holds.
-struct Expectations<'a> {
-    app: &'a App,
-}
-
-impl AuditExpectations for Expectations<'_> {
-    fn device_key(&self, device_id: Id) -> Option<[u8; 32]> {
-        if let Some(d) = self
-            .app
-            .identity
-            .devices()
-            .find(|d| d.device_id == device_id)
-        {
-            return Some(d.device_pub);
-        }
-        self.app
-            .synced
-            .device_keys()
-            .get(&device_id)
-            .map(|k| k.to_bytes())
-    }
-
-    fn own_device(&self) -> Id {
-        self.app.identity.device_id()
-    }
-
-    fn identity_head(&self) -> Option<(u64, Hash32)> {
-        let m = self.app.synced.manifest()?;
-        Some((m.seq, m.hash().ok()?))
-    }
-
-    /// Only heads the server confirmed to this device count: heads after
-    /// `synced_seq` are provisional offline heads that the next sync
-    /// replaces with the server's chain (D55), so the log may well name
-    /// another device's head at that `seq`.
-    fn vault_head(&self, vault_id: Id, seq: u64) -> Option<Hash32> {
-        let vault = self.app.vault();
-        if vault.context().vault_id != vault_id {
-            return None;
-        }
-        let synced = self
-            .app
-            .sync
-            .as_ref()
-            .and_then(|c| c.vaults.get(&vault_id))
-            .map(|s| s.synced_seq)
-            .unwrap_or(0);
-        if seq > synced {
-            return None;
-        }
-        vault.head_at(seq).and_then(|h| h.hash().ok())
-    }
 }
 
 impl App {
@@ -474,6 +418,24 @@ impl App {
     /// The vault in use.
     pub fn vault(&self) -> &Vault {
         &self.opened.vault
+    }
+
+    /// What this device knows, for the key-transparency audit: the shared
+    /// [`DeviceExpectations`] over the identity, the synced records and the
+    /// vault in use at the `seq` the server last confirmed.
+    fn expectations(&self) -> DeviceExpectations<'_> {
+        let vault = self.vault();
+        let synced_seq = self
+            .sync
+            .as_ref()
+            .and_then(|c| c.vaults.get(&vault.context().vault_id))
+            .map(|s| s.synced_seq)
+            .unwrap_or(0);
+        DeviceExpectations {
+            identity: &self.identity,
+            synced: &self.synced,
+            vault: Some((vault, synced_seq)),
+        }
     }
 
     /// Whether `init` created the vault this run.
@@ -1575,8 +1537,7 @@ impl App {
         let remembered = self.transparency.view(&server).cloned();
         let mut kt =
             KtSession::begin(&transport, &token, remembered.as_ref()).map_err(|e| e.to_string())?;
-        kt.audit(&Expectations { app: self })
-            .map_err(|e| e.to_string())?;
+        kt.audit(&self.expectations()).map_err(|e| e.to_string())?;
         let label = device_name();
         let syncer = Syncer {
             transport: &transport,
@@ -1637,8 +1598,7 @@ impl App {
         drop(kt);
         let mut kt =
             KtSession::begin(&transport, &token, Some(&view)).map_err(|e| e.to_string())?;
-        kt.audit(&Expectations { app: self })
-            .map_err(|e| e.to_string())?;
+        kt.audit(&self.expectations()).map_err(|e| e.to_string())?;
         view = kt.view.clone();
         drop(kt);
         self.transparency
@@ -1703,7 +1663,7 @@ impl App {
             },
             String::new(),
         ];
-        let report = kt.audit(&Expectations { app: self }).map_err(|e| {
+        let report = kt.audit(&self.expectations()).map_err(|e| {
             format!(
                 "{e}
 (the entries before it were fine; nothing was changed)"
@@ -1824,7 +1784,8 @@ impl App {
             "consistency     connects to this device's view of {} entries: one log, no fork",
             kt.view.sth.size
         ));
-        let device_key = Expectations { app: self }
+        let device_key = self
+            .expectations()
             .device_key(cp.device_id)
             .ok_or_else(|| {
                 format!(
@@ -1862,7 +1823,7 @@ impl App {
             }
         }
         for (vault_id, seq, hash) in &cp.vault_heads {
-            match (Expectations { app: self }).vault_head(*vault_id, *seq) {
+            match self.expectations().vault_head(*vault_id, *seq) {
                 Some(mine) if mine != *hash => {
                     return Err(format!(
                         "the checkpoint's head {seq} of vault {vault_id} isn't the one this device holds; the two devices were shown different vault histories"

@@ -11,12 +11,14 @@
 //!   vault.sqlite              the ciphertext store (lockdown-store)
 //!   remembered.cbor           the newest heads this device accepted (rollback memory)
 //!   identity-sync.cbor        the identity's signed record set as last accepted from the server
+//!   transparency.cbor         per server: the pinned log key and the newest tree head verified here
 //!   sync.cbor                 the server, the login name, the session, how far each vault is synced
 //! ```
 //!
 //! The data dir is shared with the `lockdown` command line, so the desktop
 //! app and the CLI on one machine are one device (D68: one device record
-//! per app, and they are the same app).
+//! per app, and they are the same app), and the two share one memory of
+//! the server's key-transparency log.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -29,10 +31,14 @@ use ecosystem_identity::{
     AccountAuth, AccountCredentials, ExportKey, FileKeystore, Identity, RecoveryKit, default_root,
 };
 use lockdown_crypto::auth::{DeviceBinding, OpaqueAccountAuth};
-use lockdown_store::{HeadMemory, RememberedHead, SqliteStore, SyncedIdentity, write_private};
+use lockdown_store::{
+    HeadMemory, RememberedHead, ServerView, SqliteStore, SyncedIdentity, TransparencyMemory,
+    write_private,
+};
 use lockdown_sync::wire::ErrorCode;
 use lockdown_sync::{
-    HttpTransport, SyncReport, Syncer, Transport, VaultSyncState, pull_identity, push_identity,
+    DeviceExpectations, HttpTransport, KtSession, SyncReport, Syncer, Transport, VaultSyncState,
+    pull_identity, push_identity,
 };
 use lockdown_vault::identity::{
     self, APP, DeviceTrust, OpenVault, default_persona, device_keys, find_persona,
@@ -48,13 +54,14 @@ use crate::Revealed;
 use crate::secrets;
 use crate::types::{
     AccountStatus, DeviceInfo, FieldView, ItemDetail, ItemSummary, KitCreated, Probe, Registered,
-    Status, SyncOutcome,
+    Status, SyncOutcome, TransparencyView,
 };
 
 const KEYSTORE_FILE: &str = "device-key.cbor";
 const STORE_FILE: &str = "vault.sqlite";
 const MEMORY_FILE: &str = "remembered.cbor";
 const IDENTITY_SYNC_FILE: &str = "identity-sync.cbor";
+const TRANSPARENCY_FILE: &str = "transparency.cbor";
 const SYNC_FILE: &str = "sync.cbor";
 const SYNC_V: u16 = 1;
 /// How many times a push of the identity manifest is retried after another
@@ -222,7 +229,8 @@ pub enum Mode {
 }
 
 /// The open session: identity, store, memory, the synced identity records,
-/// the account, and the one vault in use. Dropping it drops every key.
+/// the memory of the server's log, the account, and the one vault in use.
+/// Dropping it drops every key.
 pub struct Session {
     paths: Paths,
     keystore: Rc<FileKeystore>,
@@ -230,6 +238,7 @@ pub struct Session {
     store: SqliteStore,
     memory: HeadMemory,
     synced: SyncedIdentity,
+    transparency: TransparencyMemory,
     sync: Option<SyncConfig>,
     opened: OpenVault,
 }
@@ -238,8 +247,10 @@ impl Session {
     /// Opens the identity at the root and the persona's vault. `Init`
     /// creates what is missing and, with an account, brings the identity's
     /// records in step and pulls a vault this device never held (so a
-    /// device that just joined finds the account's vault, not a new one);
-    /// `Open` touches the network not at all, so unlock works offline.
+    /// device that just joined finds the account's vault, not a new one),
+    /// with the server's log verified and the account's entries audited
+    /// first, as a sync does; `Open` touches the network not at all, so
+    /// unlock works offline.
     pub fn open(paths: Paths, persona: Option<&str>, mode: Mode) -> Result<Self, String> {
         let keystore_path = paths.data.join(KEYSTORE_FILE);
         if mode != Mode::Init && !keystore_path.exists() && !paths.root.join("FORMAT").exists() {
@@ -297,6 +308,8 @@ impl Session {
         let isk_pub = identity.profile().isk_pub;
         let mut synced = SyncedIdentity::open(&paths.data.join(IDENTITY_SYNC_FILE), Some(&isk_pub))
             .map_err(|e| e.to_string())?;
+        let mut transparency = TransparencyMemory::open(&paths.data.join(TRANSPARENCY_FILE))
+            .map_err(|e| e.to_string())?;
         let mut sync = SyncConfig::load(&paths.sync_file())?;
 
         if let Some(cfg) = sync.as_mut()
@@ -316,7 +329,26 @@ impl Session {
                 .map_err(|e| e.to_string())?
                 .is_empty()
             {
-                pull_new_vaults(&transport, &token, &identity, &mut store, cfg)?;
+                // The first pull is held to the same log as every sync
+                // (04-security §6, D78, D80): the tree head must continue
+                // the one remembered, the account's entries must be what
+                // this device knows, and every head taken must cite a
+                // tree head that connects to this view.
+                let remembered = transparency.view(&cfg.server).cloned();
+                let mut kt = KtSession::begin(&transport, &token, remembered.as_ref())
+                    .map_err(|e| e.to_string())?;
+                kt.audit(&DeviceExpectations {
+                    identity: &identity,
+                    synced: &synced,
+                    vault: None,
+                })
+                .map_err(|e| e.to_string())?;
+                pull_new_vaults(&transport, &token, &identity, &mut store, cfg, &kt)?;
+                let view = kt.view.clone();
+                drop(kt);
+                transparency
+                    .remember(&cfg.server, view)
+                    .map_err(|e| e.to_string())?;
                 cfg.save(&paths.sync_file())?;
             }
         }
@@ -381,6 +413,7 @@ impl Session {
             store,
             memory,
             synced,
+            transparency,
             sync,
             opened,
         };
@@ -414,6 +447,24 @@ impl Session {
     /// The vault in use.
     pub fn vault(&self) -> &Vault {
         &self.opened.vault
+    }
+
+    /// What this device knows, for the key-transparency audit: the
+    /// identity, the synced records, and the vault in use at the `seq` the
+    /// server last confirmed.
+    fn expectations(&self) -> DeviceExpectations<'_> {
+        let vault = self.vault();
+        let synced_seq = self
+            .sync
+            .as_ref()
+            .and_then(|c| c.vaults.get(&vault.context().vault_id))
+            .map(|s| s.synced_seq)
+            .unwrap_or(0);
+        DeviceExpectations {
+            identity: &self.identity,
+            synced: &self.synced,
+            vault: Some((vault, synced_seq)),
+        }
     }
 
     fn device_binding(&self) -> DeviceBinding {
@@ -610,6 +661,7 @@ impl Session {
                 synced_rev: state.synced_rev,
                 last_sync_at: cfg.last_sync_at,
                 session_expires_at: cfg.expires_at,
+                transparency: self.transparency.view(&cfg.server).map(transparency_view),
             }
         });
         Ok(Status {
@@ -1122,13 +1174,20 @@ impl Session {
     // --- sync ---------------------------------------------------------------
 
     /// The identity's records first (every device and revocation known
-    /// before a signature is judged), then the vault: pull, merge, push,
-    /// head (03-architecture §6).
+    /// before a signature is judged), then key transparency (04-security
+    /// §6: the server's tree head must continue the one this device saw,
+    /// and the account's own log entries must be what this device knows),
+    /// then the vault: pull, merge, push, head (03-architecture §6) with
+    /// the verified tree head cited in the new head and every pulled
+    /// head's citation checked against it, then the account's entries once
+    /// more for what the sync added. A failed proof or a split view stops
+    /// everything before a byte is written, with the audit's own words.
     pub fn sync(&mut self) -> Result<SyncOutcome, String> {
         let Some(cfg) = self.sync.as_mut() else {
             return Err("no account on this device; register or log in first".into());
         };
-        let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
+        let server = cfg.server.clone();
+        let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
         let token = cfg.session_token()?.to_string();
         sync_identity_records(
             &transport,
@@ -1138,6 +1197,10 @@ impl Session {
             &mut self.synced,
             &mut self.memory,
         )?;
+        let remembered = self.transparency.view(&server).cloned();
+        let mut kt =
+            KtSession::begin(&transport, &token, remembered.as_ref()).map_err(|e| e.to_string())?;
+        kt.audit(&self.expectations()).map_err(|e| e.to_string())?;
         let cfg = self
             .sync
             .as_mut()
@@ -1156,12 +1219,13 @@ impl Session {
             .and_then(|r| r.to_bytes())
             .map_err(|e| e.to_string())?;
         let state = cfg.vaults.entry(vault_id).or_default();
-        let outcome = lockdown_sync::sync_vault(
+        let outcome = lockdown_sync::sync_vault_with(
             &syncer,
             &mut self.opened.vault,
             &record,
             state,
             &mut self.store,
+            Some(&kt),
         );
         // Whatever happened on the wire, what is in memory is saved and
         // remembered, so a half-finished round is picked up next time.
@@ -1186,11 +1250,26 @@ impl Session {
         } else {
             self.remember()?;
         }
+        if let Some(cfg) = &self.sync {
+            cfg.save(&self.paths.sync_file())?;
+        }
+        // The entries this sync added (the new head, at least) are audited
+        // under a fresh tree head that must continue the one just verified.
+        let mut view = kt.view.clone();
+        drop(kt);
+        let mut kt =
+            KtSession::begin(&transport, &token, Some(&view)).map_err(|e| e.to_string())?;
+        kt.audit(&self.expectations()).map_err(|e| e.to_string())?;
+        view = kt.view.clone();
+        drop(kt);
+        self.transparency
+            .remember(&server, view.clone())
+            .map_err(|e| e.to_string())?;
         if let Some(cfg) = self.sync.as_mut() {
             cfg.last_sync_at = Some(lockdown_vault::Timestamp::now().0);
             cfg.save(&self.paths.sync_file())?;
         }
-        Ok(sync_outcome(&report))
+        Ok(sync_outcome(&report, &view))
     }
 }
 
@@ -1378,8 +1457,18 @@ fn check_root_empty(paths: &Paths) -> Result<(), String> {
 
 // --- shared pieces ------------------------------------------------------------
 
+/// The server's log as a shell shows it.
+fn transparency_view(view: &ServerView) -> TransparencyView {
+    TransparencyView {
+        log_size: view.sth.size,
+        root_prefix: view.sth.root.to_hex()[..16].to_string(),
+        audited: view.audited,
+        checked_at: view.checked_at,
+    }
+}
+
 /// What `sync` reports.
-fn sync_outcome(report: &SyncReport) -> SyncOutcome {
+fn sync_outcome(report: &SyncReport, view: &ServerView) -> SyncOutcome {
     let mut lines = vec![format!(
         "synced: pushed {}, pulled {}, merged {}; vault head seq {} ({} round{})",
         report.pushed,
@@ -1394,6 +1483,11 @@ fn sync_outcome(report: &SyncReport) -> SyncOutcome {
             "conflict copy {id}: both devices changed the same field; both versions are kept"
         ));
     }
+    let transparency = transparency_view(view);
+    lines.push(format!(
+        "transparency: log of {} entries verified (root {}), your entries audited through {}",
+        transparency.log_size, transparency.root_prefix, transparency.audited
+    ));
     SyncOutcome {
         pushed: report.pushed,
         pulled: report.pulled,
@@ -1405,6 +1499,7 @@ fn sync_outcome(report: &SyncReport) -> SyncOutcome {
             .collect(),
         head_seq: report.head_seq,
         rounds: report.rounds,
+        transparency,
         lines,
     }
 }
@@ -1514,12 +1609,15 @@ fn push_identity_records(
 
 /// Pulls every vault of this profile the server holds and this store does
 /// not, so a new device finds the account's vaults instead of making one.
+/// Every head taken must cite a tree head that connects to `kt`'s view
+/// (D80); a chain that doesn't is refused before anything is written.
 fn pull_new_vaults(
     transport: &dyn Transport,
     token: &str,
     identity: &Identity,
     store: &mut SqliteStore,
     cfg: &mut SyncConfig,
+    kt: &KtSession<'_>,
 ) -> Result<usize, String> {
     let profile_id = identity.profile().profile_id;
     let have = lockdown_vault::Store::list_vaults(store).map_err(|e| e.to_string())?;
@@ -1539,8 +1637,8 @@ fn pull_new_vaults(
         if record.context.profile_id != profile_id {
             continue;
         }
-        if let Some(state) =
-            lockdown_sync::bootstrap_vault(&syncer, store, summary).map_err(|e| e.to_string())?
+        if let Some(state) = lockdown_sync::bootstrap_vault_with(&syncer, store, summary, Some(kt))
+            .map_err(|e| e.to_string())?
         {
             cfg.vaults.insert(summary.vault_id, state);
             pulled += 1;

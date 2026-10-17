@@ -20,6 +20,11 @@ zeroize.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 serde_json.workspace = true
+# The server, in process on a random port, so the sync tests drive the
+# real key-transparency log; rusqlite so one test can rewrite that log
+# under the server and see the audit refuse it.
+lockdown-server.workspace = true
+rusqlite.workspace = true
 # Test speed only: the identity crate's lowered Argon2id floor, so a test
 # creates an identity in milliseconds. Never enabled in an app build.
 ecosystem-identity = { workspace = true, features = ["insecure-test-kdf"] }

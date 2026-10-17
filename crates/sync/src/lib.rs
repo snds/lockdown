@@ -14,8 +14,9 @@
 //! - [`engine`] — [`sync_vault`]: pull, merge, push, head; [`bootstrap_vault`]
 //! - [`identity`] — [`pull_identity`] and [`push_identity`]: the identity's
 //!   signed record set, pulled before any vault head (D71)
-//! - [`kt`] — key transparency: the STH check, the account's self-audit,
-//!   and the citation check between devices (04-security §6)
+//! - [`kt`] — key transparency: the STH check, the account's self-audit
+//!   (with [`DeviceExpectations`], what a device holding an identity
+//!   knows), and the citation check between devices (04-security §6)
 //!
 //! The offline queue is not built yet.
 
@@ -30,7 +31,7 @@ pub use engine::{
     sync_vault, sync_vault_with,
 };
 pub use identity::{pull_identity, push_identity};
-pub use kt::{AuditExpectations, AuditReport, KtSession};
+pub use kt::{AuditExpectations, AuditReport, DeviceExpectations, KtSession};
 pub use transport::{HttpTransport, Transport, TransportError};
 
 use std::collections::BTreeMap;
