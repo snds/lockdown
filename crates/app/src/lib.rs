@@ -1218,6 +1218,76 @@ mod tests {
     }
 
     #[test]
+    fn every_kind_survives_an_export_and_an_import_and_a_wallet_stays_a_crown_jewel() {
+        use lockdown_vault::{Change, FieldChange, FieldInput};
+        let (_dir, app) = fresh();
+        app.open_or_create(true).unwrap();
+        let confirmed = GateInput {
+            password: None,
+            confirmed: true,
+        };
+        app.add_item(
+            "wi-fi",
+            Some("Home"),
+            false,
+            vec![
+                FieldChange::text("wifi.ssid", "home-net"),
+                FieldChange::secret("wifi.passphrase", b"k7Hq3mWx9rTa4nPe6uYc"),
+                FieldChange::new("wifi.hidden", Change::Set(FieldInput::Flag(true))),
+            ],
+        )
+        .unwrap();
+        let phrase =
+            "abandon ability able about above absent absorb abstract absurd abuse access accident";
+        app.add_item(
+            "crypto-wallet",
+            Some("Cold wallet"),
+            false,
+            vec![FieldChange::secret("seed", phrase.as_bytes())],
+        )
+        .unwrap();
+        let file = app.export_items("cxf", confirmed.clone()).unwrap();
+
+        let (_other, again) = fresh();
+        again.open_or_create(true).unwrap();
+        let report = again.import_items(file.expose().to_vec(), "cxf").unwrap();
+        assert_eq!(report.imported, 2);
+        assert!(report.notes.is_empty(), "{:?}", report.notes);
+        let rows = again.list().unwrap();
+        let wifi = rows
+            .iter()
+            .find(|r| r.kind == "wi-fi")
+            .expect("the kind came back");
+        assert_eq!(wifi.subtitle, "home-net");
+        assert_eq!(
+            again
+                .reveal(&wifi.id, "wifi.passphrase", GateInput::default())
+                .unwrap()
+                .expose(),
+            b"k7Hq3mWx9rTa4nPe6uYc"
+        );
+        let hidden = again.show(&wifi.id, false).unwrap();
+        assert!(
+            hidden
+                .fields
+                .iter()
+                .any(|f| f.field_id == "wifi.hidden" && f.value.as_deref() == Some("true"))
+        );
+        let wallet = rows.iter().find(|r| r.kind == "crypto-wallet").unwrap();
+        assert!(
+            wallet.crown_jewel,
+            "the phrase lands in the class on import too"
+        );
+        assert_eq!(
+            again
+                .reveal(&wallet.id, "seed", confirmed)
+                .unwrap()
+                .expose(),
+            phrase.as_bytes()
+        );
+    }
+
+    #[test]
     fn settings_persist_beside_the_data_and_drive_the_lock_timers() {
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::resolve(Some(dir.path().join("snds/identity")), None).unwrap();

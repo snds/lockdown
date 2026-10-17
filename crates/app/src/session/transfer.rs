@@ -49,9 +49,22 @@ impl Session {
             if !fields.iter().any(|f| f.field_id == "title") {
                 fields.insert(0, PlainField::text("title", "title", &item.title));
             }
+            // A kind or a field that is a crown jewel by default (a wallet's
+            // recovery phrase) lands in the class on import too (02-model §3).
+            let template = lockdown_vault::template_for(item.kind);
+            let crown = template.crown_jewel_default()
+                == lockdown_vault::CrownJewelDefault::Default
+                || fields
+                    .iter()
+                    .any(|f| template.field(&f.field_id).is_some_and(|t| t.crown_jewel));
+            let class = if crown {
+                ItemClass::CrownJewel
+            } else {
+                ItemClass::Standard
+            };
             self.opened
                 .vault
-                .create_item(item.kind, ItemClass::Standard, fields)
+                .create_item(item.kind, class, fields)
                 .map_err(|e| e.to_string())?;
             report.imported += 1;
             for note in item.report {

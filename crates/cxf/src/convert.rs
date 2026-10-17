@@ -7,6 +7,7 @@
 //! target; what this slice guarantees is in the tests.
 
 use lockdown_vault::{FieldKind, FieldValue, ItemKind, PlainField};
+use serde_json::{Value, json};
 
 use crate::model::{
     Account, Address, BasicAuth, CXF_VERSION, Credential, CredentialScope, CreditCard,
@@ -194,9 +195,27 @@ fn to_item(item: &Item) -> Result<ImportedItem> {
             }
         }
     }
+    let mut kind = kind_of(&item.credentials);
+    if let Some(ext) = lockdown_extension(item.extensions.as_ref()) {
+        match read_extension(ext) {
+            Ok((ext_kind, extra)) => {
+                if let Some(k) = ext_kind {
+                    kind = k;
+                }
+                for f in extra {
+                    if !fields.iter().any(|p| p.field_id == f.field_id) {
+                        fields.push(f);
+                    }
+                }
+            }
+            Err(why) => report.push(format!(
+                "Lockdown's own fields didn't read ({why}) and were left out"
+            )),
+        }
+    }
     Ok(ImportedItem {
         source_id: item.id.clone(),
-        kind: kind_of(&item.credentials),
+        kind,
         title: item.title.clone(),
         fields,
         favourite: item.favorite.unwrap_or(false),
@@ -288,6 +307,12 @@ pub fn from_items(
 
 fn from_item(item: &ImportedItem) -> Result<Item> {
     let f = &item.fields;
+    let mut used: Vec<String> = vec!["title".into()];
+    let mut take = |id: String| {
+        if f.iter().any(|p| p.field_id == id) {
+            used.push(id);
+        }
+    };
     let mut credentials = Vec::new();
     let urls: Vec<String> = f
         .iter()
@@ -296,11 +321,19 @@ fn from_item(item: &ImportedItem) -> Result<Item> {
             _ => None,
         })
         .collect();
+    for p in f
+        .iter()
+        .filter(|p| matches!(p.value, FieldValue::Url { .. }))
+    {
+        take(p.field_id.clone());
+    }
     if field(f, "user").is_some() || field(f, "pw").is_some() {
         credentials.push(Credential::BasicAuth(BasicAuth {
             username: field_text(f, "user").map(EditableField::string),
             password: field_text(f, "pw").map(EditableField::concealed),
         }));
+        take("user".into());
+        take("pw".into());
     }
     for n in 0.. {
         let prefix = format!("passkey.{n}.");
@@ -323,19 +356,32 @@ fn from_item(item: &ImportedItem) -> Result<Item> {
             key: b64url(&key),
             fido2_extensions: None,
         }));
+        for part in [
+            "key",
+            "credential_id",
+            "user_handle",
+            "rp_id",
+            "user_name",
+            "user_display_name",
+        ] {
+            take(format!("{prefix}{part}"));
+        }
     }
     for n in 0.. {
-        let Some(uri) = field_text(f, &format!("code.{n}")) else {
+        let id = format!("code.{n}");
+        let Some(uri) = field_text(f, &id) else {
             break;
         };
         if let Some(t) = uri_to_totp(&uri) {
             credentials.push(Credential::Totp(t));
+            take(id);
         }
     }
     if let Some(body) = field_text(f, "body") {
         credentials.push(Credential::Note(Note {
             content: EditableField::string(body),
         }));
+        take("body".into());
     }
     if let Some(number) = field_text(f, "card.number") {
         credentials.push(Credential::CreditCard(CreditCard {
@@ -349,6 +395,17 @@ fn from_item(item: &ImportedItem) -> Result<Item> {
             valid_from: field_text(f, "card.valid_from")
                 .map(|v| EditableField::typed("year-month", v)),
         }));
+        for part in [
+            "number",
+            "holder",
+            "type",
+            "cvc",
+            "pin",
+            "expiry",
+            "valid_from",
+        ] {
+            take(format!("card.{part}"));
+        }
     }
     if f.iter().any(|p| p.field_id.starts_with("name.")) {
         credentials.push(Credential::PersonName(PersonName {
@@ -358,6 +415,9 @@ fn from_item(item: &ImportedItem) -> Result<Item> {
             family: field_text(f, "name.family").map(EditableField::string),
             generation: field_text(f, "name.generation").map(EditableField::string),
         }));
+        for part in ["title", "given", "middle", "family", "generation"] {
+            take(format!("name.{part}"));
+        }
     }
     if f.iter().any(|p| p.field_id.starts_with("address.")) {
         credentials.push(Credential::Address(Address {
@@ -370,7 +430,23 @@ fn from_item(item: &ImportedItem) -> Result<Item> {
             postal_code: field_text(f, "address.postal_code").map(EditableField::string),
             tel: field_text(f, "address.tel").map(EditableField::string),
         }));
+        for part in [
+            "street",
+            "city",
+            "territory",
+            "country",
+            "postal_code",
+            "tel",
+        ] {
+            take(format!("address.{part}"));
+        }
     }
+    let rest: Vec<&PlainField> = f.iter().filter(|p| !used.contains(&p.field_id)).collect();
+    let extensions = if rest.is_empty() && kind_of(&credentials) == item.kind {
+        None
+    } else {
+        Some(write_extension(item.kind, &rest))
+    };
     Ok(Item {
         id: item.source_id.clone(),
         creation_at: item.created_at,
@@ -388,8 +464,106 @@ fn from_item(item: &ImportedItem) -> Result<Item> {
         },
         credentials,
         tags: item.tags.clone(),
-        extensions: None,
+        extensions,
     })
+}
+
+/// The name of the item extension a Lockdown export carries (CXF §
+/// "extensions"): the item's kind and every field no CXF credential type
+/// holds (a Wi-Fi password, an SSH key, a recovery phrase, notes, fields a
+/// person added by hand), so an export never drops a field (02-model §4,
+/// §11) and an import from Lockdown gets the same item back.
+pub const LOCKDOWN_EXTENSION: &str = "design.snds.lockdown.fields";
+
+fn value_json(v: &FieldValue) -> Value {
+    match v {
+        FieldValue::Text(t) => json!({ "text": t }),
+        FieldValue::Boolean(b) => json!({ "flag": b }),
+        FieldValue::Url { value, match_rule } => json!({ "url": value, "matchRule": match_rule }),
+        FieldValue::Bytes(b) => json!({ "bytes": b64url(b) }),
+        FieldValue::Ref(id) => json!({ "ref": id.to_string() }),
+    }
+}
+
+fn write_extension(kind: ItemKind, fields: &[&PlainField]) -> Value {
+    let fields: Vec<Value> = fields
+        .iter()
+        .map(|p| {
+            json!({
+                "id": p.field_id,
+                "kind": serde_json::to_value(p.kind).unwrap_or(Value::Null),
+                "label": p.label,
+                "section": p.section,
+                "value": value_json(&p.value),
+            })
+        })
+        .collect();
+    json!([{ "name": LOCKDOWN_EXTENSION, "kind": kind.as_str(), "fields": fields }])
+}
+
+fn lockdown_extension(ext: Option<&Value>) -> Option<&Value> {
+    ext?.as_array()?
+        .iter()
+        .find(|e| e.get("name").and_then(Value::as_str) == Some(LOCKDOWN_EXTENSION))
+}
+
+fn read_value(v: &Value) -> std::result::Result<FieldValue, String> {
+    let str_of = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+    if let Some(t) = str_of("text") {
+        return Ok(FieldValue::Text(t));
+    }
+    if let Some(b) = v.get("flag").and_then(Value::as_bool) {
+        return Ok(FieldValue::Boolean(b));
+    }
+    if let Some(url) = str_of("url") {
+        return Ok(FieldValue::Url {
+            value: url,
+            match_rule: str_of("matchRule").unwrap_or_else(|| "exact_host".into()),
+        });
+    }
+    if let Some(b) = str_of("bytes") {
+        return from_b64url(&b)
+            .map(FieldValue::Bytes)
+            .map_err(|e| e.to_string());
+    }
+    if let Some(r) = str_of("ref") {
+        return lockdown_vault::Id::parse(&r)
+            .map(FieldValue::Ref)
+            .map_err(|_| "a link to another item isn't an id".to_string());
+    }
+    Err("a value of no known shape".into())
+}
+
+fn read_extension(ext: &Value) -> std::result::Result<(Option<ItemKind>, Vec<PlainField>), String> {
+    let kind = match ext.get("kind").and_then(Value::as_str) {
+        Some(name) => ItemKind::ALL
+            .into_iter()
+            .find(|k| k.as_str() == name && !k.hidden()),
+        None => None,
+    };
+    let mut out = Vec::new();
+    for f in ext
+        .get("fields")
+        .and_then(Value::as_array)
+        .ok_or("no field list")?
+    {
+        let id = f
+            .get("id")
+            .and_then(Value::as_str)
+            .ok_or("a field without an id")?;
+        if id == "title" {
+            continue;
+        }
+        let kind: FieldKind = serde_json::from_value(f.get("kind").cloned().unwrap_or(Value::Null))
+            .map_err(|_| format!("'{id}' has a kind this build doesn't know"))?;
+        let label = f.get("label").and_then(Value::as_str).unwrap_or(id);
+        let value = read_value(f.get("value").unwrap_or(&Value::Null))
+            .map_err(|e| format!("'{id}': {e}"))?;
+        let mut field = PlainField::new(id, kind, label, value);
+        field.section = f.get("section").and_then(Value::as_str).map(str::to_string);
+        out.push(field);
+    }
+    Ok((kind, out))
 }
 
 #[cfg(test)]
@@ -534,6 +708,101 @@ mod tests {
         let again = parse(&write(&back).unwrap(), &Limits::default()).unwrap();
         assert_eq!(again.accounts[0].items, back.accounts[0].items);
         assert_eq!(again.exporter_rp_id, "lockdown.app");
+    }
+
+    #[test]
+    fn fields_no_credential_holds_ride_in_the_lockdown_extension_both_ways() {
+        let wifi = ImportedItem {
+            source_id: b64url(b"wifi-1"),
+            kind: ItemKind::WiFi,
+            title: "Home".into(),
+            fields: vec![
+                PlainField::text("title", "title", "Home"),
+                PlainField::text("wifi.ssid", "Network name", "home-net"),
+                PlainField::hidden("wifi.passphrase", "Password", "k7Hq3mWx9rTa4nPe6uYc"),
+                PlainField::new(
+                    "wifi.hidden",
+                    FieldKind::Boolean,
+                    "Hidden network",
+                    FieldValue::Boolean(true),
+                ),
+            ],
+            favourite: false,
+            tags: vec![],
+            created_at: None,
+            modified_at: None,
+            report: vec![],
+        };
+        let mut login = wifi.clone();
+        login.source_id = b64url(b"login-1");
+        login.kind = ItemKind::Login;
+        login.fields = vec![
+            PlainField::text("title", "title", "Forum"),
+            PlainField::text("user", "Username", "me"),
+            PlainField::hidden("pw", "Password", "pw"),
+            PlainField::text("notes", "Notes", "changed in May"),
+            PlainField::new(
+                "custom.0",
+                FieldKind::Hidden,
+                "Door code",
+                FieldValue::Text("1234".into()),
+            ),
+        ];
+        let doc = from_items(
+            &[wifi.clone(), login.clone()],
+            "lockdown.app",
+            "Lockdown",
+            1,
+        )
+        .unwrap();
+        let written = write(&doc).unwrap();
+        let text = std::str::from_utf8(&written).unwrap();
+        assert!(text.contains(LOCKDOWN_EXTENSION));
+        let back = to_items(&parse(&written, &Limits::default()).unwrap()).unwrap();
+        assert_eq!(
+            back[0].kind,
+            ItemKind::WiFi,
+            "the kind comes back, not 'custom'"
+        );
+        assert_eq!(back[0].fields, wifi.fields, "every field, in order");
+        assert_eq!(back[1].kind, ItemKind::Login);
+        assert_eq!(
+            field_text(&back[1].fields, "notes").as_deref(),
+            Some("changed in May")
+        );
+        let door = back[1]
+            .fields
+            .iter()
+            .find(|f| f.field_id == "custom.0")
+            .unwrap();
+        assert_eq!(
+            (door.kind, door.label.as_str()),
+            (FieldKind::Hidden, "Door code")
+        );
+        assert!(back.iter().all(|i| i.report.is_empty()));
+        // A login the credentials hold whole carries no extension.
+        let plain = from_items(
+            &[ImportedItem {
+                fields: login.fields[..3].to_vec(),
+                ..login
+            }],
+            "x",
+            "x",
+            1,
+        )
+        .unwrap();
+        assert!(plain.accounts[0].items[0].extensions.is_none());
+        // A broken extension is reported, never fatal, never a guess.
+        let mut h = doc.clone();
+        h.accounts[0].items[0].extensions = Some(
+            serde_json::json!([{ "name": LOCKDOWN_EXTENSION, "kind": "wi-fi", "fields": [{ "id": "x", "kind": "spaceship", "value": { "text": "a" } }] }]),
+        );
+        let items = to_items(&h).unwrap();
+        assert!(
+            items[0].report[0].contains("didn't read"),
+            "{:?}",
+            items[0].report
+        );
     }
 
     #[test]

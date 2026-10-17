@@ -47,7 +47,7 @@ pub struct PasswordRule {
 
 impl PasswordRule {
     /// The default for an account password: twenty characters, letters,
-    /// digits and symbols (about 129 bits).
+    /// digits and symbols from 76 (about 125 bits).
     pub const STRONG: Self = Self {
         length: 20,
         letters: true,
@@ -58,7 +58,7 @@ impl PasswordRule {
 
     /// For a password people read and type by hand (a Wi-Fi network on a
     /// TV): twenty letters and digits with the look-alikes left out
-    /// (about 112 bits).
+    /// from 51 (about 113 bits).
     pub const READABLE: Self = Self {
         length: 20,
         letters: true,
@@ -137,9 +137,10 @@ pub fn generate_password(rule: &PasswordRule) -> Result<Zeroizing<String>> {
     }
     let classes = rule.classes();
     let alphabet: Vec<u8> = classes.iter().flatten().copied().collect();
-    // A rule of length 8 with four classes misses one about 13 % of the
-    // time; a thousand draws in a row cannot all miss in practice, and
-    // the bound stops a broken random source spinning forever.
+    // The shortest four-class rule (8 characters) misses a class a little
+    // over half the time and the defaults about one draw in eight; a
+    // thousand misses in a row does not happen with a working source, and
+    // the bound stops a broken one spinning forever.
     for _ in 0..1000 {
         let mut out = Zeroizing::new(String::with_capacity(rule.length));
         for _ in 0..rule.length {
