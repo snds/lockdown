@@ -189,13 +189,20 @@ fn two_stores_one_server_merge_conflict_and_rollback() {
         .unwrap();
     assert_eq!(vault_a.seq(), 2, "create + item, both local");
     let mut state_a = VaultSyncState::default();
-    let report = sync_vault(&a.syncer(), &mut vault_a, &record, &mut state_a).unwrap();
+    let mut store_a = MemoryStore::new();
+    let report = sync_vault(
+        &a.syncer(),
+        &mut vault_a,
+        &record,
+        &mut state_a,
+        &mut store_a,
+    )
+    .unwrap();
     assert_eq!((report.pushed, report.pulled, report.merged), (1, 0, 0));
     assert_eq!(report.head_seq, 1, "the local heads were squashed into one");
     assert!(report.chain_rewritten);
     assert_eq!(state_a.synced_seq, 1);
     assert_eq!(vault_a.item(item).unwrap().rev, 1);
-    let mut store_a = MemoryStore::new();
     vault_a.save(&mut store_a, &adk).unwrap();
 
     // B pulls from nothing: the record, the chain, the items.
@@ -218,13 +225,27 @@ fn two_stores_one_server_merge_conflict_and_rollback() {
     vault_a
         .update_item(item, with(&base, "pw", "a-one"))
         .unwrap();
-    let report = sync_vault(&a.syncer(), &mut vault_a, &record, &mut state_a).unwrap();
+    let report = sync_vault(
+        &a.syncer(),
+        &mut vault_a,
+        &record,
+        &mut state_a,
+        &mut store_a,
+    )
+    .unwrap();
     assert_eq!(report.pushed, 1);
     assert_eq!(report.head_seq, 2);
     vault_b
         .update_item(item, with(&base, "pw", "b-one"))
         .unwrap();
-    let report = sync_vault(&b.syncer(), &mut vault_b, &record, &mut state_b).unwrap();
+    let report = sync_vault(
+        &b.syncer(),
+        &mut vault_b,
+        &record,
+        &mut state_b,
+        &mut store_b,
+    )
+    .unwrap();
     assert_eq!(report.merged, 1, "{report:?}");
     assert_eq!(report.conflict_copies.len(), 1, "{report:?}");
     assert_eq!(report.pushed, 1, "the conflict copy went up");
@@ -243,7 +264,14 @@ fn two_stores_one_server_merge_conflict_and_rollback() {
     assert_eq!(vault_b2.item_ids().len(), 2);
 
     // A pulls the copy; nothing of A's is dirty, so no new head.
-    let report = sync_vault(&a.syncer(), &mut vault_a, &record, &mut state_a).unwrap();
+    let report = sync_vault(
+        &a.syncer(),
+        &mut vault_a,
+        &record,
+        &mut state_a,
+        &mut store_a,
+    )
+    .unwrap();
     assert_eq!((report.pushed, report.pulled, report.merged), (0, 1, 0));
     assert_eq!(report.head_seq, 3);
     assert!(field(&vault_a.open_item(copy).unwrap(), "title").contains("conflict copy"));
@@ -254,18 +282,39 @@ fn two_stores_one_server_merge_conflict_and_rollback() {
     vault_a
         .update_item(item, with(&base, "user", "me@laptop"))
         .unwrap();
-    sync_vault(&a.syncer(), &mut vault_a, &record, &mut state_a).unwrap();
+    sync_vault(
+        &a.syncer(),
+        &mut vault_a,
+        &record,
+        &mut state_a,
+        &mut store_a,
+    )
+    .unwrap();
     vault_b
         .update_item(item, with(&base, "title", "Example, renamed on the phone"))
         .unwrap();
-    let report = sync_vault(&b.syncer(), &mut vault_b, &record, &mut state_b).unwrap();
+    let report = sync_vault(
+        &b.syncer(),
+        &mut vault_b,
+        &record,
+        &mut state_b,
+        &mut store_b,
+    )
+    .unwrap();
     assert_eq!(report.merged, 1);
     assert!(report.conflict_copies.is_empty());
     let merged = vault_b.open_item(item).unwrap();
     assert_eq!(field(&merged, "user"), "me@laptop");
     assert_eq!(field(&merged, "title"), "Example, renamed on the phone");
     assert_eq!(report.head_seq, 5);
-    let report = sync_vault(&a.syncer(), &mut vault_a, &record, &mut state_a).unwrap();
+    let report = sync_vault(
+        &a.syncer(),
+        &mut vault_a,
+        &record,
+        &mut state_a,
+        &mut store_a,
+    )
+    .unwrap();
     assert_eq!(report.pulled, 1);
     assert_eq!(
         field(&vault_a.open_item(item).unwrap(), "title"),
@@ -320,14 +369,28 @@ fn two_stores_one_server_merge_conflict_and_rollback() {
     vault_b
         .update_item(item, with(&base, "title", "Example, once more"))
         .unwrap();
-    let report = sync_vault(&b.syncer(), &mut vault_b, &record, &mut state_b).unwrap();
+    let report = sync_vault(
+        &b.syncer(),
+        &mut vault_b,
+        &record,
+        &mut state_b,
+        &mut store_b,
+    )
+    .unwrap();
     assert_eq!(report.merged, 1, "{report:?}");
     assert!(report.rounds >= 2, "{report:?}");
     assert!(report.conflict_copies.is_empty());
     let merged = vault_b.open_item(item).unwrap();
     assert_eq!(field(&merged, "user"), "me@laptop-again");
     assert_eq!(field(&merged, "title"), "Example, once more");
-    let report = sync_vault(&a.syncer(), &mut vault_a, &record, &mut state_a).unwrap();
+    let report = sync_vault(
+        &a.syncer(),
+        &mut vault_a,
+        &record,
+        &mut state_a,
+        &mut store_a,
+    )
+    .unwrap();
     assert_eq!(
         report.merged, 1,
         "A's half-pushed change meets B's merge: {report:?}"
@@ -349,10 +412,24 @@ fn two_stores_one_server_merge_conflict_and_rollback() {
     vault_b
         .update_item(item, with(&base, "pw", "after revocation"))
         .unwrap();
-    let report = sync_vault(&b.syncer(), &mut vault_b, &record, &mut state_b).unwrap();
+    let report = sync_vault(
+        &b.syncer(),
+        &mut vault_b,
+        &record,
+        &mut state_b,
+        &mut store_b,
+    )
+    .unwrap();
     assert_eq!(report.head_seq, boundary + 1, "the server took it");
     let before = vault_a.seq();
-    let err = sync_vault(&a.syncer(), &mut vault_a, &record, &mut state_a).unwrap_err();
+    let err = sync_vault(
+        &a.syncer(),
+        &mut vault_a,
+        &record,
+        &mut state_a,
+        &mut store_a,
+    )
+    .unwrap_err();
     match err {
         SyncError::Vault(lockdown_vault::Error::RevokedDevice { device, seq, after }) => {
             assert_eq!(device, device_b.id);
@@ -391,7 +468,14 @@ fn two_stores_one_server_merge_conflict_and_rollback() {
     // (a test convenience: the real A would stop here).
     let mut vault_a = load_b(&store_a, &ctx, &adk, &device_a, &device_b, boundary);
     vault_a.trust_device(device_b.id, device_b.public());
-    let report = sync_vault(&a.syncer(), &mut vault_a, &record, &mut state_a).unwrap();
+    let report = sync_vault(
+        &a.syncer(),
+        &mut vault_a,
+        &record,
+        &mut state_a,
+        &mut store_a,
+    )
+    .unwrap();
     assert_eq!(report.head_seq, boundary + 1);
     assert_eq!(
         field(&vault_a.open_item(item).unwrap(), "pw"),
@@ -407,7 +491,14 @@ fn two_stores_one_server_merge_conflict_and_rollback() {
     vault_a
         .update_item(item, with(&base, "pw", "after the snapshot"))
         .unwrap();
-    let report = sync_vault(&a.syncer(), &mut vault_a, &record, &mut state_a).unwrap();
+    let report = sync_vault(
+        &a.syncer(),
+        &mut vault_a,
+        &record,
+        &mut state_a,
+        &mut store_a,
+    )
+    .unwrap();
     assert_eq!(report.head_seq, synced + 1);
     drop(running);
     let (_older_state, older) = server(dir.path(), "older.sqlite");
@@ -417,7 +508,14 @@ fn two_stores_one_server_merge_conflict_and_rollback() {
         label: "laptop",
     };
     let before = vault_a.seq();
-    let err = sync_vault(&a_old.syncer(), &mut vault_a, &record, &mut state_a).unwrap_err();
+    let err = sync_vault(
+        &a_old.syncer(),
+        &mut vault_a,
+        &record,
+        &mut state_a,
+        &mut store_a,
+    )
+    .unwrap_err();
     match err {
         SyncError::Rollback {
             offered,

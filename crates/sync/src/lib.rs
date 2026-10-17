@@ -23,7 +23,7 @@ pub mod identity;
 pub mod transport;
 pub mod wire;
 
-pub use engine::{SyncReport, Syncer, VaultSyncState, bootstrap_vault, sync_vault};
+pub use engine::{BlobStore, SyncReport, Syncer, VaultSyncState, bootstrap_vault, sync_vault};
 pub use identity::{pull_identity, push_identity};
 pub use transport::{HttpTransport, Transport, TransportError};
 
@@ -196,6 +196,14 @@ pub enum SyncError {
     /// The local store failed.
     #[error(transparent)]
     Store(#[from] lockdown_vault::store::StoreError),
+    /// An item names an attachment blob neither side holds.
+    #[error(
+        "attachment blob {0} is named by an item but held by neither this device nor the server"
+    )]
+    BlobMissing(lockdown_vault::Hash32),
+    /// The server handed back bytes that don't hash to the blob's name.
+    #[error("the server's copy of attachment blob {0} doesn't match its name; it was not kept")]
+    BlobCorrupt(lockdown_vault::Hash32),
     /// The feature exists in the plan but not in this build yet.
     #[error("not supported here: {0}")]
     Unsupported(String),

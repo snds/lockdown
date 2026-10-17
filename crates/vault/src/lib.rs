@@ -22,6 +22,7 @@
 //! that stops a hostile server rolling anything back.
 //!
 //! - [`keys`] — the four key kinds and the wrap that binds a key to its place
+//! - [`attachment`] — files in 1 MiB chunks under per-file keys, named by ciphertext hash
 //! - [`field`] — plain and sealed fields and the field associated data
 //! - [`item`] — the item envelope, kinds, classes, states, versions
 //! - [`crown_jewel`] — the crown-jewel rules and default classification
@@ -34,6 +35,7 @@
 //! - [`identity_set`] — the identity's signed records under one hash-chained
 //!   manifest, as they travel between machines, with device revocations
 
+pub mod attachment;
 pub mod crown_jewel;
 pub mod error;
 pub mod field;
@@ -52,6 +54,10 @@ pub mod vault;
 pub use ecosystem_identity::records::{Id, Timestamp};
 pub use lockdown_crypto::Hash32;
 
+pub use attachment::{
+    AttachmentMeta, AttachmentPlace, CHUNK_SIZE, SealedAttachment, open_attachment, padded_size,
+    seal_attachment,
+};
 pub use crown_jewel::{
     CROWN_JEWEL_RULES, Classify, CrownJewelDefault, LoginRole, crown_jewel_default,
 };
@@ -68,4 +74,4 @@ pub use manifest::{
 };
 pub use signer::Signer;
 pub use store::{Store, StoreError, StoreResult, VAULT_RECORD_V, VaultRecord};
-pub use vault::{Unlock, Vault, VaultContext};
+pub use vault::{AttachmentInfo, Unlock, Vault, VaultContext};

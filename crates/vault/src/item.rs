@@ -159,8 +159,19 @@ pub struct AttachmentRef {
     pub chunks: u32,
     /// BLAKE3 of the whole ciphertext: the blob name.
     pub blob: Hash32,
+    /// The blob's length in bytes (the padded size plus the chunk frames),
+    /// so a store or server can size-check before fetching.
+    #[serde(default)]
+    pub blob_size: u64,
     /// Sealed name, type and size.
     pub meta: Sealed,
+}
+
+impl AttachmentRef {
+    /// Whether the attachment's key was destroyed.
+    pub fn is_shredded(&self) -> bool {
+        self.att_key.is_none()
+    }
 }
 
 /// The part of an item that is not in any version: what it is and which

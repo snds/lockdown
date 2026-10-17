@@ -19,6 +19,20 @@ impl Hash32 {
         &self.0
     }
 
+    /// Parses 64 hex characters (either case). Anything else is `None`.
+    pub fn from_hex(text: &str) -> Option<Self> {
+        let text = text.trim();
+        if text.len() != 64 || !text.is_ascii() {
+            return None;
+        }
+        let mut out = [0u8; 32];
+        for (i, pair) in text.as_bytes().chunks(2).enumerate() {
+            let s = std::str::from_utf8(pair).ok()?;
+            out[i] = u8::from_str_radix(s, 16).ok()?;
+        }
+        Some(Hash32(out))
+    }
+
     /// Lowercase hex, 64 characters.
     pub fn to_hex(self) -> String {
         let mut s = String::with_capacity(64);
@@ -32,6 +46,14 @@ impl Hash32 {
 impl fmt::Debug for Hash32 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Hash32({})", &self.to_hex()[..16])
+    }
+}
+
+impl std::str::FromStr for Hash32 {
+    type Err = crate::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::from_hex(s).ok_or_else(|| crate::Error::Invalid("not a 64-character hex hash".into()))
     }
 }
 
@@ -76,5 +98,10 @@ mod tests {
         let bytes = crate::cbor::to_canonical(&hash(b"x")).unwrap();
         let back: Hash32 = crate::cbor::from_slice(&bytes).unwrap();
         assert_eq!(back, hash(b"x"));
+        let h = hash(b"hex");
+        assert_eq!(Hash32::from_hex(&h.to_hex()), Some(h));
+        assert_eq!(h.to_hex().to_uppercase().parse::<Hash32>().unwrap(), h);
+        assert!(Hash32::from_hex("abc").is_none());
+        assert!(Hash32::from_hex(&"zz".repeat(32)).is_none());
     }
 }

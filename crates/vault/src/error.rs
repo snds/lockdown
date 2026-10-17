@@ -2,7 +2,7 @@
 //! in an app: a failed tag is "tampered", never "corrupt file"
 //! (04-security §5).
 
-use crate::Id;
+use crate::{Hash32, Id};
 
 /// What can go wrong in a vault.
 #[derive(Debug, thiserror::Error)]
@@ -97,6 +97,17 @@ pub enum Error {
         seq: u64,
         /// The newest head it may have signed.
         after: u64,
+    },
+    /// An attachment blob's bytes don't hash to the name the signed
+    /// attachment list gives it. Shown as tampering; nothing was opened.
+    #[error(
+        "attachment blob {expected} doesn't match its contents (which hash to {found}); it was not opened"
+    )]
+    BlobMismatch {
+        /// The name the signed list carries.
+        expected: Hash32,
+        /// What the bytes hash to.
+        found: Hash32,
     },
     /// A crown-jewel item was asked for but the vault holds no Crown-Jewel Key.
     #[error("this vault has no crown-jewel key; unlock the persona first")]

@@ -592,7 +592,7 @@ impl std::fmt::Debug for OpenVault {
 
 impl OpenVault {
     /// Writes the vault to `store` under its App Data Key.
-    pub fn save(&self, store: &mut dyn Store) -> Result<()> {
+    pub fn save(&mut self, store: &mut dyn Store) -> Result<()> {
         self.vault.save(store, &self.keys.app_data_key)
     }
 }
@@ -646,7 +646,7 @@ pub fn open_or_create_vault(
         signer,
         Some(keys.crown_jewel_key.clone()),
     )?;
-    let opened = OpenVault {
+    let mut opened = OpenVault {
         vault,
         keys,
         created: true,

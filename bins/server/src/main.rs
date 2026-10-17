@@ -5,11 +5,13 @@
 //! ```text
 //! lockdown-server [--listen ADDR] [--data DIR] [--server-key PATH]
 //!                 [--session-ttl SECS] [--signups open|closed]
+//!                 [--max-blob BYTES] [--blob-grace SECS]
 //! ```
 //!
 //! Every flag has an environment variable (`LOCKDOWN_LISTEN`,
 //! `LOCKDOWN_DATA`, `LOCKDOWN_SERVER_KEY`, `LOCKDOWN_SESSION_TTL`,
-//! `LOCKDOWN_SIGNUPS`) so a container needs no command line.
+//! `LOCKDOWN_SIGNUPS`, `LOCKDOWN_MAX_BLOB`, `LOCKDOWN_BLOB_GRACE`) so a
+//! container needs no command line.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -42,6 +44,12 @@ struct Cli {
     /// Whether new accounts may register.
     #[arg(long, env = "LOCKDOWN_SIGNUPS", value_enum, default_value_t = Signups::Open)]
     signups: Signups,
+    /// The largest attachment blob accepted, in bytes.
+    #[arg(long, env = "LOCKDOWN_MAX_BLOB", default_value_t = lockdown_server::DEFAULT_MAX_BLOB_BYTES)]
+    max_blob: u64,
+    /// How long a blob nothing names is kept before it is collected, in seconds.
+    #[arg(long, env = "LOCKDOWN_BLOB_GRACE", default_value_t = lockdown_server::DEFAULT_BLOB_GRACE.as_secs())]
+    blob_grace: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -82,6 +90,8 @@ fn run(cli: Cli) -> Result<(), String> {
     let config = Config {
         session_ttl: Duration::from_secs(cli.session_ttl),
         signups_open: cli.signups == Signups::Open,
+        max_blob_bytes: cli.max_blob,
+        blob_grace: Duration::from_secs(cli.blob_grace),
         ..Config::default()
     };
     let state = Arc::new(AppState::new(Box::new(storage), keys, config));

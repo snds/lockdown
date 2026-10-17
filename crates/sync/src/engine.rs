@@ -10,16 +10,19 @@
 //!    trusted devices, and replace whatever this device had after
 //!    `synced_seq` (heads it committed offline were never on the server;
 //!    their changes live on in the items).
-//! 2. **Merge.** Items the new heads list are pulled. One this device did
-//!    not touch is taken as is. One both sides changed is merged field by
+//! 2. **Merge.** Items the new heads list are pulled, with the blobs their
+//!    attachments name that this device lacks (each checked against its
+//!    name before it is kept). One this device did not touch is taken as is. One both sides changed is merged field by
 //!    field against the last version the two histories share; a field
 //!    both sides changed differently keeps the server's value in the
 //!    item and this device's whole version in a new *conflict copy*
 //!    item, so nothing is overwritten silently.
 //! 3. **Push.** Every item that differs from the synced head is sent with
-//!    the revision this device last saw. `stale` means another device got
-//!    there between the pull and the push: merge against the copy the
-//!    server returned and go round again.
+//!    the revision this device last saw, after the attachment blobs its
+//!    versions still hold keys for are on the server (content-addressed,
+//!    so a blob already there costs one `HEAD`). `stale` means another
+//!    device got there between the pull and the push: merge against the
+//!    copy the server returned and go round again.
 //! 4. **Head.** A fresh head is committed over the items with their
 //!    server revisions and sent. `fork`, `gap` or `older_seq` means
 //!    another device moved first: go round again. A few rounds settle any
@@ -31,7 +34,7 @@
 
 use std::collections::BTreeSet;
 
-use lockdown_vault::store::Store;
+use lockdown_vault::store::{Store, StoreError};
 use lockdown_vault::{
     FieldValue, Hash32, Id, Item, ItemState, ManifestHead, PlainField, Vault, VaultRecord,
 };
@@ -62,6 +65,10 @@ pub struct SyncReport {
     pub merged: usize,
     /// Conflict copies made, by id.
     pub conflict_copies: Vec<Id>,
+    /// Attachment blobs sent.
+    pub blobs_pushed: usize,
+    /// Attachment blobs fetched.
+    pub blobs_pulled: usize,
     /// The vault's head `seq` afterwards.
     pub head_seq: u64,
     /// Whether heads this device had committed were replaced by the
@@ -73,6 +80,109 @@ pub struct SyncReport {
 
 /// The most rounds one run tries before reporting a race it cannot settle.
 pub const MAX_ROUNDS: u32 = 6;
+
+/// Where this device keeps attachment blobs, as sync needs them: read one
+/// to push it, write one that was pulled. Every [`Store`] is one.
+pub trait BlobStore {
+    /// A blob's bytes, if this device holds it.
+    fn blob(&self, hash: Hash32) -> Result<Option<Vec<u8>>, StoreError>;
+    /// Keeps a blob pulled from the server (already checked against its name).
+    fn store_blob(&mut self, hash: Hash32, bytes: &[u8]) -> Result<(), StoreError>;
+}
+
+impl<S: Store + ?Sized> BlobStore for S {
+    fn blob(&self, hash: Hash32) -> Result<Option<Vec<u8>>, StoreError> {
+        match self.get_blob(hash) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(StoreError::NotFound(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn store_blob(&mut self, hash: Hash32, bytes: &[u8]) -> Result<(), StoreError> {
+        self.put_blob(hash, bytes)
+    }
+}
+
+/// The blobs an item's versions still hold a key for.
+fn blobs_of(item: &Item) -> Vec<Hash32> {
+    let mut out: Vec<Hash32> = Vec::new();
+    for a in item
+        .versions
+        .iter()
+        .flat_map(|v| v.attachments.iter())
+        .filter(|a| !a.is_shredded())
+    {
+        if !out.contains(&a.blob) {
+            out.push(a.blob);
+        }
+    }
+    out
+}
+
+/// Pulls the blobs `item` names that this device lacks, each checked
+/// against its name before it is kept.
+fn pull_blobs<B: BlobStore + ?Sized>(
+    syncer: &Syncer<'_>,
+    vault_id: Id,
+    item: &Item,
+    blobs: &mut B,
+) -> Result<usize, SyncError> {
+    let mut pulled = 0;
+    for hash in blobs_of(item) {
+        if blobs.blob(hash)?.is_some() {
+            continue;
+        }
+        let bytes = syncer
+            .transport
+            .get_blob(syncer.token, vault_id, hash)
+            .map_err(session_or)?
+            .ok_or(SyncError::BlobMissing(hash))?;
+        if lockdown_crypto::hash::hash(&bytes) != hash {
+            return Err(SyncError::BlobCorrupt(hash));
+        }
+        blobs.store_blob(hash, &bytes)?;
+        pulled += 1;
+    }
+    Ok(pulled)
+}
+
+/// Pushes the blobs `item` names that the server lacks: the ones sealed in
+/// this run and not yet saved, or the store's.
+fn push_blobs(
+    syncer: &Syncer<'_>,
+    vault: &Vault,
+    item: &Item,
+    blobs: &dyn BlobStore,
+    done: &mut BTreeSet<Hash32>,
+) -> Result<usize, SyncError> {
+    let vault_id = vault.context().vault_id;
+    let mut pushed = 0;
+    for hash in blobs_of(item) {
+        if done.contains(&hash) {
+            continue;
+        }
+        if syncer
+            .transport
+            .has_blob(syncer.token, vault_id, hash)
+            .map_err(session_or)?
+        {
+            done.insert(hash);
+            continue;
+        }
+        let bytes = match vault.pending_blob(hash) {
+            Some(b) => b.to_vec(),
+            None => blobs.blob(hash)?.ok_or(SyncError::BlobMissing(hash))?,
+        };
+        syncer
+            .transport
+            .put_blob(syncer.token, vault_id, hash, &bytes)
+            .map_err(session_or)?;
+        done.insert(hash);
+        pushed += 1;
+    }
+    Ok(pushed)
+}
 
 /// Who is syncing: the transport, the session, and the name used on
 /// conflict copies.
@@ -104,17 +214,20 @@ pub(crate) fn session_or(e: TransportError) -> SyncError {
 }
 
 /// Syncs `vault` with the server. `record` is the vault's record bytes
-/// (sent on the first contact so another device can find the vault).
+/// (sent on the first contact so another device can find the vault);
+/// `blobs` is where this device keeps attachment blobs (its store).
 pub fn sync_vault(
     syncer: &Syncer<'_>,
     vault: &mut Vault,
     record: &[u8],
     state: &mut VaultSyncState,
+    blobs: &mut dyn BlobStore,
 ) -> Result<SyncReport, SyncError> {
     let vault_id = vault.context().vault_id;
     let t = syncer.transport;
     let token = syncer.token;
     let mut report = SyncReport::default();
+    let mut blobs_done: BTreeSet<Hash32> = BTreeSet::new();
     if state.synced_seq == 0 {
         t.put_vault(token, vault_id, record).map_err(session_or)?;
     }
@@ -181,6 +294,7 @@ pub fn sync_vault(
                     // what the signed head describes); next time.
                     continue;
                 }
+                report.blobs_pulled += pull_blobs(syncer, vault_id, &theirs, blobs)?;
                 let local = vault.item(theirs.item_id).ok().cloned();
                 match local {
                     Some(ours) if dirty_before.contains(&ours.item_id) => {
@@ -209,6 +323,7 @@ pub fn sync_vault(
         let mut stale = false;
         for item_id in &dirty {
             let ours = vault.item(*item_id)?.clone();
+            report.blobs_pushed += push_blobs(syncer, vault, &ours, blobs, &mut blobs_done)?;
             let push = ItemPush {
                 if_match: ours.rev,
                 item: ours.to_bytes()?,
@@ -225,6 +340,7 @@ pub fn sync_vault(
                 PushReply::Stale { current } => {
                     let mut theirs = Item::from_bytes(&current.item)?;
                     theirs.rev = current.rev;
+                    report.blobs_pulled += pull_blobs(syncer, vault_id, &theirs, blobs)?;
                     let copies = merge_item(vault, syncer.device_label, ours, theirs)?;
                     report.merged += 1;
                     report.conflict_copies.extend(copies);
@@ -276,10 +392,10 @@ pub fn sync_vault(
 }
 
 /// Pulls a vault this device has never held into `store`: the record, the
-/// whole head chain and every item the newest head lists. Returns the
-/// sync state to continue from, or `None` when the server holds no head
-/// yet. The caller opens the vault afterwards, which verifies everything
-/// against the devices it trusts.
+/// whole head chain, every item the newest head lists and the blobs
+/// those items name. Returns the sync state to continue from, or `None`
+/// when the server holds no head yet. The caller opens the vault
+/// afterwards, which verifies everything against the devices it trusts.
 pub fn bootstrap_vault(
     syncer: &Syncer<'_>,
     store: &mut dyn Store,
@@ -321,6 +437,9 @@ pub fn bootstrap_vault(
         }
     }
     let synced_rev = newest.entries.iter().map(|e| e.rev).max().unwrap_or(0);
+    for item in &items {
+        pull_blobs(syncer, summary.vault_id, item, store)?;
+    }
     store.save_all(record, items, heads)?;
     Ok(Some(VaultSyncState {
         synced_seq: newest.seq,

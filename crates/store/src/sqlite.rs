@@ -5,7 +5,11 @@
 //! vaults         (vault_id, body)              VaultRecord as canonical CBOR
 //! items          (vault_id, item_id, body)     Item envelope as canonical CBOR
 //! heads          (vault_id, seq, body)         ManifestHead as canonical CBOR
+//! blobs          (hash, body)                  attachment ciphertext, named by its BLAKE3
 //! ```
+//!
+//! Schema 2 added `blobs` (step 8, attachments). A schema 1 file gains the
+//! table on open and its version row moves to 2.
 //!
 //! What the file reveals to someone who copies it: vault, item and device
 //! ids, manifest sequence numbers and timestamps, ciphertext sizes. What
@@ -23,14 +27,14 @@
 
 use std::path::{Path, PathBuf};
 
-use lockdown_vault::{Id, Item, ManifestHead};
+use lockdown_vault::{Hash32, Id, Item, ManifestHead};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::remembered::{create_private_dir, write_private};
 use crate::{Store, StoreError, StoreResult, VaultRecord};
 
 /// The schema this build writes and the highest it reads.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// A store in one SQLite file.
 pub struct SqliteStore {
@@ -82,6 +86,10 @@ impl SqliteStore {
                  seq      INTEGER NOT NULL,
                  body     BLOB NOT NULL,
                  PRIMARY KEY (vault_id, seq)
+             );
+             CREATE TABLE IF NOT EXISTS blobs (
+                 hash BLOB PRIMARY KEY NOT NULL,
+                 body BLOB NOT NULL
              );",
         )
         .map_err(backend)?;
@@ -101,6 +109,13 @@ impl SqliteStore {
                     found: v,
                     supported: SCHEMA_VERSION,
                 });
+            }
+            Some(v) if v < SCHEMA_VERSION => {
+                conn.execute(
+                    "INSERT INTO schema_version (version) VALUES (?1)",
+                    params![SCHEMA_VERSION],
+                )
+                .map_err(backend)?;
             }
             Some(_) => {}
         }
@@ -280,6 +295,67 @@ impl Store for SqliteStore {
             )
             .map_err(backend)?;
         Ok(())
+    }
+
+    fn put_blob(&mut self, hash: Hash32, bytes: &[u8]) -> StoreResult<()> {
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO blobs (hash, body) VALUES (?1, ?2)",
+                params![&hash.0[..], bytes],
+            )
+            .map_err(backend)?;
+        Ok(())
+    }
+
+    fn get_blob(&self, hash: Hash32) -> StoreResult<Vec<u8>> {
+        let body: Option<Vec<u8>> = self
+            .conn
+            .query_row(
+                "SELECT body FROM blobs WHERE hash = ?1",
+                params![&hash.0[..]],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(backend)?;
+        body.ok_or_else(|| StoreError::NotFound(format!("blob {hash}")))
+    }
+
+    fn has_blob(&self, hash: Hash32) -> StoreResult<bool> {
+        let n: i64 = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM blobs WHERE hash = ?1",
+                params![&hash.0[..]],
+                |r| r.get(0),
+            )
+            .map_err(backend)?;
+        Ok(n > 0)
+    }
+
+    fn remove_blob(&mut self, hash: Hash32) -> StoreResult<()> {
+        self.conn
+            .execute("DELETE FROM blobs WHERE hash = ?1", params![&hash.0[..]])
+            .map_err(backend)?;
+        Ok(())
+    }
+
+    fn list_blobs(&self) -> StoreResult<Vec<Hash32>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT hash FROM blobs ORDER BY hash")
+            .map_err(backend)?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, Vec<u8>>(0))
+            .map_err(backend)?;
+        let mut out = Vec::new();
+        for row in rows {
+            let bytes = row.map_err(backend)?;
+            let arr: [u8; 32] = bytes
+                .try_into()
+                .map_err(|_| StoreError::Tampered("a blob name".into()))?;
+            out.push(Hash32(arr));
+        }
+        Ok(out)
     }
 
     fn save_all(

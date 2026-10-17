@@ -25,6 +25,10 @@
 //!   server's current head of every vault of the account as its boundary.
 //! - Anything signed by a device the identity manifest revoked is refused
 //!   with `revoked_device`: heads, items, identity manifests (D73).
+//! - A blob is stored under its own hash only, within the size cap, for the
+//!   account's vault; an item naming a blob the server lacks is
+//!   `unknown_blob`; blobs nothing names are collected after the grace
+//!   period (02-model §6).
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -38,15 +42,15 @@ use axum::response::{IntoResponse, Response};
 use lockdown_crypto::VerifyingKey;
 use lockdown_crypto::auth::{OpaqueServer, device_pop_message};
 use lockdown_sync::wire::{
-    self, BEARER, CONTENT_TYPE, ErrorBody, ErrorCode, HeadAccepted, HeadRefused, HeadsSince,
-    IdentityPush, IdentitySince, ItemPush, ItemWire, ItemsSince, LoginFinish, LoginFinishReply,
-    LoginStart, LoginStartReply, PushReply, RecordWire, RegisterFinish, RegisterStart,
-    RegisterStartReply, VaultList, VaultSummary,
+    self, BEARER, BlobAccepted, CONTENT_TYPE, ErrorBody, ErrorCode, HeadAccepted, HeadRefused,
+    HeadsSince, IdentityPush, IdentitySince, ItemPush, ItemWire, ItemsSince, LoginFinish,
+    LoginFinishReply, LoginStart, LoginStartReply, PushReply, RecordWire, RegisterFinish,
+    RegisterStart, RegisterStartReply, VaultList, VaultSummary,
 };
 use lockdown_vault::identity_set::{IdentityManifest, RecordSet};
 use lockdown_vault::item::ITEM_V;
 use lockdown_vault::manifest::MANIFEST_V;
-use lockdown_vault::{Id, Item, ManifestHead, VaultRecord};
+use lockdown_vault::{Hash32, Id, Item, ManifestHead, VaultRecord};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
@@ -972,10 +976,17 @@ pub async fn push_item(
             "the latest version's device signature didn't check out",
         )
     })?;
-    match state
-        .storage
-        .push_item(vault_id, item_id, &push.item, push.if_match)?
-    {
+    let blobs = item_blobs(&item);
+    let result = state.storage.push_item(
+        vault_id,
+        item_id,
+        &push.item,
+        push.if_match,
+        &blobs,
+        state.now(),
+    )?;
+    collect_blobs(&state);
+    match result {
         PushResult::Accepted(rev) => Ok(Cbor(PushReply::Accepted { rev }).into_response()),
         PushResult::Stale(current) => Ok((
             StatusCode::CONFLICT,
@@ -991,5 +1002,110 @@ pub async fn push_item(
             "if_match is {} but the server holds no item {item_id}; a new item is pushed with if_match 0",
             push.if_match
         ))),
+        PushResult::UnknownBlob(hash) => Err(ApiError::new(
+            StatusCode::CONFLICT,
+            ErrorCode::UnknownBlob,
+            format!(
+                "the item's attachments name blob {hash}, which the server doesn't hold; push the blob first"
+            ),
+        )),
     }
+}
+
+/// The blobs an item's versions still hold a key for: what the server
+/// must have before it takes the item, and what keeps those blobs alive.
+fn item_blobs(item: &Item) -> Vec<Hash32> {
+    let mut out: Vec<Hash32> = Vec::new();
+    for a in item
+        .versions
+        .iter()
+        .flat_map(|v| v.attachments.iter())
+        .filter(|a| !a.is_shredded())
+    {
+        if !out.contains(&a.blob) {
+            out.push(a.blob);
+        }
+    }
+    out
+}
+
+/// Collects blobs past their grace period. Best effort after a write; a
+/// failure here never fails the write.
+fn collect_blobs(state: &AppState) {
+    let grace = i64::try_from(state.config.blob_grace.as_secs()).unwrap_or(i64::MAX);
+    let _ = state.storage.gc_blobs(state.now(), grace);
+}
+
+fn blob_name(text: &str) -> ApiResult<Hash32> {
+    Hash32::from_hex(text)
+        .ok_or_else(|| ApiError::bad_request("a blob is named by 64 hex characters of BLAKE3"))
+}
+
+/// `PUT /v1/vaults/{vault}/blobs/{hash}`: content-addressed, idempotent,
+/// size-capped. The body must hash to the name.
+pub async fn put_blob(
+    State(state): State<Arc<AppState>>,
+    session: Session,
+    Path((vault_id, hash)): Path<(Id, String)>,
+    body: Bytes,
+) -> ApiResult<(StatusCode, Cbor<BlobAccepted>)> {
+    let hash = blob_name(&hash)?;
+    owned_vault(&state, &session, vault_id)?;
+    if body.len() as u64 > state.config.max_blob_bytes {
+        return Err(ApiError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            ErrorCode::BlobTooLarge,
+            format!(
+                "this server takes attachment blobs up to {} bytes; this one is {}",
+                state.config.max_blob_bytes,
+                body.len()
+            ),
+        ));
+    }
+    if body.is_empty() {
+        return Err(ApiError::bad_request("an empty blob isn't an attachment"));
+    }
+    if lockdown_crypto::hash::hash(&body) != hash {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            ErrorCode::BlobMismatch,
+            "the blob's bytes don't hash to the name in the path",
+        ));
+    }
+    let new = state.storage.put_blob(vault_id, hash, &body, state.now())?;
+    collect_blobs(&state);
+    Ok((
+        if new {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        },
+        Cbor(BlobAccepted {
+            hash,
+            size: body.len() as u64,
+            new,
+        }),
+    ))
+}
+
+/// `GET /v1/vaults/{vault}/blobs/{hash}` (and `HEAD`): the bytes.
+pub async fn get_blob(
+    State(state): State<Arc<AppState>>,
+    session: Session,
+    Path((vault_id, hash)): Path<(Id, String)>,
+) -> ApiResult<Response> {
+    let hash = blob_name(&hash)?;
+    owned_vault(&state, &session, vault_id)?;
+    let body = state
+        .storage
+        .blob(vault_id, hash)?
+        .ok_or_else(|| ApiError::not_found(format!("blob {hash} isn't in this vault")))?;
+    Ok((
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/octet-stream"),
+        )],
+        body,
+    )
+        .into_response())
 }

@@ -413,3 +413,65 @@ fn the_sqlite_file_is_private_in_wal_mode_and_refuses_a_newer_schema() {
         Err(StoreError::SchemaTooNew { .. })
     ));
 }
+
+#[test]
+fn attachments_round_trip_through_the_store_and_a_purge_collects_the_blob() {
+    for mut fixture in Fixture::all() {
+        let name = fixture.name();
+        let device = Device::new();
+        let mut vault = device.create();
+        let id = vault
+            .create_item(ItemKind::Document, ItemClass::Standard, note("passport"))
+            .unwrap();
+        let data: Vec<u8> = (0..(2 << 20) + 9).map(|i| (i % 7) as u8).collect();
+        let (att, blob_hash) = vault
+            .attach(id, "passport.jpg", "image/jpeg", &data)
+            .unwrap();
+        fixture.with(|store| vault.save(store, &device.adk).unwrap());
+        assert!(vault.pending_blobs().is_empty(), "{name}: saved");
+
+        // A fresh run: the blob is in the store, the item lists it, it opens.
+        fixture.with(|store| {
+            assert_eq!(store.list_blobs().unwrap(), vec![blob_hash], "{name}");
+            assert!(store.has_blob(blob_hash).unwrap());
+            let again = device.load(store, 0).unwrap();
+            let listed = again.attachments(id).unwrap();
+            assert_eq!(listed[0].meta.as_ref().unwrap().name, "passport.jpg");
+            let blob = store.get_blob(blob_hash).unwrap();
+            let (_, plain) = again.open_attachment(id, att, &blob).unwrap();
+            assert_eq!(plain.as_slice(), data.as_slice(), "{name}");
+            // A blob that isn't the one the signed list names is refused.
+            let mut other = blob.clone();
+            other[7] ^= 0x80;
+            assert!(matches!(
+                again.open_attachment(id, att, &other),
+                Err(Error::BlobMismatch { .. })
+            ));
+        });
+
+        // Purge: the key is shredded; the save collects the blob.
+        vault.purge_item(id).unwrap();
+        fixture.with(|store| vault.save(store, &device.adk).unwrap());
+        fixture.with(|store| {
+            assert!(store.list_blobs().unwrap().is_empty(), "{name}: collected");
+            assert!(!store.has_blob(blob_hash).unwrap());
+            assert!(matches!(
+                store.get_blob(blob_hash),
+                Err(StoreError::NotFound(_))
+            ));
+            let again = device.load(store, 0).unwrap();
+            assert!(again.attachments(id).unwrap()[0].meta.is_none());
+            assert!(matches!(
+                again.open_attachment(id, att, &data),
+                Err(Error::Shredded { .. })
+            ));
+            // Writing the same name twice is a no-op; a stray blob is fine
+            // until the next save removes it.
+            store.put_blob(blob_hash, &[1, 2, 3]).unwrap();
+            store.put_blob(blob_hash, &[4, 5, 6]).unwrap();
+            assert_eq!(store.get_blob(blob_hash).unwrap(), vec![1, 2, 3]);
+            store.remove_blob(blob_hash).unwrap();
+            store.remove_blob(blob_hash).unwrap();
+        });
+    }
+}

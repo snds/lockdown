@@ -18,7 +18,7 @@ use crate::item::Item;
 use crate::keys::WrappedKey;
 use crate::manifest::ManifestHead;
 use crate::vault::VaultContext;
-use crate::{Id, Result};
+use crate::{Hash32, Id, Result};
 
 /// What can go wrong in the store.
 #[derive(Debug, thiserror::Error)]
@@ -105,6 +105,20 @@ pub trait Store {
     /// Removes every head after `seq`. Sync uses it when the server's chain
     /// replaces heads this device committed offline; nothing else does.
     fn remove_heads_after(&mut self, vault_id: Id, seq: u64) -> StoreResult<()>;
+    /// Writes an attachment blob under its name (the BLAKE3 of its bytes;
+    /// the caller computed it, the vault checks it on open). Writing a
+    /// name again is a no-op. Blobs are ciphertext and keyed by content,
+    /// so one table serves every vault.
+    fn put_blob(&mut self, hash: Hash32, bytes: &[u8]) -> StoreResult<()>;
+    /// Reads a blob.
+    fn get_blob(&self, hash: Hash32) -> StoreResult<Vec<u8>>;
+    /// Whether a blob is here.
+    fn has_blob(&self, hash: Hash32) -> StoreResult<bool>;
+    /// Removes a blob nothing readable refers to any more (its Attachment
+    /// Key was shredded). Removing a name that isn't here is fine.
+    fn remove_blob(&mut self, hash: Hash32) -> StoreResult<()>;
+    /// Every blob name held, in hash order.
+    fn list_blobs(&self) -> StoreResult<Vec<Hash32>>;
     /// The newest manifest head for a vault.
     fn latest_head(&self, vault_id: Id) -> StoreResult<ManifestHead> {
         self.heads(vault_id)?

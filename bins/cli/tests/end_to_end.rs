@@ -170,4 +170,60 @@ fn init_add_list_show_status_across_processes() {
     let (ok, _, err) = lockdown(&root, &["--persona", "Work", "list"], None);
     assert!(!ok);
     assert!(err.contains("persona"), "{err}");
+
+    // Attachments: attach a file, list it, fetch it back byte for byte.
+    let file = dir.path().join("passport scan.pdf");
+    let bytes: Vec<u8> = (0..70_000u32).map(|i| (i % 253) as u8).collect();
+    std::fs::write(&file, &bytes).unwrap();
+    let (ok, out, err) = lockdown(&root, &["attach", &id, file.to_str().unwrap()], None);
+    assert!(ok, "{err}");
+    assert!(
+        out.starts_with(&format!(
+            "attached passport scan.pdf (70000 bytes) to {id} as "
+        )),
+        "{out}"
+    );
+    let (ok, out, err) = lockdown(&root, &["attachments", &id], None);
+    assert!(ok, "{err}");
+    assert!(
+        out.contains("passport scan.pdf  70000 bytes  application/pdf  1 chunk  blob "),
+        "{out}"
+    );
+    let out_file = dir.path().join("fetched.pdf");
+    let (ok, out, err) = lockdown(
+        &root,
+        &[
+            "fetch",
+            &id,
+            "passport scan.pdf",
+            "--out",
+            out_file.to_str().unwrap(),
+        ],
+        None,
+    );
+    assert!(ok, "{err}");
+    assert!(
+        out.contains("wrote passport scan.pdf (70000 bytes"),
+        "{out}"
+    );
+    assert_eq!(std::fs::read(&out_file).unwrap(), bytes);
+    // Never over an existing file; the item's fields are untouched; the
+    // head moved by one (the attachment is a version).
+    let (ok, _, err) = lockdown(
+        &root,
+        &[
+            "fetch",
+            &id,
+            "passport scan.pdf",
+            "--out",
+            out_file.to_str().unwrap(),
+        ],
+        None,
+    );
+    assert!(!ok);
+    assert!(err.contains("exists already"), "{err}");
+    let (_, out, _) = lockdown(&root, &["show", &id], None);
+    assert!(out.contains("version:  2 "), "{out}");
+    let (_, out, _) = lockdown(&root, &["status"], None);
+    assert!(out.contains("vault head     seq 4 "), "{out}");
 }

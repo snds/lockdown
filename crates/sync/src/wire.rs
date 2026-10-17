@@ -25,6 +25,18 @@
 //! | `GET /v1/vaults/{vault}/items?since=R` | | [`ItemsSince`] | yes |
 //! | `GET /v1/vaults/{vault}/items/{item}` | | [`ItemWire`] | yes |
 //! | `PUT /v1/vaults/{vault}/items/{item}` | [`ItemPush`] | [`PushReply`] | yes |
+//! | `PUT /v1/vaults/{vault}/blobs/{hash}` | the blob bytes (`application/octet-stream`) | [`BlobAccepted`] | yes |
+//! | `GET /v1/vaults/{vault}/blobs/{hash}` | | the blob bytes | yes |
+//! | `HEAD /v1/vaults/{vault}/blobs/{hash}` | | 200 or 404 | yes |
+//!
+//! Attachment blobs (02-model §6) are content-addressed: the path names
+//! the BLAKE3 of the bytes, a `PUT` of a name already held is a no-op, a
+//! body that hashes to another name is `blob_mismatch`, one over the
+//! server's cap is `blob_too_large`. A blob is pushed **before** the item
+//! whose signed attachment list names it; an item push naming a blob the
+//! server lacks is refused with `unknown_blob`. A blob nothing names any
+//! more (never named, or named only by shredded attachments after a
+//! purge) is collected after a grace period.
 //!
 //! The identity's signed record set travels the same way as vault heads
 //! (`lockdown_vault::identity_set`): the manifest bytes as the Identity
@@ -100,6 +112,13 @@ pub enum ErrorCode {
     /// between), or a vault of the account has no boundary. List the
     /// vaults again and re-sign.
     BoundaryMoved,
+    /// Item: its attachment list names a blob the server doesn't hold.
+    /// Push the blob first.
+    UnknownBlob,
+    /// Blob: larger than this server takes.
+    BlobTooLarge,
+    /// Blob: the bytes don't hash to the name in the path.
+    BlobMismatch,
     /// The server failed.
     Internal,
 }
@@ -334,6 +353,17 @@ pub enum PushReply {
         /// What the server holds now.
         current: ItemWire,
     },
+}
+
+/// The server's answer to a blob push.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct BlobAccepted {
+    /// The name.
+    pub hash: Hash32,
+    /// The length in bytes.
+    pub size: u64,
+    /// Whether the server lacked it before this push.
+    pub new: bool,
 }
 
 /// `GET /v1/vaults/{vault}/items?since=R`.

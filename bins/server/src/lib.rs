@@ -30,6 +30,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post, put};
 use lockdown_crypto::auth::{LoginServerState, OpaqueServer};
 use lockdown_vault::Id;
@@ -78,7 +79,7 @@ pub fn discovery(signups: bool) -> Discovery {
             signups,
             key_transparency: false,
             checkpoints: false,
-            blobs: false,
+            blobs: true,
             push: false,
         },
     }
@@ -96,7 +97,17 @@ pub struct Config {
     pub per_address: (u32, f64),
     /// Login attempts allowed at once per login name, then per second.
     pub per_login: (u32, f64),
+    /// The largest attachment blob accepted, in bytes.
+    pub max_blob_bytes: u64,
+    /// How long a blob nothing names is kept before it is collected.
+    pub blob_grace: Duration,
 }
+
+/// The default blob cap: 64 MiB.
+pub const DEFAULT_MAX_BLOB_BYTES: u64 = 64 << 20;
+
+/// The default grace before an unnamed blob is collected: a day.
+pub const DEFAULT_BLOB_GRACE: Duration = Duration::from_secs(24 * 60 * 60);
 
 impl Default for Config {
     fn default() -> Self {
@@ -105,6 +116,8 @@ impl Default for Config {
             signups_open: true,
             per_address: (30, 0.5),
             per_login: (10, 1.0 / 6.0),
+            max_blob_bytes: DEFAULT_MAX_BLOB_BYTES,
+            blob_grace: DEFAULT_BLOB_GRACE,
         }
     }
 }
@@ -187,7 +200,16 @@ impl AppState {
 
 /// The router over `state`. Tests drive it without a socket.
 pub fn app(state: Arc<AppState>) -> Router {
+    let blob_limit = usize::try_from(state.config.max_blob_bytes)
+        .unwrap_or(usize::MAX)
+        .saturating_add(1);
     Router::new()
+        .route(
+            "/v1/vaults/{vault}/blobs/{hash}",
+            get(api::get_blob)
+                .put(api::put_blob)
+                .layer(DefaultBodyLimit::max(blob_limit)),
+        )
         .route("/healthz", get(api::healthz))
         .route("/.well-known/lockdown", get(api::well_known))
         .route("/v1/account/register/start", post(api::register_start))

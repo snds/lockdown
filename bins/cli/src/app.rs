@@ -494,6 +494,151 @@ impl App {
         Ok(n)
     }
 
+    // --- attachments ---------------------------------------------------------
+
+    /// `lockdown attach <item> <file>`: seals the file under a fresh
+    /// Attachment Key as a new version of the item and keeps the blob in
+    /// the store. Returns the attachment id, its name and size.
+    pub fn attach_file(&mut self, id: &str, file: &Path) -> Result<(Id, String, u64), String> {
+        let item_id = Id::parse(id).map_err(|_| format!("'{id}' isn't an item id"))?;
+        let bytes =
+            std::fs::read(file).map_err(|e| format!("couldn't read {}: {e}", file.display()))?;
+        let name = file
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .filter(|n| !n.is_empty())
+            .ok_or_else(|| format!("{} has no file name", file.display()))?;
+        let mime = mime_for(&name);
+        let (att_id, _) = self
+            .opened
+            .vault
+            .attach(item_id, &name, mime, &bytes)
+            .map_err(|e| e.to_string())?;
+        self.save()?;
+        Ok((att_id, name, bytes.len() as u64))
+    }
+
+    /// `lockdown attachments <item>`: one line per attachment of the
+    /// item's newest version.
+    pub fn attachment_lines(&self, id: &str) -> Result<Vec<String>, String> {
+        let item_id = Id::parse(id).map_err(|_| format!("'{id}' isn't an item id"))?;
+        let listed = self
+            .vault()
+            .attachments(item_id)
+            .map_err(|e| e.to_string())?;
+        if listed.is_empty() {
+            return Ok(vec!["no attachments".into()]);
+        }
+        Ok(listed
+            .into_iter()
+            .map(|a| match a.meta {
+                Some(m) => format!(
+                    "{}  {}  {} bytes  {}  {} chunk{}  blob {}",
+                    a.att_id,
+                    m.name,
+                    m.size,
+                    m.mime,
+                    a.chunks,
+                    if a.chunks == 1 { "" } else { "s" },
+                    &a.blob.to_hex()[..16]
+                ),
+                None => format!("{}  (shredded)  blob {}", a.att_id, &a.blob.to_hex()[..16]),
+            })
+            .collect())
+    }
+
+    /// `lockdown fetch <item> <name> --out FILE`: opens the attachment
+    /// named `name` (or by attachment id) from the local blob, fetching it
+    /// from the server first when this device doesn't hold it, and writes
+    /// it to `out`, readable only by the user and never over a file that
+    /// exists.
+    pub fn fetch_attachment(
+        &mut self,
+        id: &str,
+        name: &str,
+        out: &Path,
+    ) -> Result<Vec<String>, String> {
+        let item_id = Id::parse(id).map_err(|_| format!("'{id}' isn't an item id"))?;
+        if out.exists() {
+            return Err(format!(
+                "{} exists already; choose another file",
+                out.display()
+            ));
+        }
+        let listed = self
+            .vault()
+            .attachments(item_id)
+            .map_err(|e| e.to_string())?;
+        let by_id = Id::parse(name).ok();
+        let found: Vec<_> = listed
+            .iter()
+            .filter(|a| Some(a.att_id) == by_id || a.meta.as_ref().is_some_and(|m| m.name == name))
+            .collect();
+        let att = match found.as_slice() {
+            [one] => (*one).clone(),
+            [] => {
+                return Err(format!(
+                    "no attachment '{name}' on item {item_id}; `lockdown attachments {item_id}` lists them"
+                ));
+            }
+            _ => {
+                return Err(format!(
+                    "'{name}' names more than one attachment; use the id"
+                ));
+            }
+        };
+        if att.meta.is_none() {
+            return Err(format!(
+                "attachment {} was shredded; its contents are gone for good",
+                att.att_id
+            ));
+        }
+        let blob = match lockdown_vault::Store::get_blob(&self.store, att.blob) {
+            Ok(bytes) => bytes,
+            Err(lockdown_store::StoreError::NotFound(_)) => {
+                let Some(cfg) = self.sync.as_ref() else {
+                    return Err(format!(
+                        "this device doesn't hold the blob of attachment {} and has no account to fetch it from",
+                        att.att_id
+                    ));
+                };
+                let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
+                let token = cfg.session_token()?.to_string();
+                let bytes = transport
+                    .get_blob(&token, self.vault().context().vault_id, att.blob)
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| {
+                        format!(
+                            "the server doesn't hold the blob of attachment {} either",
+                            att.att_id
+                        )
+                    })?;
+                if lockdown_crypto::hash::hash(&bytes) != att.blob {
+                    return Err(
+                        "the server's copy of the blob doesn't match its name; it was not kept"
+                            .into(),
+                    );
+                }
+                lockdown_vault::Store::put_blob(&mut self.store, att.blob, &bytes)
+                    .map_err(|e| e.to_string())?;
+                bytes
+            }
+            Err(e) => return Err(e.to_string()),
+        };
+        let (meta, plain) = self
+            .vault()
+            .open_attachment(item_id, att.att_id, &blob)
+            .map_err(|e| e.to_string())?;
+        write_private(out, &plain).map_err(|e| format!("couldn't write {}: {e}", out.display()))?;
+        Ok(vec![format!(
+            "wrote {} ({} bytes, {}) to {} (readable only by you)",
+            meta.name,
+            meta.size,
+            meta.mime,
+            out.display()
+        )])
+    }
+
     /// One line per live, visible item: id, kind, title, site.
     pub fn list_lines(&self) -> Result<Vec<String>, String> {
         let vault = self.vault();
@@ -1356,7 +1501,13 @@ impl App {
             .and_then(|r| r.to_bytes())
             .map_err(|e| e.to_string())?;
         let state = cfg.vaults.entry(vault_id).or_default();
-        let outcome = lockdown_sync::sync_vault(&syncer, &mut self.opened.vault, &record, state);
+        let outcome = lockdown_sync::sync_vault(
+            &syncer,
+            &mut self.opened.vault,
+            &record,
+            state,
+            &mut self.store,
+        );
         // Whatever happened on the wire, what is in memory is saved and
         // remembered, so a half-finished round is picked up next time.
         self.opened
@@ -1660,6 +1811,28 @@ impl AccountAuth for PreparedExportKey {
         _password: &str,
     ) -> ecosystem_identity::Result<ExportKey> {
         self.take()
+    }
+}
+
+/// A media type from a file name's extension; `application/octet-stream`
+/// when it isn't one of the few known here. It is sealed with the file,
+/// so a wrong guess costs nothing but a label.
+pub fn mime_for(name: &str) -> &'static str {
+    match name
+        .rsplit_once('.')
+        .map(|(_, ext)| ext.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("pdf") => "application/pdf",
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("txt" | "md") => "text/plain",
+        Some("json") => "application/json",
+        Some("csv") => "text/csv",
+        Some("zip") => "application/zip",
+        _ => "application/octet-stream",
     }
 }
 

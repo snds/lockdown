@@ -6,15 +6,15 @@
 //! drives, so one connection does login and sync.
 
 use lockdown_crypto::auth::{AuthRounds, DeviceProof, LoginStarted, Session};
-use lockdown_vault::Id;
+use lockdown_vault::{Hash32, Id};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use crate::wire::{
-    self, BEARER, CONTENT_TYPE, DeviceProofWire, ErrorBody, ErrorCode, HeadAccepted, HeadRefused,
-    HeadsSince, IdentityPush, IdentitySince, ItemPush, ItemsSince, LoginFinish, LoginFinishReply,
-    LoginStart, LoginStartReply, PushReply, RegisterFinish, RegisterStart, RegisterStartReply,
-    VaultList,
+    self, BEARER, BlobAccepted, CONTENT_TYPE, DeviceProofWire, ErrorBody, ErrorCode, HeadAccepted,
+    HeadRefused, HeadsSince, IdentityPush, IdentitySince, ItemPush, ItemsSince, LoginFinish,
+    LoginFinishReply, LoginStart, LoginStartReply, PushReply, RegisterFinish, RegisterStart,
+    RegisterStartReply, VaultList,
 };
 
 /// What can go wrong between client and server.
@@ -79,6 +79,19 @@ pub trait Transport {
         item_id: Id,
         push: &ItemPush,
     ) -> Result<PushReply>;
+    /// `PUT /v1/vaults/{vault}/blobs/{hash}`.
+    fn put_blob(
+        &self,
+        token: &str,
+        vault_id: Id,
+        hash: Hash32,
+        bytes: &[u8],
+    ) -> Result<BlobAccepted>;
+    /// `GET /v1/vaults/{vault}/blobs/{hash}`. `None` when the server
+    /// doesn't hold it.
+    fn get_blob(&self, token: &str, vault_id: Id, hash: Hash32) -> Result<Option<Vec<u8>>>;
+    /// `HEAD /v1/vaults/{vault}/blobs/{hash}`.
+    fn has_blob(&self, token: &str, vault_id: Id, hash: Hash32) -> Result<bool>;
 }
 
 /// The HTTPS transport.
@@ -133,6 +146,34 @@ impl HttpTransport {
             .client
             .request(method, format!("{}{path}", self.base))
             .header(reqwest::header::CONTENT_TYPE, CONTENT_TYPE);
+        if let Some(t) = token {
+            req = req.header(reqwest::header::AUTHORIZATION, format!("{BEARER}{t}"));
+        }
+        if let Some(b) = body {
+            req = req.body(b);
+        }
+        let res = req
+            .send()
+            .map_err(|e| TransportError::Network(e.to_string()))?;
+        let status = res.status().as_u16();
+        let bytes = res
+            .bytes()
+            .map_err(|e| TransportError::Network(e.to_string()))?;
+        Ok((status, bytes.to_vec()))
+    }
+
+    /// Like `send`, with an `application/octet-stream` body: blobs.
+    fn send_raw(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        token: Option<&str>,
+        body: Option<Vec<u8>>,
+    ) -> Result<(u16, Vec<u8>)> {
+        let mut req = self
+            .client
+            .request(method, format!("{}{path}", self.base))
+            .header(reqwest::header::CONTENT_TYPE, "application/octet-stream");
         if let Some(t) = token {
             req = req.header(reqwest::header::AUTHORIZATION, format!("{BEARER}{t}"));
         }
@@ -418,5 +459,56 @@ impl Transport for HttpTransport {
             return Ok(reply);
         }
         Err(Self::refused(status, &bytes))
+    }
+
+    fn put_blob(
+        &self,
+        token: &str,
+        vault_id: Id,
+        hash: Hash32,
+        bytes: &[u8],
+    ) -> Result<BlobAccepted> {
+        let (status, body) = self.send_raw(
+            reqwest::Method::PUT,
+            &format!("/v1/vaults/{vault_id}/blobs/{hash}"),
+            Some(token),
+            Some(bytes.to_vec()),
+        )?;
+        if (200..300).contains(&status) {
+            return wire::decode(&body).map_err(|e| TransportError::Decode(e.to_string()));
+        }
+        Err(Self::refused(status, &body))
+    }
+
+    fn get_blob(&self, token: &str, vault_id: Id, hash: Hash32) -> Result<Option<Vec<u8>>> {
+        let (status, body) = self.send_raw(
+            reqwest::Method::GET,
+            &format!("/v1/vaults/{vault_id}/blobs/{hash}"),
+            Some(token),
+            None,
+        )?;
+        if status == 404 {
+            return Ok(None);
+        }
+        if (200..300).contains(&status) {
+            return Ok(Some(body));
+        }
+        Err(Self::refused(status, &body))
+    }
+
+    fn has_blob(&self, token: &str, vault_id: Id, hash: Hash32) -> Result<bool> {
+        let (status, body) = self.send_raw(
+            reqwest::Method::HEAD,
+            &format!("/v1/vaults/{vault_id}/blobs/{hash}"),
+            Some(token),
+            None,
+        )?;
+        if status == 404 {
+            return Ok(false);
+        }
+        if (200..300).contains(&status) {
+            return Ok(true);
+        }
+        Err(Self::refused(status, &body))
     }
 }

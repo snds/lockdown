@@ -22,12 +22,16 @@
 //! vaults            (vault_id, account_id, record, head_seq, head_hash, item_rev)
 //! heads             (vault_id, seq, hash, body)
 //! items             (vault_id, item_id, rev, body)
+//! blobs             (vault_id, hash, size, body, uploaded_at, unreferenced_at)
+//! blob_refs         (vault_id, item_id, hash)
 //! ```
 //!
 //! Schema 1 kept one last-write-wins identity backup per account
 //! (`identity_backups`, D59); schema 2 replaces it with the record set
-//! (D71). An old file is upgraded in place: the new tables are added and
-//! the old one left alone.
+//! (D71); schema 3 adds attachment blobs (02-model §6): content-addressed
+//! ciphertext per vault, and which items name each blob, so a blob nothing
+//! names any more can be collected after a grace period. An old file is
+//! upgraded in place: the new tables are added and the old ones left alone.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -38,7 +42,7 @@ use lockdown_vault::{Hash32, Id, Item, ManifestHead};
 use rusqlite::{Connection, OptionalExtension, params};
 
 /// The schema this build writes and the highest it reads.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// The marker row in `revoked_devices` that says "revoked at all",
 /// beside one row per vault boundary.
@@ -192,6 +196,8 @@ pub enum PushResult {
     Stale(ItemRow),
     /// `if_match` was non-zero but the server holds no such item.
     Unknown,
+    /// The item's attachment list names a blob the server doesn't hold.
+    UnknownBlob(Hash32),
 }
 
 /// The server's store.
@@ -252,14 +258,30 @@ pub trait Storage: Send + Sync {
     /// Every item with `rev > since`, lowest revision first.
     fn items_since(&self, vault_id: Id, since: u64) -> Result<Vec<ItemRow>>;
     /// Stores an item if `if_match` is its current revision (zero for a
-    /// new one) and assigns the next revision. Atomic.
+    /// new one) and every blob in `blobs` (the names its attachment list
+    /// carries with a key) is held, and assigns the next revision. The
+    /// item's blob references are replaced by `blobs`; a blob that lost
+    /// its last reference starts its grace period at `now`. Atomic.
     fn push_item(
         &self,
         vault_id: Id,
         item_id: Id,
         body: &[u8],
         if_match: u64,
+        blobs: &[Hash32],
+        now: i64,
     ) -> Result<PushResult>;
+    /// Stores a blob under its name (the caller checked the hash). Returns
+    /// whether the server lacked it. A blob nothing names yet is kept for
+    /// the grace period.
+    fn put_blob(&self, vault_id: Id, hash: Hash32, body: &[u8], now: i64) -> Result<bool>;
+    /// A blob's bytes.
+    fn blob(&self, vault_id: Id, hash: Hash32) -> Result<Option<Vec<u8>>>;
+    /// Whether a blob is held.
+    fn has_blob(&self, vault_id: Id, hash: Hash32) -> Result<bool>;
+    /// Removes every blob no item names whose grace period (from its upload,
+    /// or from when it lost its last reference) is over. Returns how many.
+    fn gc_blobs(&self, now: i64, grace_secs: i64) -> Result<usize>;
     /// Writes a consistent copy of the whole store to `path` (the backup
     /// job's primitive, 05-self-host §4).
     fn snapshot_to(&self, path: &Path) -> Result<()>;
@@ -404,7 +426,22 @@ impl SqliteStorage {
                  body     BLOB NOT NULL,
                  PRIMARY KEY (vault_id, item_id)
              );
-             CREATE INDEX IF NOT EXISTS items_by_rev ON items (vault_id, rev);",
+             CREATE INDEX IF NOT EXISTS items_by_rev ON items (vault_id, rev);
+             CREATE TABLE IF NOT EXISTS blobs (
+                 vault_id        TEXT NOT NULL REFERENCES vaults(vault_id),
+                 hash            BLOB NOT NULL,
+                 size            INTEGER NOT NULL,
+                 body            BLOB NOT NULL,
+                 uploaded_at     INTEGER NOT NULL,
+                 unreferenced_at INTEGER,
+                 PRIMARY KEY (vault_id, hash)
+             );
+             CREATE TABLE IF NOT EXISTS blob_refs (
+                 vault_id TEXT NOT NULL,
+                 item_id  TEXT NOT NULL,
+                 hash     BLOB NOT NULL,
+                 PRIMARY KEY (vault_id, item_id, hash)
+             );",
         )
         .map_err(backend)?;
         let found: Option<u32> = conn
@@ -530,6 +567,17 @@ impl SqliteStorage {
             hash: hash_from(hash)?,
             isk_pub,
         })
+    }
+
+    fn has_blob_in(conn: &Connection, vault_id: Id, hash: Hash32) -> Result<bool> {
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM blobs WHERE vault_id = ?1 AND hash = ?2",
+                params![vault_id.to_string(), &hash.0[..]],
+                |r| r.get(0),
+            )
+            .map_err(backend)?;
+        Ok(n > 0)
     }
 
     fn item_in(conn: &Connection, vault_id: Id, item_id: Id) -> Result<Option<ItemRow>> {
@@ -1125,6 +1173,8 @@ impl Storage for SqliteStorage {
         item_id: Id,
         body: &[u8],
         if_match: u64,
+        blobs: &[Hash32],
+        now: i64,
     ) -> Result<PushResult> {
         let mut conn = self.lock();
         let tx = conn.transaction().map_err(backend)?;
@@ -1135,6 +1185,52 @@ impl Storage for SqliteStorage {
             None if if_match != 0 => return Ok(PushResult::Unknown),
             Some(row) if row.rev != if_match => return Ok(PushResult::Stale(row.clone())),
             _ => {}
+        }
+        for hash in blobs {
+            if !Self::has_blob_in(&tx, vault_id, *hash)? {
+                return Ok(PushResult::UnknownBlob(*hash));
+            }
+        }
+        // The item's references are replaced; what it no longer names and
+        // nothing else names starts its grace period now.
+        let before: Vec<Hash32> = {
+            let mut stmt = tx
+                .prepare("SELECT hash FROM blob_refs WHERE vault_id = ?1 AND item_id = ?2")
+                .map_err(backend)?;
+            let rows = stmt
+                .query_map(params![vault_id.to_string(), item_id.to_string()], |r| {
+                    r.get::<_, Vec<u8>>(0)
+                })
+                .map_err(backend)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(hash_from(Some(row.map_err(backend)?))?.expect("some"));
+            }
+            out
+        };
+        tx.execute(
+            "DELETE FROM blob_refs WHERE vault_id = ?1 AND item_id = ?2",
+            params![vault_id.to_string(), item_id.to_string()],
+        )
+        .map_err(backend)?;
+        for hash in blobs {
+            tx.execute(
+                "INSERT OR IGNORE INTO blob_refs (vault_id, item_id, hash) VALUES (?1, ?2, ?3)",
+                params![vault_id.to_string(), item_id.to_string(), &hash.0[..]],
+            )
+            .map_err(backend)?;
+            tx.execute(
+                "UPDATE blobs SET unreferenced_at = NULL WHERE vault_id = ?1 AND hash = ?2",
+                params![vault_id.to_string(), &hash.0[..]],
+            )
+            .map_err(backend)?;
+        }
+        for hash in before.iter().filter(|h| !blobs.contains(h)) {
+            tx.execute(
+                "UPDATE blobs SET unreferenced_at = ?3 WHERE vault_id = ?1 AND hash = ?2 AND NOT EXISTS (SELECT 1 FROM blob_refs WHERE blob_refs.vault_id = ?1 AND blob_refs.hash = ?2)",
+                params![vault_id.to_string(), &hash.0[..], now],
+            )
+            .map_err(backend)?;
         }
         let rev = vault.item_rev + 1;
         let rev_i = to_i64(rev, "a revision")?;
@@ -1150,6 +1246,55 @@ impl Storage for SqliteStorage {
         .map_err(backend)?;
         tx.commit().map_err(backend)?;
         Ok(PushResult::Accepted(rev))
+    }
+
+    fn put_blob(&self, vault_id: Id, hash: Hash32, body: &[u8], now: i64) -> Result<bool> {
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(backend)?;
+        if Self::vault_in(&tx, vault_id)?.is_none() {
+            return Err(StorageError::NotFound(format!("vault {vault_id}")));
+        }
+        if Self::has_blob_in(&tx, vault_id, hash)? {
+            return Ok(false);
+        }
+        tx.execute(
+            "INSERT INTO blobs (vault_id, hash, size, body, uploaded_at, unreferenced_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL)",
+            params![
+                vault_id.to_string(),
+                &hash.0[..],
+                to_i64(body.len() as u64, "a blob size")?,
+                body,
+                now
+            ],
+        )
+        .map_err(backend)?;
+        tx.commit().map_err(backend)?;
+        Ok(true)
+    }
+
+    fn blob(&self, vault_id: Id, hash: Hash32) -> Result<Option<Vec<u8>>> {
+        let conn = self.lock();
+        conn.query_row(
+            "SELECT body FROM blobs WHERE vault_id = ?1 AND hash = ?2",
+            params![vault_id.to_string(), &hash.0[..]],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(backend)
+    }
+
+    fn has_blob(&self, vault_id: Id, hash: Hash32) -> Result<bool> {
+        Self::has_blob_in(&self.lock(), vault_id, hash)
+    }
+
+    fn gc_blobs(&self, now: i64, grace_secs: i64) -> Result<usize> {
+        let conn = self.lock();
+        let cutoff = now.saturating_sub(grace_secs);
+        conn.execute(
+            "DELETE FROM blobs WHERE COALESCE(unreferenced_at, uploaded_at) <= ?1 AND NOT EXISTS (SELECT 1 FROM blob_refs WHERE blob_refs.vault_id = blobs.vault_id AND blob_refs.hash = blobs.hash)",
+            params![cutoff],
+        )
+        .map_err(backend)
     }
 
     fn snapshot_to(&self, path: &Path) -> Result<()> {

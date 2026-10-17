@@ -13,7 +13,7 @@
 //! Key with the persona's App Data Key, and checks every item against the
 //! newest signed head before it trusts a byte of it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ecosystem_identity::SymmetricKey;
 use ecosystem_identity::keys::{AppDataKey, CrownJewelKey};
@@ -23,11 +23,16 @@ use lockdown_crypto::cbor::{from_slice, to_canonical};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
+use crate::attachment::{
+    AttachmentMeta, AttachmentPlace, open_attachment, open_meta, seal_attachment,
+};
 use crate::field::{FieldAad, PlainField, SCHEMA_V, SealedField};
-use crate::item::{ITEM_V, Item, ItemClass, ItemHeader, ItemKind, ItemState, ItemVersion};
+use crate::item::{
+    AttachmentRef, ITEM_V, Item, ItemClass, ItemHeader, ItemKind, ItemState, ItemVersion,
+};
 use crate::keys::{
-    ItemKey, KeyPlace, KeyPurpose, VaultKey, VersionKey, WRAP_V, WrappedBy, WrappedKey,
-    WrapperKind, unwrap_key, wrap_key,
+    AttachmentKey, ItemKey, KeyPlace, KeyPurpose, VaultKey, VersionKey, WRAP_V, WrappedBy,
+    WrappedKey, WrapperKind, unwrap_key, wrap_key,
 };
 use crate::manifest::{
     MANIFEST_V, ManifestEntry, ManifestHead, Member, check_revocations, verify_chain,
@@ -94,6 +99,24 @@ pub struct Vault {
     items: BTreeMap<Id, Item>,
     heads: Vec<ManifestHead>,
     members: Vec<Member>,
+    /// Attachment blobs sealed here and not yet written to a store.
+    pending_blobs: Vec<(Hash32, Vec<u8>)>,
+}
+
+/// One attachment of an item, as listed: its sealed facts opened for the
+/// caller, and where its blob is.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct AttachmentInfo {
+    /// The attachment.
+    pub att_id: Id,
+    /// Its name, type and size; `None` once its key was shredded.
+    pub meta: Option<AttachmentMeta>,
+    /// How many chunks.
+    pub chunks: u32,
+    /// The blob's name.
+    pub blob: Hash32,
+    /// The blob's length.
+    pub blob_size: u64,
 }
 
 impl std::fmt::Debug for Vault {
@@ -137,6 +160,7 @@ impl Vault {
                 rights: vec!["manage".into()],
                 key_env: Id::new(),
             }],
+            pending_blobs: Vec::new(),
         };
         vault.commit_head()?;
         Ok(vault)
@@ -249,18 +273,34 @@ impl Vault {
             items,
             heads,
             members: Vec::new(),
+            pending_blobs: Vec::new(),
         };
         vault.members = vault.members()?;
         Ok(vault)
     }
 
     /// Writes the vault to `store`: its record (the Vault Key under
-    /// `app_data_key`), every item, and every head the store does not have
-    /// yet. When the store's chain parts from this vault's (sync replaced
-    /// heads this device had committed offline), the store's heads after
-    /// the common prefix are removed first. Safe to call after every change.
-    pub fn save(&self, store: &mut dyn Store, app_data_key: &AppDataKey) -> Result<()> {
+    /// `app_data_key`), every item, every head the store does not have
+    /// yet, and every attachment blob sealed since the last save. When the
+    /// store's chain parts from this vault's (sync replaced heads this
+    /// device had committed offline), the store's heads after the common
+    /// prefix are removed first. Blobs whose Attachment Key is gone from
+    /// every version (a purge) are removed from the store: their
+    /// ciphertext is dead anyway. Safe to call after every change.
+    pub fn save(&mut self, store: &mut dyn Store, app_data_key: &AppDataKey) -> Result<()> {
         let record = self.record(app_data_key)?;
+        // Blobs first, so a crash between the two leaves an unreferenced
+        // blob (collected on the next save), never a listed blob that is
+        // missing.
+        for (hash, bytes) in self.pending_blobs.drain(..) {
+            store.put_blob(hash, &bytes)?;
+        }
+        let live = self.live_blobs();
+        for hash in store.list_blobs()? {
+            if !live.contains(&hash) {
+                store.remove_blob(hash)?;
+            }
+        }
         let stored = store.heads(self.ctx.vault_id)?;
         let mut common = 0;
         for (theirs, ours) in stored.iter().zip(self.heads.iter()) {
@@ -395,7 +435,8 @@ impl Vault {
             class,
             device_only: false,
         };
-        let version = self.make_version(&header, &item_key, 1, Hash32::ZERO, &fields)?;
+        let version =
+            self.make_version(&header, &item_key, 1, Hash32::ZERO, &fields, Vec::new())?;
         let item = Item {
             v: ITEM_V,
             item_id,
@@ -424,7 +465,9 @@ impl Vault {
         let latest = item.latest()?;
         let n = latest.n + 1;
         let parent_hash = latest.hash(&header)?;
-        let version = self.make_version(&header, &item_key, n, parent_hash, &fields)?;
+        let attachments = latest.attachments.clone();
+        let version =
+            self.make_version(&header, &item_key, n, parent_hash, &fields, attachments)?;
         self.items
             .get_mut(&item_id)
             .ok_or_else(|| Error::NotFound(format!("item {item_id}")))?
@@ -432,6 +475,179 @@ impl Vault {
             .push(version);
         self.commit_head()?;
         Ok(n)
+    }
+
+    // --- attachments (02-model §6) ------------------------------------------
+
+    /// Attaches a file to an item: seals it in chunks under a fresh
+    /// Attachment Key wrapped by the Item Key, and saves a new version of
+    /// the item whose signed attachment list names the blob. The blob is
+    /// written to the store at the next [`Self::save`]. Returns the
+    /// attachment's id and the blob's name.
+    pub fn attach(
+        &mut self,
+        item_id: Id,
+        name: &str,
+        mime: &str,
+        bytes: &[u8],
+    ) -> Result<(Id, Hash32)> {
+        let item = self.item(item_id)?;
+        let item_key = self.item_key(item)?;
+        let header = item.header();
+        let latest = item.latest()?;
+        let att_id = Id::new();
+        let att_key = AttachmentKey::from_bytes(lockdown_crypto::rand::random_32()?);
+        let wrapped = wrap_key(
+            &att_key,
+            &item_key,
+            &self.attachment_key_place(item_id, att_id),
+        )?;
+        let meta = AttachmentMeta {
+            name: name.to_string(),
+            mime: mime.to_string(),
+            size: bytes.len() as u64,
+        };
+        let sealed = seal_attachment(
+            &att_key,
+            &self.attachment_place(item_id, att_id),
+            &meta,
+            bytes,
+        )?;
+        let mut attachments = latest.attachments.clone();
+        attachments.push(AttachmentRef {
+            att_id,
+            att_key: Some(wrapped),
+            chunks: sealed.chunks,
+            blob: sealed.blob_hash,
+            blob_size: sealed.blob.len() as u64,
+            meta: sealed.meta,
+        });
+        let fields = self.open_envelope(item, latest.n)?;
+        let n = latest.n + 1;
+        let parent_hash = latest.hash(&header)?;
+        let version =
+            self.make_version(&header, &item_key, n, parent_hash, &fields, attachments)?;
+        self.items
+            .get_mut(&item_id)
+            .ok_or_else(|| Error::NotFound(format!("item {item_id}")))?
+            .versions
+            .push(version);
+        self.pending_blobs.push((sealed.blob_hash, sealed.blob));
+        self.commit_head()?;
+        Ok((att_id, sealed.blob_hash))
+    }
+
+    /// The attachments of an item's newest version, with their sealed
+    /// facts opened where the key still exists.
+    pub fn attachments(&self, item_id: Id) -> Result<Vec<AttachmentInfo>> {
+        let item = self.item(item_id)?;
+        let latest = item.latest()?;
+        let item_key = item
+            .item_key
+            .as_ref()
+            .map(|_| self.item_key(item))
+            .transpose()?;
+        let mut out = Vec::with_capacity(latest.attachments.len());
+        for r in &latest.attachments {
+            let meta = match (&r.att_key, &item_key) {
+                (Some(env), Some(item_key)) => {
+                    let key: AttachmentKey =
+                        unwrap_key(env, item_key, &self.attachment_key_place(item_id, r.att_id))?;
+                    Some(open_meta(
+                        &key,
+                        &self.attachment_place(item_id, r.att_id),
+                        r.chunks,
+                        &r.meta,
+                    )?)
+                }
+                _ => None,
+            };
+            out.push(AttachmentInfo {
+                att_id: r.att_id,
+                meta,
+                chunks: r.chunks,
+                blob: r.blob,
+                blob_size: r.blob_size,
+            });
+        }
+        Ok(out)
+    }
+
+    /// Opens an attachment of an item's newest version from its blob: the
+    /// blob must hash to the name the signed list carries, every chunk
+    /// must open in its place, and the padding comes off.
+    pub fn open_attachment(
+        &self,
+        item_id: Id,
+        att_id: Id,
+        blob: &[u8],
+    ) -> Result<(AttachmentMeta, Zeroizing<Vec<u8>>)> {
+        let item = self.item(item_id)?;
+        let latest = item.latest()?;
+        let r = latest
+            .attachments
+            .iter()
+            .find(|a| a.att_id == att_id)
+            .ok_or_else(|| Error::NotFound(format!("attachment {att_id} of item {item_id}")))?;
+        let env = r.att_key.as_ref().ok_or(Error::Shredded {
+            item_id,
+            version_n: latest.n,
+        })?;
+        let item_key = self.item_key(item)?;
+        let key: AttachmentKey =
+            unwrap_key(env, &item_key, &self.attachment_key_place(item_id, att_id))?;
+        open_attachment(
+            &key,
+            &self.attachment_place(item_id, att_id),
+            r.chunks,
+            r.blob,
+            &r.meta,
+            blob,
+        )
+    }
+
+    /// The name of every blob some version of some item still holds a key
+    /// for: what a store and the server must keep.
+    pub fn live_blobs(&self) -> BTreeSet<Hash32> {
+        self.items
+            .values()
+            .flat_map(|i| i.versions.iter())
+            .flat_map(|v| v.attachments.iter())
+            .filter(|a| !a.is_shredded())
+            .map(|a| a.blob)
+            .collect()
+    }
+
+    /// The name of every blob one item's versions hold a key for: what
+    /// travels with the item on push and pull.
+    pub fn item_blobs(&self, item_id: Id) -> Result<Vec<(Hash32, u64)>> {
+        let item = self.item(item_id)?;
+        let mut out: Vec<(Hash32, u64)> = Vec::new();
+        for a in item
+            .versions
+            .iter()
+            .flat_map(|v| v.attachments.iter())
+            .filter(|a| !a.is_shredded())
+        {
+            if !out.iter().any(|(h, _)| *h == a.blob) {
+                out.push((a.blob, a.blob_size));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Blobs sealed here and not yet saved, by name.
+    pub fn pending_blobs(&self) -> &[(Hash32, Vec<u8>)] {
+        &self.pending_blobs
+    }
+
+    /// Hands over a pending blob's bytes (sync pushes them before the
+    /// item; the store still gets them at the next save).
+    pub fn pending_blob(&self, hash: Hash32) -> Option<&[u8]> {
+        self.pending_blobs
+            .iter()
+            .find(|(h, _)| *h == hash)
+            .map(|(_, b)| b.as_slice())
     }
 
     /// Opens the newest version's fields.
@@ -736,6 +952,28 @@ impl Vault {
         }
     }
 
+    fn attachment_key_place(&self, item_id: Id, att_id: Id) -> KeyPlace {
+        KeyPlace {
+            profile_id: self.ctx.profile_id,
+            persona_id: self.ctx.persona_id,
+            vault_id: self.ctx.vault_id,
+            key_id: att_id,
+            purpose: KeyPurpose::Attachment,
+            wrapped_by: WrappedBy::new(WrapperKind::Item, item_id),
+            v: WRAP_V,
+        }
+    }
+
+    fn attachment_place(&self, item_id: Id, att_id: Id) -> AttachmentPlace {
+        AttachmentPlace {
+            profile_id: self.ctx.profile_id,
+            persona_id: self.ctx.persona_id,
+            vault_id: self.ctx.vault_id,
+            item_id,
+            att_id,
+        }
+    }
+
     fn wrap_item_key(&self, item_id: Id, class: ItemClass, key: &ItemKey) -> Result<WrappedKey> {
         let place = self.item_key_place(item_id, class);
         match class {
@@ -792,6 +1030,7 @@ impl Vault {
         n: u64,
         parent_hash: Hash32,
         fields: &[PlainField],
+        attachments: Vec<AttachmentRef>,
     ) -> Result<ItemVersion> {
         let item_id = header.item_id;
         let version_key = VersionKey::from_bytes(lockdown_crypto::rand::random_32()?);
@@ -822,7 +1061,7 @@ impl Vault {
             edited_by: self.device_id,
             edited_at: Timestamp::now(),
             fields: sealed,
-            attachments: Vec::new(),
+            attachments,
             sig: Vec::new(),
         };
         version.sign(header, self.signer.as_ref())?;
@@ -1132,6 +1371,62 @@ mod tests {
             Err(Error::Shredded { version_n: 1, .. })
         ));
         assert_eq!(vault.open_version(id2, 2).unwrap(), login_fields("y"));
+        vault.verify(0).unwrap();
+    }
+
+    #[test]
+    fn attachments_ride_with_the_item_and_die_with_its_keys() {
+        let mut vault = sample_vault();
+        let id = vault
+            .create_item(ItemKind::Document, ItemClass::Standard, login_fields("x"))
+            .unwrap();
+        let data: Vec<u8> = (0..(5 << 20) + 17).map(|i| (i % 13) as u8).collect();
+        let (att, blob_hash) = vault
+            .attach(id, "scan.pdf", "application/pdf", &data)
+            .unwrap();
+        let blob = vault.pending_blob(blob_hash).unwrap().to_vec();
+        assert_eq!(lockdown_crypto::hash::hash(&blob), blob_hash);
+        // The signed list names it; the version carries it; the fields held.
+        let listed = vault.attachments(id).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].att_id, att);
+        assert_eq!(listed[0].chunks, 6);
+        assert_eq!(listed[0].meta.as_ref().unwrap().name, "scan.pdf");
+        assert_eq!(listed[0].meta.as_ref().unwrap().size, data.len() as u64);
+        assert_eq!(vault.open_item(id).unwrap(), login_fields("x"));
+        let (meta, plain) = vault.open_attachment(id, att, &blob).unwrap();
+        assert_eq!(meta.mime, "application/pdf");
+        assert_eq!(plain.as_slice(), data.as_slice());
+        // An edit keeps the attachment; the version signature covers the list.
+        vault.update_item(id, login_fields("y")).unwrap();
+        assert_eq!(vault.attachments(id).unwrap().len(), 1);
+        assert_eq!(
+            vault.open_attachment(id, att, &blob).unwrap().1.as_slice(),
+            data.as_slice()
+        );
+        let mut forged = vault.items[&id].clone();
+        forged.versions.last_mut().unwrap().attachments[0].chunks = 7;
+        assert!(matches!(
+            vault.open_envelope(&forged, forged.latest().unwrap().n),
+            Err(Error::Crypto(lockdown_crypto::Error::BadSignature(_)))
+        ));
+        // A blob that isn't the one the list names is refused by name.
+        let mut other = blob.clone();
+        other[100] ^= 1;
+        assert!(matches!(
+            vault.open_attachment(id, att, &other),
+            Err(Error::BlobMismatch { .. })
+        ));
+        assert_eq!(vault.live_blobs().len(), 1);
+        assert_eq!(vault.item_blobs(id).unwrap()[0].0, blob_hash);
+        // Purge: the Attachment Key is gone, the blob is dead, nothing lists it.
+        vault.purge_item(id).unwrap();
+        assert!(matches!(
+            vault.open_attachment(id, att, &blob),
+            Err(Error::Shredded { .. })
+        ));
+        assert!(vault.attachments(id).unwrap()[0].meta.is_none());
+        assert!(vault.live_blobs().is_empty());
         vault.verify(0).unwrap();
     }
 

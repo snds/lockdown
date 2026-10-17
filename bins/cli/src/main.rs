@@ -13,6 +13,8 @@
 //!
 //! `kit create`, `kit verify` and `recover` are the recovery kit (D69,
 //! D70): the Secret Key half protects the account slot beside the password.
+//! `attach`, `attachments` and `fetch` are files on items (02-model §6);
+//! their blobs travel with the item on `sync`.
 //!
 //! A password, a Secret Key or a recovery code never arrives as an
 //! argument, where it would land in shell history and `ps`: they are read
@@ -72,6 +74,30 @@ enum Command {
     /// Change a login's title, username or password (a new version; the
     /// old one stays in history).
     Edit(EditLogin),
+    /// Attach a file to an item (a new version; the file is sealed in
+    /// chunks under its own key).
+    Attach {
+        /// The item id, as `list` prints it.
+        id: String,
+        /// The file to attach. Its name and type are sealed with it.
+        file: PathBuf,
+    },
+    /// List an item's attachments.
+    Attachments {
+        /// The item id, as `list` prints it.
+        id: String,
+    },
+    /// Write an attachment out to a file (fetched from the server first
+    /// when this device doesn't hold it).
+    Fetch {
+        /// The item id, as `list` prints it.
+        id: String,
+        /// The attachment's file name (or its id), as `attachments` prints it.
+        name: String,
+        /// Where to write it. Refused if the file exists.
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+    },
     /// Where everything is and the vault's newest head.
     Status,
     /// The account on a Lockdown server.
@@ -461,6 +487,20 @@ fn run(cli: Cli) -> Result<Vec<String>, String> {
                 password.as_deref(),
             )?;
             Ok(vec![format!("saved version {n} of {}", edit.id)])
+        }
+        Command::Attach { id, file } => {
+            let mut app = App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?;
+            let (att_id, name, size) = app.attach_file(&id, &file)?;
+            Ok(vec![format!(
+                "attached {name} ({size} bytes) to {id} as {att_id}"
+            )])
+        }
+        Command::Attachments { id } => {
+            App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?.attachment_lines(&id)
+        }
+        Command::Fetch { id, name, out } => {
+            App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?
+                .fetch_attachment(&id, &name, &out)
         }
         Command::Status => {
             App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?.status_lines()
