@@ -1,10 +1,13 @@
-// What crosses from lockdown-app (crates/app/src/types.rs), field for field.
+// What crosses from lockdown-app (crates/app/src/types.rs, settings.rs,
+// approval.rs), field for field.
 
-export type ErrorCode = "locked" | "not_set_up" | "refused" | "stopped"
+export type ErrorCode = "locked" | "not_set_up" | "refused" | "stopped" | "approval_needed"
 
 export interface AppError {
   code: ErrorCode
   message: string
+  /** With `approval_needed`: what to ask for, `password` or `window`. */
+  detail?: string
 }
 
 export interface Probe {
@@ -32,6 +35,9 @@ export interface PolicyInput {
   sleep_gap_secs: number | null
 }
 
+/** The smart views (crates/app/src/views.rs), as `ItemSummary.views` names them. */
+export type SmartView = "passkeys" | "codes" | "wi-fi" | "expiring" | "attention" | "deleted"
+
 export interface ItemSummary {
   id: string
   kind: string
@@ -40,6 +46,15 @@ export interface ItemSummary {
   site: string
   username: string
   edited_at: number
+  crown_jewel: boolean
+  /** A Login's sign-in methods: `password`, `passkey`, `code`. */
+  methods: string[]
+  passkeys: number
+  codes: number
+  expires_at: string | null
+  conflict_copy: boolean
+  warnings: string[]
+  views: SmartView[]
 }
 
 export interface FieldView {
@@ -59,6 +74,34 @@ export interface ItemDetail {
   edited_at: number
   crown_jewel: boolean
   fields: FieldView[]
+}
+
+/** One one-time code now: values and timing, never the set-up. */
+export interface CodeView {
+  item_id: string
+  field_id: string
+  title: string
+  issuer: string | null
+  account: string | null
+  variant: "totp" | "hotp" | "steam"
+  digits: number
+  period: number
+  current: string
+  next: string | null
+  seconds_left: number | null
+  warnings: string[]
+}
+
+export interface PersonaInfo {
+  id: string
+  label: string
+  kind: string
+  active: boolean
+}
+
+export interface ImportReport {
+  imported: number
+  notes: string[]
 }
 
 /** The server's key-transparency log as this device last verified it. */
@@ -124,4 +167,35 @@ export interface OncePage {
   lines: string[]
   /** The kit page, as bytes the caller wipes after showing. Empty when none was made. */
   page: Uint8Array
+}
+
+// --- settings (settings.cbor, D100) --------------------------------------------
+
+export type Density = "comfortable" | "compact"
+export type RevealGesture = "hold" | "toggle"
+
+export interface Settings {
+  v: number
+  density: Density
+  reveal: RevealGesture
+  clipboard_clear_secs: number
+  idle_lock_secs: number | null
+  hidden_lock_secs: number | null
+  server: string | null
+}
+
+// --- approvals (D101) ------------------------------------------------------------
+
+export type ApprovalKind = "use" | "reveal" | "approve"
+
+/** What a gated call carries: the password the UI asked for, or the window's confirm. */
+export interface GateInput {
+  password?: string
+  confirmed?: boolean
+}
+
+export interface ApprovalRoute {
+  route: "platform" | "password" | "window"
+  /** `Touch ID`, `Windows Hello`, `password` or `window`. */
+  method: string
 }

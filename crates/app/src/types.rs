@@ -40,17 +40,83 @@ pub struct LockState {
     pub hidden_timeout_secs: Option<u64>,
 }
 
-/// One row of the list: nothing hidden.
+/// One row of the list: nothing hidden. The facts after `edited_at` are
+/// what the sidebar's smart views and a row's method glyphs are drawn from
+/// (`views`); they name what exists, never a value.
 #[derive(Clone, Debug, Serialize)]
 pub struct ItemSummary {
     pub id: String,
     pub kind: String,
+    /// `live`, `archived` or `trashed` (a trashed item is in its grace
+    /// period and shows only in the Deleted view).
     pub state: String,
     pub title: String,
     pub site: String,
     pub username: String,
     /// Seconds since the Unix epoch.
     pub edited_at: i64,
+    /// Under the crown-jewel treatment (D98).
+    pub crown_jewel: bool,
+    /// The sign-in methods a Login holds, in order: `password`, `passkey`,
+    /// `code` (each once, however many there are).
+    pub methods: Vec<String>,
+    /// How many passkeys are inside this item.
+    pub passkeys: u32,
+    /// How many one-time codes are inside this item.
+    pub codes: u32,
+    /// The `expires_at` date field's text, when the item has one.
+    pub expires_at: Option<String>,
+    /// A conflict copy (D58): the title carries the marker.
+    pub conflict_copy: bool,
+    /// Things the person should look at: `issuer-equals-login`.
+    pub warnings: Vec<String>,
+    /// The smart views this row is in (`views::classify`).
+    pub views: Vec<String>,
+}
+
+/// One one-time code as the Codes view shows it: the current and next
+/// values and how long the current one lasts. The set-up (the seed) never
+/// crosses; a shell cannot re-derive a code from this.
+#[derive(Clone, Debug, Serialize)]
+pub struct CodeView {
+    pub item_id: String,
+    pub field_id: String,
+    /// The item's title.
+    pub title: String,
+    pub issuer: Option<String>,
+    pub account: Option<String>,
+    /// `totp`, `hotp` or `steam`.
+    pub variant: String,
+    pub digits: u32,
+    pub period: u32,
+    /// The code valid now.
+    pub current: String,
+    /// The code after it (time-based kinds only).
+    pub next: Option<String>,
+    /// Seconds the current code stays valid; `None` for HOTP.
+    pub seconds_left: Option<u64>,
+    /// `issuer-equals-login` when the code's issuer is the sync login.
+    pub warnings: Vec<String>,
+}
+
+/// One persona of the identity, for the sidebar's switcher.
+#[derive(Clone, Debug, Serialize)]
+pub struct PersonaInfo {
+    pub id: String,
+    pub label: String,
+    /// `personal`, `work`, `business`, `custom`.
+    pub kind: String,
+    /// The one whose vault is open.
+    pub active: bool,
+}
+
+/// What an import did.
+#[derive(Clone, Debug, Serialize)]
+pub struct ImportReport {
+    /// Items created.
+    pub imported: usize,
+    /// Per item, what in it did not map and was left out (never silent).
+    pub notes: Vec<String>,
 }
 
 /// One field of an item as a shell may show it. A hidden field carries a

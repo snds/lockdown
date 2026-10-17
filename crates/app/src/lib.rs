@@ -19,18 +19,23 @@
 
 #![forbid(unsafe_code)]
 
+pub mod approval;
 pub mod lock;
 mod revealed;
 pub mod secrets;
 mod session;
+pub mod settings;
 pub mod types;
+pub mod views;
 
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant, SystemTime};
 
+pub use approval::{Approval, ApprovalKind, Approver, GateInput, PasswordApprover, Route};
 pub use lock::{LockPolicy, LockReason};
 pub use revealed::Revealed;
 pub use session::{Paths, device_name};
+pub use settings::{Density, RevealGesture, Settings};
 pub use types::*;
 
 use lock::LockClock;
@@ -48,6 +53,10 @@ pub enum ErrorCode {
     Refused,
     /// The worker thread is gone (the app is shutting down).
     Stopped,
+    /// The call is gated (D101) and nothing confirmed it yet: `detail`
+    /// names what the shell must ask for (`password` or `window`); the
+    /// shell asks, then calls again with a [`GateInput`].
+    ApprovalNeeded,
 }
 
 /// An error a shell shows as is.
@@ -55,6 +64,10 @@ pub enum ErrorCode {
 pub struct AppError {
     pub code: ErrorCode,
     pub message: String,
+    /// A machine-readable hint beside the words; today only
+    /// [`ErrorCode::ApprovalNeeded`] sets it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
 
 impl AppError {
@@ -62,13 +75,32 @@ impl AppError {
         Self {
             code: ErrorCode::Locked,
             message: "Lockdown is locked".into(),
+            detail: None,
         }
     }
 
-    fn refused(message: impl Into<String>) -> Self {
+    /// The core refused; `message` is shown as is.
+    pub fn refused(message: impl Into<String>) -> Self {
         Self {
             code: ErrorCode::Refused,
             message: message.into(),
+            detail: None,
+        }
+    }
+
+    fn approval_needed(route: Route, reason: &str) -> Self {
+        let (detail, message) = match route {
+            Route::Password => (
+                "password",
+                format!("your account password is needed to {reason}"),
+            ),
+            Route::Window => ("window", format!("confirm in this window to {reason}")),
+            Route::Platform => ("platform", format!("confirm to {reason}")),
+        };
+        Self {
+            code: ErrorCode::ApprovalNeeded,
+            message,
+            detail: Some(detail.into()),
         }
     }
 }
@@ -90,7 +122,11 @@ impl From<String> for AppError {
         } else {
             ErrorCode::Refused
         };
-        Self { code, message }
+        Self {
+            code,
+            message,
+            detail: None,
+        }
     }
 }
 
@@ -108,10 +144,26 @@ struct Core {
     clock: LockClock,
     session: Option<Session>,
     last_reason: Option<LockReason>,
+    /// The settings file as last read or written.
+    settings: Settings,
+    /// The platform's own check (Touch ID, Windows Hello), when the shell
+    /// installed one; else approvals fall back per `approval::route`.
+    approver: Option<Box<dyn Approver + Send + Sync>>,
 }
 
 impl Core {
+    /// `policy` applies only while no settings file exists; once one does,
+    /// its lock timers win (they are what the person set).
     fn new(paths: Paths, persona: Option<String>, policy: LockPolicy) -> Self {
+        let file = paths.settings_file();
+        let (settings, policy) = match (file.exists(), Settings::load(&file)) {
+            (true, Ok(settings)) => {
+                let policy = settings.lock_policy();
+                (settings, policy)
+            }
+            (_, Ok(settings)) => (settings, policy),
+            (_, Err(_)) => (Settings::default(), policy),
+        };
         Self {
             paths,
             persona,
@@ -119,7 +171,90 @@ impl Core {
             clock: LockClock::new(Instant::now(), SystemTime::now()),
             session: None,
             last_reason: None,
+            settings,
+            approver: None,
         }
+    }
+
+    /// Runs the gate for `kind` (D101): the platform check, the password
+    /// in `gate`, or the person's confirmation in the window, whichever
+    /// `approval::route` names for what this device has. Declined or
+    /// mismatched comes back refused; nothing yet asked for comes back
+    /// [`ErrorCode::ApprovalNeeded`] with what to ask.
+    fn approve(
+        &mut self,
+        kind: ApprovalKind,
+        reason: &str,
+        gate: &GateInput,
+    ) -> AppResult<Approval> {
+        let has_account = self.session()?.has_account();
+        match approval::route(kind, self.approver.is_some(), has_account) {
+            Route::Platform => {
+                let approver = self.approver.as_ref().expect("routed only when installed");
+                match approver.confirm(kind, reason) {
+                    Ok(true) => Ok(Approval {
+                        method: approver.method().into(),
+                    }),
+                    Ok(false) => Err(AppError::refused(format!(
+                        "{} didn't confirm, so nothing happened",
+                        approver.method()
+                    ))),
+                    Err(e) => Err(AppError::refused(e)),
+                }
+            }
+            Route::Password => {
+                let Some(password) = gate.password.as_deref() else {
+                    return Err(AppError::approval_needed(Route::Password, reason));
+                };
+                let session = self.session()?;
+                let approver =
+                    PasswordApprover::new(zeroize::Zeroizing::new(password.to_string()), |p| {
+                        session.check_password(p)
+                    });
+                match approver.confirm(kind, reason) {
+                    Ok(true) => Ok(Approval {
+                        method: approver.method().into(),
+                    }),
+                    Ok(false) => Err(AppError::refused("the password didn't match")),
+                    Err(e) => Err(AppError::refused(e)),
+                }
+            }
+            Route::Window => {
+                if gate.confirmed {
+                    Ok(Approval {
+                        method: "window".into(),
+                    })
+                } else {
+                    Err(AppError::approval_needed(Route::Window, reason))
+                }
+            }
+        }
+    }
+
+    /// One hidden field's bytes, through the gate when the item is a
+    /// crown jewel: `Reveal` to see it, `Use` to copy it (brief §3.1).
+    fn reveal(
+        &mut self,
+        id: &str,
+        field_id: &str,
+        kind: ApprovalKind,
+        gate: &GateInput,
+    ) -> AppResult<Revealed> {
+        self.clock.touch(Instant::now());
+        if self
+            .session()?
+            .is_crown_jewel(id)
+            .map_err(AppError::refused)?
+        {
+            let reason = match kind {
+                ApprovalKind::Use => "copy this protected value",
+                _ => "reveal this protected value",
+            };
+            self.approve(kind, reason, gate)?;
+        }
+        self.session()?
+            .reveal(id, field_id)
+            .map_err(AppError::refused)
     }
 
     /// Runs the timers; locks when one is due.
@@ -213,6 +348,7 @@ impl App {
         let stopped = || AppError {
             code: ErrorCode::Stopped,
             message: "the app is shutting down".into(),
+            detail: None,
         };
         self.tx.send(job).map_err(|_| stopped())?;
         reply_rx.recv().map_err(|_| stopped())?
@@ -294,6 +430,69 @@ impl App {
         self.call(|core| Ok(core.policy))
     }
 
+    // --- settings and approvals ----------------------------------------------------
+
+    /// The settings as last read or written (`settings.cbor`, D100).
+    pub fn settings(&self) -> AppResult<Settings> {
+        self.call(|core| Ok(core.settings.clone()))
+    }
+
+    /// Writes the settings (clamped into range) and applies their lock
+    /// timers from now on. Needs no open vault.
+    pub fn set_settings(&self, settings: Settings) -> AppResult<Settings> {
+        self.call(move |core| {
+            let settings = settings.clamped();
+            settings
+                .save(&core.paths.settings_file())
+                .map_err(AppError::refused)?;
+            core.policy = settings.lock_policy();
+            core.settings = settings;
+            core.enforce();
+            Ok(core.settings.clone())
+        })
+    }
+
+    /// Installs the platform's own check (Touch ID, Windows Hello). Call
+    /// once at startup; without it, approvals use the password (D101).
+    pub fn set_approver(&self, approver: Box<dyn Approver + Send + Sync>) -> AppResult<()> {
+        self.call(move |core| {
+            core.approver = Some(approver);
+            Ok(())
+        })
+    }
+
+    /// Which check `kind` would go to right now, and its name, so a shell
+    /// can show the right prompt before calling: `platform` with the
+    /// method's name, `password`, or `window`.
+    pub fn approval_route(&self, kind: ApprovalKind) -> AppResult<(Route, String)> {
+        self.call(move |core| {
+            let has_account = core.session.as_ref().is_some_and(Session::has_account);
+            let route = approval::route(kind, core.approver.is_some(), has_account);
+            let method = match route {
+                Route::Platform => core
+                    .approver
+                    .as_ref()
+                    .map(|a| a.method().to_string())
+                    .unwrap_or_default(),
+                Route::Password => "password".into(),
+                Route::Window => "window".into(),
+            };
+            Ok((route, method))
+        })
+    }
+
+    /// Runs the gate for `kind` on its own (an approval with no item
+    /// behind it, such as approving another device later).
+    pub fn approve(
+        &self,
+        kind: ApprovalKind,
+        reason: &str,
+        gate: GateInput,
+    ) -> AppResult<Approval> {
+        let reason = reason.to_string();
+        self.call(move |core| core.approve(kind, &reason, &gate))
+    }
+
     // --- items -----------------------------------------------------------------
 
     /// Every visible item, nothing hidden in it.
@@ -307,10 +506,81 @@ impl App {
         self.with_session(move |s| s.show(&id, reveal))
     }
 
-    /// One hidden field's bytes.
-    pub fn reveal(&self, id: &str, field_id: &str) -> AppResult<Revealed> {
+    /// One hidden field's bytes, to show. A crown jewel's go through the
+    /// `Reveal` gate first (the password where one exists).
+    pub fn reveal(&self, id: &str, field_id: &str, gate: GateInput) -> AppResult<Revealed> {
         let (id, field_id) = (id.to_string(), field_id.to_string());
-        self.with_session(move |s| s.reveal(&id, &field_id))
+        self.call(move |core| core.reveal(&id, &field_id, ApprovalKind::Reveal, &gate))
+    }
+
+    /// One hidden field's bytes, to copy or fill without showing. A crown
+    /// jewel's go through the `Use` gate first (the platform's check where
+    /// one exists).
+    pub fn reveal_to_use(&self, id: &str, field_id: &str, gate: GateInput) -> AppResult<Revealed> {
+        let (id, field_id) = (id.to_string(), field_id.to_string());
+        self.call(move |core| core.reveal(&id, &field_id, ApprovalKind::Use, &gate))
+    }
+
+    /// Every one-time code at this moment: current and next value and the
+    /// seconds left, never the set-up (D102).
+    pub fn codes(&self) -> AppResult<Vec<CodeView>> {
+        self.with_session(|s| s.codes(session::now_secs().max(0) as u64))
+    }
+
+    /// The code valid now for one code field, as bytes, for a shell's
+    /// clipboard path (the same timer as `copy_secret`).
+    pub fn code_now(&self, id: &str, field_id: &str) -> AppResult<Revealed> {
+        let (id, field_id) = (id.to_string(), field_id.to_string());
+        self.with_session(move |s| s.code_now(&id, &field_id, session::now_secs().max(0) as u64))
+    }
+
+    /// Adds a code from its URI, inside `into` (a Login) or as its own item.
+    pub fn add_code(
+        &self,
+        uri: &str,
+        title: Option<&str>,
+        into: Option<&str>,
+    ) -> AppResult<String> {
+        let uri = zeroize::Zeroizing::new(uri.to_string());
+        let (title, into) = (title.map(str::to_string), into.map(str::to_string));
+        self.with_session(move |s| {
+            s.add_code(&uri, title.as_deref(), into.as_deref())
+                .map(|id| id.to_string())
+        })
+    }
+
+    /// Every persona of the identity, the open one marked.
+    pub fn personas(&self) -> AppResult<Vec<PersonaInfo>> {
+        self.with_session(|s| Ok(s.personas()))
+    }
+
+    /// Reads a CXF or CSV file's bytes into the vault (D103). A hostile or
+    /// unreadable file is refused with the parser's reason.
+    pub fn import_items(&self, bytes: Vec<u8>, format: &str) -> AppResult<ImportReport> {
+        let format = format.to_string();
+        let bytes = zeroize::Zeroizing::new(bytes);
+        self.with_session(move |s| s.import(&bytes, &format))
+    }
+
+    /// The live vault as one CXF or CSV file, behind the `Reveal` gate
+    /// (the password where one exists; D103). The bytes cross once.
+    pub fn export_items(&self, format: &str, gate: GateInput) -> AppResult<Revealed> {
+        let format = format.to_string();
+        self.call(move |core| {
+            core.clock.touch(Instant::now());
+            core.approve(ApprovalKind::Reveal, "export the vault", &gate)?;
+            let bytes = core
+                .session()?
+                .export(&format, session::now_secs().max(0) as u64)
+                .map_err(AppError::refused)?;
+            Ok(Revealed::new(bytes))
+        })
+    }
+
+    /// `lockdown audit`, for "Check now" on the Status screen: the server's
+    /// log verified from the start, in the audit's own words.
+    pub fn audit(&self) -> AppResult<Vec<String>> {
+        self.with_session(|s| s.audit())
     }
 
     /// Adds a login. `password` is bytes a shell wipes afterwards.
@@ -492,10 +762,17 @@ impl App {
         self.with_session(|s| Ok(s.device_list()))
     }
 
-    /// Revokes another device (D73).
-    pub fn device_revoke(&self, selector: &str) -> AppResult<Vec<String>> {
+    /// Revokes another device (D73), through the `Approve` gate first (the
+    /// brief's "revoke needs a fresh check").
+    pub fn device_revoke(&self, selector: &str, gate: GateInput) -> AppResult<Vec<String>> {
         let selector = selector.to_string();
-        self.with_session(move |s| s.device_revoke(&selector))
+        self.call(move |core| {
+            core.clock.touch(Instant::now());
+            core.approve(ApprovalKind::Approve, "revoke that device", &gate)?;
+            core.session()?
+                .device_revoke(&selector)
+                .map_err(AppError::refused)
+        })
     }
 }
 
@@ -562,17 +839,258 @@ mod tests {
         let json = serde_json::to_string(&revealed).unwrap();
         assert!(!json.contains("correct horse"));
 
-        let one = app.reveal(&id, "pw").unwrap();
+        let one = app.reveal(&id, "pw", GateInput::default()).unwrap();
         assert_eq!(one.expose(), b"correct horse battery staple");
-        assert!(app.reveal(&id, "user").is_err());
+        assert!(app.reveal(&id, "user", GateInput::default()).is_err());
+        // A standard item needs no gate to copy either.
+        assert_eq!(
+            app.reveal_to_use(&id, "pw", GateInput::default())
+                .unwrap()
+                .expose(),
+            b"correct horse battery staple"
+        );
 
         app.edit_login(&id, Some("Example"), None, Some(b"hunter2".to_vec()))
             .unwrap();
-        assert_eq!(app.reveal(&id, "pw").unwrap().expose(), b"hunter2");
-        assert_eq!(app.list().unwrap()[0].title, "Example");
+        assert_eq!(
+            app.reveal(&id, "pw", GateInput::default())
+                .unwrap()
+                .expose(),
+            b"hunter2"
+        );
+        let rows = app.list().unwrap();
+        assert_eq!(rows[0].title, "Example");
+        assert_eq!(rows[0].methods, ["password"]);
+        assert!(
+            rows[0].views.is_empty(),
+            "a plain login is in no smart view"
+        );
 
         app.trash(&id).unwrap();
-        assert!(app.list().unwrap().is_empty());
+        let rows = app.list().unwrap();
+        assert_eq!(rows.len(), 1, "a trashed item still lists, as deleted");
+        assert_eq!(rows[0].state, "trashed");
+        assert_eq!(rows[0].views, ["deleted"]);
+        let json = serde_json::to_string(&rows).unwrap();
+        assert!(!json.contains("hunter2"));
+    }
+
+    #[test]
+    fn settings_persist_beside_the_data_and_drive_the_lock_timers() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::resolve(Some(dir.path().join("snds/identity")), None).unwrap();
+        let app = App::start(paths.clone(), None, LockPolicy::default());
+        let defaults = app.settings().unwrap();
+        assert_eq!(defaults, Settings::default());
+        let mut changed = defaults.clone();
+        changed.density = Density::Compact;
+        changed.reveal = RevealGesture::Toggle;
+        changed.idle_lock_secs = Some(5);
+        let saved = app.set_settings(changed).unwrap();
+        assert_eq!(saved.idle_lock_secs, Some(60), "clamped to the floor");
+        assert_eq!(
+            app.policy().unwrap().idle,
+            Some(Duration::from_secs(60)),
+            "the lock timer follows the setting"
+        );
+        assert!(paths.settings_file().ends_with("lockdown/settings.cbor"));
+        drop(app);
+        // A second start reads the file back and uses its timers.
+        let again = App::start(paths, None, LockPolicy::default());
+        assert_eq!(again.settings().unwrap().density, Density::Compact);
+        assert_eq!(again.settings().unwrap().reveal, RevealGesture::Toggle);
+        assert_eq!(again.policy().unwrap().idle, Some(Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn codes_come_as_values_and_timing_never_the_seed() {
+        let (_dir, app) = fresh();
+        app.open_or_create(true).unwrap();
+        const SEED: &str = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+        let uri = format!("otpauth://totp/Example:alice?secret={SEED}&digits=8&period=30");
+        let code_id = app.add_code(&uri, None, None).unwrap();
+        let login = app
+            .add_login("https://example.com", "me", b"pw".to_vec(), None)
+            .unwrap();
+        let steam = format!("otpauth://totp/Steam:me?secret={SEED}&issuer=Steam");
+        app.add_code(&steam, None, Some(&login)).unwrap();
+        assert!(app.add_code("otpauth://totp/x", None, None).is_err());
+
+        let codes = app.codes().unwrap();
+        assert_eq!(codes.len(), 2);
+        let by_item = |id: &str| codes.iter().find(|c| c.item_id == id).unwrap();
+        let standalone = by_item(&code_id);
+        assert_eq!(standalone.title, "Example (alice)");
+        assert_eq!(standalone.digits, 8);
+        assert_eq!(standalone.current.len(), 8);
+        assert_eq!(standalone.next.as_ref().unwrap().len(), 8);
+        assert!(standalone.seconds_left.unwrap() <= 30);
+        let embedded = by_item(&login);
+        assert_eq!(embedded.field_id, "code.0");
+        assert_eq!(embedded.issuer.as_deref(), Some("Steam"));
+        assert_eq!(embedded.variant, "steam", "the codes crate spots Steam");
+        assert_eq!(embedded.digits, 5);
+        assert_eq!(embedded.current.len(), 5);
+
+        let now = app.code_now(&code_id, "code.0").unwrap();
+        assert_eq!(now.expose(), standalone.current.as_bytes());
+        assert!(app.code_now(&code_id, "title").is_err());
+
+        let json = serde_json::to_string(&codes).unwrap();
+        assert!(!json.contains(SEED), "the seed never crosses");
+        assert!(!json.contains("secret="));
+        assert!(!json.contains("otpauth"));
+
+        let rows = app.list().unwrap();
+        let login_row = rows.iter().find(|r| r.id == login).unwrap();
+        assert_eq!(login_row.codes, 1);
+        assert_eq!(login_row.methods, ["password", "code"]);
+        assert_eq!(login_row.views, ["codes"]);
+        let code_row = rows.iter().find(|r| r.id == code_id).unwrap();
+        assert_eq!(code_row.kind, "code");
+        assert_eq!(code_row.views, ["codes"]);
+        // The code's own set-up is a masked field in the detail, not a value.
+        let detail = app.show(&code_id, false).unwrap();
+        let json = serde_json::to_string(&detail).unwrap();
+        assert!(!json.contains(SEED), "{json}");
+    }
+
+    /// A platform check for tests: answers as told, counts the asks.
+    struct FakePlatform {
+        answer: bool,
+        asked: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl Approver for FakePlatform {
+        fn confirm(&self, _kind: ApprovalKind, _reason: &str) -> Result<bool, String> {
+            self.asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(self.answer)
+        }
+
+        fn method(&self) -> &'static str {
+            "Test ID"
+        }
+    }
+
+    #[test]
+    fn without_a_platform_check_or_an_account_the_gate_is_the_window() {
+        let (_dir, app) = fresh();
+        app.open_or_create(true).unwrap();
+        app.add_login("https://example.com", "me", b"pw".to_vec(), None)
+            .unwrap();
+        let (route, method) = app.approval_route(ApprovalKind::Reveal).unwrap();
+        assert_eq!((route, method.as_str()), (Route::Window, "window"));
+
+        let err = app.export_items("csv", GateInput::default()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ApprovalNeeded);
+        assert_eq!(err.detail.as_deref(), Some("window"));
+        let json = serde_json::to_string(&err).unwrap();
+        assert!(json.contains("\"detail\":\"window\""));
+
+        let csv = app
+            .export_items(
+                "csv",
+                GateInput {
+                    password: None,
+                    confirmed: true,
+                },
+            )
+            .unwrap();
+        let text = std::str::from_utf8(csv.expose()).unwrap();
+        assert!(text.starts_with("name,url,username,password,notes,totp"));
+        assert!(text.contains("example.com"));
+        assert!(
+            app.export_items(
+                "xml",
+                GateInput {
+                    password: None,
+                    confirmed: true
+                }
+            )
+            .is_err()
+        );
+
+        // Revoking goes through the same gate.
+        let err = app
+            .device_revoke("nobody", GateInput::default())
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::ApprovalNeeded);
+    }
+
+    #[test]
+    fn a_platform_check_takes_use_and_approve_and_stands_in_for_the_password() {
+        let (_dir, app) = fresh();
+        app.open_or_create(true).unwrap();
+        let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        app.set_approver(Box::new(FakePlatform {
+            answer: true,
+            asked: asked.clone(),
+        }))
+        .unwrap();
+        let (route, method) = app.approval_route(ApprovalKind::Use).unwrap();
+        assert_eq!((route, method.as_str()), (Route::Platform, "Test ID"));
+        // No account: Reveal has no password to go to, so the platform check stands in.
+        let (route, _) = app.approval_route(ApprovalKind::Reveal).unwrap();
+        assert_eq!(route, Route::Platform);
+        let ok = app
+            .approve(ApprovalKind::Use, "copy", GateInput::default())
+            .unwrap();
+        assert_eq!(ok.method, "Test ID");
+        app.export_items("cxf", GateInput::default()).unwrap();
+        assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 2);
+
+        // A declined check is a refusal with the method's name, not a crash.
+        app.set_approver(Box::new(FakePlatform {
+            answer: false,
+            asked: asked.clone(),
+        }))
+        .unwrap();
+        let err = app
+            .approve(ApprovalKind::Approve, "revoke", GateInput::default())
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::Refused);
+        assert!(err.message.contains("Test ID didn't confirm"));
+    }
+
+    #[test]
+    fn import_takes_a_csv_and_a_cxf_file_and_refuses_a_hostile_one() {
+        let (_dir, app) = fresh();
+        app.open_or_create(true).unwrap();
+        let csv = b"name,url,username,password,totp\nShop,https://shop.example,me,pw1,\n".to_vec();
+        let report = app.import_items(csv, "csv").unwrap();
+        assert_eq!(report.imported, 1);
+        let rows = app.list().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].title, "Shop");
+        assert_eq!(rows[0].username, "me");
+
+        let err = app.import_items(b"{not json".to_vec(), "cxf").unwrap_err();
+        assert_eq!(err.code, ErrorCode::Refused);
+        assert!(
+            err.message.contains("didn't read as CXF"),
+            "{}",
+            err.message
+        );
+        assert!(app.import_items(Vec::new(), "xml").is_err());
+        assert_eq!(
+            app.list().unwrap().len(),
+            1,
+            "a refused file writes nothing"
+        );
+
+        // Round trip: what was exported reads back in.
+        let cxf = app
+            .export_items(
+                "cxf",
+                GateInput {
+                    password: None,
+                    confirmed: true,
+                },
+            )
+            .unwrap();
+        let report = app.import_items(cxf.expose().to_vec(), "cxf").unwrap();
+        assert_eq!(report.imported, 1);
+        assert_eq!(app.list().unwrap().len(), 2);
     }
 
     #[test]

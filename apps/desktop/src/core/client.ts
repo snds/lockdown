@@ -3,13 +3,20 @@ import { invoke } from "@tauri-apps/api/core"
 
 import type {
   AppError,
+  ApprovalKind,
+  ApprovalRoute,
+  CodeView,
   DeviceInfo,
+  GateInput,
+  ImportReport,
   ItemDetail,
   ItemSummary,
   LockState,
   OncePage,
+  PersonaInfo,
   PolicyInput,
   Probe,
+  Settings,
   Status,
   SyncOutcome,
 } from "./types"
@@ -19,6 +26,8 @@ import { splitOncePage } from "./secret-bytes"
  * The command surface of lockdown-app as the UI sees it. One method per
  * Tauri command (apps/desktop/src-tauri/src/commands.rs). Secrets go out
  * as byte arrays and come back as `Uint8Array`, never as strings in JSON.
+ * A gated call (D101) takes a `GateInput`; without one it may reject with
+ * `approval_needed`, and `app/gate.tsx` asks and calls again.
  */
 export interface Client {
   probe(): Promise<Probe>
@@ -29,15 +38,24 @@ export interface Client {
   touch(): Promise<void>
   setHidden(hidden: boolean): Promise<LockState>
   setPolicy(policy: PolicyInput): Promise<LockState>
+  getSettings(): Promise<Settings>
+  setSettings(settings: Settings): Promise<Settings>
+  approvalRoute(kind: ApprovalKind): Promise<ApprovalRoute>
   list(): Promise<ItemSummary[]>
   show(id: string): Promise<ItemDetail>
-  reveal(id: string, fieldId: string): Promise<Uint8Array>
+  reveal(id: string, fieldId: string, gate?: GateInput): Promise<Uint8Array>
   /** Copies on the Rust side; resolves to the seconds until the clipboard is cleared. */
-  copySecret(id: string, fieldId: string, clearAfterSecs?: number): Promise<number>
+  copySecret(id: string, fieldId: string, clearAfterSecs?: number, gate?: GateInput): Promise<number>
+  /** Copies the code valid now on the Rust side, with the same clipboard timer. */
+  copyCode(itemId: string, fieldId: string, clearAfterSecs?: number): Promise<number>
   addLogin(input: { site: string; username: string; password: number[]; title?: string }): Promise<string>
   editLogin(input: { id: string; title?: string; username?: string; password?: number[] }): Promise<number>
   trash(id: string): Promise<void>
+  codes(): Promise<CodeView[]>
+  addCode(input: { uri: string; title?: string; into?: string }): Promise<string>
+  personas(): Promise<PersonaInfo[]>
   status(): Promise<Status>
+  audit(): Promise<string[]>
   accountRegister(input: { server: string; login: string; password: string; secretKey?: string }): Promise<OncePage>
   accountLogin(input: { server: string; login: string; password: string; secretKey?: string }): Promise<string[]>
   recover(input: { server: string; login: string; password: string; secretKey: string; recoveryCode: string }): Promise<string[]>
@@ -45,7 +63,9 @@ export interface Client {
   kitCreate(input: { replace: boolean; password?: string }): Promise<OncePage>
   kitVerify(input: { secretKey: string; recoveryCode: string; password?: string; drill: boolean }): Promise<string[]>
   deviceList(): Promise<DeviceInfo[]>
-  deviceRevoke(id: string): Promise<string[]>
+  deviceRevoke(id: string, gate?: GateInput): Promise<string[]>
+  importItems(bytes: number[], format: string): Promise<ImportReport>
+  exportItems(format: string, gate?: GateInput): Promise<Uint8Array>
   openSite(url: string): Promise<void>
 }
 
@@ -80,14 +100,22 @@ export const tauriClient: Client = {
   touch: () => call("touch"),
   setHidden: (hidden) => call("set_hidden", { hidden }),
   setPolicy: (policy) => call("set_policy", { policy }),
+  getSettings: () => call("get_settings"),
+  setSettings: (settings) => call("set_settings", { settings }),
+  approvalRoute: (kind) => call("approval_route", { kind }),
   list: () => call("list"),
   show: (id) => call("show", { id }),
-  reveal: (id, fieldId) => callBytes("reveal", { id, fieldId }),
-  copySecret: (id, fieldId, clearAfterSecs) => call("copy_secret", { id, fieldId, clearAfterSecs }),
+  reveal: (id, fieldId, gate) => callBytes("reveal", { id, fieldId, gate }),
+  copySecret: (id, fieldId, clearAfterSecs, gate) => call("copy_secret", { id, fieldId, clearAfterSecs, gate }),
+  copyCode: (itemId, fieldId, clearAfterSecs) => call("copy_code", { itemId, fieldId, clearAfterSecs }),
   addLogin: (input) => call("add_login", input),
   editLogin: (input) => call("edit_login", input),
   trash: (id) => call("trash", { id }),
+  codes: () => call("codes"),
+  addCode: (input) => call("add_code", input),
+  personas: () => call("personas"),
   status: () => call("status"),
+  audit: () => call("audit"),
   accountRegister: async (input) => splitOncePage(await callBytes("account_register", input)),
   accountLogin: (input) => call("account_login", input),
   recover: (input) => call("recover", input),
@@ -95,7 +123,9 @@ export const tauriClient: Client = {
   kitCreate: async (input) => splitOncePage(await callBytes("kit_create", input)),
   kitVerify: (input) => call("kit_verify", input),
   deviceList: () => call("device_list"),
-  deviceRevoke: (id) => call("device_revoke", { id }),
+  deviceRevoke: (id, gate) => call("device_revoke", { id, gate }),
+  importItems: (bytes, format) => call("import_items", { bytes, format }),
+  exportItems: (format, gate) => callBytes("export_items", { format, gate }),
   openSite: (url) => call("open_site", { url }),
 }
 

@@ -51,7 +51,17 @@
 /* ── Tier 3 · Lockdown-only component knobs ─────────────────────────────── */
 :root {
   --c-shell-list-width: 22rem;
+  --c-shell-sidebar-width: 14rem;
   --c-list-row-selected: var(--surface-selected);
+
+  /* Density (D92): the settings file's `density` lands on the root as
+     `data-density`; rows read these knobs. Both alias Tailwind's spacing
+     base from the unicron stylesheet (`--spacing`, 0.25rem), never a raw
+     length: comfortable rows are 10 units (40 px), compact 8 (32 px). */
+  --c-row-height: calc(var(--spacing) * 10);
+  --c-row-pad-y: calc(var(--spacing) * 2);
+  --c-row-gap: calc(var(--spacing) * 2.5);
+  --c-group-pad-y: calc(var(--spacing) * 3);
 
   /* Crown-jewel treatment (03-architecture §9, design brief §9 q.7).
      Left empty on purpose: the unicron spec under docs/specs/security/
@@ -60,6 +70,24 @@
   --c-crown-jewel-surface: ;
   --c-crown-jewel-ink: ;
   --c-crown-jewel-border: ;
+}
+
+:root[data-density="compact"] {
+  --c-row-height: calc(var(--spacing) * 8);
+  --c-row-pad-y: var(--spacing);
+  --c-row-gap: calc(var(--spacing) * 2);
+  --c-group-pad-y: calc(var(--spacing) * 2);
+}
+
+/* A list row or a sidebar entry marked `data-row` takes the density knobs;
+   the unicron `Item` and `Button` keep their own padding otherwise. */
+[data-row] {
+  min-height: var(--c-row-height);
+  padding-block: var(--c-row-pad-y);
+  gap: var(--c-row-gap);
+}
+[data-group-header] {
+  padding-top: var(--c-group-pad-y);
 }
 
 @theme inline {

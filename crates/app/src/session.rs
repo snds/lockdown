@@ -53,9 +53,13 @@ use zeroize::Zeroizing;
 use crate::Revealed;
 use crate::secrets;
 use crate::types::{
-    AccountStatus, DeviceInfo, FieldView, ItemDetail, ItemSummary, KitCreated, Probe, Registered,
-    Status, SyncOutcome, TransparencyView,
+    AccountStatus, DeviceInfo, FieldView, ItemDetail, ItemSummary, KitCreated, PersonaInfo, Probe,
+    Registered, Status, SyncOutcome, TransparencyView,
 };
+use crate::views;
+
+mod codes;
+mod transfer;
 
 const KEYSTORE_FILE: &str = "device-key.cbor";
 const STORE_FILE: &str = "vault.sqlite";
@@ -95,6 +99,11 @@ impl Paths {
 
     fn sync_file(&self) -> PathBuf {
         self.data.join(SYNC_FILE)
+    }
+
+    /// The settings file (D100), beside `remembered.cbor`.
+    pub fn settings_file(&self) -> PathBuf {
+        self.data.join(crate::settings::SETTINGS_FILE)
     }
 
     /// What is here before anything opens.
@@ -560,22 +569,33 @@ impl Session {
         self.save()
     }
 
-    /// Every live or archived, visible item, newest edit first: nothing
-    /// hidden is in it.
+    /// Every visible item, newest edit first, trashed ones included (their
+    /// `state` says so, and `views` puts them in Deleted alone): nothing
+    /// hidden is in it. The facts a row and the smart views are drawn from
+    /// (`views::classify`) are decided here, once, for every shell.
     pub fn list(&self) -> Result<Vec<ItemSummary>, String> {
         let vault = self.vault();
+        let login = self.sync.as_ref().map(|c| c.login.as_str());
+        let now = now_secs();
         let mut rows = Vec::new();
         for item in vault.items() {
-            if item.kind.hidden() || !matches!(item.state, ItemState::Live | ItemState::Archived) {
+            if item.kind.hidden()
+                || !matches!(
+                    item.state,
+                    ItemState::Live | ItemState::Archived | ItemState::Trashed
+                )
+            {
                 continue;
             }
             let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
             let latest = item.latest().map_err(|e| e.to_string())?;
-            rows.push(ItemSummary {
+            let title = text_of(&fields, "title").unwrap_or_default();
+            let mut row = ItemSummary {
                 id: item.item_id.to_string(),
                 kind: item.kind.as_str().to_string(),
                 state: state_name(item.state).to_string(),
-                title: text_of(&fields, "title").unwrap_or_default(),
+                conflict_copy: views::is_conflict_copy(&title),
+                title,
                 site: fields
                     .iter()
                     .find(|f| f.kind == FieldKind::Url)
@@ -586,10 +606,105 @@ impl Session {
                     .unwrap_or_default(),
                 username: text_of(&fields, "user").unwrap_or_default(),
                 edited_at: latest.edited_at.0,
-            });
+                crown_jewel: item.class == ItemClass::CrownJewel,
+                methods: Vec::new(),
+                passkeys: 0,
+                codes: 0,
+                expires_at: None,
+                warnings: Vec::new(),
+                views: Vec::new(),
+            };
+            let mut has_password = false;
+            for f in &fields {
+                match f.kind {
+                    FieldKind::Passkey => row.passkeys += 1,
+                    FieldKind::Totp => {
+                        row.codes += 1;
+                        if let FieldValue::Text(uri) = &f.value
+                            && let Ok(code) = lockdown_codes::parse_uri(uri)
+                            && codes::issuer_equals_login(&code, login)
+                            && !row.warnings.iter().any(|w| w == codes::ISSUER_WARNING)
+                        {
+                            row.warnings.push(codes::ISSUER_WARNING.into());
+                        }
+                    }
+                    FieldKind::Hidden if f.field_id == "pw" => has_password = true,
+                    FieldKind::Date
+                        if f.field_id == "expires_at"
+                            || f.label.to_ascii_lowercase().contains("expir") =>
+                    {
+                        if let FieldValue::Text(t) = &f.value {
+                            row.expires_at = Some(t.clone());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if item.kind == lockdown_vault::ItemKind::Login {
+                if has_password {
+                    row.methods.push("password".into());
+                }
+                if row.passkeys > 0 {
+                    row.methods.push("passkey".into());
+                }
+                if row.codes > 0 {
+                    row.methods.push("code".into());
+                }
+            }
+            row.views = views::classify(&row, now)
+                .into_iter()
+                .map(|v| v.as_str().to_string())
+                .collect();
+            rows.push(row);
         }
         rows.sort_by(|a, b| b.edited_at.cmp(&a.edited_at).then(a.title.cmp(&b.title)));
         Ok(rows)
+    }
+
+    /// Whether an item is under the crown-jewel treatment (D98), so a
+    /// reveal or a use of it goes through the gate first.
+    pub fn is_crown_jewel(&self, id: &str) -> Result<bool, String> {
+        let item = self
+            .vault()
+            .item(parse_id(id)?)
+            .map_err(|e| e.to_string())?;
+        Ok(item.class == ItemClass::CrownJewel)
+    }
+
+    /// Every persona of the identity, the open one marked.
+    pub fn personas(&self) -> Vec<PersonaInfo> {
+        let active = self.vault().context().persona_id;
+        self.identity
+            .personas()
+            .map(|p| PersonaInfo {
+                id: p.persona_id.to_string(),
+                label: p.label.clone(),
+                kind: format!("{:?}", p.kind).to_ascii_lowercase(),
+                active: p.persona_id == active,
+            })
+            .collect()
+    }
+
+    /// Whether an account (and so an account password) exists here.
+    pub fn has_account(&self) -> bool {
+        self.sync.is_some()
+    }
+
+    /// Checks the account password with an OPAQUE sign-in (the password
+    /// never leaves the device; the server learns only that a sign-in
+    /// happened). `Ok(false)` is a wrong password; `Err` is a server that
+    /// couldn't be reached or refused for another reason.
+    pub fn check_password(&self, password: &str) -> Result<bool, String> {
+        let cfg = self.sync.as_ref().ok_or_else(|| {
+            "no account on this device, so there is no password to check".to_string()
+        })?;
+        let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
+        let mut auth = OpaqueAccountAuth::new(transport, cfg.login.as_str(), self.device_binding());
+        match auth.sign_in(password) {
+            Ok(_) => Ok(true),
+            Err(lockdown_crypto::Error::LoginFailed) => Ok(false),
+            Err(e) => Err(e.to_string()),
+        }
     }
 
     /// One item. Hidden values come back masked; with `reveal`, each hidden
@@ -621,8 +736,9 @@ impl Session {
             .iter()
             .find(|f| f.field_id == field_id)
             .ok_or_else(|| format!("no field '{field_id}' on this item"))?;
-        match (&field.value, field.kind) {
-            (FieldValue::Text(t), FieldKind::Hidden) => Ok(Revealed::from_text(t)),
+        match &field.value {
+            FieldValue::Text(t) if is_secret_kind(field.kind) => Ok(Revealed::from_text(t)),
+            FieldValue::Bytes(b) if is_secret_kind(field.kind) => Ok(Revealed::new(b.clone())),
             _ => Err(format!("'{field_id}' isn't a hidden field")),
         }
     }
@@ -1271,6 +1387,79 @@ impl Session {
         }
         Ok(sync_outcome(&report, &view))
     }
+
+    /// `lockdown audit`, for the Status screen's "Check now": verifies the
+    /// server's current tree head continues the one remembered, audits
+    /// every entry of this account from the start, and remembers the view.
+    /// A failed check comes back as the audit's own sentence; nothing is
+    /// changed by it.
+    pub fn audit(&mut self) -> Result<Vec<String>, String> {
+        let Some(cfg) = self.sync.as_ref() else {
+            return Err("no account on this device; register or log in first".into());
+        };
+        let server = cfg.server.clone();
+        let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
+        let token = cfg.session_token()?.to_string();
+        sync_identity_records(
+            &transport,
+            &token,
+            &mut self.identity,
+            self.keystore.as_ref(),
+            &mut self.synced,
+            &mut self.memory,
+        )?;
+        let remembered = self.transparency.view(&server).cloned();
+        let mut kt =
+            KtSession::begin(&transport, &token, remembered.as_ref()).map_err(|e| e.to_string())?;
+        // From the start, so the whole account history is checked.
+        kt.view.audited = 0;
+        kt.view.identity_logged = None;
+        kt.view.own_device_logged = false;
+        let sth = kt.sth().clone();
+        let mut lines = vec![
+            format!(
+                "tree head: {} entries, root {}, signed {}",
+                sth.size,
+                &sth.root.to_hex()[..16],
+                lockdown_sync::engine::civil_date(sth.time)
+            ),
+            match &remembered {
+                Some(r) => format!(
+                    "continues the {} entries remembered here (root {})",
+                    r.sth.size,
+                    &r.sth.root.to_hex()[..16]
+                ),
+                None => "nothing was remembered yet; this tree head is the first this device pins"
+                    .into(),
+            },
+        ];
+        let report = kt
+            .audit(&self.expectations())
+            .map_err(|e| format!("{e} (the entries before it were fine; nothing was changed)"))?;
+        for e in &report.checked {
+            lines.push(format!(
+                "#{} {} {}: verified",
+                e.index,
+                lockdown_sync::engine::civil_date(e.leaf.time),
+                e.leaf.describe()
+            ));
+        }
+        lines.push(format!(
+            "{} entries of this account verified: every device key is one your identity lists, and your identity manifest and this vault's heads are the ones this device holds{}",
+            report.checked.len(),
+            if report.pending > 0 {
+                format!("; {} newer entries wait for the next tree head", report.pending)
+            } else {
+                String::new()
+            }
+        ));
+        let view = kt.view.clone();
+        drop(kt);
+        self.transparency
+            .remember(&server, view)
+            .map_err(|e| e.to_string())?;
+        Ok(lines)
+    }
 }
 
 // --- flows on a device with no identity -------------------------------------
@@ -1754,6 +1943,14 @@ impl AccountAuth for PreparedExportKey {
     }
 }
 
+/// Seconds since the Unix epoch, now.
+pub(crate) fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 fn parse_id(id: &str) -> Result<Id, String> {
     Id::parse(id).map_err(|_| format!("'{id}' isn't an item id"))
 }
@@ -1785,10 +1982,19 @@ fn text_secret(bytes: &[u8]) -> Result<Zeroizing<String>, String> {
         .map_err(|_| "the secret isn't valid text".to_string())
 }
 
+/// Whether a field's value is a secret a shell gets only on `reveal`: a
+/// hidden text, a code's set-up (the seed is in the URI), passkey material.
+fn is_secret_kind(kind: FieldKind) -> bool {
+    matches!(
+        kind,
+        FieldKind::Hidden | FieldKind::Totp | FieldKind::Passkey
+    )
+}
+
 /// One field as a shell may show it.
 fn field_view(f: &PlainField, reveal: bool) -> FieldView {
     let kind = format!("{:?}", f.kind).to_lowercase();
-    let hidden = f.kind == FieldKind::Hidden;
+    let hidden = is_secret_kind(f.kind);
     let (value, mask, secret) = match (&f.value, hidden) {
         (FieldValue::Text(t), true) => (
             None,
