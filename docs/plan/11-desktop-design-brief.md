@@ -1,6 +1,6 @@
 # Lockdown desktop design brief
 
-_Status: v0.3, 2026-10-17 (questions 1–6 and 8 decided by Sean; 7 explained, recommendation stands under D38). Companion to `10-desktop-shell.md` (the Tauri scaffold, written by another session). This page is the design contract for the desktop app; the six security components it depends on are specified in `snds/unicron` under `docs/specs/security/`._
+_Status: v0.3, 2026-10-17 (questions 1–6 and 8 decided by Sean; 7 explained, recommendation stands under D38). The screen inventory (§3.2) carries a status column for what the shell has built; D100–D104 record the security-model choices made building it. Companion to `10-desktop-shell.md` (the Tauri scaffold, written by another session). This page is the design contract for the desktop app; the six security components it depends on are specified in `snds/unicron` under `docs/specs/security/`._
 
 ## For future agent
 
@@ -58,27 +58,27 @@ Codes get their own smart view rather than their own top-level area, because a c
 
 ### 3.2 Screen inventory
 
-| Screen | Job | Primary action | unicron primitives | Security components | Empty / error / locked |
-|---|---|---|---|---|---|
-| Unlock | Open the vault | Unlock | Field, Input, Button, NativeSelect (server) | SecretField (password; Secret Key on a new device) | Error: wrong password, server unreachable (offline unlock still works). Locked is this screen. |
-| First run: create | New account, kit, recovery picks | Continue | Dialog with steps (DialogTitle back), Field, Checkbox | SecretField (show the Secret Key once) | Error: weak password against the signed floor |
-| First run: join | Enroll this device | Request approval | Field, Input, Spinner | ApprovalSheet (shown on the other device; this side shows the matching number) | Error: denied, timed out |
-| Kit page (D69) | Print or save the kit | Print | Dialog, Button | LargeTypeView (Secret Key and recovery code, printable) | Error: file exists, path refused |
-| Recovery drill | Prove the kit works | Start drill | Dialog, Field, Input | SecretField | Error: kit does not open, kit re-issued |
-| Vault | Browse and find | Open item | Item, ItemGroup, Command (search), ScrollArea, Badge | CrownJewel mark on rows | Empty: import or add. Error: sync failed banner. Locked: list blurred under `--surface-locked`, no titles readable |
-| Item detail | Read and use one item | Copy / fill / reveal | Item, Button, IconButton, Tabs (history) | SecretField, CodeDisplay, CrownJewel, RiskTierBadge (bridge-backed items) | Empty: no fields of this kind. Error: field failed to decrypt (shows the item id, never a guess) |
-| Item edit | Change an item | Save | Field, Input, Textarea, Switch, DialogActions | SecretField (edit mode) | Error: FieldError inline. Conflict: see Needs attention |
-| Codes view | Every code, scanning fast | Copy | Item, Command | CodeDisplay (list density) | Empty: add a code or scan a QR. Locked: no codes drawn |
-| Large type | Read across a room, type on a TV | Done | Sheet (fullscreen) | LargeTypeView | Hides on lock or blur |
-| Quick-access palette | Global hotkey, act without the window | Copy or fill | Command, CommandDialog, Kbd | SecretField (copy only), CodeDisplay (compact) | Locked: palette asks to unlock first; crown jewels never listed |
-| Approvals | Approve a device, an agent grant, a device code, or veto a contact request | Approve / Deny | Sheet, DialogActions | ApprovalSheet (number matching, context, "This wasn't me") | Error: timed out, rate limited. Never from a push that carries a code |
-| Needs attention | Conflict copies (D58), expiring items, issuer-equals-login warnings, items hidden by Signal | Resolve | Item, Badge, Button | none | Empty: "Nothing needs you" |
-| Devices | See and revoke devices | Revoke | Item, Badge, Dialog (confirm) | ApprovalSheet (enroll), CrownJewel (revoke needs a fresh check) | Empty: this device only; nudge to add a second in week one |
-| Recovery | Kit status, drill, trusted contacts, Shamir later | Run drill | Item, Badge, Dialog | LargeTypeView (kit) | Error: drill failed |
-| Status | The proofs, and sync health | Check now | Item, Badge, Spinner, Skeleton | none | Error: a check failed, in plain words, with what to do |
-| Settings | Lock timing, clipboard timer, extension pairing, appearance, server | Save | Tabs, Field, Switch, NativeSelect | none | Locked: not reachable |
-| Import / export | Move data in and out | Import / Export | Dialog with steps, Field | CrownJewel (export needs the password) | Error: hostile file refused, with the reason |
-| Agent activity (v2) | What agents did | Revoke grant | Item, Badge | RiskTierBadge | Empty: no agents yet |
+| Screen | Job | Primary action | unicron primitives | Security components | Empty / error / locked | Status (shell, 2026-10-17) |
+|---|---|---|---|---|---|---|
+| Unlock | Open the vault | Unlock | Field, Input, Button, NativeSelect (server) | SecretField (password; Secret Key on a new device) | Error: wrong password, server unreachable (offline unlock still works). Locked is this screen. | built |
+| First run: create | New account, kit, recovery picks | Continue | Dialog with steps (DialogTitle back), Field, Checkbox | SecretField (show the Secret Key once) | Error: weak password against the signed floor | built (3 screens + the proof panel, D94/D95) |
+| First run: join | Enroll this device | Request approval | Field, Input, Spinner | ApprovalSheet (shown on the other device; this side shows the matching number) | Error: denied, timed out | built (the form; the other device's approval sheet is unicron's) |
+| Kit page (D69) | Print or save the kit | Print | Dialog, Button | LargeTypeView (Secret Key and recovery code, printable) | Error: file exists, path refused | built (once-page dialog; LargeTypeView later) |
+| Recovery drill | Prove the kit works | Start drill | Dialog, Field, Input | SecretField | Error: kit does not open, kit re-issued | built (kit verify + drill record) |
+| Vault | Browse and find | Open item | Item, ItemGroup, Command (search), ScrollArea, Badge | CrownJewel mark on rows | Empty: import or add. Error: sync failed banner. Locked: list blurred under `--surface-locked`, no titles readable | built (sort / group per D93; locked wash later) |
+| Item detail | Read and use one item | Copy / fill / reveal | Item, Button, IconButton, Tabs (history) | SecretField, CodeDisplay, CrownJewel, RiskTierBadge (bridge-backed items) | Empty: no fields of this kind. Error: field failed to decrypt (shows the item id, never a guess) | built (Login, Code, Note, Card layouts; others generic) |
+| Item edit | Change an item | Save | Field, Input, Textarea, Switch, DialogActions | SecretField (edit mode) | Error: FieldError inline. Conflict: see Needs attention | login only |
+| Codes view | Every code, scanning fast | Copy | Item, Command | CodeDisplay (list density) | Empty: add a code or scan a QR. Locked: no codes drawn | built |
+| Large type | Read across a room, type on a TV | Done | Sheet (fullscreen) | LargeTypeView | Hides on lock or blur | later (unicron LargeTypeView) |
+| Quick-access palette | Global hotkey, act without the window | Copy or fill | Command, CommandDialog, Kbd | SecretField (copy only), CodeDisplay (compact) | Locked: palette asks to unlock first; crown jewels never listed | later |
+| Approvals | Approve a device, an agent grant, a device code, or veto a contact request | Approve / Deny | Sheet, DialogActions | ApprovalSheet (number matching, context, "This wasn't me") | Error: timed out, rate limited. Never from a push that carries a code | gate only (D101); ApprovalSheet is unicron's |
+| Needs attention | Conflict copies (D58), expiring items, issuer-equals-login warnings, items hidden by Signal | Resolve | Item, Badge, Button | none | Empty: "Nothing needs you" | built (view; resolve actions later) |
+| Devices | See and revoke devices | Revoke | Item, Badge, Dialog (confirm) | ApprovalSheet (enroll), CrownJewel (revoke needs a fresh check) | Empty: this device only; nudge to add a second in week one | built |
+| Recovery | Kit status, drill, trusted contacts, Shamir later | Run drill | Item, Badge, Dialog | LargeTypeView (kit) | Error: drill failed | built (contacts later) |
+| Status | The proofs, and sync health | Check now | Item, Badge, Spinner, Skeleton | none | Error: a check failed, in plain words, with what to do | built (proofs + Check now) |
+| Settings | Lock timing, clipboard timer, extension pairing, appearance, server | Save | Tabs, Field, Switch, NativeSelect | none | Locked: not reachable | built |
+| Import / export | Move data in and out | Import / Export | Dialog with steps, Field | CrownJewel (export needs the password) | Error: hostile file refused, with the reason | built (CXF, CSV) |
+| Agent activity (v2) | What agents did | Revoke grant | Item, Badge | RiskTierBadge | Empty: no agents yet | later |
 
 ## 4. The lock model as a UX
 

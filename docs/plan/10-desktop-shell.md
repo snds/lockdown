@@ -1,41 +1,59 @@
 # Desktop shell: the first Tauri window
 
-_Status: built, first shell, 2026-10-17. Companion to [`11-desktop-design-brief.md`](11-desktop-design-brief.md), which owns how it will look; this page owns how it is built. What is real: `crates/app` (`lockdown-app`) and `apps/desktop` (web UI + `src-tauri`), with the gates in CI's `desktop` job._
+_Status: built, second slice, 2026-10-17 (the first shell plus the brief's IA: sidebar and smart views, Codes, Devices, Recovery, Status with Check now, Settings, import/export, the settings file, approvals with the platform check). Companion to [`11-desktop-design-brief.md`](11-desktop-design-brief.md), which owns how it will look; this page owns how it is built. What is real: `crates/app` (`lockdown-app`) and `apps/desktop` (web UI + `src-tauri`), with the gates in CI's `desktop` job._
 
 ## For future agent
 
 - **TL;DR:** The desktop app is three layers: the core crates, one command layer (`lockdown-app`) that owns the lock timer and the secret-handling rules, and a Tauri 2 shell that maps each command to the webview and supplies only what a shell must (keychain, clipboard, browser, window). The UI is unicron primitives with Lockdown's app-extension roles and no visual design of its own yet. Copy never shows the webview a secret; reveal shows bytes for thirty seconds; the core locks on idle, hidden window and sleep whatever the UI does.
 - **Reads before this:** [`03-architecture.md`](03-architecture.md) §8–§10, [`07-workspace.md`](07-workspace.md) §1, decisions D11, D15, D47, D61, D68, D69, D70, D73, D74, and the brief.
-- **Not here:** the six security components (unicron deliverables, §9 of the architecture), the sidebar and smart views of the brief's §3, passkeys, codes, import/export, the quick-access palette, mobile.
+- **Not here:** the six security components (unicron deliverables, §9 of the architecture; the shell keeps one placeholder module per component as the seam, §5), passkeys, the quick-access palette, large type, the extension frame, mobile.
 
 ## 1. Layout
 
 ```
 crates/app/                      lockdown-app: the command layer (Rust, no UI)
-  src/lib.rs                     App handle + the worker thread; AppError, ErrorCode
-  src/session.rs                 the open session: identity, store, keys, vault, account, sync, kit, devices
+  src/lib.rs                     App handle + the worker thread; AppError, ErrorCode; the gates
+  src/session.rs                 the open session: identity, store, keys, vault, account, sync, kit, devices, audit
+  src/session/codes.rs           codes(): current + next + seconds, never the seed; add_code; code_now (D102)
+  src/session/transfer.rs        import / export through lockdown-cxf (D103)
+  src/settings.rs                Settings: settings.cbor beside remembered.cbor (D100)
+  src/approval.rs                ApprovalKind, Approver, PasswordApprover, route() (D101)
+  src/views.rs                   the smart views, classified once for every shell (D104)
   src/lock.rs                    LockPolicy, LockClock: idle / hidden / sleep
   src/revealed.rs                Revealed: secret bytes, zeroed on drop, never Display
   src/secrets.rs                 SecretStore: where the shell keeps the session token
-  src/types.rs                   what crosses to a shell (Status, ItemSummary, ItemDetail, …)
+  src/types.rs                   what crosses to a shell (Status, ItemSummary, ItemDetail, CodeView, …)
+crates/platform-auth/            lockdown-platform-auth: Touch ID / Windows Hello, no Lockdown deps (D101)
 apps/desktop/
   package.json, pnpm-lock.yaml   pnpm 10 root for the web UI (its own, like extension/)
   pnpm-workspace.yaml            the @unicron/tokens override (release tarballs)
-  src/main.tsx, App.tsx          locked by default; the lock watch; two areas
+  src/main.tsx, App.tsx          locked by default; the lock watch; the areas; the shared item rows
   src/index.css                  @unicron/ui/styles, then the extension layer
-  src/styles/app-extension.css   Lockdown's tier-2 roles (§4)
+  src/styles/app-extension.css   Lockdown's tier-2 roles (§4) and the density knobs
   src/core/client.ts             the command surface as the UI sees it (one method per command)
   src/core/secret-bytes.ts       decode once, wipe; encode for the bridge
   src/core/types.ts              the Rust types, field for field
   src/app/lock-watch.ts          visibility and activity → the core; lock-state poll
-  src/app/shell.tsx              rail: Vault · Status · Lock
+  src/app/settings.tsx           the settings file as React context; density → <html data-density>
+  src/app/gate.tsx               the approval gate: asks for the password or a confirm, calls again
+  src/app/shell.tsx              the sidebar: personas, All items, smart views, Devices · Recovery · Status · Settings
   src/components/master-detail.tsx
-  src/features/unlock/           first run and lock screen (+ the Vitest error-path test)
-  src/features/vault/            list, detail pane, secret field, login editor
-  src/features/status/           status, account, sync, kit, devices, lock timers
+  src/features/unlock/           first run (first-run.tsx: three screens + the proof panel) and the lock screen
+  src/features/vault/            list (list-model.ts, item-row), detail layouts by kind, login editor
+    secret-field.tsx             placeholder SecretField: hold / toggle reveal, copy with the timer  ← unicron seam
+    code-display.tsx             placeholder CodeDisplay: value, countdown, next                     ← unicron seam
+    crown-jewel.tsx              placeholder CrownJewel treatment: the cue; the gate is the core's  ← unicron seam
+  src/features/codes/            use-codes.ts (the clock) and the Codes view
+  src/features/devices/          device list, revoke behind the gate
+  src/features/recovery/         kit status, drill entry point
+  src/features/status/           the proofs with Check now (audit), account and sync, this device; once-page
+  src/features/settings/         lock timing, clipboard, density, reveal gesture, approvals, server, import/export
+  src/features/transfer/         import (File API → core) and export (gate → bytes → download)
+  src/features/account/          the register / log-in and kit dialogs
   src-tauri/
     Cargo.toml                   lockdown-desktop; the `shell` feature (§7)
-    src/lib.rs                   run(): plugins, keychain, App::start, window events
+    src/lib.rs                   run(): plugins, keychain, App::start, the platform approver, window events
+    src/approver.rs              PlatformApprover over lockdown-platform-auth (no Tauri needed)
     src/commands.rs              one #[tauri::command] per operation, all off the main thread
     src/clipboard.rs             the clipboard rule (§3), unit-tested without Tauri
     tauri.conf.json              window, CSP, build.features = ["shell"]
@@ -45,7 +63,7 @@ dsa.config.json                  measurement (root); baseline at apps/desktop/.d
 
 `lockdown-app` runs the session on one worker thread: the vault holds a `Box<dyn Signer>` and the keystore an `Rc`, neither `Send`, so the `App` handle (clonable, `Send + Sync`) sends one closure at a time to that thread and waits. One call at a time is also the mutex; two windows never interleave on the vault.
 
-**Where the data is.** The same places as the CLI (D47): the identity root (D15) and the `lockdown` directory beside it. The desktop app and `lockdown` on one machine share `device-key.cbor`, so they are one device named `Lockdown on <hostname>` (D68, D74). `LOCKDOWN_ROOT` and `LOCKDOWN_DATA` move both for a second profile. `sync.cbor` keeps the CLI's shape; with the keychain installed the session token lives there and the file holds an empty string in its place, and the file also gains `last_sync_at`, which the CLI ignores. `transparency.cbor` (D79) is shared too: the view of the server's log one of them verifies is the view the other continues from.
+**Where the data is.** The same places as the CLI (D47): the identity root (D15) and the `lockdown` directory beside it. The desktop app and `lockdown` on one machine share `device-key.cbor`, so they are one device named `Lockdown on <hostname>` (D68, D74). `LOCKDOWN_ROOT` and `LOCKDOWN_DATA` move both for a second profile. `sync.cbor` keeps the CLI's shape; with the keychain installed the session token lives there and the file holds an empty string in its place, and the file also gains `last_sync_at`, which the CLI ignores. `transparency.cbor` (D79) is shared too: the view of the server's log one of them verifies is the view the other continues from. `settings.cbor` (D100) sits beside them: density, reveal gesture, clipboard timer, lock timers, the suggested server; preferences only, user-readable only, read by the app at start and written through `set_settings`.
 
 **The CLI still carries its own copy** of these flows (`bins/cli/src/app.rs`). Moving it onto `lockdown-app` is a later pass, kept out of this one because the CLI was mid-change.
 
@@ -78,10 +96,24 @@ Every row is one `App` method (Rust), one `#[tauri::command]`, and one `Client` 
 | `kit_create` | `kit_create(replace, password?)` | yes | notes + page as **bytes** | D69; with an account the slot takes the new Secret Key (D70) |
 | `kit_verify` | `kit_verify(sk, code, password?, drill)` | yes | notes | changes nothing unless `drill` |
 | `device_list` | `device_list()` | yes | `DeviceInfo[]` | |
-| `device_revoke` | `device_revoke(id)` | yes | notes | D73; needs the account |
+| `device_revoke` | `device_revoke(id, gate)` | yes | notes | D73; needs the account; through the `Approve` gate (D101) |
 | `open_site` | — | no | — | http and https only, through the opener plugin |
+| `get_settings` | `settings()` | no | `Settings` | `settings.cbor` as last read or written (D100) |
+| `set_settings` | `set_settings(Settings)` | no | `Settings` | clamped into range, saved user-only, the lock timers applied from it |
+| `approval_route` | `approval_route(kind)` | no | `{ route, method }` | which check `use` / `reveal` / `approve` would go to right now: `platform` (with its name), `password`, `window` |
+| `reveal` | `reveal(id, field, gate)` | yes | **bytes** | as before; a crown jewel's goes through the `Reveal` gate first |
+| `copy_secret` | `reveal_to_use(id, field, gate)` + clipboard | yes | seconds until clear | as before; a crown jewel's goes through the `Use` gate first |
+| `codes` | `codes()` | yes | `CodeView[]` | every code item and every code inside another item: current, next, seconds left, period, digits, variant, issuer, account, warnings; never the set-up (D102) |
+| `copy_code` | `code_now(item, field)` + clipboard | yes | seconds until clear | the code valid now, on the clipboard path with the same timer |
+| `add_code` | `add_code(uri, title?, into?)` | yes | item id | from an `otpauth://` or `steam://` URI, checked first; inside a Login (`into`) or as its own Code item |
+| `personas` | `personas()` | yes | `PersonaInfo[]` | the identity's personas, the open one marked (read-only switcher for now) |
+| `audit` | `audit()` | yes | lines | `lockdown audit`: the server's log verified from the start, in the audit's own words ("Check now" on Status) |
+| `import_items` | `import_items(bytes, format)` | yes | `ImportReport` | CXF or CSV bytes from the webview's file picker, parsed as hostile; refused with the reason (D103) |
+| `export_items` | `export_items(format, gate)` | yes | **bytes** | the live vault as CXF or CSV, after the `Reveal` gate (D103) |
 
-A call on a locked vault answers `{ code: "locked" }`; the UI shows the unlock screen. Other codes: `not_set_up`, `refused` (the core's words), `stopped`.
+A call on a locked vault answers `{ code: "locked" }`; the UI shows the unlock screen. Other codes: `not_set_up`, `refused` (the core's words), `stopped`, and `approval_needed` with `detail: "password" | "window"`: a gated call that nothing confirmed yet; `app/gate.tsx` asks and calls again with a `gate` (`{ password }` or `{ confirmed: true }`). The platform check (Touch ID, Windows Hello) never reaches the webview: the core runs it on the worker thread and answers confirmed or refused.
+
+`list` now returns trashed items too (`state: "trashed"`), each row carrying the facts the smart views are built from (`methods`, `passkeys`, `codes`, `expires_at`, `conflict_copy`, `warnings`, `views`; D104). `ItemSummary.views` is computed in `lockdown_app::views` so every shell draws the same sidebar.
 
 ## 3. Secret handling, as implemented
 
@@ -94,6 +126,10 @@ A call on a locked vault answers `{ code: "locked" }`; the UI shows the unlock s
 | Nothing secret in React state beyond the revealed field's lifetime | `App` keeps `Status` (no secrets) and `LockState`; `SecretField` keeps the one revealed string; the kit dialog keeps its page while open. |
 | What a webview cannot do | A typed password is a webview string between keystroke and submit; a revealed value is a string while drawn. The native shells will use native fields; the desktop says so here instead of pretending. |
 | Capabilities and CSP | `core:default` only; no `shell`, `fs`, `http` or `clipboard` permission reaches the webview. CSP: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; frame-src 'none'` (`'unsafe-inline'` for styles only, because Base UI sets inline `style` attributes). Sync traffic is Rust-side `reqwest` over rustls, never from the webview. |
+| A code's set-up and a passkey's material are secrets | `show` masks `totp` and `passkey` fields like a password (tested: `codes_come_as_values_and_timing_never_the_seed` checks the seed is in no JSON a shell sees). The Codes view and a Login's detail draw values the core computed (`codes`); `copy_code` copies the current value on the Rust clipboard path. |
+| Protected things ask first (D101) | `reveal`, `copy_secret`, `device_revoke` and `export_items` run the gate in the core before the session is touched: the platform check on the worker thread, or the password the shell typed into its own window and sent once (checked by an OPAQUE sign-in, wiped after). The password dialog and the "are you sure" confirm live in `app/gate.tsx`, in the app window, never in a page (D98). Tests: `without_a_platform_check_or_an_account_the_gate_is_the_window`, `a_platform_check_takes_use_and_approve_and_stands_in_for_the_password`, `with_an_account_the_reveal_gate_is_the_password_checked_by_opaque` (against the in-process server), the `approval::tests`. |
+| Export is one file of secrets | `export_items` comes back as bytes behind the gate; the webview wraps them in a Blob, triggers a download, zeroes its buffer and revokes the URL. The app keeps no copy. Import bytes come from the webview's own `<input type="file">` (the File API needs no Tauri capability) and are zeroed after the call. |
+| Reveal gesture (D97) | Hold by default: the value is fetched on pointer down / Space, drawn only if the control is still held when the bytes arrive, and dropped on release, leave, cancel, blur. Toggle keeps the 30 s auto-hide. The setting lives in `settings.cbor`. Tests: `secret-field.test.tsx`. |
 | Session token | `lockdown_app::secrets::SecretStore`; the shell installs the OS keychain (`keyring` 3.6: macOS Keychain, Windows Credential Manager, Secret Service on Linux) under service `design.snds.lockdown`, key `session:<login>@<server>`. |
 | The server is held to its log, as the CLI holds it (04-security §6) | `Session::sync` begins a `KtSession` from `transparency.cbor`, audits the account's entries with the shared `lockdown_sync::DeviceExpectations` (the identity's devices, the synced manifest, the vault's heads up to the confirmed `seq`), runs `sync_vault_with` under it, audits again and remembers the view; the first pull after a join goes through `bootstrap_vault_with` under the same session. A rollback, a split view, a swapped or unlisted device key stops the sync before a byte is written and reaches the Status screen as the audit's words. Tests: `crates/app/tests/sync_transparency.rs` (a clean sync and a join, a swapped device key, an older tree head) against the in-process server. |
 
@@ -113,19 +149,27 @@ A call on a locked vault answers `{ code: "locked" }`; the UI shows the unlock s
 | `--area-codes` | `--g-blue-500` | `--g-blue-400` | the Codes view, later |
 | `--c-crown-jewel-surface / -ink / -border` | empty | empty | reserved for the unicron crown-jewel spec; nothing may fill them first |
 
-The UI uses only `bg-surface-*`, `text-secure` and `text-attention` from this layer today; everything else is unicron's defaults.
+The UI uses `bg-surface-*`, `text-secure`, `text-attention` and `text-area-codes` from this layer; everything else is unicron's defaults. The tier-3 knobs gained density (D92): `--c-row-height`, `--c-row-pad-y`, `--c-row-gap`, `--c-group-pad-y`, each a multiple of Tailwind's `--spacing` from the unicron stylesheet (comfortable rows 10 units = 40 px, compact 8 = 32 px), switched by `:root[data-density="compact"]` and applied to any element marked `data-row` or `data-group-header`; no raw lengths, no `className` on a primitive.
 
-## 5. What the design brief decides (left open here)
+## 5. The brief's screens, as built
 
-The brief ([`11-desktop-design-brief.md`](11-desktop-design-brief.md)) owns all of this; the scaffold keeps a neutral layout so none of it is prejudged:
+Sean's answers (D92–D99) are in the shell; the brief's screen inventory (§3.2 there) carries a status column. What each decision became:
 
-- the sidebar (persona switcher, smart views, vaults, folders, tags) and the three-column layout; today: a two-item rail and a master–detail;
-- the unlock and first-run screens' look, the three-screen onboarding, the server field's place;
-- the six security components (SecretField, CodeDisplay, LargeTypeView, ApprovalSheet, RiskTierBadge, CrownJewel) and their colours; today's `SecretField` is a placeholder built from `Item` + `Button`;
-- the lock-as-UX details: the washed list with skeleton rows, the 10-second toast before an idle lock, no transition animation;
-- copy and reveal controls (countdown ring, "Cleared"), hold-to-reveal as a variant;
-- the Status screen's proof lines with "Check now" (today: one "Transparency log: N entries, checked <time>" fact, and the refusal under it when a sync stopped at the log), the Needs attention view, Devices and Recovery as their own screens;
-- density, list grouping, the risk-tier words (brief §9).
+- **Density (D92):** `settings.density`, `<html data-density>`, the knobs in §4. Settings → Appearance.
+- **Sort and group (D93):** `features/vault/list-model.ts` (pure, tested): title A–Z grouped by kind with counts by default; the Sort menu (title / recently changed) and the group toggle (by kind / none) in the list header. A Login row keeps its methods inside it: password, passkey, code glyphs, each with its word.
+- **First run (D94):** `features/unlock/first-run.tsx`: screen 1 the tagline and the doors (Create / Join / Recover), screen 2 the account and the kit (or "This device only"), screen 3 the recovery picks; one sentence each, detail behind "Learn more" (a Dialog). Tested: `first-run.test.tsx`.
+- **Proof moments (D95):** one panel of three lines after an account was created, then only on Status with **Check now**, which runs `audit` and shows its words pass or fail. The OPAQUE and Secret-Key sentences were removed from the join form, the register dialog and the kit section.
+- **Reveal (D97):** `secret-field.tsx`, hold by default, toggle by setting (§3).
+- **Biometric approvals (D99):** `lockdown_app::approval` + `crates/platform-auth` + `src-tauri/src/approver.rs` (D101). Settings → Approvals says which check this computer has.
+- **Sidebar and smart views:** `app/shell.tsx` (persona switcher read-only, All items, Passkeys, Codes, Wi-Fi, Expiring, Needs attention, Deleted with counts; Devices · Recovery · Status · Settings; Lock), classification in the core (D104).
+- **Codes view:** `features/codes/`, every code with its countdown ticked locally (`use-codes.ts`) and refreshed from the core at rollover; add a code from its URI, inside a Login or alone.
+- **Devices and Recovery** are their own screens; Status is the proofs, account and sync, and this device.
+- **Detail layouts (§3.1):** Login (methods → websites → details), Code (display full width, then the masked set-up), Note (body), Card (number in groups of four, CVC and PIN masked); every other kind the generic field list. Crown jewels sit under the `CrownJewel` placeholder.
+- **Import / export:** Settings → Import and export, `features/transfer/transfer-dialog.tsx` (D103).
+
+**The unicron seam.** The six security components are built in unicron; here each has one placeholder module and nothing else duplicates what that component will own: `secret-field.tsx` (SecretField), `code-display.tsx` (CodeDisplay), `crown-jewel.tsx` (CrownJewel treatment; the gate dialog in `app/gate.tsx` is its context's placeholder), `status/once-page.tsx` (LargeTypeView for the kit page). ApprovalSheet and RiskTierBadge have no placeholder yet (no approvals arrive from other devices in this slice; no bridge-backed items are drawn). Swapping one in is replacing the module's body and keeping its props; the `--c-crown-jewel-*` knobs stay empty until the spec fills them.
+
+Still open for the brief: the locked wash with skeleton rows (the list is hidden behind the unlock screen today), the 10-second toast before an idle lock, the countdown ring and "Cleared" on the copy control, persona switching, item editors for kinds other than Login, resolving actions on Needs attention, the quick-access palette, large type.
 
 ## 6. How to run
 
@@ -137,7 +181,9 @@ pnpm typecheck && pnpm lint && pnpm test   # tsc, oxlint, Vitest (jsdom)
 pnpm build                                 # vite build → dist/ (what the shell embeds)
 pnpm ds:scan && pnpm ds:patterns && pnpm ds:ratchet
 cargo test -p lockdown-app                 # the command layer, incl. the audited sync against the in-process server
-cargo test -p lockdown-desktop             # the clipboard rule, no Tauri needed
+cargo test -p lockdown-desktop             # the clipboard rule and the approver's Linux path, no Tauri needed
+cargo check -p lockdown-platform-auth --target aarch64-apple-darwin   # Touch ID path compile-checked
+cargo check -p lockdown-platform-auth --target x86_64-pc-windows-msvc # Windows Hello path compile-checked
 cargo clippy -p lockdown-desktop --all-targets --features shell -- -D warnings
 pnpm tauri build                           # bundles; never run with a shared, tight target dir
 ```
@@ -154,7 +200,9 @@ Linux needs the WebKitGTK stack before anything with `--features shell`: `libweb
 
 ## 9. Decisions proposed
 
-Rows for `decisions.md`, numbered when accepted. Each is user-visible or a security default, so **flagged for Sean**.
+The first shell's rows landed as D83–D91. The second slice added D100 (the settings file), D101 (approval kinds, routes and fallbacks), D102 (what `codes` exposes), D103 (import/export, export gated) and D104 (smart views classified in the core); see `decisions.md`. The platform check is compile-checked for macOS and Windows and run only on Linux here (where it is absent by design); the first run on real hardware should confirm the prompt and that cancelling is a no.
+
+The first shell's rows, as proposed then (numbered D83–D91 when accepted; each user-visible or a security default, so **flagged for Sean**):
 
 | Proposed | Decision | Why | Tradeoff |
 |---|---|---|---|
