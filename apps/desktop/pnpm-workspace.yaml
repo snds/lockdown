@@ -8,5 +8,5 @@ overrides:
   # The shared design system (03-architecture §9): @unicron/ui pins its
   # tokens by exact version, which is not on a registry; point the
   # dependency at the same release tarball (unicron docs/05-consuming.md §1).
-  "@unicron/tokens": https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.3.0/unicron-tokens-0.3.0.tgz
+  "@unicron/tokens": https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.5.0/unicron-tokens-0.5.0.tgz
 

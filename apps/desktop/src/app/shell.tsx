@@ -111,7 +111,7 @@ function NavRow({ icon, label, count, current, tone, onClick }: NavRowProps) {
       size="sm"
       data-row=""
       data-tone={tone}
-      className="w-full justify-start data-[tone=attention]:text-attention data-[tone=codes]:text-area-codes"
+      className="w-full justify-start data-[tone=attention]:text-attention-text data-[tone=codes]:text-area-codes-text"
       aria-current={current ? "page" : undefined}
       onClick={onClick}
     >

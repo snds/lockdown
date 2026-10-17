@@ -95,7 +95,7 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
         <Proof ok text={`Your vault history is signed by your devices: head ${status.head_seq}, ${status.head_hash.slice(0, 16)}…`} />
         <Proof ok={!!account?.transparency} text={account ? `The server's public log: ${transparencyLine(account.transparency)}` : "The server's public log is checked once an account exists."} />
         {audit && (
-          <div role="status" className={`flex flex-col gap-1 rounded-md border p-3 text-sm ${audit.ok ? "" : "text-attention"}`}>
+          <div role="status" className={`flex flex-col gap-1 rounded-md border p-3 text-sm ${audit.ok ? "" : "text-attention-text"}`}>
             <p className="font-medium">{audit.ok ? "Checked just now" : "The check failed"}</p>
             {audit.lines.map((l) => (
               <p key={l} className="font-mono text-xs break-all">
@@ -137,7 +137,7 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
             <Fact label="Identity records" value={`manifest seq ${status.identity_seq}`} />
             <Fact label="Transparency log" value={transparencyLine(account.transparency)} tone={account.transparency ? "secure" : "attention"} />
             {syncRefusal && (
-              <p role="alert" className="text-sm text-attention">
+              <p role="alert" className="text-sm text-attention-text">
                 Sync refused: {syncRefusal}
               </p>
             )}
@@ -207,7 +207,7 @@ function Fact({ label, value, mono, tone }: { label: string; value: string; mono
   return (
     <div className="flex flex-col gap-0.5 text-sm sm:flex-row sm:gap-3">
       <span className="w-36 shrink-0 text-muted-foreground">{label}</span>
-      <span className={[mono ? "font-mono break-all" : "", tone === "secure" ? "text-secure" : "", tone === "attention" ? "text-attention" : ""].join(" ")}>{value}</span>
+      <span className={[mono ? "font-mono break-all" : "", tone === "secure" ? "text-secure-text" : "", tone === "attention" ? "text-attention-text" : ""].join(" ")}>{value}</span>
     </div>
   )
 }

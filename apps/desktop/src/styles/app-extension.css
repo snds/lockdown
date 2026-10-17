@@ -13,6 +13,16 @@
  * components (03-architecture §9; @unicron/ui 0.4.0). Their colours and
  * knobs (`--c-crown-jewel-*`, `--c-secret-field-*`, …) come from the core
  * tokens; nothing here redefines them.
+ *
+ * Fill and text are separate roles (@unicron/tokens 0.5.0). A hue's base
+ * role (`--secure`, `--attention`, `--area-codes`) is a fill: a dot, a
+ * badge, a status fill, with its `-foreground` label. Its `-text` role is
+ * the same hue as words on a surface, on the core's text steps (600 light,
+ * 300 dark), held to APCA Lc 75 on the page, a card, the chrome and a
+ * selected row; the fills read Lc 22-70 as text there, under that floor.
+ * A fill's label holds Lc 60: green and blue stay on 500 in dark mode with
+ * a white label, as the core's dark `info` does (400 with either label
+ * read Lc 51-58). Measured numbers: docs/plan/10-desktop-shell.md §11.
  */
 
 /* ── Tier 2 · App roles (light) ─────────────────────────────────────────── */
@@ -25,13 +35,20 @@
   /* "Locked / secure / verified": the manifest verified, the drill passed,
      the vault locked as it should be. Always paired with a word. */
   --secure: var(--g-green-500);
-  /* "Danger / revoke": revoking a device, moving an item to the trash. */
+  --secure-foreground: var(--g-neutral-0);
+  --secure-text: var(--g-green-600);
+  /* "Danger / revoke": revoking a device, moving an item to the trash.
+     The core's `destructive` reads as text in both modes since 0.4.0. */
   --danger: var(--destructive);
   /* Needs attention: expiring, unverified, a conflict copy. Aliases the
-     core's `warning` role (brief §8), which the tokens swap in .dark. */
+     core's `warning` role (brief §8), which is a fill (amber.400). */
   --attention: var(--warning);
+  --attention-foreground: var(--warning-foreground);
+  --attention-text: var(--g-amber-600);
   /* The one wayfinding hue: the Codes view and the palette's code rows. */
   --area-codes: var(--g-blue-500);
+  --area-codes-foreground: var(--g-neutral-0);
+  --area-codes-text: var(--g-blue-600);
 
   /* The core's sidebar contract, re-pointed at the chrome pane. */
   --sidebar: var(--surface-chrome);
@@ -43,10 +60,16 @@
   --surface-canvas: var(--g-neutral-950);
   --surface-selected: var(--g-neutral-800);
   --surface-locked: var(--g-neutral-900);
-  --secure: var(--g-green-400);
+  --secure: var(--g-green-500);
+  --secure-foreground: var(--g-neutral-0);
+  --secure-text: var(--g-green-300);
   --danger: var(--destructive);
   --attention: var(--warning);
-  --area-codes: var(--g-blue-400);
+  --attention-foreground: var(--warning-foreground);
+  --attention-text: var(--g-amber-300);
+  --area-codes: var(--g-blue-500);
+  --area-codes-foreground: var(--g-neutral-0);
+  --area-codes-text: var(--g-blue-300);
   --sidebar: var(--surface-chrome);
 }
 
@@ -98,7 +121,13 @@ textarea[data-masked] {
   --color-surface-selected: var(--surface-selected);
   --color-surface-locked: var(--surface-locked);
   --color-secure: var(--secure);
+  --color-secure-foreground: var(--secure-foreground);
+  --color-secure-text: var(--secure-text);
   --color-danger: var(--danger);
   --color-attention: var(--attention);
+  --color-attention-foreground: var(--attention-foreground);
+  --color-attention-text: var(--attention-text);
   --color-area-codes: var(--area-codes);
+  --color-area-codes-foreground: var(--area-codes-foreground);
+  --color-area-codes-text: var(--area-codes-text);
 }
