@@ -1,6 +1,6 @@
 # Lockdown desktop design brief
 
-_Status: v0.3, 2026-10-17 (questions 1–6 and 8 decided by Sean; 7 explained, recommendation stands under D38). The screen inventory (§3.2) carries a status column for what the shell has built; D100–D104 record the security-model choices made building it. Companion to `10-desktop-shell.md` (the Tauri scaffold, written by another session). This page is the design contract for the desktop app; the six security components it depends on are specified in `snds/unicron` under `docs/specs/security/`._
+_Status: v0.4, 2026-10-17 (questions 1–6 and 8 decided by Sean; 7 explained, recommendation stands under D38). The screen inventory (§3.2) carries a status column for what the shell has built, now on unicron's six security components; D100–D109 record the security-model choices made building it. Companion to `10-desktop-shell.md` (the Tauri scaffold, written by another session). This page is the design contract for the desktop app; the six security components it depends on are specified in `snds/unicron` under `docs/specs/security/`._
 
 ## For future agent
 
@@ -63,16 +63,16 @@ Codes get their own smart view rather than their own top-level area, because a c
 | Unlock | Open the vault | Unlock | Field, Input, Button, NativeSelect (server) | SecretField (password; Secret Key on a new device) | Error: wrong password, server unreachable (offline unlock still works). Locked is this screen. | built |
 | First run: create | New account, kit, recovery picks | Continue | Dialog with steps (DialogTitle back), Field, Checkbox | SecretField (show the Secret Key once) | Error: weak password against the signed floor | built (3 screens + the proof panel, D94/D95) |
 | First run: join | Enroll this device | Request approval | Field, Input, Spinner | ApprovalSheet (shown on the other device; this side shows the matching number) | Error: denied, timed out | built (the form; the other device's approval sheet is unicron's) |
-| Kit page (D69) | Print or save the kit | Print | Dialog, Button | LargeTypeView (Secret Key and recovery code, printable) | Error: file exists, path refused | built (once-page dialog; LargeTypeView later) |
+| Kit page (D69) | Print or save the kit | Print | Dialog, Button | LargeTypeView (Secret Key and recovery code, printable) | Error: file exists, path refused | built (LargeTypeView print variant, both values) |
 | Recovery drill | Prove the kit works | Start drill | Dialog, Field, Input | SecretField | Error: kit does not open, kit re-issued | built (kit verify + drill record) |
-| Vault | Browse and find | Open item | Item, ItemGroup, Command (search), ScrollArea, Badge | CrownJewel mark on rows | Empty: import or add. Error: sync failed banner. Locked: list blurred under `--surface-locked`, no titles readable | built (sort / group per D93; locked wash later) |
-| Item detail | Read and use one item | Copy / fill / reveal | Item, Button, IconButton, Tabs (history) | SecretField, CodeDisplay, CrownJewel, RiskTierBadge (bridge-backed items) | Empty: no fields of this kind. Error: field failed to decrypt (shows the item id, never a guess) | built (Login, Code, Note, Card layouts; others generic) |
+| Vault | Browse and find | Open item | Item, ItemGroup, Command (search), ScrollArea, Badge | CrownJewel mark on rows | Empty: import or add. Error: sync failed banner. Locked: list blurred under `--surface-locked`, no titles readable | built (sort / group per D93; CrownJewelMark; the locked wash) |
+| Item detail | Read and use one item | Copy / fill / reveal | Item, Button, IconButton, Tabs (history) | SecretField, CodeDisplay, CrownJewel, RiskTierBadge (bridge-backed items) | Empty: no fields of this kind. Error: field failed to decrypt (shows the item id, never a guess) | built on the unicron components (Login, Code, Wi-Fi, Note, Card layouts; others generic; RiskTierBadge wired, no item carries a tier yet; Restore in Deleted) |
 | Item edit | Change an item | Save | Field, Input, Textarea, Switch, DialogActions | SecretField (edit mode) | Error: FieldError inline. Conflict: see Needs attention | login only |
-| Codes view | Every code, scanning fast | Copy | Item, Command | CodeDisplay (list density) | Empty: add a code or scan a QR. Locked: no codes drawn | built |
-| Large type | Read across a room, type on a TV | Done | Sheet (fullscreen) | LargeTypeView | Hides on lock or blur | later (unicron LargeTypeView) |
+| Codes view | Every code, scanning fast | Copy | Item, Command | CodeDisplay (list density) | Empty: add a code or scan a QR. Locked: no codes drawn | built (CodeDisplayList, next code in the last seconds) |
+| Large type | Read across a room, type on a TV | Done | Sheet (fullscreen) | LargeTypeView | Hides on lock or blur | built (Wi-Fi hidden fields, a Code's current code; 120 s) |
 | Quick-access palette | Global hotkey, act without the window | Copy or fill | Command, CommandDialog, Kbd | SecretField (copy only), CodeDisplay (compact) | Locked: palette asks to unlock first; crown jewels never listed | later |
-| Approvals | Approve a device, an agent grant, a device code, or veto a contact request | Approve / Deny | Sheet, DialogActions | ApprovalSheet (number matching, context, "This wasn't me") | Error: timed out, rate limited. Never from a push that carries a code | gate only (D101); ApprovalSheet is unicron's |
-| Needs attention | Conflict copies (D58), expiring items, issuer-equals-login warnings, items hidden by Signal | Resolve | Item, Badge, Button | none | Empty: "Nothing needs you" | built (view; resolve actions later) |
+| Approvals | Approve a device, an agent grant, a device code, or veto a contact request | Approve / Deny | Sheet, DialogActions | ApprovalSheet (number matching, context, "This wasn't me") | Error: timed out, rate limited. Never from a push that carries a code | gate on CrownJewelGate (D101, D106); ApprovalSheet bound and tested as a seam, drawn once the core carries requests |
+| Needs attention | Conflict copies (D58), expiring items, issuer-equals-login warnings, items hidden by Signal | Resolve | Item, Badge, Button | none | Empty: "Nothing needs you" | built (view; conflict copies resolve by keeping one, D108) |
 | Devices | See and revoke devices | Revoke | Item, Badge, Dialog (confirm) | ApprovalSheet (enroll), CrownJewel (revoke needs a fresh check) | Empty: this device only; nudge to add a second in week one | built |
 | Recovery | Kit status, drill, trusted contacts, Shamir later | Run drill | Item, Badge, Dialog | LargeTypeView (kit) | Error: drill failed | built (contacts later) |
 | Status | The proofs, and sync health | Check now | Item, Badge, Spinner, Skeleton | none | Error: a check failed, in plain words, with what to do | built (proofs + Check now) |
@@ -85,7 +85,7 @@ Codes get their own smart view rather than their own top-level area, because a c
 | Moment | What the person sees | Rule |
 |---|---|---|
 | Locked | The unlock screen. Behind it, the shell is visible but the list is a wash (`--surface-locked`) with skeleton rows: no titles, no icons, nothing to read. The window title drops the vault name. | The core enforces lock; the shell only draws it (`03-architecture.md` §8) |
-| Auto-lock | Defaults: on sleep, on screen lock, after 10 minutes idle (desktop), on quit. Configurable 1 minute to 4 hours. A 10-second toast before an idle lock, with "Stay unlocked". | The PIN is a key slot, never a screen lock |
+| Auto-lock | Defaults: on sleep, on screen lock, after 10 minutes idle (desktop), on quit. Configurable 1 minute to 4 hours. A 10-second toast before an idle lock, with "Stay unlocked" (built, D107). | The PIN is a key slot, never a screen lock |
 | Reveal | A SecretField reveal lasts 30 seconds, then masks itself. It also masks on window blur and on lock. One reveal at a time per screen. | Crown jewels need the full password to reveal |
 | Copy | Copy shows a countdown on the control itself (ring, then "Cleared"). Default 30 seconds, range 10 to 90. The clear only runs if the clipboard still holds our value, so a later copy of the person's own text is never destroyed. Linux Wayland: say plainly that copy works only while Lockdown has focus. | `03-architecture.md` §8 clipboard row |
 | Panic lock (v1.x) | A hotkey locks every window, clears the clipboard, and ends sessions. | Brief §2 novel features |
@@ -134,10 +134,10 @@ Declared in `apps/desktop/src/styles/app-extension.css`, written as Mailbird's i
 | `--surface-selected` | `--g-neutral-100` | `--g-neutral-800` | Selected row |
 | `--surface-locked` | `--g-neutral-100` | `--g-neutral-900` | The wash over the vault while locked |
 | `--verified` | `--g-green-500` | `--g-green-400` | KT-verified, manifest verified, drill passed; always paired with a word |
-| `--attention` | `--warning` if unicron adopts it, else `--g-amber-500` | `--g-amber-400` | Needs attention, expiring, unverified |
+| `--attention` | `--warning` (adopted in tokens 0.2.0) | `--warning` (the tokens swap it) | Needs attention, expiring, unverified |
 | `--area-codes` | `--g-blue-500` | `--g-blue-400` | The one wayfinding hue, for the Codes view and the palette's code rows |
 
-The six components take no app-extension tokens; their colors come from core tier 2 roles, three of which the specs propose adding (`warning`, `info`, `protected`).
+The six components take no app-extension tokens; their colors come from core tier 2 roles, the three the specs added (`warning`, `info`, `protected`) among them.
 
 ## 9. Open questions for Sean
 
