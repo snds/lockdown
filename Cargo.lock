@@ -961,8 +961,12 @@ name = "lockdown-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "ecosystem-identity",
  "lockdown-codes",
  "lockdown-matcher",
+ "lockdown-store",
+ "lockdown-vault",
+ "tempfile",
 ]
 
 [[package]]

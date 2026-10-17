@@ -1,24 +1,66 @@
 //! `lockdown`: the command-line tool (03-architecture §2 `cli` row and §4).
 //!
-//! **Status: skeleton with two real commands.** `code` prints the current
-//! one-time code for an `otpauth://` or `steam://` URI and how long it is
-//! valid; `match` says how a saved URL matches a current one. The vault,
-//! the SSH agent and the local-socket pairing arrive with the store.
+//! The vault commands are the proof that the store and the identity
+//! adoption path work end to end from a shell: `init` opens or creates the
+//! ecosystem identity at the platform root and the persona's first vault;
+//! `add`, `list`, `show` and `status` open the same vault again with
+//! nothing but that root and this device's keystore (D11). `code` and
+//! `match` need no vault. The SSH agent and local-socket pairing are later.
+//!
+//! A password never arrives as an argument, where it would land in shell
+//! history and `ps`: `--password-stdin` or `LOCKDOWN_PASSWORD`.
 
+mod app;
+
+use std::io::Read;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
+
+use crate::app::{App, Paths};
 
 /// Every way you sign in. Locked down, even from us.
 #[derive(Parser, Debug)]
 #[command(name = "lockdown", version, about)]
 struct Cli {
+    /// The ecosystem identity root. Default: the platform's shared place
+    /// (Linux: $XDG_DATA_HOME/snds/identity).
+    #[arg(long, global = true, value_name = "DIR")]
+    root: Option<PathBuf>,
+    /// Lockdown's own data directory (device key, vault file, memory).
+    /// Default: the `lockdown` directory beside the identity root.
+    #[arg(long, global = true, value_name = "DIR")]
+    data: Option<PathBuf>,
+    /// The persona to use, by id or label, when the identity has several.
+    #[arg(long, global = true, value_name = "ID|LABEL")]
+    persona: Option<String>,
     #[command(subcommand)]
     command: Command,
 }
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Open the ecosystem identity at the root (or create it) and the
+    /// persona's vault (or create it). Safe to run again.
+    Init,
+    /// Add an item to the vault.
+    Add {
+        #[command(subcommand)]
+        what: AddWhat,
+    },
+    /// List the items in the vault.
+    List,
+    /// Show one item. Hidden fields are masked unless --reveal.
+    Show {
+        /// The item id, as `list` prints it.
+        id: String,
+        /// Print hidden fields in the clear.
+        #[arg(long)]
+        reveal: bool,
+    },
+    /// Where everything is and the vault's newest head.
+    Status,
     /// Print the current one-time code for an otpauth:// or steam:// URI.
     Code {
         /// The URI. The secret is read from it and never printed.
@@ -31,6 +73,29 @@ enum Command {
         /// The URL of the current page.
         current: String,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum AddWhat {
+    /// A login: site, username, password.
+    Login(AddLogin),
+}
+
+#[derive(Args, Debug)]
+struct AddLogin {
+    /// The site, as a URL.
+    #[arg(long, value_name = "URL")]
+    site: String,
+    /// The username.
+    #[arg(long, value_name = "NAME")]
+    username: String,
+    /// Read the password from the first line of standard input.
+    /// Without it, the LOCKDOWN_PASSWORD environment variable is used.
+    #[arg(long)]
+    password_stdin: bool,
+    /// A title. Default: the site's host.
+    #[arg(long)]
+    title: Option<String>,
 }
 
 /// Runs `code` and returns the lines to print.
@@ -57,17 +122,79 @@ fn match_line(saved: &str, current: &str) -> Result<String, String> {
     Ok(format!("{decision:?}"))
 }
 
-fn main() -> ExitCode {
-    let cli = Cli::parse();
+/// The password, from stdin or the environment, never from an argument.
+fn read_password(from_stdin: bool) -> Result<String, String> {
+    if from_stdin {
+        let mut text = String::new();
+        std::io::stdin()
+            .read_to_string(&mut text)
+            .map_err(|e| format!("couldn't read the password from stdin: {e}"))?;
+        let line = text.lines().next().unwrap_or("").to_string();
+        if line.is_empty() {
+            return Err("no password on stdin".into());
+        }
+        return Ok(line);
+    }
+    match std::env::var("LOCKDOWN_PASSWORD") {
+        Ok(p) if !p.is_empty() => Ok(p),
+        _ => Err("no password given: pass --password-stdin or set LOCKDOWN_PASSWORD".into()),
+    }
+}
+
+fn run(cli: Cli) -> Result<Vec<String>, String> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let out = match cli.command {
+    let persona = cli.persona.as_deref();
+    match cli.command {
         Command::Code { uri } => code_lines(&uri, now),
         Command::Match { saved, current } => match_line(&saved, &current).map(|l| vec![l]),
-    };
-    match out {
+        Command::Init => {
+            let app = App::init(Paths::resolve(cli.root, cli.data)?, persona)?;
+            let mut lines = vec![format!(
+                "identity {}, vault {}",
+                if app.identity_created {
+                    "created"
+                } else {
+                    "attached"
+                },
+                if app.vault_created() {
+                    "created"
+                } else {
+                    "opened"
+                }
+            )];
+            lines.extend(app.status_lines()?);
+            Ok(lines)
+        }
+        Command::Add { what } => {
+            let AddWhat::Login(login) = what;
+            let password = read_password(login.password_stdin)?;
+            let mut app = App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?;
+            let id = app.add_login(
+                &login.site,
+                &login.username,
+                &password,
+                login.title.as_deref(),
+            )?;
+            Ok(vec![format!("added {id}")])
+        }
+        Command::List => {
+            App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?.list_lines()
+        }
+        Command::Show { id, reveal } => {
+            App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?
+                .show_lines(&id, reveal)
+        }
+        Command::Status => {
+            App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?.status_lines()
+        }
+    }
+}
+
+fn main() -> ExitCode {
+    match run(Cli::parse()) {
         Ok(lines) => {
             for l in lines {
                 println!("{l}");
@@ -110,5 +237,30 @@ mod tests {
             match_line("https://example.com", "https://other.example").unwrap(),
             "NoMatch"
         );
+    }
+
+    #[test]
+    fn the_data_dir_sits_beside_the_root() {
+        let p = Paths::resolve(Some(PathBuf::from("/x/snds/identity")), None).unwrap();
+        assert_eq!(p.data, PathBuf::from("/x/snds/lockdown"));
+        let p = Paths::resolve(
+            Some(PathBuf::from("/x/identity")),
+            Some(PathBuf::from("/elsewhere")),
+        )
+        .unwrap();
+        assert_eq!(p.data, PathBuf::from("/elsewhere"));
+    }
+
+    #[test]
+    fn no_password_source_is_an_error_not_an_argument() {
+        // The password is never a CLI flag.
+        assert!(
+            AddLogin::augment_args(clap::Command::new("x"))
+                .get_arguments()
+                .all(|a| a.get_id() != "password")
+        );
+        // With neither source set, a clear error.
+        unsafe { std::env::remove_var("LOCKDOWN_PASSWORD") };
+        assert!(read_password(false).is_err());
     }
 }

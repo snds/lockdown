@@ -50,9 +50,28 @@ pub fn open_or_create_identity(
     keystore: &dyn DeviceKeystore,
     remembered: Option<Head>,
 ) -> Result<Identity> {
+    match open_identity(root, keystore, remembered)? {
+        Some(identity) => Ok(identity),
+        None => {
+            let mut identity = Identity::create(root, APP, device_name, keystore)?;
+            identity.adopt(APP)?;
+            Ok(identity)
+        }
+    }
+}
+
+/// Attaches to the identity at `root` if one is there (§6 steps 2 and 4),
+/// taking management when no app has it. `None` when the root holds no
+/// identity; an error when it holds one this device is not enrolled in.
+/// Never creates anything.
+pub fn open_identity(
+    root: &Path,
+    keystore: &dyn DeviceKeystore,
+    remembered: Option<Head>,
+) -> Result<Option<Identity>> {
     let mut identity = match Identity::attach(root, APP, keystore, remembered)? {
         Attach::Attached(identity) => *identity,
-        Attach::Nothing => Identity::create(root, APP, device_name, keystore)?,
+        Attach::Nothing => return Ok(None),
         Attach::NotEnrolled { .. } => {
             return Err(Error::Invalid(format!(
                 "an ecosystem identity already exists at {} but this device isn't enrolled in it; \
@@ -65,7 +84,7 @@ pub fn open_or_create_identity(
     if identity.profile().manager.is_none() {
         identity.adopt(APP)?;
     }
-    Ok(identity)
+    Ok(Some(identity))
 }
 
 /// Which persona Lockdown opens when nothing says. In order: the one
