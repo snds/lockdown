@@ -78,7 +78,7 @@ describe("ItemField on unicron's SecretField (the host contract)", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Copied. Clipboard clears in 45 seconds."))
   })
 
-  it("a reveal that crosses the bridge (slower than a microtask) still shows: the patched SecretField keeps its value span mounted", async () => {
+  it("a reveal that crosses the bridge (slower than a microtask) still shows: SecretField 0.5.0 keeps its value span mounted while loading", async () => {
     const reveal = () => new Promise<Uint8Array>((r) => setTimeout(() => r(new TextEncoder().encode(SECRET)), 30))
     const { container } = mount(fakeClient({ reveal, getSettings: () => Promise.resolve(settingsWith("toggle")) }))
     await userEvent.setup().click(await screen.findByRole("button", { name: "Show Password" }))
