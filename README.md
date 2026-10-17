@@ -14,11 +14,11 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**Plan set v0.1, 35 decisions, first Rust slice scaffolded (2026-10-16).** The workspace builds, lints clean and passes its tests on stable Rust. Nothing ships yet. What is real and what is a skeleton is listed in [`docs/plan/07-workspace.md`](docs/plan/07-workspace.md).
+**Plan set v0.1, 47 decisions, second Rust slice built (2026-10-17).** The workspace builds, lints clean and passes its tests on stable Rust. A vault round-trips through a plain SQLite file that holds ciphertext only, opens from the shared ecosystem identity and this device's keystore with no kit and no master password, and the `lockdown` command line proves it end to end. Nothing ships yet. What is real and what is a skeleton is listed in [`docs/plan/07-workspace.md`](docs/plan/07-workspace.md).
 
 | Real (with tests) | Skeleton (types, traits, one real rule each) |
 |---|---|
-| `lockdown-crypto` · `lockdown-matcher` · `lockdown-codes` · `lockdown-vault` · `lockdown-cxf` | `lockdown-policy` · `lockdown-approval` · `lockdown-bridge-host` · `lockdown-store` · `lockdown-sync` · `lockdown-ffi` · `lockdown-wasm` · `lockdown-cli` · `lockdown-server` |
+| `lockdown-crypto` · `lockdown-matcher` · `lockdown-codes` · `lockdown-vault` · `lockdown-cxf` · `lockdown-store` · `lockdown-cli` | `lockdown-policy` · `lockdown-approval` · `lockdown-bridge-host` · `lockdown-sync` · `lockdown-ffi` · `lockdown-wasm` · `lockdown-server` |
 
 ## How the workspace maps to the plan
 
@@ -27,8 +27,9 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 ```
 crates/
   crypto        AEAD, Argon2id floors, HKDF, Ed25519, X-Wing, BLAKE3, CSPRNG   (04-security §3–§5)
-  vault         items, fields, versions, crown-jewel class, manifest chain      (02-model)
-  store         local ciphertext store trait + in-memory impl                  (03-architecture §2, §11)
+  vault         items, fields, versions, crown-jewel class, manifest chain,
+                load/save through a store, the identity adoption path          (02-model, 01-identity §6–§8)
+  store         SQLite + in-memory stores (ciphertext only), rollback memory    (03-architecture §2, §11)
   sync          revisions, field merge, conflict copies, rollback guard         (03-architecture §6)
   matcher       URL rules, Public Suffix List, equivalent domains, lookalikes   (02-model §10)
   codes         TOTP, HOTP, 8-digit, Steam 5-character, otpauth:// / steam://   (02-model §4)
@@ -39,7 +40,7 @@ crates/
   ffi           secret handles, redacted views, one-shot reveals                (03-architecture §3, §8)
   wasm          the same surface for the extension and web vault               (03-architecture §4)
 bins/
-  cli           `lockdown code <uri>`, `lockdown match <saved> <current>`
+  cli           `lockdown init | add login | list | show | status | code | match`
   server        axum: /healthz and /.well-known/lockdown                        (03-architecture §5)
 ```
 
@@ -51,11 +52,14 @@ Stable Rust (`rust-toolchain.toml`; MSRV 1.90) and network access to crates.io a
 
 ```sh
 cargo build                         # the default members: every pure-Rust crate
-cargo test --workspace              # 66 tests across 14 crates
+cargo test --workspace              # 81 tests across 14 crates
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 cargo deny check                    # cargo install cargo-deny --locked
 cargo run -p lockdown-cli -- code "otpauth://totp/Example:me?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+cargo run -p lockdown-cli -- --root /tmp/snds/identity init            # creates the identity and a vault
+echo 'hunter2' | cargo run -p lockdown-cli -- --root /tmp/snds/identity add login --site https://example.com --username me --password-stdin
+cargo run -p lockdown-cli -- --root /tmp/snds/identity list
 cargo run -p lockdown-server        # listens on 127.0.0.1:8787 (LOCKDOWN_LISTEN to change)
 ```
 

@@ -174,7 +174,7 @@ Clickjacking is a design constraint: in-page menus are always opaque, have a min
 
 ## 11. Open questions
 
-1. `store` implementation: SQLCipher-style whole-file encryption, or plain SQLite holding only ciphertext with the index built in memory? The second leaks less and is the current lean **[uncertain]**.
+1. `store` implementation: SQLCipher-style whole-file encryption, or plain SQLite holding only ciphertext with the index built in memory? The second leaks less and is the current lean **[uncertain]**. **Decided 2026-10-17 (D39): the second.** As built in `07-workspace.md` §1 (`store` row).
 2. Whether Tauri's bundler produces a signed MSIX that the Windows passkey plug-in model accepts, or whether a separate packaging step is needed.
 3. Android: a third-party provider in the cross-device (hybrid) passkey flow is not clearly documented. Test on Android 15 and 16 before promising it (foundation §1.3).
 4. Push relay trust for self-hosters: a per-install token on Lockdown's relay, or an open relay spec others can run.
