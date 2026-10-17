@@ -34,6 +34,8 @@
 //!   the persona's Lockdown keys, and a vault that opens from the identity alone
 //! - [`identity_set`] — the identity's signed records under one hash-chained
 //!   manifest, as they travel between machines, with device revocations
+//! - [`transparency`] — the key-transparency log's leaves, signed tree heads,
+//!   the citation a vault head carries, and the exported checkpoint
 
 pub mod attachment;
 pub mod crown_jewel;
@@ -47,6 +49,7 @@ pub mod manifest;
 pub mod signer;
 pub mod store;
 pub mod test_support;
+pub mod transparency;
 pub mod vault;
 
 /// Identifiers and timestamps are the identity crate's, so an `Id` here is
@@ -74,4 +77,5 @@ pub use manifest::{
 };
 pub use signer::Signer;
 pub use store::{Store, StoreError, StoreResult, VAULT_RECORD_V, VaultRecord};
+pub use transparency::{LogEntry, LogLeaf, SignedTreeHead, SthRef, TreeHead};
 pub use vault::{AttachmentInfo, Unlock, Vault, VaultContext};

@@ -10,6 +10,7 @@ use lockdown_vault::{Hash32, Id};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+use crate::kt::{AccountEntries, ConsistencyProofWire, InclusionProofWire, SthWire};
 use crate::wire::{
     self, BEARER, BlobAccepted, CONTENT_TYPE, DeviceProofWire, ErrorBody, ErrorCode, HeadAccepted,
     HeadRefused, HeadsSince, IdentityPush, IdentitySince, ItemPush, ItemsSince, LoginFinish,
@@ -92,6 +93,14 @@ pub trait Transport {
     fn get_blob(&self, token: &str, vault_id: Id, hash: Hash32) -> Result<Option<Vec<u8>>>;
     /// `HEAD /v1/vaults/{vault}/blobs/{hash}`.
     fn has_blob(&self, token: &str, vault_id: Id, hash: Hash32) -> Result<bool>;
+    /// `GET /v1/kt/sth`: the log's newest signed tree head and the log key.
+    fn kt_sth(&self) -> Result<SthWire>;
+    /// `GET /v1/kt/inclusion?index=I&size=N`.
+    fn kt_inclusion(&self, index: u64, size: u64) -> Result<InclusionProofWire>;
+    /// `GET /v1/kt/consistency?from=M&to=N`.
+    fn kt_consistency(&self, from: u64, to: u64) -> Result<ConsistencyProofWire>;
+    /// `GET /v1/kt/entries?from=I`: the account's own leaves from index `I`.
+    fn kt_entries(&self, token: &str, from: u64) -> Result<AccountEntries>;
 }
 
 /// The HTTPS transport.
@@ -494,6 +503,37 @@ impl Transport for HttpTransport {
             return Ok(Some(body));
         }
         Err(Self::refused(status, &body))
+    }
+
+    fn kt_sth(&self) -> Result<SthWire> {
+        self.call::<(), _>(reqwest::Method::GET, "/v1/kt/sth", None, None)
+    }
+
+    fn kt_inclusion(&self, index: u64, size: u64) -> Result<InclusionProofWire> {
+        self.call::<(), _>(
+            reqwest::Method::GET,
+            &format!("/v1/kt/inclusion?index={index}&size={size}"),
+            None,
+            None,
+        )
+    }
+
+    fn kt_consistency(&self, from: u64, to: u64) -> Result<ConsistencyProofWire> {
+        self.call::<(), _>(
+            reqwest::Method::GET,
+            &format!("/v1/kt/consistency?from={from}&to={to}"),
+            None,
+            None,
+        )
+    }
+
+    fn kt_entries(&self, token: &str, from: u64) -> Result<AccountEntries> {
+        self.call::<(), _>(
+            reqwest::Method::GET,
+            &format!("/v1/kt/entries?from={from}"),
+            Some(token),
+            None,
+        )
     }
 
     fn has_blob(&self, token: &str, vault_id: Id, hash: Hash32) -> Result<bool> {

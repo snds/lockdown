@@ -14,17 +14,20 @@
 //! - [`engine`] — [`sync_vault`]: pull, merge, push, head; [`bootstrap_vault`]
 //! - [`identity`] — [`pull_identity`] and [`push_identity`]: the identity's
 //!   signed record set, pulled before any vault head (D71)
+//! - [`kt`] — key transparency: the STH check, the account's self-audit,
+//!   and the citation check between devices (04-security §6)
 //!
-//! The offline queue, the key-transparency check and the checkpoint proof
-//! are not built yet.
+//! The offline queue is not built yet.
 
 pub mod engine;
 pub mod identity;
+pub mod kt;
 pub mod transport;
 pub mod wire;
 
 pub use engine::{BlobStore, SyncReport, Syncer, VaultSyncState, bootstrap_vault, sync_vault};
 pub use identity::{pull_identity, push_identity};
+pub use kt::{AuditExpectations, AuditReport, KtSession};
 pub use transport::{HttpTransport, Transport, TransportError};
 
 use std::collections::BTreeMap;

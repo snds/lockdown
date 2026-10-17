@@ -21,17 +21,22 @@
 //! - [`SyncedIdentity`] — the identity's signed record set as last accepted
 //!   from the server: every other machine's devices, and where a revoked
 //!   one's writes stop, so their heads and versions verify here too
+//! - [`TransparencyMemory`] — per server, the pinned log key and the newest
+//!   signed tree head this device verified, so a shrunken or forked log is
+//!   caught on the next sync
 
 pub mod memory;
 pub mod remembered;
 pub mod sqlite;
 pub mod synced_identity;
+pub mod transparency;
 
 pub use lockdown_vault::store::{Store, StoreError, StoreResult, VAULT_RECORD_V, VaultRecord};
 pub use memory::MemoryStore;
 pub use remembered::{HeadMemory, RememberedHead, write_private};
 pub use sqlite::{SCHEMA_VERSION, SqliteStore};
 pub use synced_identity::{AcceptError, SyncedIdentity};
+pub use transparency::{ServerView, TransparencyMemory};
 
 /// The store's result type, for callers that used the old name.
 pub type Result<T> = StoreResult<T>;

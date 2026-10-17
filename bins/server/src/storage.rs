@@ -24,20 +24,25 @@
 //! items             (vault_id, item_id, rev, body)
 //! blobs             (vault_id, hash, size, body, uploaded_at, unreferenced_at)
 //! blob_refs         (vault_id, item_id, hash)
+//! kt_log            (idx, account_id, leaf_hash, body)
 //! ```
 //!
 //! Schema 1 kept one last-write-wins identity backup per account
 //! (`identity_backups`, D59); schema 2 replaces it with the record set
 //! (D71); schema 3 adds attachment blobs (02-model §6): content-addressed
 //! ciphertext per vault, and which items name each blob, so a blob nothing
-//! names any more can be collected after a grace period. An old file is
-//! upgraded in place: the new tables are added and the old ones left alone.
+//! names any more can be collected after a grace period, and the
+//! key-transparency log (04-security §6): one row per leaf, appended inside
+//! the transaction that accepts an identity manifest, a vault head or a
+//! new device, never updated or deleted. An old file is upgraded in place:
+//! the new tables are added and the old ones left alone.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use lockdown_sync::wire::{ErrorCode, HeadAccepted, HeadRefused};
 use lockdown_vault::identity_set::{IdentityManifest, RecordRef};
+use lockdown_vault::transparency::{LogEntry, LogLeaf};
 use lockdown_vault::{Hash32, Id, Item, ManifestHead};
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -173,6 +178,15 @@ pub struct IdentityAccept<'a> {
     pub revocations: &'a [RevocationRow],
 }
 
+/// One log leaf as stored.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LogRow {
+    /// Its index.
+    pub index: u64,
+    /// The leaf's bytes as hashed.
+    pub body: Vec<u8>,
+}
+
 /// `(identity_seq, identity_hash, isk_pub)` as SQLite returns them.
 type IdentityColumns = (i64, Option<Vec<u8>>, Option<Vec<u8>>);
 
@@ -282,6 +296,12 @@ pub trait Storage: Send + Sync {
     /// Removes every blob no item names whose grace period (from its upload,
     /// or from when it lost its last reference) is over. Returns how many.
     fn gc_blobs(&self, now: i64, grace_secs: i64) -> Result<usize>;
+    /// How many leaves the key-transparency log has.
+    fn log_size(&self) -> Result<u64>;
+    /// Every leaf hash, oldest first: what the tree is computed from.
+    fn log_leaf_hashes(&self) -> Result<Vec<Hash32>>;
+    /// An account's leaves at index `from` or later, oldest first.
+    fn log_entries(&self, account_id: Id, from: u64) -> Result<Vec<LogRow>>;
     /// Writes a consistent copy of the whole store to `path` (the backup
     /// job's primitive, 05-self-host §4).
     fn snapshot_to(&self, path: &Path) -> Result<()>;
@@ -441,7 +461,14 @@ impl SqliteStorage {
                  item_id  TEXT NOT NULL,
                  hash     BLOB NOT NULL,
                  PRIMARY KEY (vault_id, item_id, hash)
-             );",
+             );
+             CREATE TABLE IF NOT EXISTS kt_log (
+                 idx        INTEGER PRIMARY KEY NOT NULL,
+                 account_id TEXT NOT NULL,
+                 leaf_hash  BLOB NOT NULL,
+                 body       BLOB NOT NULL
+             );
+             CREATE INDEX IF NOT EXISTS kt_log_by_account ON kt_log (account_id, idx);",
         )
         .map_err(backend)?;
         let found: Option<u32> = conn
@@ -569,6 +596,25 @@ impl SqliteStorage {
         })
     }
 
+    /// Appends one leaf to the log, inside the caller's transaction. The
+    /// index is the count so far; nothing is ever updated or removed.
+    fn log_in(conn: &Connection, account_id: Id, entry: LogEntry) -> Result<u64> {
+        let leaf = LogLeaf::new(account_id, entry);
+        let body = leaf
+            .to_bytes()
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
+        let hash = lockdown_crypto::merkle::leaf_hash(&body);
+        let idx: i64 = conn
+            .query_row("SELECT COUNT(*) FROM kt_log", [], |r| r.get(0))
+            .map_err(backend)?;
+        conn.execute(
+            "INSERT INTO kt_log (idx, account_id, leaf_hash, body) VALUES (?1, ?2, ?3, ?4)",
+            params![idx, account_id.to_string(), &hash.0[..], body],
+        )
+        .map_err(backend)?;
+        Ok(to_u64(idx))
+    }
+
     fn has_blob_in(conn: &Connection, vault_id: Id, hash: Hash32) -> Result<bool> {
         let n: i64 = conn
             .query_row(
@@ -654,7 +700,7 @@ impl Storage for SqliteStorage {
     }
 
     fn register_device(&self, account_id: Id, device_id: Id, device_pub: &[u8; 32]) -> Result<()> {
-        let conn = self.lock();
+        let mut conn = self.lock();
         let existing: Option<Vec<u8>> = conn
             .query_row(
                 "SELECT device_pub FROM devices WHERE account_id = ?1 AND device_id = ?2",
@@ -667,7 +713,8 @@ impl Storage for SqliteStorage {
             Some(key) if key == device_pub => Ok(()),
             Some(_) => Err(StorageError::DeviceKeyMismatch(device_id)),
             None => {
-                conn.execute(
+                let tx = conn.transaction().map_err(backend)?;
+                tx.execute(
                     "INSERT INTO devices (account_id, device_id, device_pub, first_seen) VALUES (?1, ?2, ?3, ?4)",
                     params![
                         account_id.to_string(),
@@ -677,7 +724,15 @@ impl Storage for SqliteStorage {
                     ],
                 )
                 .map_err(backend)?;
-                Ok(())
+                Self::log_in(
+                    &tx,
+                    account_id,
+                    LogEntry::Device {
+                        device_id,
+                        device_pub: *device_pub,
+                    },
+                )?;
+                tx.commit().map_err(backend)
             }
         }
     }
@@ -884,6 +939,14 @@ impl Storage for SqliteStorage {
             )
             .map_err(backend)?;
         }
+        Self::log_in(
+            &tx,
+            account_id,
+            LogEntry::IdentityHead {
+                seq: manifest.seq,
+                hash,
+            },
+        )?;
         tx.commit().map_err(backend)?;
         Ok(Ok(HeadAccepted {
             seq: manifest.seq,
@@ -1127,6 +1190,15 @@ impl Storage for SqliteStorage {
             params![vault_id.to_string(), seq, &hash.0[..]],
         )
         .map_err(backend)?;
+        Self::log_in(
+            &tx,
+            vault.account_id,
+            LogEntry::VaultHead {
+                vault_id,
+                seq: head.seq,
+                hash,
+            },
+        )?;
         tx.commit().map_err(backend)?;
         Ok(Ok(HeadAccepted {
             seq: head.seq,
@@ -1295,6 +1367,53 @@ impl Storage for SqliteStorage {
             params![cutoff],
         )
         .map_err(backend)
+    }
+
+    fn log_size(&self) -> Result<u64> {
+        let n: i64 = self
+            .lock()
+            .query_row("SELECT COUNT(*) FROM kt_log", [], |r| r.get(0))
+            .map_err(backend)?;
+        Ok(to_u64(n))
+    }
+
+    fn log_leaf_hashes(&self) -> Result<Vec<Hash32>> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare("SELECT leaf_hash FROM kt_log ORDER BY idx")
+            .map_err(backend)?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, Vec<u8>>(0))
+            .map_err(backend)?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(hash_from(Some(row.map_err(backend)?))?.expect("some"));
+        }
+        Ok(out)
+    }
+
+    fn log_entries(&self, account_id: Id, from: u64) -> Result<Vec<LogRow>> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT idx, body FROM kt_log WHERE account_id = ?1 AND idx >= ?2 ORDER BY idx",
+            )
+            .map_err(backend)?;
+        let rows = stmt
+            .query_map(
+                params![account_id.to_string(), to_i64(from, "a log index")?],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Vec<u8>>(1)?)),
+            )
+            .map_err(backend)?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (idx, body) = row.map_err(backend)?;
+            out.push(LogRow {
+                index: to_u64(idx),
+                body,
+            });
+        }
+        Ok(out)
     }
 
     fn snapshot_to(&self, path: &Path) -> Result<()> {

@@ -1,8 +1,11 @@
 //! The server's own secrets, in one file made on first run: the seed of
-//! the Ed25519 key that signs session tokens, and the OPAQUE server setup
-//! (OPRF seed and key pair). Losing the file logs every session out and
-//! makes every password file unusable, so back it up with the database.
-//! The file is readable only by the user.
+//! the Ed25519 key that signs session tokens, the OPAQUE server setup
+//! (OPRF seed and key pair), and the seed of the Ed25519 key that signs
+//! the key-transparency log's tree heads. Losing the file logs every
+//! session out, makes every password file unusable and changes the log
+//! key every client pinned, so back it up with the database. The file is
+//! readable only by the user. A file from before the log key existed gains
+//! one on the next start and is rewritten.
 
 use std::path::Path;
 
@@ -19,6 +22,9 @@ struct KeyFile {
     token_seed: [u8; 32],
     #[serde(with = "serde_bytes")]
     opaque_setup: Vec<u8>,
+    /// The log key's seed; absent in a file written before the log existed.
+    #[serde(default, with = "serde_bytes", skip_serializing_if = "Option::is_none")]
+    log_seed: Option<Vec<u8>>,
 }
 
 /// What the key file holds, open.
@@ -27,6 +33,8 @@ pub struct ServerKeys {
     pub token_key: SigningKey,
     /// Runs the OPAQUE server half.
     pub opaque: OpaqueServer,
+    /// Signs the key-transparency log's tree heads.
+    pub log_key: SigningKey,
 }
 
 impl std::fmt::Debug for ServerKeys {
@@ -55,6 +63,7 @@ impl ServerKeys {
         Ok(Self {
             token_key: SigningKey::generate()?,
             opaque: OpaqueServer::generate()?,
+            log_key: SigningKey::generate()?,
         })
     }
 
@@ -67,9 +76,36 @@ impl ServerKeys {
                 if file.v != KEYS_V {
                     return Err(KeyError::Decode(format!("version {}", file.v)));
                 }
+                let log_key = match &file.log_seed {
+                    Some(seed) => {
+                        let seed: [u8; 32] = seed
+                            .as_slice()
+                            .try_into()
+                            .map_err(|_| KeyError::Decode("the log seed isn't 32 bytes".into()))?;
+                        SigningKey::from_bytes(seed)
+                    }
+                    None => {
+                        // A file from before the log existed: give it a log
+                        // key once and keep it.
+                        let log_key = SigningKey::generate()?;
+                        let upgraded = KeyFile {
+                            log_seed: Some(log_key.inner().to_bytes().to_vec()),
+                            ..file
+                        };
+                        let bytes = cbor::to_canonical(&upgraded)
+                            .map_err(|e| KeyError::Decode(e.to_string()))?;
+                        write_private(path, &bytes)?;
+                        return Ok(Self {
+                            token_key: SigningKey::from_bytes(upgraded.token_seed),
+                            opaque: OpaqueServer::from_bytes(&upgraded.opaque_setup)?,
+                            log_key,
+                        });
+                    }
+                };
                 Ok(Self {
                     token_key: SigningKey::from_bytes(file.token_seed),
                     opaque: OpaqueServer::from_bytes(&file.opaque_setup)?,
+                    log_key,
                 })
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -78,6 +114,7 @@ impl ServerKeys {
                     v: KEYS_V,
                     token_seed: keys.token_key.inner().to_bytes(),
                     opaque_setup: keys.opaque.to_bytes().expose().to_vec(),
+                    log_seed: Some(keys.log_key.inner().to_bytes().to_vec()),
                 };
                 let bytes =
                     cbor::to_canonical(&file).map_err(|e| KeyError::Decode(e.to_string()))?;
@@ -142,6 +179,25 @@ mod tests {
             first.opaque.to_bytes().expose(),
             again.opaque.to_bytes().expose()
         );
+        assert_eq!(
+            first.log_key.verifying_key().to_bytes(),
+            again.log_key.verifying_key().to_bytes()
+        );
+        // A file from before the log key: one is added and kept.
+        let old = KeyFile {
+            v: KEYS_V,
+            token_seed: [1; 32],
+            opaque_setup: first.opaque.to_bytes().expose().to_vec(),
+            log_seed: None,
+        };
+        std::fs::write(&path, cbor::to_canonical(&old).unwrap()).unwrap();
+        let upgraded = ServerKeys::load_or_create(&path).unwrap();
+        let kept = ServerKeys::load_or_create(&path).unwrap();
+        assert_eq!(
+            upgraded.log_key.verifying_key().to_bytes(),
+            kept.log_key.verifying_key().to_bytes()
+        );
+        assert_eq!(kept.token_key.inner().to_bytes(), [1; 32]);
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

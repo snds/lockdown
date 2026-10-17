@@ -16,7 +16,9 @@
 //! - [`ratelimit`] — the brake on the login endpoints
 //! - [`api`] — the handlers; the wire types are `lockdown_sync::wire`
 //!
-//! The key-transparency log, checkpoints, blobs and push arrive in order.
+//! The key-transparency log (`storage::kt_log`, served under `/v1/kt/`) is
+//! appended inside the same transactions that accept identity manifests,
+//! vault heads and device logins. Push is not built.
 
 pub mod api;
 pub mod keys;
@@ -40,6 +42,7 @@ use crate::keys::ServerKeys;
 use crate::ratelimit::RateLimiter;
 use crate::storage::{Account, Storage};
 use crate::token::TokenSigner;
+use lockdown_crypto::SigningKey;
 
 /// What `/.well-known/lockdown` says about this install.
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -67,20 +70,24 @@ pub struct Features {
     pub blobs: bool,
     /// Content-free push pings.
     pub push: bool,
+    /// The key-transparency log's public key, lowercase hex, for outside
+    /// auditors (clients pin it from `/v1/kt/sth` on first sight).
+    pub kt_log_key: String,
 }
 
 /// The discovery document this build serves.
-pub fn discovery(signups: bool) -> Discovery {
+pub fn discovery(signups: bool, log_key: &lockdown_crypto::VerifyingKey) -> Discovery {
     Discovery {
         v: 1,
         api: vec![lockdown_sync::wire::API_V],
         features: Features {
             opaque: true,
             signups,
-            key_transparency: false,
-            checkpoints: false,
+            key_transparency: true,
+            checkpoints: true,
             blobs: true,
             push: false,
+            kt_log_key: lockdown_crypto::Hash32(log_key.to_bytes()).to_hex(),
         },
     }
 }
@@ -148,6 +155,8 @@ pub struct AppState {
     pub opaque: OpaqueServer,
     /// Issues and checks session tokens.
     pub tokens: TokenSigner,
+    /// Signs the key-transparency log's tree heads.
+    pub log_key: SigningKey,
     /// The settings.
     pub config: Config,
     /// Logins between their round trips.
@@ -175,6 +184,7 @@ impl AppState {
             storage,
             opaque: keys.opaque,
             tokens: TokenSigner::new(keys.token_key),
+            log_key: keys.log_key,
             per_address: RateLimiter::new(config.per_address.0, config.per_address.1),
             per_login: RateLimiter::new(config.per_login.0, config.per_login.1),
             config,
@@ -210,6 +220,10 @@ pub fn app(state: Arc<AppState>) -> Router {
                 .put(api::put_blob)
                 .layer(DefaultBodyLimit::max(blob_limit)),
         )
+        .route("/v1/kt/sth", get(api::kt_sth))
+        .route("/v1/kt/inclusion", get(api::kt_inclusion))
+        .route("/v1/kt/consistency", get(api::kt_consistency))
+        .route("/v1/kt/entries", get(api::kt_entries))
         .route("/healthz", get(api::healthz))
         .route("/.well-known/lockdown", get(api::well_known))
         .route("/v1/account/register/start", post(api::register_start))

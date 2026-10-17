@@ -29,6 +29,9 @@
 //!   account's vault; an item naming a blob the server lacks is
 //!   `unknown_blob`; blobs nothing names are collected after the grace
 //!   period (02-model §6).
+//! - The key-transparency log (04-security §6) is public: its signed tree
+//!   head, inclusion and consistency proofs need no session; an account's
+//!   own entries need its session.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -41,6 +44,9 @@ use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use lockdown_crypto::VerifyingKey;
 use lockdown_crypto::auth::{OpaqueServer, device_pop_message};
+use lockdown_sync::kt::{
+    AccountEntries, ConsistencyProofWire, InclusionProofWire, LoggedEntry, SthWire,
+};
 use lockdown_sync::wire::{
     self, BEARER, BlobAccepted, CONTENT_TYPE, ErrorBody, ErrorCode, HeadAccepted, HeadRefused,
     HeadsSince, IdentityPush, IdentitySince, ItemPush, ItemWire, ItemsSince, LoginFinish,
@@ -50,6 +56,7 @@ use lockdown_sync::wire::{
 use lockdown_vault::identity_set::{IdentityManifest, RecordSet};
 use lockdown_vault::item::ITEM_V;
 use lockdown_vault::manifest::MANIFEST_V;
+use lockdown_vault::transparency::{SignedTreeHead, TreeHead};
 use lockdown_vault::{Hash32, Id, Item, ManifestHead, VaultRecord};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -291,7 +298,132 @@ pub async fn healthz() -> &'static str {
 
 /// `GET /.well-known/lockdown`.
 pub async fn well_known(State(state): State<Arc<AppState>>) -> Json<Discovery> {
-    Json(crate::discovery(state.config.signups_open))
+    Json(crate::discovery(
+        state.config.signups_open,
+        &state.log_key.verifying_key(),
+    ))
+}
+
+// --- the key-transparency log ----------------------------------------------
+
+/// `?index=I&size=N`.
+#[derive(Deserialize, Default)]
+pub struct InclusionQuery {
+    /// The leaf.
+    #[serde(default)]
+    pub index: u64,
+    /// The tree size the proof is for.
+    #[serde(default)]
+    pub size: u64,
+}
+
+/// `?from=M&to=N`.
+#[derive(Deserialize, Default)]
+pub struct ConsistencyQuery {
+    /// The older size.
+    #[serde(default)]
+    pub from: u64,
+    /// The newer size.
+    #[serde(default)]
+    pub to: u64,
+}
+
+/// `?from=I`.
+#[derive(Deserialize, Default)]
+pub struct FromQuery {
+    /// The first index wanted.
+    #[serde(default)]
+    pub from: u64,
+}
+
+/// The log's current tree head, signed now.
+pub fn current_sth(state: &AppState) -> ApiResult<SignedTreeHead> {
+    let leaves = state.storage.log_leaf_hashes()?;
+    let head = TreeHead {
+        size: leaves.len() as u64,
+        root: lockdown_crypto::merkle::root(&leaves),
+        time: state.now(),
+    };
+    SignedTreeHead::sign(head, &state.log_key)
+        .map_err(|e| ApiError::internal(format!("couldn't sign the tree head: {e}")))
+}
+
+/// `GET /v1/kt/sth`.
+pub async fn kt_sth(State(state): State<Arc<AppState>>) -> ApiResult<Cbor<SthWire>> {
+    Ok(Cbor(SthWire {
+        sth: current_sth(&state)?,
+        log_key: state.log_key.verifying_key().to_bytes(),
+    }))
+}
+
+/// `GET /v1/kt/inclusion?index=I&size=N`.
+pub async fn kt_inclusion(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<InclusionQuery>,
+) -> ApiResult<Cbor<InclusionProofWire>> {
+    let leaves = state.storage.log_leaf_hashes()?;
+    let size = usize::try_from(q.size).unwrap_or(usize::MAX);
+    if q.size == 0 || size > leaves.len() {
+        return Err(ApiError::not_found(format!(
+            "the log has {} entries; no tree of size {}",
+            leaves.len(),
+            q.size
+        )));
+    }
+    let path =
+        lockdown_crypto::merkle::inclusion_proof(&leaves[..size], q.index).ok_or_else(|| {
+            ApiError::not_found(format!("no entry {} in a tree of {}", q.index, q.size))
+        })?;
+    Ok(Cbor(InclusionProofWire {
+        index: q.index,
+        size: q.size,
+        path,
+    }))
+}
+
+/// `GET /v1/kt/consistency?from=M&to=N`.
+pub async fn kt_consistency(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<ConsistencyQuery>,
+) -> ApiResult<Cbor<ConsistencyProofWire>> {
+    let leaves = state.storage.log_leaf_hashes()?;
+    let to = usize::try_from(q.to).unwrap_or(usize::MAX);
+    if to > leaves.len() || q.from > q.to {
+        return Err(ApiError::not_found(format!(
+            "the log has {} entries; no consistency proof from {} to {}",
+            leaves.len(),
+            q.from,
+            q.to
+        )));
+    }
+    let path = lockdown_crypto::merkle::consistency_proof(&leaves[..to], q.from)
+        .ok_or_else(|| ApiError::not_found("no such sizes in the log"))?;
+    Ok(Cbor(ConsistencyProofWire {
+        from: q.from,
+        to: q.to,
+        path,
+    }))
+}
+
+/// `GET /v1/kt/entries?from=I`: the session's account's own leaves.
+pub async fn kt_entries(
+    State(state): State<Arc<AppState>>,
+    session: Session,
+    Query(q): Query<FromQuery>,
+) -> ApiResult<Cbor<AccountEntries>> {
+    let entries = state
+        .storage
+        .log_entries(session.account_id, q.from)?
+        .into_iter()
+        .map(|r| LoggedEntry {
+            index: r.index,
+            leaf: r.body,
+        })
+        .collect();
+    Ok(Cbor(AccountEntries {
+        entries,
+        size: state.storage.log_size()?,
+    }))
 }
 
 // --- account ----------------------------------------------------------------

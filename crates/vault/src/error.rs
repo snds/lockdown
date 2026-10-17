@@ -109,6 +109,11 @@ pub enum Error {
         /// What the bytes hash to.
         found: Hash32,
     },
+    /// The server's key-transparency log failed a check: a bad signature, a
+    /// shrunken or forked log, a key the identity doesn't know. Nothing is
+    /// written after this; the message says what was found.
+    #[error("key transparency: {0}")]
+    Transparency(String),
     /// A crown-jewel item was asked for but the vault holds no Crown-Jewel Key.
     #[error("this vault has no crown-jewel key; unlock the persona first")]
     NoCrownJewelKey,

@@ -17,6 +17,7 @@
 //! - [`sign`] — Ed25519 signing and verification
 //! - [`kem`] — X-Wing encapsulate and decapsulate
 //! - [`hash`] — BLAKE3 hashing, keyed hashing, and key derivation
+//! - [`merkle`] — the RFC 6962-style tree and proofs behind the key-transparency log
 //! - [`rand`] — random bytes from the operating system
 //! - [`secret`] — key and plaintext types that zero their memory on drop
 //! - [`auth`] — account login: OPAQUE (RFC 9807) as a pure state machine, behind [`AccountAuth`]
@@ -28,6 +29,7 @@ pub mod error;
 pub mod hash;
 pub mod kdf;
 pub mod kem;
+pub mod merkle;
 pub mod rand;
 pub mod secret;
 pub mod sign;
