@@ -10,8 +10,9 @@
  *
  * The six security components (approval sheet, risk-tier badge, secret
  * field, code display, large-type view, crown-jewel treatment) are unicron
- * deliverables (03-architecture §9). Their colours come from core tier-2
- * roles; the crown-jewel slots below stay empty until that spec lands.
+ * components (03-architecture §9; @unicron/ui 0.4.0). Their colours and
+ * knobs (`--c-crown-jewel-*`, `--c-secret-field-*`, …) come from the core
+ * tokens; nothing here redefines them.
  */
 
 /* ── Tier 2 · App roles (light) ─────────────────────────────────────────── */
@@ -26,8 +27,9 @@
   --secure: var(--g-green-500);
   /* "Danger / revoke": revoking a device, moving an item to the trash. */
   --danger: var(--destructive);
-  /* Needs attention: expiring, unverified, a conflict copy. */
-  --attention: var(--g-amber-500);
+  /* Needs attention: expiring, unverified, a conflict copy. Aliases the
+     core's `warning` role (brief §8), which the tokens swap in .dark. */
+  --attention: var(--warning);
   /* The one wayfinding hue: the Codes view and the palette's code rows. */
   --area-codes: var(--g-blue-500);
 
@@ -43,7 +45,7 @@
   --surface-locked: var(--g-neutral-900);
   --secure: var(--g-green-400);
   --danger: var(--destructive);
-  --attention: var(--g-amber-400);
+  --attention: var(--warning);
   --area-codes: var(--g-blue-400);
   --sidebar: var(--surface-chrome);
 }
@@ -62,14 +64,6 @@
   --c-row-pad-y: calc(var(--spacing) * 2);
   --c-row-gap: calc(var(--spacing) * 2.5);
   --c-group-pad-y: calc(var(--spacing) * 3);
-
-  /* Crown-jewel treatment (03-architecture §9, design brief §9 q.7).
-     Left empty on purpose: the unicron spec under docs/specs/security/
-     decides the inverted `protected` surface, its ink and its border.
-     Nothing here may invent them first. */
-  --c-crown-jewel-surface: ;
-  --c-crown-jewel-ink: ;
-  --c-crown-jewel-border: ;
 }
 
 :root[data-density="compact"] {
