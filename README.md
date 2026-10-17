@@ -74,6 +74,19 @@ A second machine with nothing on it comes back with the recovery kit: `recover -
 
 CI (`.github/workflows/ci.yml`) runs the same four checks on Ubuntu and macOS, plus `cargo-deny`, plus the wasm build and the browser red team.
 
+## Desktop shell
+
+`apps/desktop` is the Tauri 2 window around the same core: React 19 and `@unicron/ui` on the web side, `lockdown-app` (`crates/app`) on the Rust side, one Tauri command per operation. It shares the CLI's data directory and device key, so the window and `lockdown` on one machine are one device. The vault opens through the device keystore (D11); the account password appears only to join or recover. Secrets reach the webview as bytes and only by field; **Copy** goes from the core to the clipboard without passing through the webview and clears itself after 30 seconds; the idle, hidden-window and sleep timers that lock the vault run in `lockdown-app`, not in the UI. Layout and colour are unicron defaults until the design brief ([`docs/plan/11-desktop-design-brief.md`](docs/plan/11-desktop-design-brief.md)) lands.
+
+```sh
+cd apps/desktop && pnpm install
+pnpm tauri dev                      # Linux needs WebKitGTK: libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libdbus-1-dev
+pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm ds:ratchet
+cargo clippy -p lockdown-desktop --features shell --all-targets -- -D warnings
+```
+
+The Tauri half sits behind the crate's `shell` feature, so the root `cargo … --workspace` gates stay pure Rust; `tauri dev`/`tauri build` turn it on through `tauri.conf.json`. Details, the command surface and the decisions proposed: [`docs/plan/10-desktop-shell.md`](docs/plan/10-desktop-shell.md).
+
 ## Plan and research
 
 Start with [docs/plan/00-big-picture.md](docs/plan/00-big-picture.md). The plan set (00–07 plus [`decisions.md`](docs/plan/decisions.md)) is the source of truth; the research in [`docs/research/2026-10-15/`](docs/research/2026-10-15/) is its evidence, beginning with [the brief](docs/research/2026-10-15/brief.md). Where the fact-check (`verification.json`) disagrees with a research report, the fact-check wins.

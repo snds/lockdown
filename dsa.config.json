@@ -1,0 +1,12 @@
+{
+  "$schema": "https://github.com/snds/dsa/schema/config.json",
+  "system": { "name": "unicron", "packages": ["@unicron/ui"], "localAliases": ["@/components/ui"] },
+  "scan": {
+    "include": ["apps/desktop/src/**/*.tsx"],
+    "exclude": ["**/node_modules/**", "**/*.test.tsx", "**/*.stories.tsx"]
+  },
+  "hosts": { "by": "file" },
+  "patterns": { "minOccurrences": 3, "minHosts": 2, "minComponents": 2, "ignoreIgnoredTimes": 3 },
+  "ratchet": { "baseline": "apps/desktop/.dsa/baseline.json" },
+  "output": { "dir": "apps/desktop/.dsa" }
+}
