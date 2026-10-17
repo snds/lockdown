@@ -18,6 +18,7 @@ lockdown-cxf.workspace = true
 ecosystem-identity.workspace = true
 serde.workspace = true
 zeroize.workspace = true
+zxcvbn.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

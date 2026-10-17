@@ -308,6 +308,26 @@ async fn templates(app: State<'_, App>) -> AppResult<Templates> {
     })
 }
 
+/// How hard the password the person is typing in the editor would be to
+/// guess: zxcvbn's 0–4 score, `null` when empty (D116). `candidate` is the
+/// bytes of what was just typed, wiped here after the estimate; `context`
+/// is the same form's plain words (title, username, website), which make a
+/// password weaker when it contains them. Never called with a stored
+/// secret: a reveal is never scored.
+#[tauri::command]
+async fn password_strength(
+    app: State<'_, App>,
+    candidate: Vec<u8>,
+    context: Vec<String>,
+) -> AppResult<Option<u8>> {
+    let candidate = zeroize::Zeroizing::new(candidate);
+    blocking(&app, move |a| {
+        let words: Vec<&str> = context.iter().map(String::as_str).collect();
+        a.password_strength(&candidate, &words)
+    })
+    .await
+}
+
 /// Makes an item of any kind a person may make (D110). Secrets arrive as
 /// byte arrays inside `fields` (items.rs) and are wiped after the call.
 #[tauri::command]
@@ -648,6 +668,7 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         add_login,
         edit_login,
         templates,
+        password_strength,
         add_item,
         edit_item,
         trash,

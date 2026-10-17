@@ -25,6 +25,7 @@ mod revealed;
 pub mod secrets;
 mod session;
 pub mod settings;
+pub mod strength;
 pub mod types;
 pub mod views;
 
@@ -679,6 +680,15 @@ impl App {
     /// detail. Static data: no vault needed.
     pub fn templates(&self) -> Vec<TemplateView> {
         session::items::templates()
+    }
+
+    /// How hard `candidate`, a password the person is typing in an editor,
+    /// would be to guess: zxcvbn's 0–4 score ([`strength::score`]), `None`
+    /// when empty. `context` is the same form's plain words (title,
+    /// username, website). Static: it reads nothing from the vault and is
+    /// never given a stored secret.
+    pub fn password_strength(&self, candidate: &[u8], context: &[&str]) -> AppResult<Option<u8>> {
+        strength::score(candidate, context).map_err(AppError::refused)
     }
 
     /// The kinds a person may give a field they add by hand.

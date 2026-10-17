@@ -73,6 +73,12 @@ export interface Client {
   editLogin(input: { id: string; title?: string; username?: string; password?: number[]; gate?: GateInput }): Promise<number>
   /** Every kind's template and the kinds a field added by hand may take (static). */
   templates(): Promise<Templates>
+  /**
+   * zxcvbn's 0–4 guess score for a password the person is typing in the
+   * editor (`null` when empty), with the form's plain words as context.
+   * The candidate goes as bytes the caller zeroes; never a stored secret.
+   */
+  passwordStrength(candidate: number[], context: string[]): Promise<number | null>
   /** Makes an item of any creatable kind; resolves to its id. */
   addItem(input: { kind: string; title?: string; crownJewel?: boolean; fields: FieldChangeInput[] }): Promise<string>
   /**
@@ -153,6 +159,7 @@ export const tauriClient: Client = {
   addLogin: (input) => call("add_login", input),
   editLogin: (input) => call("edit_login", input),
   templates: () => call("templates"),
+  passwordStrength: (candidate, context) => call("password_strength", { candidate, context }),
   addItem: (input) => call("add_item", input),
   editItem: (input, gate) => call("edit_item", { ...input, gate }),
   trash: (id) => call("trash", { id }),

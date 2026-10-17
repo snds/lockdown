@@ -17,13 +17,18 @@ import { SecretField } from "@unicron/ui/security/secret-field"
 import type { Control } from "@/core/types"
 
 import { isSecretControl, type EditorRow } from "./editor-model"
+import { useStrength } from "./use-strength"
 
 interface FieldControlProps {
   row: EditorRow
   onChange: (patch: Partial<EditorRow>) => void
   /** Drops a field the person was adding, before it was ever saved. */
   onDiscard?: () => void
+  /** The form's plain words (title, username, website), which make a typed password weaker when it holds them. */
+  context?: readonly string[]
 }
+
+const NO_CONTEXT: readonly string[] = []
 
 const INPUT_TYPE: Partial<Record<Control, string>> = {
   email: "email",
@@ -47,14 +52,18 @@ function generatorWords(row: EditorRow): string | null {
  * never sees it) or removes it. A secret over several lines (a private
  * key, a recovery phrase) is the same field with `multiline` (@unicron/ui
  * 0.8.0), masked until Show; a required one carries native `required`, so
- * the form's own check stops an empty save. Every other control is a
- * unicron primitive with no overrides.
+ * the form's own check stops an empty save. A password the person types
+ * gets the strength word from the core's estimate (`useStrength`). Every
+ * other control is a unicron primitive with no overrides.
  */
-export function FieldControl({ row, onChange, onDiscard }: FieldControlProps) {
+export function FieldControl({ row, onChange, onDiscard, context = NO_CONTEXT }: FieldControlProps) {
   const id = `field-${row.key.replace(/[^a-z0-9]+/gi, "-")}`
   const required = row.template?.required ?? false
   const hint = row.template?.hint || undefined
   const words = generatorWords(row)
+  // The meter is for passwords, the one-line secrets the person picks (those the generator is offered
+  // for), and only for what they type here; never a card number, a PIN or a stored value (D116).
+  const strength = useStrength(row.text, context, row.editable && row.control === "secret" && row.secret === "type" && words !== null)
   const discard = onDiscard && <IconButton label={`Drop ${row.label}`} icon="close" onClick={onDiscard} />
 
   if (!row.editable) {
@@ -109,6 +118,7 @@ export function FieldControl({ row, onChange, onDiscard }: FieldControlProps) {
         multiline={row.control === "secret-multiline"}
         value={row.text}
         onChange={(text) => onChange({ text, secret: "type" })}
+        strength={strength}
         description={
           crownJewel ? (
             <>

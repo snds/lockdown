@@ -30,7 +30,7 @@ import { useTemplates } from "@/app/templates"
 import { describeError, useClient } from "@/core/client"
 import type { ItemDetail, TemplateView } from "@/core/types"
 
-import { DERIVED_TITLE, buildChanges, customRow, initialRows, wipeRows, type EditorRow } from "./editor-model"
+import { DERIVED_TITLE, buildChanges, customRow, initialRows, isSecretControl, wipeRows, type EditorRow } from "./editor-model"
 import { FieldControl } from "./field-control"
 
 export interface EditorTarget {
@@ -109,6 +109,12 @@ function EditorForm({ template, item, onClose, onSaved }: { template: TemplateVi
     return out
   }, [rows])
 
+  // Plain words from this form that a password shouldn't lean on (the strength estimate's context).
+  const context = useMemo(
+    () => [title, ...rows.filter((r) => !isSecretControl(r.control) && (r.control === "text" || r.control === "email" || r.control === "url")).map((r) => r.text)].map((w) => w.trim()).filter(Boolean),
+    [title, rows],
+  )
+
   const addField = () => {
     const label = adding.label.trim()
     if (!label) return
@@ -169,6 +175,7 @@ function EditorForm({ template, item, onClose, onSaved }: { template: TemplateVi
                   key={r.key}
                   row={r}
                   onChange={(p) => patch(r.key, p)}
+                  context={context}
                   onDiscard={r.fieldId === null ? () => setRows((rs) => rs.filter((x) => x.key !== r.key)) : undefined}
                 />
               ))}

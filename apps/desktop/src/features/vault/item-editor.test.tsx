@@ -128,6 +128,42 @@ describe("the generic item editor (D110)", () => {
     expect(sent.fields).toContainEqual({ label: "Hint", kind: "text", action: "set", text: "the blue one" })
   })
 
+  it("a typed password gets the core's strength word; the bytes go once per pause and are zeroed", async () => {
+    const sent: { bytes: number[]; context: string[] }[] = []
+    const passwordStrength = vi.fn<Client["passwordStrength"]>((candidate, context) => {
+      sent.push({ bytes: [...candidate], context })
+      return Promise.resolve(new TextDecoder().decode(Uint8Array.from(candidate)) === "hunter2" ? 0 : 4)
+    })
+    mount(fakeClient({ templates, passwordStrength }), { kind: "login", item: null })
+    const user = userEvent.setup()
+    await user.type(await screen.findByLabelText("Title"), "Forum")
+    await user.type(screen.getByLabelText("Username"), "sean")
+    const password = screen.getByLabelText("Password")
+    await user.type(password, "hunter2")
+    expect(await screen.findByText("Weak")).toBeInTheDocument()
+    // The meter is the field's description for assistive tech: "Strength: Weak".
+    expect(document.getElementById(password.getAttribute("aria-describedby")!)).toHaveTextContent("Strength: Weak")
+    // One call for the pause after typing, not one per keystroke.
+    expect(passwordStrength).toHaveBeenCalledTimes(1)
+    expect(new TextDecoder().decode(Uint8Array.from(sent[0]!.bytes))).toBe("hunter2")
+    expect(sent[0]!.context).toEqual(["Forum", "sean"])
+    expect(passwordStrength.mock.calls[0]![0].every((b) => b === 0)).toBe(true)
+    await user.type(password, "-and-a-long-tail")
+    expect(await screen.findByText("Strong")).toBeInTheDocument()
+    await user.clear(password)
+    await waitFor(() => expect(screen.queryByText("Strong")).not.toBeInTheDocument())
+  })
+
+  it("no meter, and no call, for a secret the person doesn't pick (a card number) or one they didn't retype", async () => {
+    const passwordStrength = vi.fn<Client["passwordStrength"]>(() => Promise.resolve(4))
+    mount(fakeClient({ templates, passwordStrength, approvalRoute: () => Promise.resolve({ route: "window", method: "window" }) }), { kind: "card", item: card })
+    const user = userEvent.setup()
+    await user.type(await screen.findByLabelText("Card number"), "4111111111111111")
+    await new Promise((r) => setTimeout(r, 300))
+    expect(passwordStrength).not.toHaveBeenCalled()
+    expect(screen.queryByText(/Strength:/)).not.toBeInTheDocument()
+  })
+
   it("says so while the item kinds load, and when they fail", async () => {
     mount(fakeClient({ templates: () => new Promise(() => {}) }), { kind: "note", item: null })
     expect(await screen.findByText("Loading the item kinds…")).toBeInTheDocument()
