@@ -78,6 +78,13 @@ pub enum Error {
         /// What this build reads.
         supported: u16,
     },
+    /// A head or version is signed by a device this vault was not told
+    /// about. Its key comes from a signed identity record, never from the
+    /// server; until that record is known, nothing it signed is trusted.
+    #[error(
+        "signed by device {0}, which this vault doesn't know; enrol or learn that device first"
+    )]
+    UnknownDevice(Id),
     /// A crown-jewel item was asked for but the vault holds no Crown-Jewel Key.
     #[error("this vault has no crown-jewel key; unlock the persona first")]
     NoCrownJewelKey,

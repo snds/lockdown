@@ -22,6 +22,12 @@ allow = [
     "BSL-1.0",
     # foldhash (via hashbrown ← hashlink ← rusqlite): zlib/libpng, permissive.
     "Zlib",
+    # The sync client's TLS stack (reqwest → hyper-rustls → rustls → ring):
+    # ring is "Apache-2.0 AND ISC", rustls-webpki carries ISC; both permissive.
+    "ISC",
+    # webpki-roots' bundled Mozilla root store (via rustls-platform-verifier):
+    # a permissive data licence that only asks for attribution of the data.
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8
 

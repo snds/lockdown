@@ -5,7 +5,10 @@
 //! ecosystem identity at the platform root and the persona's first vault;
 //! `add`, `list`, `show` and `status` open the same vault again with
 //! nothing but that root and this device's keystore (D11). `code` and
-//! `match` need no vault. The SSH agent and local-socket pairing are later.
+//! `match` need no vault. `account register` and `account login` make
+//! this device an account on a Lockdown server; `sync` pulls, merges and
+//! pushes (03-architecture §6). The SSH agent and local-socket pairing
+//! are later.
 //!
 //! A password never arrives as an argument, where it would land in shell
 //! history and `ps`: `--password-stdin` or `LOCKDOWN_PASSWORD`.
@@ -59,8 +62,18 @@ enum Command {
         #[arg(long)]
         reveal: bool,
     },
+    /// Change a login's title, username or password (a new version; the
+    /// old one stays in history).
+    Edit(EditLogin),
     /// Where everything is and the vault's newest head.
     Status,
+    /// The account on a Lockdown server.
+    Account {
+        #[command(subcommand)]
+        what: AccountWhat,
+    },
+    /// Pull from the server, merge, push, and advance the vault head.
+    Sync,
     /// Print the current one-time code for an otpauth:// or steam:// URI.
     Code {
         /// The URI. The secret is read from it and never printed.
@@ -79,6 +92,45 @@ enum Command {
 enum AddWhat {
     /// A login: site, username, password.
     Login(AddLogin),
+}
+
+#[derive(Subcommand, Debug)]
+enum AccountWhat {
+    /// Make an account on a server for this identity (OPAQUE: the
+    /// password never leaves this device).
+    Register(AccountArgs),
+    /// Log in. On a device that holds the identity: a fresh session. On an
+    /// empty one: enrol this device from the account and its identity backup.
+    Login(AccountArgs),
+}
+
+#[derive(Args, Debug)]
+struct AccountArgs {
+    /// The server, as a URL (https://host[:port]).
+    #[arg(long, value_name = "URL")]
+    server: String,
+    /// The login name the account is filed under.
+    #[arg(long, value_name = "NAME")]
+    login: String,
+    /// Read the account password from the first line of standard input.
+    /// Without it, the LOCKDOWN_PASSWORD environment variable is used.
+    #[arg(long)]
+    password_stdin: bool,
+}
+
+#[derive(Args, Debug)]
+struct EditLogin {
+    /// The item id, as `list` prints it.
+    id: String,
+    /// A new title.
+    #[arg(long)]
+    title: Option<String>,
+    /// A new username.
+    #[arg(long, value_name = "NAME")]
+    username: Option<String>,
+    /// Read a new password from the first line of standard input.
+    #[arg(long)]
+    password_stdin: bool,
 }
 
 #[derive(Args, Debug)]
@@ -187,9 +239,50 @@ fn run(cli: Cli) -> Result<Vec<String>, String> {
             App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?
                 .show_lines(&id, reveal)
         }
+        Command::Edit(edit) => {
+            let password = if edit.password_stdin {
+                Some(read_password(true)?)
+            } else {
+                None
+            };
+            let mut app = App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?;
+            let n = app.edit_login(
+                &edit.id,
+                edit.title.as_deref(),
+                edit.username.as_deref(),
+                password.as_deref(),
+            )?;
+            Ok(vec![format!("saved version {n} of {}", edit.id)])
+        }
         Command::Status => {
             App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?.status_lines()
         }
+        Command::Account { what } => {
+            let paths = Paths::resolve(cli.root, cli.data)?;
+            match what {
+                AccountWhat::Register(args) => {
+                    let password = read_password(args.password_stdin)?;
+                    App::open_existing(paths, persona)?.account_register(
+                        &args.server,
+                        &args.login,
+                        &password,
+                    )
+                }
+                AccountWhat::Login(args) => {
+                    let password = read_password(args.password_stdin)?;
+                    if app::root_is_empty(&paths)? {
+                        App::enrol_from_account(paths, &args.server, &args.login, &password)
+                    } else {
+                        App::open_existing(paths, persona)?.account_login(
+                            &args.server,
+                            &args.login,
+                            &password,
+                        )
+                    }
+                }
+            }
+        }
+        Command::Sync => App::open_for_sync(Paths::resolve(cli.root, cli.data)?, persona)?.sync(),
     }
 }
 
@@ -256,6 +349,16 @@ mod tests {
         // The password is never a CLI flag.
         assert!(
             AddLogin::augment_args(clap::Command::new("x"))
+                .get_arguments()
+                .all(|a| a.get_id() != "password")
+        );
+        assert!(
+            AccountArgs::augment_args(clap::Command::new("x"))
+                .get_arguments()
+                .all(|a| a.get_id() != "password")
+        );
+        assert!(
+            EditLogin::augment_args(clap::Command::new("x"))
                 .get_arguments()
                 .all(|a| a.get_id() != "password")
         );

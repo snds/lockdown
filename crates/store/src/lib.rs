@@ -18,14 +18,18 @@
 //! - [`HeadMemory`] — what this device remembers about each vault's newest
 //!   accepted head, kept in a separate file so a vault file put back from
 //!   an old copy is caught ("Rollback attempt blocked")
+//! - [`KnownDevices`] — other devices' records learned from the identity's
+//!   signed backup, so their heads and versions verify here too
 
+pub mod known_devices;
 pub mod memory;
 pub mod remembered;
 pub mod sqlite;
 
+pub use known_devices::KnownDevices;
 pub use lockdown_vault::store::{Store, StoreError, StoreResult, VAULT_RECORD_V, VaultRecord};
 pub use memory::MemoryStore;
-pub use remembered::{HeadMemory, RememberedHead};
+pub use remembered::{HeadMemory, RememberedHead, write_private};
 pub use sqlite::{SCHEMA_VERSION, SqliteStore};
 
 /// The store's result type, for callers that used the old name.

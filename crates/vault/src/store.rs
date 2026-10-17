@@ -102,6 +102,9 @@ pub trait Store {
     fn put_head(&mut self, head: ManifestHead) -> StoreResult<()>;
     /// Every manifest head for a vault, oldest first.
     fn heads(&self, vault_id: Id) -> StoreResult<Vec<ManifestHead>>;
+    /// Removes every head after `seq`. Sync uses it when the server's chain
+    /// replaces heads this device committed offline; nothing else does.
+    fn remove_heads_after(&mut self, vault_id: Id, seq: u64) -> StoreResult<()>;
     /// The newest manifest head for a vault.
     fn latest_head(&self, vault_id: Id) -> StoreResult<ManifestHead> {
         self.heads(vault_id)?

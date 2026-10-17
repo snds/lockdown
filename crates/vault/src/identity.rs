@@ -335,6 +335,28 @@ pub fn open_vault(
     signer: Box<dyn Signer>,
     last_accepted_seq: u64,
 ) -> Result<OpenVault> {
+    open_vault_trusting(
+        identity,
+        vault_id,
+        store,
+        signer,
+        last_accepted_seq,
+        &BTreeMap::new(),
+    )
+}
+
+/// [`open_vault`], also trusting `learned`: devices enrolled in this
+/// identity on another machine, whose signed records reached this one
+/// through the server (kept by `lockdown-store`'s `KnownDevices`). Their
+/// keys count exactly like the identity's own device records.
+pub fn open_vault_trusting(
+    identity: &Identity,
+    vault_id: Id,
+    store: &dyn Store,
+    signer: Box<dyn Signer>,
+    last_accepted_seq: u64,
+    learned: &BTreeMap<Id, VerifyingKey>,
+) -> Result<OpenVault> {
     let record = store.get_vault(vault_id)?;
     let ctx = record.context;
     if ctx.profile_id != identity.profile().profile_id {
@@ -349,9 +371,12 @@ pub fn open_vault(
         ctx.app_data_key_id,
         ctx.crown_jewel_key_id,
     )?;
-    let devices = device_keys(identity);
+    let mut devices = device_keys(identity);
+    for (id, key) in learned {
+        devices.entry(*id).or_insert_with(|| key.clone());
+    }
     let known = |id: Id| devices.get(&id).cloned();
-    let vault = Vault::load(
+    let mut vault = Vault::load(
         store,
         vault_id,
         Unlock {
@@ -363,6 +388,9 @@ pub fn open_vault(
             last_accepted_seq,
         },
     )?;
+    for (id, key) in &devices {
+        vault.trust_device(*id, key.clone());
+    }
     Ok(OpenVault {
         vault,
         keys,

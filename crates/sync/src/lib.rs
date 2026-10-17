@@ -7,10 +7,21 @@
 //! different fields merge automatically; edits to the same field become a
 //! [`ConflictCopy`] and the person decides. Nothing is overwritten silently.
 //! That three-way merge is implemented and tested here over decrypted
-//! fields. The transport, the offline queue, the key-transparency check and
-//! the checkpoint proof are not built yet (they need the server).
+//! fields.
+//!
+//! - [`wire`] — the protocol types, shared with `lockdown-server`
+//! - [`transport`] — the [`Transport`] contract and the HTTPS client
+//! - [`engine`] — [`sync_vault`]: pull, merge, push, head; [`bootstrap_vault`]
+//!
+//! The offline queue, the key-transparency check and the checkpoint proof
+//! are not built yet.
 
+pub mod engine;
+pub mod transport;
 pub mod wire;
+
+pub use engine::{SyncReport, Syncer, VaultSyncState, bootstrap_vault, sync_vault};
+pub use transport::{HttpTransport, Transport, TransportError};
 
 use std::collections::BTreeMap;
 
@@ -143,8 +154,8 @@ pub struct RollbackGuard {
     seen: BTreeMap<lockdown_vault::Id, u64>,
 }
 
-/// Why a pull was refused.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+/// Why a sync stopped.
+#[derive(Debug, thiserror::Error)]
 pub enum SyncError {
     /// The server served an older head than this device has seen.
     #[error(
@@ -156,9 +167,40 @@ pub enum SyncError {
         /// What this device remembers.
         remembered: u64,
     },
+    /// The server's history at a sequence this device accepted is not the
+    /// one it accepted: either the server rewrote it or two servers were
+    /// mixed up. Nothing is written.
+    #[error(
+        "Fork detected: the server's history at manifest {seq} isn't the one this device accepted; nothing was changed"
+    )]
+    Fork {
+        /// Where the histories part.
+        seq: u64,
+    },
+    /// The session token has run out or was refused.
+    #[error("the session with the server has run out; run `lockdown account login` again")]
+    SessionExpired,
+    /// Other devices kept moving for this many rounds; try again shortly.
+    #[error("sync didn't settle after {0} rounds (another device kept writing); try again")]
+    Unsettled(u32),
+    /// The server could not be reached or refused.
+    #[error(transparent)]
+    Transport(#[from] TransportError),
+    /// The vault refused something (a signature, a chain, a key).
+    #[error(transparent)]
+    Vault(#[from] lockdown_vault::Error),
+    /// The local store failed.
+    #[error(transparent)]
+    Store(#[from] lockdown_vault::store::StoreError),
     /// The feature exists in the plan but not in this build yet.
     #[error("not supported here: {0}")]
     Unsupported(String),
+}
+
+impl From<lockdown_crypto::Error> for SyncError {
+    fn from(e: lockdown_crypto::Error) -> Self {
+        SyncError::Vault(e.into())
+    }
 }
 
 impl RollbackGuard {

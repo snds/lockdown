@@ -11,6 +11,14 @@ repository.workspace = true
 lockdown-vault.workspace = true
 lockdown-store.workspace = true
 lockdown-crypto.workspace = true
+ecosystem-identity.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
 thiserror.workspace = true
+# The HTTP transport: blocking, TLS through rustls on the `ring` provider
+# (no aws-lc build step), certificates from the platform verifier.
+reqwest = { workspace = true }
+rustls = { workspace = true }
+
+[dev-dependencies]
+tempfile.workspace = true

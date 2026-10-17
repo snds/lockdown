@@ -270,6 +270,18 @@ impl Store for SqliteStore {
         Ok(out)
     }
 
+    fn remove_heads_after(&mut self, vault_id: Id, seq: u64) -> StoreResult<()> {
+        let seq = i64::try_from(seq)
+            .map_err(|_| StoreError::Backend("a manifest sequence past i64".into()))?;
+        self.conn
+            .execute(
+                "DELETE FROM heads WHERE vault_id = ?1 AND seq > ?2",
+                params![vault_id.to_string(), seq],
+            )
+            .map_err(backend)?;
+        Ok(())
+    }
+
     fn save_all(
         &mut self,
         record: VaultRecord,

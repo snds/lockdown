@@ -1,0 +1,473 @@
+//! The sync step itself (03-architecture §6), over any [`Transport`].
+//!
+//! One run of [`sync_vault`]:
+//!
+//! 1. **Pull.** Ask for every head after the last one the server confirmed
+//!    to this device (`synced_seq`). A server that is now *behind* that is
+//!    refused outright ("Rollback attempt blocked"); one whose head at
+//!    `synced_seq` is not the one this device accepted is a fork. New heads
+//!    are verified as a chain continuing this device's copy, signed by
+//!    trusted devices, and replace whatever this device had after
+//!    `synced_seq` (heads it committed offline were never on the server;
+//!    their changes live on in the items).
+//! 2. **Merge.** Items the new heads list are pulled. One this device did
+//!    not touch is taken as is. One both sides changed is merged field by
+//!    field against the last version the two histories share; a field
+//!    both sides changed differently keeps the server's value in the
+//!    item and this device's whole version in a new *conflict copy*
+//!    item, so nothing is overwritten silently.
+//! 3. **Push.** Every item that differs from the synced head is sent with
+//!    the revision this device last saw. `stale` means another device got
+//!    there between the pull and the push: merge against the copy the
+//!    server returned and go round again.
+//! 4. **Head.** A fresh head is committed over the items with their
+//!    server revisions and sent. `fork`, `gap` or `older_seq` means
+//!    another device moved first: go round again. A few rounds settle any
+//!    race; more than that is reported, not retried forever.
+//!
+//! [`bootstrap_vault`] is the first pull on a device that holds nothing
+//! yet: it writes the record, heads and items into the store, and the
+//! caller opens the vault the ordinary way, which verifies all of it.
+
+use std::collections::BTreeSet;
+
+use lockdown_vault::store::Store;
+use lockdown_vault::{
+    FieldValue, Hash32, Id, Item, ItemState, ManifestHead, PlainField, Vault, VaultRecord,
+};
+use serde::{Deserialize, Serialize};
+
+use crate::transport::{Transport, TransportError};
+use crate::wire::{ErrorCode, ItemPush, PushReply, VaultSummary};
+use crate::{SyncError, merge_fields};
+
+/// How far one vault is synced on this device. Kept per device, never
+/// synced itself.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub struct VaultSyncState {
+    /// The newest manifest `seq` the server confirmed to this device.
+    pub synced_seq: u64,
+    /// The newest item revision this device has pulled or pushed.
+    pub synced_rev: u64,
+}
+
+/// What one run did.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct SyncReport {
+    /// Items sent and accepted.
+    pub pushed: usize,
+    /// Items taken from the server as they were.
+    pub pulled: usize,
+    /// Items merged field by field.
+    pub merged: usize,
+    /// Conflict copies made, by id.
+    pub conflict_copies: Vec<Id>,
+    /// The vault's head `seq` afterwards.
+    pub head_seq: u64,
+    /// Whether heads this device had committed were replaced by the
+    /// server's chain (the caller then resets what it remembers).
+    pub chain_rewritten: bool,
+    /// How many rounds it took.
+    pub rounds: u32,
+}
+
+/// The most rounds one run tries before reporting a race it cannot settle.
+pub const MAX_ROUNDS: u32 = 6;
+
+/// Who is syncing: the transport, the session, and the name used on
+/// conflict copies.
+pub struct Syncer<'a> {
+    /// The server.
+    pub transport: &'a dyn Transport,
+    /// The session token.
+    pub token: &'a str,
+    /// What this device is called, for conflict copies.
+    pub device_label: &'a str,
+}
+
+impl std::fmt::Debug for Syncer<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Syncer")
+            .field("device_label", &self.device_label)
+            .finish_non_exhaustive()
+    }
+}
+
+fn session_or(e: TransportError) -> SyncError {
+    match e {
+        TransportError::Refused {
+            code: ErrorCode::TokenExpired | ErrorCode::Unauthenticated,
+            ..
+        } => SyncError::SessionExpired,
+        other => SyncError::Transport(other),
+    }
+}
+
+/// Syncs `vault` with the server. `record` is the vault's record bytes
+/// (sent on the first contact so another device can find the vault).
+pub fn sync_vault(
+    syncer: &Syncer<'_>,
+    vault: &mut Vault,
+    record: &[u8],
+    state: &mut VaultSyncState,
+) -> Result<SyncReport, SyncError> {
+    let vault_id = vault.context().vault_id;
+    let t = syncer.transport;
+    let token = syncer.token;
+    let mut report = SyncReport::default();
+    if state.synced_seq == 0 {
+        t.put_vault(token, vault_id, record).map_err(session_or)?;
+    }
+    for round in 1..=MAX_ROUNDS {
+        report.rounds = round;
+
+        // 1. Pull heads.
+        let remote = t
+            .heads_since(token, vault_id, state.synced_seq)
+            .map_err(session_or)?;
+        if remote.current_seq < state.synced_seq {
+            return Err(SyncError::Rollback {
+                offered: remote.current_seq,
+                remembered: state.synced_seq,
+            });
+        }
+        let mut remote_heads = Vec::with_capacity(remote.heads.len());
+        for bytes in &remote.heads {
+            remote_heads.push(ManifestHead::from_bytes(bytes)?);
+        }
+        if state.synced_seq > 0 {
+            let ours = vault
+                .head_at(state.synced_seq)
+                .ok_or_else(|| {
+                    SyncError::Unsupported(format!(
+                        "this device's copy of manifest {} is missing",
+                        state.synced_seq
+                    ))
+                })?
+                .hash()?;
+            let server_has = match remote_heads.first() {
+                Some(first) => first.prev_hash == ours,
+                None => remote.current_hash == Some(ours),
+            };
+            if !server_has {
+                return Err(SyncError::Fork {
+                    seq: state.synced_seq,
+                });
+            }
+        }
+
+        // 2. Merge what the new heads bring.
+        if let Some(newest) = remote_heads.last().cloned() {
+            let dirty_before: BTreeSet<Id> =
+                vault.changed_since(state.synced_seq)?.into_iter().collect();
+            if vault.seq() > state.synced_seq {
+                report.chain_rewritten = true;
+            }
+            vault.rebase(state.synced_seq, remote_heads)?;
+            let pulled = t
+                .items_since(token, vault_id, state.synced_rev)
+                .map_err(session_or)?;
+            for wire_item in pulled.items {
+                let mut theirs = Item::from_bytes(&wire_item.item)?;
+                theirs.rev = wire_item.rev;
+                let listed = newest
+                    .entries
+                    .iter()
+                    .any(|e| e.item_id == theirs.item_id && e.rev == theirs.rev);
+                if !listed {
+                    // Pushed by a device whose head isn't in yet; next time.
+                    continue;
+                }
+                let local = vault.item(theirs.item_id).ok().cloned();
+                match local {
+                    Some(ours) if dirty_before.contains(&ours.item_id) => {
+                        let copies = merge_item(vault, syncer.device_label, ours, theirs)?;
+                        report.merged += 1;
+                        report.conflict_copies.extend(copies);
+                    }
+                    _ => {
+                        vault.adopt_item(theirs)?;
+                        report.pulled += 1;
+                    }
+                }
+            }
+            state.synced_seq = newest.seq;
+            state.synced_rev = newest
+                .entries
+                .iter()
+                .map(|e| e.rev)
+                .max()
+                .unwrap_or(state.synced_rev)
+                .max(state.synced_rev);
+        }
+
+        // 3. Push what changed here.
+        let dirty = vault.changed_since(state.synced_seq)?;
+        let mut stale = false;
+        for item_id in &dirty {
+            let ours = vault.item(*item_id)?.clone();
+            let push = ItemPush {
+                if_match: ours.rev,
+                item: ours.to_bytes()?,
+            };
+            match t
+                .push_item(token, vault_id, *item_id, &push)
+                .map_err(session_or)?
+            {
+                PushReply::Accepted { rev } => {
+                    vault.set_item_rev(*item_id, rev)?;
+                    state.synced_rev = state.synced_rev.max(rev);
+                    report.pushed += 1;
+                }
+                PushReply::Stale { current } => {
+                    let mut theirs = Item::from_bytes(&current.item)?;
+                    theirs.rev = current.rev;
+                    let copies = merge_item(vault, syncer.device_label, ours, theirs)?;
+                    report.merged += 1;
+                    report.conflict_copies.extend(copies);
+                    stale = true;
+                }
+            }
+        }
+        if stale {
+            continue;
+        }
+
+        // 4. Publish a head if there is anything the server's chain lacks.
+        if dirty.is_empty() && vault.seq() == state.synced_seq {
+            report.head_seq = vault.seq();
+            return Ok(report);
+        }
+        if vault.seq() > state.synced_seq {
+            report.chain_rewritten = true;
+        }
+        vault.truncate_heads_after(state.synced_seq);
+        let seq = vault.commit()?;
+        let head = vault.head()?;
+        match t
+            .put_head(token, vault_id, &head.to_bytes()?)
+            .map_err(session_or)?
+        {
+            Ok(accepted) => {
+                state.synced_seq = accepted.seq;
+                debug_assert_eq!(accepted.seq, seq);
+                report.head_seq = seq;
+                return Ok(report);
+            }
+            Err(refused) => match refused.code {
+                ErrorCode::Fork | ErrorCode::Gap | ErrorCode::OlderSeq | ErrorCode::UnknownItem => {
+                    continue;
+                }
+                other => {
+                    return Err(SyncError::Transport(TransportError::Refused {
+                        status: 409,
+                        code: other,
+                        message: refused.message.clone(),
+                        head: Some(refused),
+                    }));
+                }
+            },
+        }
+    }
+    Err(SyncError::Unsettled(MAX_ROUNDS))
+}
+
+/// Pulls a vault this device has never held into `store`: the record, the
+/// whole head chain and every item the newest head lists. Returns the
+/// sync state to continue from, or `None` when the server holds no head
+/// yet. The caller opens the vault afterwards, which verifies everything
+/// against the devices it trusts.
+pub fn bootstrap_vault(
+    syncer: &Syncer<'_>,
+    store: &mut dyn Store,
+    summary: &VaultSummary,
+) -> Result<Option<VaultSyncState>, SyncError> {
+    let t = syncer.transport;
+    let token = syncer.token;
+    let record = VaultRecord::from_bytes(&summary.record)?;
+    if record.context.vault_id != summary.vault_id {
+        return Err(SyncError::Unsupported(format!(
+            "the server's record for vault {} names vault {}",
+            summary.vault_id, record.context.vault_id
+        )));
+    }
+    let remote = t
+        .heads_since(token, summary.vault_id, 0)
+        .map_err(session_or)?;
+    let mut heads = Vec::with_capacity(remote.heads.len());
+    for bytes in &remote.heads {
+        heads.push(ManifestHead::from_bytes(bytes)?);
+    }
+    let Some(newest) = heads.last().cloned() else {
+        return Ok(None);
+    };
+    let pulled = t
+        .items_since(token, summary.vault_id, 0)
+        .map_err(session_or)?;
+    let mut items = Vec::new();
+    for wire_item in pulled.items {
+        let mut item = Item::from_bytes(&wire_item.item)?;
+        item.rev = wire_item.rev;
+        if newest
+            .entries
+            .iter()
+            .any(|e| e.item_id == item.item_id && e.rev == item.rev)
+        {
+            items.push(item);
+        }
+    }
+    let synced_rev = newest.entries.iter().map(|e| e.rev).max().unwrap_or(0);
+    store.save_all(record, items, heads)?;
+    Ok(Some(VaultSyncState {
+        synced_seq: newest.seq,
+        synced_rev,
+    }))
+}
+
+/// Merges `theirs` (the server's copy) into the vault where `ours` is the
+/// local copy both sides changed. Returns the conflict copies made.
+fn merge_item(
+    vault: &mut Vault,
+    device_label: &str,
+    ours: Item,
+    theirs: Item,
+) -> Result<Vec<Id>, SyncError> {
+    let item_id = ours.item_id;
+    let mut copies = Vec::new();
+
+    // A purge on the server is final: keys are gone everywhere. What this
+    // device still had readable becomes a conflict copy, if anything.
+    if theirs.state == ItemState::Tombstone || theirs.is_shredded() {
+        let our_fields = if ours.is_shredded() {
+            None
+        } else {
+            Some(vault.open_envelope(&ours, ours.latest()?.n)?)
+        };
+        vault.adopt_item(theirs)?;
+        if let Some(fields) = our_fields {
+            copies.push(vault.create_item(
+                ours.kind,
+                ours.class,
+                conflict_copy_fields(fields, device_label),
+            )?);
+        }
+        return Ok(copies);
+    }
+    if ours.is_shredded() {
+        // Purged here: carry the purge to the server's copy.
+        vault.adopt_item(theirs)?;
+        vault.purge_item(item_id)?;
+        return Ok(copies);
+    }
+
+    // The last version both histories share is the base.
+    let their_header = theirs.header();
+    let their_hashes: Vec<Hash32> = theirs
+        .versions
+        .iter()
+        .map(|v| v.hash(&their_header))
+        .collect::<Result<_, _>>()?;
+    let our_header = ours.header();
+    let mut base_n = None;
+    for v in ours.versions.iter().rev() {
+        if their_hashes.contains(&v.hash(&our_header)?) {
+            base_n = Some(v.n);
+            break;
+        }
+    }
+    let base_fields = match base_n {
+        Some(n) => vault.open_envelope(&ours, n)?,
+        None => Vec::new(),
+    };
+    let our_fields = vault.open_envelope(&ours, ours.latest()?.n)?;
+    let their_fields = vault.open_envelope(&theirs, theirs.latest()?.n)?;
+    let result = merge_fields(&base_fields, &our_fields, &their_fields);
+
+    // The server's history wins the slot; the merge goes on top of it.
+    let (our_state, their_state) = (ours.state, theirs.state);
+    vault.adopt_item(theirs)?;
+    let mut merged = result.merged.clone();
+    for conflict in &result.conflicts {
+        if let Some(slot) = merged.iter_mut().find(|f| f.field_id == conflict.field_id) {
+            *slot = conflict.theirs.clone();
+        }
+    }
+    if merged != their_fields {
+        vault.update_item(item_id, merged)?;
+    }
+    if !result.conflicts.is_empty() {
+        copies.push(vault.create_item(
+            ours.kind,
+            ours.class,
+            conflict_copy_fields(our_fields, device_label),
+        )?);
+    }
+    // A trash on either side sticks.
+    if our_state == ItemState::Trashed && their_state == ItemState::Live {
+        vault.trash_item(item_id)?;
+    }
+    Ok(copies)
+}
+
+/// The fields of a conflict copy: this device's version with its title
+/// marked, so the person can tell the two apart in a list.
+fn conflict_copy_fields(mut fields: Vec<PlainField>, device_label: &str) -> Vec<PlainField> {
+    let suffix = format!(
+        " (conflict copy from {device_label}, {})",
+        civil_date(lockdown_vault::Timestamp::now().0)
+    );
+    match fields.iter_mut().find(|f| f.field_id == "title") {
+        Some(title) => {
+            if let FieldValue::Text(t) = &mut title.value {
+                t.push_str(&suffix);
+            }
+        }
+        None => fields.insert(0, PlainField::text("title", "title", suffix.trim_start())),
+    }
+    fields
+}
+
+/// `YYYY-MM-DD` for seconds since the Unix epoch (UTC), with no date
+/// library (the civil-from-days algorithm).
+pub fn civil_date(secs: i64) -> String {
+    let days = secs.div_euclid(86_400);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn civil_dates_are_right() {
+        assert_eq!(civil_date(0), "1970-01-01");
+        assert_eq!(civil_date(951_782_400), "2000-02-29");
+        assert_eq!(civil_date(1_792_206_090), "2026-10-17");
+        assert_eq!(civil_date(-86_400), "1969-12-31");
+    }
+
+    #[test]
+    fn a_conflict_copy_is_named_after_the_device_and_day() {
+        let fields =
+            conflict_copy_fields(vec![PlainField::text("title", "title", "Bank")], "laptop");
+        match &fields[0].value {
+            FieldValue::Text(t) => {
+                assert!(t.starts_with("Bank (conflict copy from laptop, "), "{t}");
+            }
+            other => panic!("{other:?}"),
+        }
+        let fields =
+            conflict_copy_fields(vec![PlainField::text("user", "username", "me")], "laptop");
+        assert_eq!(fields[0].field_id, "title");
+    }
+}

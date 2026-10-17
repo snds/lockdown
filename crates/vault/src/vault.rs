@@ -79,6 +79,9 @@ pub struct Vault {
     device_id: Id,
     signer: Box<dyn Signer>,
     verifying: VerifyingKey,
+    /// The public key of every device whose heads and versions this vault
+    /// accepts, by device id; this device's own key is always in it.
+    trusted: BTreeMap<Id, VerifyingKey>,
     items: BTreeMap<Id, Item>,
     heads: Vec<ManifestHead>,
     members: Vec<Member>,
@@ -107,6 +110,7 @@ impl Vault {
         crown_jewel_key: Option<CrownJewelKey>,
     ) -> Result<Self> {
         let verifying = signer.verifying_key()?;
+        let trusted = BTreeMap::from([(device_id, verifying.clone())]);
         let mut vault = Self {
             ctx,
             vault_key: VaultKey::from_bytes(lockdown_crypto::rand::random_32()?),
@@ -115,6 +119,7 @@ impl Vault {
             device_id,
             signer,
             verifying,
+            trusted,
             items: BTreeMap::new(),
             heads: Vec::new(),
             members: vec![Member {
@@ -199,6 +204,22 @@ impl Vault {
         }
         check_items_against_head(&items, &newest)?;
 
+        // Every device that signed a head or a version must be one the
+        // caller trusts; their keys are kept so versions open later.
+        let mut trusted = BTreeMap::from([(device_id, own.clone())]);
+        let signers = heads.iter().map(|h| h.signer).chain(
+            items
+                .values()
+                .flat_map(|i| i.versions.iter().map(|v| v.edited_by)),
+        );
+        for signer in signers {
+            if trusted.contains_key(&signer) {
+                continue;
+            }
+            let key = known(signer).ok_or(Error::UnknownDevice(signer))?;
+            trusted.insert(signer, key);
+        }
+
         let mut vault = Self {
             ctx,
             vault_key,
@@ -207,6 +228,7 @@ impl Vault {
             device_id,
             signer: unlock.signer,
             verifying,
+            trusted,
             items,
             heads,
             members: Vec::new(),
@@ -217,18 +239,27 @@ impl Vault {
 
     /// Writes the vault to `store`: its record (the Vault Key under
     /// `app_data_key`), every item, and every head the store does not have
-    /// yet. Safe to call after every change.
+    /// yet. When the store's chain parts from this vault's (sync replaced
+    /// heads this device had committed offline), the store's heads after
+    /// the common prefix are removed first. Safe to call after every change.
     pub fn save(&self, store: &mut dyn Store, app_data_key: &AppDataKey) -> Result<()> {
         let record = self.record(app_data_key)?;
-        let have = match store.latest_head(self.ctx.vault_id) {
-            Ok(h) => h.seq,
-            Err(crate::store::StoreError::NotFound(_)) => 0,
-            Err(e) => return Err(e.into()),
-        };
+        let stored = store.heads(self.ctx.vault_id)?;
+        let mut common = 0;
+        for (theirs, ours) in stored.iter().zip(self.heads.iter()) {
+            if theirs.seq == ours.seq && theirs.hash()? == ours.hash()? {
+                common = ours.seq;
+            } else {
+                break;
+            }
+        }
+        if stored.last().is_some_and(|h| h.seq > common) {
+            store.remove_heads_after(self.ctx.vault_id, common)?;
+        }
         let new_heads = self
             .heads
             .iter()
-            .filter(|h| h.seq > have)
+            .filter(|h| h.seq > common)
             .cloned()
             .collect();
         store.save_all(record, self.items.values().cloned().collect(), new_heads)?;
@@ -394,7 +425,20 @@ impl Vault {
 
     /// Opens version `n` of an item, verifying its device signature first.
     pub fn open_version(&self, item_id: Id, n: u64) -> Result<Vec<PlainField>> {
-        let item = self.item(item_id)?;
+        self.open_envelope(self.item(item_id)?, n)
+    }
+
+    /// Opens version `n` of any envelope of this vault, inserted or not
+    /// (sync opens the server's copy of an item before deciding what to
+    /// keep). The version's device signature is checked against the
+    /// trusted devices first.
+    pub fn open_envelope(&self, item: &Item, n: u64) -> Result<Vec<PlainField>> {
+        if item.vault_id != self.ctx.vault_id {
+            return Err(Error::ManifestMismatch {
+                item_id: item.item_id,
+                why: "the envelope belongs to another vault".into(),
+            });
+        }
         if item.schema_v > SCHEMA_V {
             return Err(Error::SchemaTooNew {
                 found: item.schema_v,
@@ -402,14 +446,145 @@ impl Vault {
             });
         }
         let version = item.version(n)?;
-        version.verify(&item.header(), &self.verifying_key())?;
+        let key = self
+            .key_for(version.edited_by)
+            .ok_or(Error::UnknownDevice(version.edited_by))?;
+        version.verify(&item.header(), &key)?;
         let item_key = self.item_key(item)?;
         let version_key = self.version_key(item, version, &item_key)?;
         version
             .fields
             .iter()
-            .map(|f| f.open(&version_key, &self.field_aad(item_id, n, f)))
+            .map(|f| f.open(&version_key, &self.field_aad(item.item_id, n, f)))
             .collect()
+    }
+
+    // --- what sync needs -------------------------------------------------
+
+    /// The public key of a trusted device, this one included.
+    pub fn key_for(&self, device_id: Id) -> Option<VerifyingKey> {
+        self.trusted.get(&device_id).cloned()
+    }
+
+    /// Every trusted device's key, by id.
+    pub fn trusted_devices(&self) -> &BTreeMap<Id, VerifyingKey> {
+        &self.trusted
+    }
+
+    /// Trusts another device's key, so its heads and versions verify. The
+    /// caller got the key from a signed identity record, never from the
+    /// server's word.
+    pub fn trust_device(&mut self, device_id: Id, key: VerifyingKey) {
+        self.trusted.insert(device_id, key);
+    }
+
+    /// The head at `seq`, if this vault holds it.
+    pub fn head_at(&self, seq: u64) -> Option<&ManifestHead> {
+        self.heads.iter().find(|h| h.seq == seq)
+    }
+
+    /// Records the revision the server assigned to an item. The revision
+    /// sits outside every signature; only the manifest entries name it.
+    pub fn set_item_rev(&mut self, item_id: Id, rev: u64) -> Result<()> {
+        self.items
+            .get_mut(&item_id)
+            .ok_or_else(|| Error::NotFound(format!("item {item_id}")))?
+            .rev = rev;
+        Ok(())
+    }
+
+    /// Takes in an envelope from another device (the server's copy),
+    /// replacing any local one: it must be this vault's, readable by this
+    /// build, and its latest version signed by a trusted device.
+    pub fn adopt_item(&mut self, item: Item) -> Result<()> {
+        if item.vault_id != self.ctx.vault_id {
+            return Err(Error::ManifestMismatch {
+                item_id: item.item_id,
+                why: "the envelope belongs to another vault".into(),
+            });
+        }
+        if item.v > ITEM_V {
+            return Err(Error::SchemaTooNew {
+                found: item.v,
+                supported: ITEM_V,
+            });
+        }
+        let latest = item.latest()?;
+        let key = self
+            .key_for(latest.edited_by)
+            .ok_or(Error::UnknownDevice(latest.edited_by))?;
+        latest.verify(&item.header(), &key)?;
+        self.items.insert(item.item_id, item);
+        Ok(())
+    }
+
+    /// Replaces every head after `keep_through` with `remote` (the server's
+    /// chain, pulled since that seq), after verifying that `remote`
+    /// continues this vault's head at `keep_through` and is signed by
+    /// trusted devices. Local heads after `keep_through` were never on the
+    /// server; their changes live on in the items and go into the next
+    /// head this device commits. With `keep_through` zero, `remote` is the
+    /// whole chain.
+    pub fn rebase(&mut self, keep_through: u64, remote: Vec<ManifestHead>) -> Result<()> {
+        if remote.is_empty() {
+            return Ok(());
+        }
+        let mut chain: Vec<ManifestHead> = Vec::with_capacity(remote.len() + 1);
+        if keep_through > 0 {
+            let anchor = self
+                .head_at(keep_through)
+                .ok_or_else(|| Error::NotFound(format!("this vault's manifest {keep_through}")))?;
+            chain.push(anchor.clone());
+        } else if remote[0].seq != 1 {
+            return Err(Error::ChainBroken {
+                seq: remote[0].seq,
+                why: "the server's chain doesn't start at 1".into(),
+            });
+        }
+        chain.extend(remote.iter().cloned());
+        verify_chain(&chain, |id| self.key_for(id), 0)?;
+        self.heads.retain(|h| h.seq <= keep_through);
+        self.heads.extend(remote);
+        self.members = self.members()?;
+        Ok(())
+    }
+
+    /// Drops every head after `seq`: the provisional heads this device
+    /// committed offline, just before sync commits one head in their
+    /// place over the same items. Nothing about the items changes.
+    pub fn truncate_heads_after(&mut self, seq: u64) {
+        self.heads.retain(|h| h.seq <= seq);
+    }
+
+    /// Commits a new head over the items as they are now and returns its
+    /// `seq`. Every mutation commits on its own; sync commits once more
+    /// after it has set the server's revisions.
+    pub fn commit(&mut self) -> Result<u64> {
+        self.commit_head()?;
+        Ok(self.seq())
+    }
+
+    /// The items that differ from what the head at `seq` recorded (latest
+    /// version, state, keys), plus any the head does not list: what has
+    /// changed on this device since that head. With `seq` zero, every item.
+    pub fn changed_since(&self, seq: u64) -> Result<Vec<Id>> {
+        let base = if seq == 0 { None } else { self.head_at(seq) };
+        let mut out = Vec::new();
+        for item in self.items.values() {
+            let same = match base.and_then(|h| h.entries.iter().find(|e| e.item_id == item.item_id))
+            {
+                Some(entry) => {
+                    entry.version_hash == item.latest_hash()?
+                        && entry.state == item.state
+                        && entry.shredded == item.is_shredded()
+                }
+                None => false,
+            };
+            if !same {
+                out.push(item.item_id);
+            }
+        }
+        Ok(out)
     }
 
     /// Soft-deletes an item: it stays readable through the grace period.

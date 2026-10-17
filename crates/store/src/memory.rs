@@ -80,4 +80,9 @@ impl Store for MemoryStore {
             .map(|(_, h)| h.clone())
             .collect())
     }
+
+    fn remove_heads_after(&mut self, vault_id: Id, seq: u64) -> StoreResult<()> {
+        self.heads.retain(|(v, s), _| *v != vault_id || *s <= seq);
+        Ok(())
+    }
 }

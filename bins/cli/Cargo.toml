@@ -16,11 +16,18 @@ lockdown-codes.workspace = true
 lockdown-matcher.workspace = true
 lockdown-vault.workspace = true
 lockdown-store.workspace = true
+lockdown-sync.workspace = true
+lockdown-crypto.workspace = true
 ecosystem-identity.workspace = true
 clap.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+# The server, in process, so the sync tests spin it on a random port.
+lockdown-server.workspace = true
 # Test speed only: the identity crate's lowered Argon2id floor, so the
-# binary the end-to-end test drives creates an identity in milliseconds.
+# binary the end-to-end test drives creates an identity in milliseconds,
+# and the same floor for the OPAQUE stretching step.
 ecosystem-identity = { workspace = true, features = ["insecure-test-kdf"] }
+lockdown-crypto = { workspace = true, features = ["insecure-test-kdf"] }

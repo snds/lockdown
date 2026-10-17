@@ -113,6 +113,16 @@ impl HeadMemory {
         self.write()
     }
 
+    /// Replaces what is remembered for a vault, forward or back. Only for
+    /// sync, after it has verified the server's chain from the last seq
+    /// the server confirmed and replaced this device's never-pushed heads
+    /// with it: the new head can then carry a lower `seq` than a local
+    /// provisional one did. Every other caller uses [`Self::remember_vault`].
+    pub fn replace_vault(&mut self, vault_id: Id, head: RememberedHead) -> StoreResult<()> {
+        self.file.vaults.insert(vault_id, head);
+        self.write()
+    }
+
     /// The identity store head this device last accepted, for
     /// `Identity::attach`.
     pub fn identity(&self) -> Option<Head> {
@@ -141,8 +151,9 @@ impl HeadMemory {
 }
 
 /// Writes a file readable only by the user, through a temporary file and a
-/// rename.
-pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+/// rename. For Lockdown's own small files (memory, known devices, the
+/// sync state); the vault file is SQLite's.
+pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         create_private_dir(dir)?;
     }

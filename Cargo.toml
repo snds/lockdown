@@ -60,6 +60,7 @@ lockdown-policy = { path = "crates/policy", version = "0.1.0" }
 lockdown-approval = { path = "crates/approval", version = "0.1.0" }
 lockdown-bridge-host = { path = "crates/bridge-host", version = "0.1.0" }
 lockdown-ffi = { path = "crates/ffi", version = "0.1.0" }
+lockdown-server = { path = "bins/server", version = "0.1.0" }
 
 # Cryptography: the same crates and versions the identity crate uses, so one
 # copy of each is linked (04-security.md §4–§5, 01-identity.md §10a).
@@ -106,6 +107,10 @@ axum = "0.8"
 tokio = { version = "1.47", features = ["rt-multi-thread", "macros", "net"] }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+# The sync client. `rustls-no-provider` plus an explicit `ring` provider
+# keeps aws-lc (and its C build) out of the tree.
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 
 [profile.release]
 lto = "thin"

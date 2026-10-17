@@ -610,6 +610,11 @@ impl<R: AuthRounds> OpaqueAccountAuth<R> {
         &mut self.rounds
     }
 
+    /// Takes the transport back, to carry on with the authenticated calls.
+    pub fn into_rounds(self) -> R {
+        self.rounds
+    }
+
     /// Registers the account: two round trips, and the export key out.
     pub fn register_account(&mut self, profile_id: &Id, password: &str) -> Result<ExportKey> {
         let (client, request) = RegistrationClient::start(password)?;
