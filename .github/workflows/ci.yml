@@ -38,3 +38,46 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
+
+  # The extension boundary (docs/plan/09-extension-boundary.md): build the
+  # wasm, then replay the clickjacking red team in a real Chromium.
+  extension:
+    name: wasm · playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: extension
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      # The CLI must equal the crate pin in crates/wasm/Cargo.toml;
+      # build-wasm.sh refuses to run otherwise.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen-cli@0.2.129
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: extension/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: extension/pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Build wasm
+        run: pnpm run build:wasm
+      - name: Red team in the browser
+        run: pnpm test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: extension/test-results
+          if-no-files-found: ignore

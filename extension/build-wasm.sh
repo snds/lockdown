@@ -39,7 +39,11 @@ fi
 
 cd "$root"
 export CARGO_NET_GIT_FETCH_WITH_CLI=true
-export CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS='--cfg getrandom_backend="wasm_js"'
+# A plain RUSTFLAGS (CI sets `-D warnings`) would override the target-scoped
+# variable entirely, so fold it in and clear it for this build.
+wasm_flags="${RUSTFLAGS:-} --cfg getrandom_backend=\"wasm_js\""
+unset RUSTFLAGS
+export CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS="${wasm_flags# }"
 if [ "$profile" = "release" ]; then
   cargo build -p lockdown-wasm --target wasm32-unknown-unknown --release
 else

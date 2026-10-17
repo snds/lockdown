@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sign in (frame)</title>
+  <style>
+    body { margin: 0; padding: 24px; font: 16px system-ui, sans-serif; background: #fff; }
+    label { display: block; margin: 8px 0 4px; }
+    input { display: block; width: 240px; padding: 8px; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <h1>Sign in</h1>
+  <form id="login" action="#" onsubmit="return false">
+    <label for="user">Username</label>
+    <input id="user" name="username" autocomplete="username">
+    <label for="pass">Password</label>
+    <input id="pass" name="password" type="password" autocomplete="current-password">
+  </form>
+  <script type="module" src="/harness.js"></script>
+</body>
+</html>
