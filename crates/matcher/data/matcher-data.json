@@ -1,7 +1,7 @@
 {
-  "matcher_data": 1,
+  "matcher_data": 2,
   "published": "2026-10-17",
-  "note": "Source of the signed matcher data file (docs/plan/09-extension-boundary.md §2). `matcher_data` is the monotonic version: raise it on every change, never reuse a number. Edit this file, then run `cargo run -p lockdown-matcher --example sign-data` to regenerate matcher-data.signed.cbor; the crate's tests fail when the two disagree. Groups: a login saved on one domain in a group is offered on the others (02-model §10, rule `equivalent`); on by default, a person can turn a group off or add their own. Confusables: characters that render like a Latin letter, mapped to it, plus the sequence folds the skeleton applies after mapping.",
+  "note": "Source of the signed matcher data file (docs/plan/09-extension-boundary.md §2). `matcher_data` is the monotonic version: raise it on every change, never reuse a number. Edit this file, then run `cargo run -p lockdown-matcher --example sign-data` to regenerate matcher-data.signed.cbor; the crate's tests fail when the two disagree. Groups: a login saved on one domain in a group is offered on the others (02-model §10, rule `equivalent`); on by default, a person can turn a group off or add their own. Confusables: characters that render like a Latin letter, mapped to it, plus the sequence folds the skeleton applies after mapping. History: v2 dropped githubusercontent.com from `github`: it is a public suffix in the PSL (every user site is its own registrable domain), so it could never match by registrable domain, and nobody signs in there.",
   "groups": [
     {
       "name": "google",
@@ -96,8 +96,7 @@
     {
       "name": "github",
       "domains": [
-        "github.com",
-        "githubusercontent.com"
+        "github.com"
       ]
     },
     {

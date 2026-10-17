@@ -91,10 +91,13 @@ pub struct Origin {
 }
 
 impl Origin {
-    /// Parses a URL. Text without a scheme is read as `https://`.
+    /// Parses a URL. Text without a scheme is read as `https://`, so a
+    /// typed `example.com:8443/app` is a host with a port; text with an
+    /// opaque scheme and no authority (`mailto:`, `data:`, `about:`,
+    /// `javascript:`) has no host and is an error.
     pub fn parse(text: &str) -> Result<Self, MatchError> {
         let trimmed = text.trim();
-        let with_scheme = if trimmed.contains("://") {
+        let with_scheme = if trimmed.contains("://") || has_opaque_scheme(trimmed) {
             trimmed.to_string()
         } else {
             format!("https://{trimmed}")
@@ -145,6 +148,25 @@ impl Origin {
     pub fn same_origin(&self, other: &Origin) -> bool {
         self.scheme == other.scheme && self.host == other.host && self.port == other.port
     }
+}
+
+/// Whether `text` starts with a URL scheme followed by something other than
+/// an authority or a port: `mailto:x`, `data:text/html`, `about:blank`,
+/// but not `localhost:3000`, `example.com:8443/app` or `https://…`.
+fn has_opaque_scheme(text: &str) -> bool {
+    let Some((scheme, rest)) = text.split_once(':') else {
+        return false;
+    };
+    let mut chars = scheme.chars();
+    let scheme_like = chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+    if !scheme_like || rest.starts_with("//") {
+        return false;
+    }
+    let digits = rest.chars().take_while(char::is_ascii_digit).count();
+    let port_like =
+        digits > 0 && matches!(rest[digits..].chars().next(), None | Some('/' | '?' | '#'));
+    !port_like
 }
 
 /// A URL saved on an item, with its match rule.
@@ -409,6 +431,30 @@ mod tests {
         assert!(eq.equivalent("apple.com", "icloud.com"));
         assert!(!eq.equivalent("apple.com", "google.com"));
         assert_eq!(eq.group_of("live.com").unwrap().name, "microsoft");
+    }
+
+    #[test]
+    fn typed_text_reads_as_a_host_but_opaque_schemes_have_none() {
+        assert_eq!(origin("example.com:8443/app").host, "example.com");
+        assert_eq!(origin("example.com:8443/app").port, Some(8443));
+        assert_eq!(origin("localhost:3000").port, Some(3000));
+        assert_eq!(origin("LOCALHOST:3000?x=1").host, "localhost");
+        assert_eq!(origin("https://x.example/").scheme, "https");
+        for text in [
+            "mailto:someone@example.com",
+            "data:text/html,<form>",
+            "about:blank",
+            "javascript:alert(1)",
+            "blob:https://x.example/id",
+            "file:///tmp/x.html",
+            "",
+            "not a url",
+        ] {
+            assert!(
+                matches!(Origin::parse(text), Err(MatchError::NotAUrl(_))),
+                "{text}"
+            );
+        }
     }
 
     #[test]
