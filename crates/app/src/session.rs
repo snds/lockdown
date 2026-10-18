@@ -67,6 +67,7 @@ pub mod items;
 mod organize;
 pub(crate) mod passkeys;
 pub(crate) mod security;
+pub(crate) mod sharing;
 pub(crate) mod transfer;
 
 const KEYSTORE_FILE: &str = "device-key.cbor";
@@ -265,6 +266,14 @@ pub struct Session {
     more: Vec<OpenVault>,
     /// What this device used, and when (never synced).
     recency: crate::recency::Recency,
+    /// Who this persona pinned and what is shared with it (`sharing`).
+    sharing: crate::sharing::SharingState,
+    /// Each shared vault's membership as its signed chain says.
+    rosters: BTreeMap<Id, lockdown_vault::sharing::Roster>,
+    /// Items others shared on their own, held in memory only, read only.
+    received: Vec<Vault>,
+    /// The share link or answer opened last, until the next or the lock.
+    opened_send: Option<lockdown_vault::send::SendPayload>,
 }
 
 impl Session {
@@ -465,6 +474,11 @@ impl Session {
             crate::recency::Recency::path_in(&paths.data, persona_id),
             &opened.keys.app_data_key,
         );
+        let sharing_state = crate::sharing::SharingState::open(
+            crate::sharing::SharingState::path_in(&paths.data, persona_id),
+            persona_id,
+            &opened.keys.app_data_key,
+        )?;
         let mut session = Self {
             paths,
             keystore,
@@ -478,7 +492,12 @@ impl Session {
             transfer: transfer::Pending::default(),
             more: all,
             recency,
+            sharing: sharing_state,
+            rosters: BTreeMap::new(),
+            received: Vec::new(),
+            opened_send: None,
         };
+        session.load_sharing()?;
         session.remember()?;
         session.sweep_trash()?;
         Ok(session)
@@ -547,9 +566,12 @@ impl Session {
         &self.opened.vault
     }
 
-    /// Every open vault of the persona, the first one first.
+    /// Every open vault of the persona, the first one first, then the
+    /// items others shared with it on their own (read only).
     pub fn vaults(&self) -> impl Iterator<Item = &Vault> {
-        std::iter::once(&self.opened.vault).chain(self.more.iter().map(|o| &o.vault))
+        std::iter::once(&self.opened.vault)
+            .chain(self.more.iter().map(|o| &o.vault))
+            .chain(self.received.iter())
     }
 
     /// The vault holding `item_id`.
@@ -559,8 +581,16 @@ impl Session {
             .ok_or_else(|| format!("item {item_id} wasn't found in this persona's vaults"))
     }
 
-    /// The vault holding `item_id`, to change it.
+    /// The vault holding `item_id`, to change it: refused for a vault this
+    /// persona may only view or fill, and for an item shared on its own.
     pub(crate) fn holding_mut(&mut self, item_id: Id) -> Result<&mut Vault, String> {
+        if let Ok(vault) = self.holding(item_id) {
+            let vault_id = vault.context().vault_id;
+            if self.is_received_vault(vault_id) {
+                return Err("this was shared with you on its own; you can't change it".into());
+            }
+            self.require_edit(vault_id)?;
+        }
         if self.opened.vault.item(item_id).is_ok() {
             return Ok(&mut self.opened.vault);
         }
@@ -699,7 +729,14 @@ impl Session {
                     .iter()
                     .filter(|a| !a.is_shredded())
                     .count() as u32,
+                access: self
+                    .item_right(item.item_id)
+                    .map(|r| r.as_str().to_string()),
             };
+            if row.access.as_deref() == Some("fill-only") {
+                // Nothing to copy: a fill-only item only fills.
+                row.copy = None;
+            }
             let org = lockdown_vault::Organization::of(&fields);
             row.folder = org.folder.map(|f| f.to_string());
             row.tags = org.tags;
@@ -835,6 +872,9 @@ impl Session {
         }
         let latest = item.latest().map_err(|e| e.to_string())?;
         let fields = vault.open_item(item_id).map_err(|e| e.to_string())?;
+        // A fill-only item is never shown, whatever the caller asked.
+        let reveal =
+            reveal && self.item_right(item_id) != Some(lockdown_vault::sharing::Right::FillOnly);
         Ok(ItemDetail {
             id: item_id.to_string(),
             kind: item.kind.as_str().to_string(),
@@ -1463,6 +1503,9 @@ impl Session {
         if pulled > 0 {
             self.open_new_vaults()?;
         }
+        // Sharing in step first: vaults shared with this persona, new key
+        // generations, items shared on their own (docs/plan/18-sharing.md).
+        self.sync_sharing(&transport, &token, kt.sth())?;
         let syncer = Syncer {
             transport: &transport,
             token: &token,

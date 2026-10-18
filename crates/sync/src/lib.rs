@@ -18,11 +18,16 @@
 //!   (with [`DeviceExpectations`], what a device holding an identity
 //!   knows), and the citation check between devices (04-security §6)
 //!
+//! - [`sharing`] — the sharing half of the protocol: the directory and its
+//!   check against the log, membership, item shares, share and request
+//!   links, emergency access
+//!
 //! The offline queue is not built yet.
 
 pub mod engine;
 pub mod identity;
 pub mod kt;
+pub mod sharing;
 pub mod transport;
 pub mod wire;
 

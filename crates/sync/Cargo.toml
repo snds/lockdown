@@ -25,3 +25,6 @@ serde_json.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+# Test speed only: the identity crate's lowered Argon2id floor, so a test
+# creates an identity in milliseconds. Never in an app.
+ecosystem-identity = { workspace = true, features = ["insecure-test-kdf"] }

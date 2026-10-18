@@ -3167,6 +3167,7 @@ dependencies = [
  "ring",
  "rusqlite",
  "serde",
+ "serde_bytes",
  "serde_json",
  "tempfile",
  "zeroize",
@@ -3389,8 +3390,8 @@ name = "lockdown-security"
 version = "0.1.0"
 dependencies = [
  "lockdown-matcher",
+ "lockdown-tls",
  "reqwest",
- "rustls",
  "serde",
  "serde_json",
  "sha1 0.11.0",
@@ -3476,6 +3477,7 @@ dependencies = [
 name = "lockdown-vault"
 version = "0.1.0"
 dependencies = [
+ "data-encoding",
  "ecosystem-identity",
  "lockdown-crypto",
  "serde",

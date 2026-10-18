@@ -14,8 +14,9 @@
 //!   event goes to that one session, and its stream closes after it.
 //! - **Where events come from.** Every successful write under
 //!   `/v1/vaults` and `/v1/identity` ([`notify_writes`], a layer over the
-//!   router, so routes added later are covered too); alerts recorded or
-//!   dismissed; sessions started or ended.
+//!   router, so routes added later are covered too), to the writer's
+//!   account and, for a shared vault, to its owner and every member still
+//!   in it; alerts recorded or dismissed; sessions started or ended.
 //! - **Bounds.** At most [`PER_ACCOUNT`] open streams per account and
 //!   [`TOTAL`] in all; a stream re-checks its session every minute and
 //!   closes when the session ends or the token runs out.
@@ -309,6 +310,7 @@ pub async fn notify_writes(State(state): State<Arc<AppState>>, req: Request, nex
             .to_string();
         state.tokens.verify(&token, state.now()).ok()
     });
+    let vault = vault_in_path(req.uri().path());
     let response = next.run(req).await;
     if let (Some(kind), Some(claims)) = (kind, who)
         && response.status().is_success()
@@ -319,8 +321,45 @@ pub async fn notify_writes(State(state): State<Arc<AppState>>, req: Request, nex
             origin: Some(claims.nonce),
             only: None,
         });
+        // A shared vault: its owner and every member still in it hear too.
+        if let Some(vault_id) = vault {
+            for account_id in vault_audience(&state, vault_id) {
+                if account_id != claims.account_id {
+                    state.live.notify(Change::account(account_id, LiveKind::Sync));
+                }
+            }
+        }
     }
     response
+}
+
+/// The vault a `/v1/vaults/{vault}/…` path names.
+fn vault_in_path(path: &str) -> Option<Id> {
+    let rest = path.strip_prefix("/v1/vaults/")?;
+    Id::parse(rest.split('/').next()?).ok()
+}
+
+/// Everyone who reads a shared vault: its owner and its active members,
+/// sorted and without repeats. Empty for a vault that isn't shared.
+pub fn vault_audience(state: &AppState, vault_id: Id) -> Vec<Id> {
+    let Some(sharing) = state.storage.sharing() else {
+        return Vec::new();
+    };
+    let Ok(Some(shared)) = sharing.shared_vault(vault_id) else {
+        return Vec::new();
+    };
+    let mut out = vec![shared.owner_account];
+    if let Ok(members) = sharing.members(vault_id) {
+        out.extend(
+            members
+                .into_iter()
+                .filter(|m| m.active)
+                .map(|m| m.party.account_id),
+        );
+    }
+    out.sort();
+    out.dedup();
+    out
 }
 
 #[cfg(test)]
@@ -340,6 +379,15 @@ mod tests {
         );
         assert_eq!(kind_of_write(&Method::GET, "/v1/vaults"), None);
         assert_eq!(kind_of_write(&Method::POST, "/v1/account/login/finish"), None);
+    }
+
+    #[test]
+    fn the_vault_is_read_from_the_path() {
+        let id = Id::new();
+        assert_eq!(vault_in_path(&format!("/v1/vaults/{id}/heads")), Some(id));
+        assert_eq!(vault_in_path(&format!("/v1/vaults/{id}")), Some(id));
+        assert_eq!(vault_in_path("/v1/vaults"), None);
+        assert_eq!(vault_in_path("/v1/vaults/not-an-id/items"), None);
     }
 
     #[test]

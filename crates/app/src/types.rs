@@ -95,6 +95,12 @@ pub struct ItemSummary {
     pub expires_in_days: Option<i64>,
     /// How many files are attached.
     pub attachments: u32,
+    /// For something shared with this person: `fill-only`, `view`, `edit`
+    /// or `manage`; `None` for their own (docs/plan/18-sharing.md). A shell
+    /// offers nothing the right doesn't allow: no reveal or copy for
+    /// `fill-only`, no change below `edit`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub access: Option<String>,
 }
 
 /// The one value a row (and the quick-access palette) offers to copy: a
@@ -539,6 +545,10 @@ pub struct ItemPlace {
     /// A crown jewel by its kind or a field (a wallet's recovery phrase):
     /// it can never leave the class (02-model §3).
     pub crown_jewel_fixed: bool,
+    /// For something shared with this person: their right (as on
+    /// [`ItemSummary::access`]); `None` for their own.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub access: Option<String>,
 }
 
 /// One folder of a vault, for the sidebar and the pickers.
@@ -565,6 +575,25 @@ pub struct VaultView {
     /// Days a trashed item stays before it is purged on every device.
     pub trash_days: u32,
     pub folders: Vec<FolderView>,
+    /// How it is shared, when it is (docs/plan/18-sharing.md).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sharing: Option<VaultShareBadge>,
+}
+
+/// How a vault is shared, for the sidebar.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct VaultShareBadge {
+    /// `shared`, `family`, `received` (items shared on their own) or
+    /// `emergency` (read through emergency access).
+    pub kind: String,
+    /// This person's right in it.
+    pub right: String,
+    /// Whether this person owns it.
+    pub owned: bool,
+    /// The owner's login, when it is someone else's.
+    pub owner: Option<String>,
+    /// How many people are in it.
+    pub people: usize,
 }
 
 /// Items that look like the same thing twice (after an import, say).

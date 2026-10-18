@@ -1,5 +1,5 @@
 {
- "as_of": "152a5ca",
+ "as_of": "dcf9cc1",
  "source": "docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)",
  "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is no web vault yet. The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and its web half once the web vault exists. OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.",
  "non_v1_built": [
@@ -1013,11 +1013,13 @@
    "name": "Shared vaults",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
-    "core"
+    "core",
+    "desktop",
+    "server"
    ],
-   "left": "Adding and removing members, wrapping the Vault Key to another person's key, rotation on removal, server support and UI.",
+   "left": "Sharing in the CLI and the web vault.",
    "evidence": [
     "crates/vault/src/manifest.rs:44 (Member: persona, rights, wrapped Vault Key, sealed in each head)",
     "crates/vault/src/vault.rs:959 members"
@@ -1031,11 +1033,14 @@
    "name": "Granular share permissions",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
-    "core"
+    "core",
+    "desktop",
+    "server",
+    "extension"
    ],
-   "left": "Enforcing the rights in clients, groups, and logging; nothing reads the rights yet.",
+   "left": "Groups of people as members.",
    "evidence": [
     "crates/vault/src/manifest.rs:44 (rights: view, edit, fill-only, manage, re-share as strings)"
    ],
@@ -1048,9 +1053,13 @@
    "name": "Single-item sharing",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: per-item keys wrapped to a recipient and the two-tap share.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop",
+    "server"
+   ],
+   "left": "Sharing from the extension and the web vault.",
    "evidence": [
     "rg for item-level share or recipient wrap in crates/ finds none"
    ],
@@ -1063,9 +1072,13 @@
    "name": "Share links for non-users",
    "target": "beat",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: the Send feature for items, files and text.",
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop",
+    "server"
+   ],
+   "left": "Opening a link in a plain browser (the server page is a no-script notice; the web vault slice will open it).",
    "evidence": [
     "bins/server/src/lib.rs:228 (no Send routes on the server)"
    ],
@@ -1078,9 +1091,13 @@
    "name": "Request a secret",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: single-use request links encrypting to the requester's key.",
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop",
+    "server"
+   ],
+   "left": "Answering a request in a plain browser for someone without Lockdown, like share links.",
    "evidence": [
     "bins/server/src/lib.rs:228 (no request-link routes on the server)"
    ],
@@ -1093,9 +1110,13 @@
    "name": "Fill-only sharing",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: needs sharing and an extension fill path.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop",
+    "extension"
+   ],
+   "left": "Nothing for desktop and the extension; the web vault.",
    "evidence": [
     "crates/vault/src/manifest.rs:44 (fill-only is only a word in a doc comment)"
    ],
@@ -1108,9 +1129,13 @@
    "name": "Family plan",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: shared vaults, a household vault, and plan and billing logic.",
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop",
+    "server"
+   ],
+   "left": "Plan and billing logic, which waits on the pricing decision; the household vault and organizer are built.",
    "evidence": [
     "crates/vault/src/manifest.rs:44 (no member can be added yet)"
    ],
@@ -1123,9 +1148,13 @@
    "name": "Emergency access",
    "target": "beat",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: contact keys checked through key transparency and a QR fingerprint, the waiting period and release.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop",
+    "server"
+   ],
+   "left": "Reminders to the owner during the wait by email or OS notification.",
    "evidence": [
     "docs/plan/11-desktop-design-brief.md:77 (trusted contacts later)"
    ],
@@ -1677,11 +1706,9 @@
    "status": "partial",
    "surfaces": [
     "core",
-    "server",
-    "cli",
-    "desktop"
+    "server"
    ],
-   "left": "The Tamarin or ProVerif model of login, sharing and recovery, and the academic review (not code); sharing and recovery defences follow those features.",
+   "left": "The Tamarin or ProVerif model of login, sharing and recovery, and the academic review (not code); sharing's defences (signed envelopes, membership chain, KT-checked keys) are built.",
    "evidence": [
     "crates/sync/src/kt.rs:746 an_older_sth_a_split_view_and_a_rewritten_history_are_refused",
     "bins/cli/tests/sync_two_stores.rs:150 two_stores_one_server_merge_conflict_and_rollback",
@@ -1699,11 +1726,10 @@
    "status": "partial",
    "surfaces": [
     "core",
-    "server",
-    "cli",
-    "desktop"
+    "desktop",
+    "server"
    ],
-   "left": "Lookups of other people's keys, QR fingerprint checks and passphrase-verified invites (they need sharing), and log mirrors.",
+   "left": "Passphrase-verified invites, scanning the QR fingerprint (the payload exists), and log mirrors.",
    "evidence": [
     "crates/sync/src/kt.rs:798 a_swapped_device_key_an_unknown_device_and_hidden_changes_are_caught",
     "bins/cli/tests/transparency.rs:243 a_forked_log_is_caught_by_the_citation_in_the_vault_head",

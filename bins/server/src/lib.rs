@@ -21,6 +21,8 @@
 //! - [`live`] — the live channel: content-free "something changed" events
 //! - [`tls`] — TLS on the server itself, hybrid post-quantum first
 //! - [`client_addr`] — the client's address behind trusted reverse proxies
+//! - [`sharing`] / [`sharing_api`] — shared vaults and their members, items
+//!   shared on their own, share links, request links, emergency access
 //!
 //! The key-transparency log (`storage::kt_log`, served under `/v1/kt/`) is
 //! appended inside the same transactions that accept identity manifests,
@@ -35,6 +37,8 @@ pub mod keys;
 pub mod live;
 pub mod ratelimit;
 pub mod sessions;
+pub mod sharing;
+pub mod sharing_api;
 pub mod storage;
 pub mod tls;
 pub mod token;
@@ -46,7 +50,7 @@ use std::time::{Duration, Instant};
 
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
-use axum::routing::{get, post, put};
+use axum::routing::{delete, get, post, put};
 use lockdown_crypto::auth::{LoginServerState, OpaqueServer};
 use lockdown_vault::Id;
 use serde::Serialize;
@@ -276,6 +280,66 @@ pub fn app(state: Arc<AppState>) -> Router {
         )
         .route("/v1/account/alerts", get(api::account_alerts))
         .route("/v1/account/alerts/{seq}/dismiss", post(api::dismiss_alert))
+        .route("/v1/directory", get(sharing_api::directory))
+        .route(
+            "/v1/directory/accounts/{account}",
+            get(sharing_api::directory_account),
+        )
+        .route("/v1/shared", get(sharing_api::shared_vaults))
+        .route(
+            "/v1/vaults/{vault}/members",
+            get(sharing_api::members_since).post(sharing_api::push_membership),
+        )
+        .route("/v1/vaults/{vault}/key", get(sharing_api::vault_key))
+        .route(
+            "/v1/shares/items",
+            get(sharing_api::received_items).post(sharing_api::share_item),
+        )
+        .route("/v1/shares/items/sent", get(sharing_api::sent_items))
+        .route(
+            "/v1/shares/items/{share}",
+            delete(sharing_api::unshare_item),
+        )
+        .route(
+            "/v1/sends",
+            get(sharing_api::sends)
+                .post(sharing_api::create_send)
+                .layer(DefaultBodyLimit::max(blob_limit)),
+        )
+        .route("/v1/sends/{send}", delete(sharing_api::delete_send))
+        .route("/v1/sends/{send}/meta", get(sharing_api::send_meta))
+        .route("/v1/sends/{send}/open", post(sharing_api::open_send))
+        .route(
+            "/v1/requests",
+            get(sharing_api::requests).post(sharing_api::create_request),
+        )
+        .route(
+            "/v1/requests/{request}",
+            delete(sharing_api::delete_request),
+        )
+        .route("/v1/requests/{request}/key", get(sharing_api::request_key))
+        .route(
+            "/v1/requests/{request}/answer",
+            post(sharing_api::answer_request),
+        )
+        .route(
+            "/v1/emergency",
+            get(sharing_api::emergency).post(sharing_api::create_emergency),
+        )
+        .route(
+            "/v1/emergency/{grant}/step",
+            post(sharing_api::emergency_step),
+        )
+        .route(
+            "/v1/emergency/{grant}/envelopes",
+            post(sharing_api::emergency_envelopes),
+        )
+        .route(
+            "/v1/emergency/{grant}/release",
+            get(sharing_api::emergency_release),
+        )
+        .route("/s/{send}", get(sharing_api::send_page))
+        .route("/r/{request}", get(sharing_api::request_page))
         .route("/v1/account/sessions", get(api::list_sessions))
         .route("/v1/account/sessions/{id}/end", post(api::end_session))
         .route(
