@@ -14,7 +14,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**182 decisions, sixteen build slices, no release yet (2026-10-18).** Of the 122 features committed to v1, 38 are done, 43 are partial, 31 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server and a first browser extension (Chromium and Firefox, through the desktop app) exist; the web vault and the mobile apps do not yet.
+**197 decisions, seventeen build slices, no release yet (2026-10-18).** Of the 122 features committed to v1, 43 are done, 44 are partial, 25 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server and a first browser extension (Chromium and Firefox, through the desktop app) exist; the web vault and the mobile apps do not yet.
 
 | Slice | What it delivered |
 |---|---|
@@ -35,6 +35,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 | **14 · Browser extension** ✅ | MV3 extension for Chromium and Firefox through the desktop app: native-messaging host, pairing with a code, inline menu in a closed shadow root, three checks per fill, save and update prompts, fill shortcut, code fill, Basic Auth, card and address fill, lookalike stop ([doc](docs/plan/16-browser-extension.md), D155–D169) |
 | **15 · Import, export, backups** ✅ | Importers for 1Password, Bitwarden, Proton Pass, KeePass, Dashlane, Keeper, LastPass and Enpass, full export, password-locked export, crown jewels out unless opted in (D121), a published backup format, scheduled backups ([doc](docs/plan/14-import-export.md), D135–D144) |
 | **16 · Passkeys** ✅ | Lockdown as the passkey authenticator through the browser extension: ES256 passkeys made and used on the login record, user verification through the approval gate, two taps to sign in, Signal API with Undo, passkeys in the inline menu, the only-sign-in warning ([doc](docs/plan/19-passkeys.md), D200–D214) |
+| **17 · Sharing, households, emergency access** ✅ | Shared vaults with four rights and re-keying on removal, people's keys checked through key transparency with fingerprints, item sharing, share and request links, fill-only sharing, a household vault, emergency access with a waiting period ([doc](docs/plan/18-sharing.md), D185–D199) |
 | **Next** | Browser extension (fill, save, passkeys), mobile apps, sharing and family, breach monitoring, packaged and signed releases |
 
 | Real (with tests) | Skeleton (types, traits, one real rule each) |
