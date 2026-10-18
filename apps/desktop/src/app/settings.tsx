@@ -12,6 +12,9 @@ export const DEFAULT_SETTINGS: Settings = {
   idle_lock_secs: 600,
   hidden_lock_secs: 300,
   server: null,
+  breach_check: true,
+  breach_endpoint: null,
+  change_password_check: true,
 }
 
 interface SettingsContextValue {
