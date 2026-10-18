@@ -91,7 +91,9 @@ impl Drop for Owned {
 fn status(what: &str, s: OSStatus) -> String {
     let why = match s {
         ERR_SEC_CS_UNSIGNED => "it isn't signed",
-        ERR_SEC_CS_REQ_FAILED => "it isn't signed by the same developer as this program",
+        ERR_SEC_CS_REQ_FAILED => {
+            "it isn't the expected program signed by the same developer as this program"
+        }
         ERR_SEC_CS_NO_SUCH_CODE => "that process is gone or has changed since it connected",
         ERR_SEC_CS_GUEST_INVALID => "the running code no longer matches its signature",
         ERR_SEC_CS_SIGNATURE_FAILED => "its signature doesn't verify",
