@@ -27,6 +27,8 @@ interface AppShellProps {
   organization?: ReactNode
   /** The screens under the views; the desktop's five unless a shell names fewer (the web vault). */
   screens?: ReadonlyArray<ShellScreen>
+  /** A line above Lock (the last-backup indicator, docs/plan/23-bridges.md §10). */
+  footer?: ReactNode
   children: ReactNode
 }
 
@@ -61,7 +63,7 @@ const SCREENS: ReadonlyArray<ShellScreen> = [
  * own screen, because a code is usually part of a Login (brief §3). Rows
  * take the density knobs through `data-row`.
  */
-export function AppShell({ nav, personas, counts, onNavigate, onLock, organization, screens = SCREENS, children }: AppShellProps) {
+export function AppShell({ nav, personas, counts, onNavigate, onLock, organization, screens = SCREENS, footer, children }: AppShellProps) {
   const active = personas.find((p) => p.active)
   return (
     <div className="flex h-full min-h-0 flex-col md:flex-row">
@@ -101,6 +103,7 @@ export function AppShell({ nav, personas, counts, onNavigate, onLock, organizati
           <NavRow key={area} icon={icon} label={label} current={nav.area === area} onClick={() => onNavigate({ area, view: nav.view })} />
         ))}
         <div className="md:mt-auto">
+          {footer && <div className="hidden md:block">{footer}</div>}
           <NavRow icon="lock" label="Lock" current={false} onClick={onLock} />
         </div>
       </nav>

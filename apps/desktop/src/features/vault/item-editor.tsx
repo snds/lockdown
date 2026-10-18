@@ -33,6 +33,7 @@ import type { ItemDetail, TemplateView } from "@/core/types"
 import { folderTree } from "@/features/organization/org-model"
 import { TagsEditor } from "@/features/organization/tags-editor"
 import { useVaults } from "@/features/organization/vaults-context"
+import { AliasField } from "@/features/bridges/alias-field"
 
 import { DERIVED_TITLE, buildChanges, customRow, initialRows, isSecretControl, repeatRow, wipeRows, type EditorRow } from "./editor-model"
 import { FieldControl } from "./field-control"
@@ -225,6 +226,15 @@ function EditorForm({
             </FieldGroup>
           </FieldSet>
         ))}
+        {target?.kind === "login" && (
+          <AliasField
+            site={rows.find((r) => r.fieldId === "url.0")?.text ?? ""}
+            onAddress={(address) => {
+              const user = rows.find((r) => r.fieldId === "user")
+              if (user) patch(user.key, { text: address })
+            }}
+          />
+        )}
         <FieldSet>
           <FieldLegend variant="label">Organization</FieldLegend>
           <FieldGroup>

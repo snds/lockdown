@@ -30,7 +30,9 @@ export function FindingFix({ finding, onNotice, onDevices }: FixProps) {
         onNotice(
           link.kind === "well_known"
             ? "Opened the site's change-password page in your browser."
-            : "This site has no change-password page Lockdown could find, so its front page opened. Look for account or security settings.",
+            : link.kind === "recipe"
+              ? `Opened the site's password page in your browser.${link.note ? ` ${link.note}` : ""}`
+              : "This site has no change-password page Lockdown could find, so its front page opened. Look for account or security settings.",
         )
       } catch (e) {
         onNotice(describeError(e))

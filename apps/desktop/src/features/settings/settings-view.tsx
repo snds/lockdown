@@ -20,6 +20,8 @@ import { PaneHeader } from "@/components/master-detail"
 import { describeError, useClient } from "@/core/client"
 import type { ApprovalRoute, Density, LockState, RevealGesture, Status } from "@/core/types"
 import { BackupsSection } from "@/features/backups/backups-section"
+import { AliasSettings } from "@/features/bridges/alias-settings"
+import { ClockSetting } from "@/features/bridges/clock"
 import { ExportDialog } from "@/features/export/export-dialog"
 import { ImportWizard } from "@/features/import/import-wizard"
 import { BrowsersSection } from "@/features/browsers/browsers-section"
@@ -212,6 +214,10 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
       </Section>
 
       <BrowsersSection onNotice={onNotice} />
+
+      <AliasSettings onNotice={onNotice} onChanged={onChanged} />
+
+      <ClockSetting />
 
       <ImportWizard
         open={transfer === "import"}

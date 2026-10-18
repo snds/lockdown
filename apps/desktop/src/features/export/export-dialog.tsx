@@ -18,12 +18,15 @@ import {
   NativeSelect,
   NativeSelectOption,
   Spinner,
+  Textarea,
 } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
 import { describeError, useClient } from "@/core/client"
 import { encodeSecret } from "@/core/secret-bytes"
 import type { ExportDone, ExportPreview } from "@/core/types"
+import { AGE_CHOICE, choicesWithAge } from "@/features/bridges/age-export"
+import { useBridges } from "@/features/bridges/bridges-client"
 import { useVaults } from "@/features/organization/vaults-context"
 
 import { EXPORT_CHOICES, carriesLine, leftOutLine, passwordProblem } from "./export-model"
@@ -45,6 +48,9 @@ interface ExportDialogProps {
 export function ExportDialog({ open, onClose, onNotice }: ExportDialogProps) {
   const client = useClient()
   const gate = useGate()
+  const bridges = useBridges()
+  const choices = choicesWithAge(EXPORT_CHOICES, bridges !== null)
+  const [recipients, setRecipients] = useState("")
   const [choiceId, setChoiceId] = useState(EXPORT_CHOICES[0].id)
   const { vaults } = useVaults()
   const [vault, setVault] = useState("")
@@ -55,7 +61,8 @@ export function ExportDialog({ open, onClose, onNotice }: ExportDialogProps) {
   const [done, setDone] = useState<ExportDone | null>(null)
   const first = useRef<HTMLInputElement>(null)
   const second = useRef<HTMLInputElement>(null)
-  const choice = EXPORT_CHOICES.find((c) => c.id === choiceId) ?? EXPORT_CHOICES[0]
+  const choice = choices.find((c) => c.id === choiceId) ?? EXPORT_CHOICES[0]
+  const toKey = choice.id === AGE_CHOICE.id
   const [countedFor, setCountedFor] = useState("")
   const preview = counted?.format === choice.format && countedFor === vault ? counted : null
 
@@ -91,6 +98,29 @@ export function ExportDialog({ open, onClose, onNotice }: ExportDialogProps) {
 
   const save = async () => {
     setError(null)
+    if (toKey && bridges) {
+      const keys = recipients
+        .split(/[\s,]+/)
+        .map((r) => r.trim())
+        .filter(Boolean)
+      if (keys.length === 0) {
+        setError("Paste the age public key (age1…) the file should open with.")
+        return
+      }
+      setBusy(true)
+      try {
+        const target = await client.exportChoose("age", true)
+        if (!target) return
+        const result = await gate.run((g) => bridges.exportSaveAge({ target: target.token, recipients: keys, vault: vault || null }, g))
+        setDone(result)
+        onNotice(`Saved to ${result.path}.`)
+      } catch (e) {
+        setError(describeError(e))
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
     let password: number[] | undefined
     if (choice.sealed) {
       const problem = passwordProblem(first.current?.value ?? "", second.current?.value ?? "")
@@ -174,7 +204,7 @@ export function ExportDialog({ open, onClose, onNotice }: ExportDialogProps) {
                     setError(null)
                   }}
                 >
-                  {EXPORT_CHOICES.map((c) => (
+                  {choices.map((c) => (
                     <NativeSelectOption key={c.id} value={c.id}>
                       {c.label}
                     </NativeSelectOption>
@@ -208,7 +238,23 @@ export function ExportDialog({ open, onClose, onNotice }: ExportDialogProps) {
               )}
             </section>
 
-            {choice.sealed ? (
+            {toKey ? (
+              <Field>
+                <FieldLabel htmlFor="export-recipients">The public keys it opens with</FieldLabel>
+                <Textarea
+                  id="export-recipients"
+                  value={recipients}
+                  onChange={(e) => setRecipients(e.target.value)}
+                  placeholder="age1…"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <FieldDescription>
+                  One or more age public keys, one per line. The file opens only with a matching private key (AGE-SECRET-KEY-1…), in Lockdown or any
+                  age tool. Lockdown doesn't keep the private key; make sure you have it.
+                </FieldDescription>
+              </Field>
+            ) : choice.sealed ? (
               <FieldGroup>
                 <Field>
                   <FieldLabel htmlFor="export-password">A password for the file</FieldLabel>
