@@ -859,6 +859,22 @@ impl Session {
         self.sync.is_some()
     }
 
+    /// Forgets the session token when the server ended this session from
+    /// another device (`live`): the account stays, and the next sync asks
+    /// for a login instead of failing on a dead token.
+    #[cfg(all(feature = "native", not(target_os = "wasi")))]
+    pub(crate) fn forget_session_token(&mut self, token: &str) -> Result<(), String> {
+        let path = self.paths.sync_file();
+        if let Some(cfg) = self.sync.as_mut()
+            && cfg.token == token
+        {
+            cfg.token = String::new();
+            cfg.expires_at = 0;
+            cfg.save(&path)?;
+        }
+        Ok(())
+    }
+
     /// Checks the account password with an OPAQUE sign-in (the password
     /// never leaves the device; the server learns only that a sign-in
     /// happened). `Ok(false)` is a wrong password; `Err` is a server that

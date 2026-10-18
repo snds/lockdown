@@ -202,6 +202,8 @@ pub fn writer_key(state: &AppState, vault: &VaultRow, device_id: Id) -> ApiResul
             let as_session = Session {
                 account_id: account,
                 device_id,
+                session_id: [0; 16],
+                expires_at: 0,
             };
             check_not_revoked(state, &as_session, device_id, vault.vault_id)?;
             return VerifyingKey::from_bytes(&key)

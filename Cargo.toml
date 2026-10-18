@@ -22,6 +22,7 @@ members = [
     "bins/native-host",
     "crates/security",
     "crates/passkey",
+    "crates/tls",
     "crates/web",
 ]
 # The pure-Rust crates: everything that builds on CI without a platform SDK.
@@ -48,6 +49,7 @@ default-members = [
     "bins/native-host",
     "crates/security",
     "crates/passkey",
+    "crates/tls",
     "crates/web",
 ]
 
@@ -83,6 +85,7 @@ lockdown-server = { path = "bins/server", version = "0.1.0" }
 lockdown-native-messaging = { path = "crates/native-messaging", version = "0.1.0" }
 lockdown-security = { path = "crates/security", version = "0.1.0" }
 lockdown-passkey = { path = "crates/passkey", version = "0.1.0" }
+lockdown-tls = { path = "crates/tls", version = "0.1.0" }
 
 # Cryptography: the same crates and versions the identity crate uses, so one
 # copy of each is linked (04-security.md §4–§5, 01-identity.md §10a).

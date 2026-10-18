@@ -30,6 +30,16 @@
 //! | `HEAD /v1/vaults/{vault}/blobs/{hash}` | | 200 or 404 | yes |
 //! | `GET /v1/account/alerts?since=N` | | [`AlertsSince`] | yes |
 //! | `POST /v1/account/alerts/{seq}/dismiss` | | empty | yes |
+//! | `GET /v1/account/sessions` | | [`SessionList`] | yes |
+//! | `POST /v1/account/sessions/{id}/end` | | empty | yes |
+//! | `POST /v1/account/sessions/end-others` | | [`SessionsEnded`] | yes |
+//! | `GET /v1/events` | | `text/event-stream` of [`LiveEvent`] (JSON) | yes |
+//!
+//! The live channel (`/v1/events`) is server-sent events: `event: lockdown`
+//! with a JSON [`LiveEvent`] as its data, and a comment line every 20 s to
+//! keep the connection open. An event says only *that* something changed,
+//! never what: the device then syncs (or re-reads its alerts or sessions)
+//! exactly as if it had polled, with every check that implies.
 //!
 //! Attachment blobs (02-model §6) are content-addressed: the path names
 //! the BLAKE3 of the bytes, a `PUT` of a name already held is a no-op, a
@@ -434,6 +444,74 @@ pub struct AlertsSince {
     /// The newest `seq` the account has.
     pub current_seq: u64,
 }
+
+// --- sessions (docs/plan/20-self-host-server.md §6) ---------------------------
+
+/// One signed-in session of the account.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct SessionInfo {
+    /// The session's id (32 hex digits); names it to end it.
+    pub id: String,
+    /// The device that logged in.
+    pub device_id: Id,
+    /// When it started (seconds since the Unix epoch).
+    pub created_at: i64,
+    /// When it was last used, to the minute.
+    pub last_seen: i64,
+    /// When it runs out.
+    pub expires_at: i64,
+    /// The address it was last used from, as the server saw it.
+    pub address: Option<String>,
+    /// The client's name for itself (`lockdown/0.1.0 (macos)`).
+    pub client: Option<String>,
+    /// Whether this is the session asking.
+    pub current: bool,
+}
+
+/// `GET /v1/account/sessions`: the account's live sessions, oldest first.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct SessionList {
+    /// The sessions.
+    pub sessions: Vec<SessionInfo>,
+}
+
+/// `POST /v1/account/sessions/end-others`: how many were ended.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct SessionsEnded {
+    /// The number of sessions ended.
+    pub ended: u64,
+}
+
+/// What a live event is about. Readers treat a kind they don't know as
+/// [`LiveKind::Other`] and ignore it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LiveKind {
+    /// A vault or the identity's records changed on the server: sync.
+    Sync,
+    /// The account's alerts changed: read them again.
+    Alerts,
+    /// The account's session list changed.
+    Sessions,
+    /// This very session was ended; the stream closes after it.
+    SessionEnded,
+    /// A kind this build doesn't know.
+    #[serde(other)]
+    Other,
+}
+
+/// One event on the live channel. Content-free by design: no vault, item,
+/// count or device is named.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct LiveEvent {
+    /// The event format version.
+    pub v: u16,
+    /// What changed.
+    pub kind: LiveKind,
+}
+
+/// The live event format this crate writes.
+pub const LIVE_V: u16 = 1;
 
 /// Encodes a body.
 pub fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>, lockdown_crypto::Error> {

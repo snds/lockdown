@@ -79,13 +79,11 @@ pub fn allowed_address(url: &str) -> Result<(), FetchError> {
     )))
 }
 
-/// Installs rustls's `ring` provider once per process (harmless when the
-/// sync client already did).
+/// Installs rustls's `ring` provider with the hybrid X25519MLKEM768 group
+/// first, once per process (harmless when the sync client already did).
 #[cfg(feature = "http")]
 fn ensure_tls_provider() {
-    if rustls::crypto::CryptoProvider::get_default().is_none() {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    }
+    lockdown_tls::install_default_provider();
 }
 
 /// The real client.

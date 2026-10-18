@@ -12,6 +12,7 @@ use lockdown_crypto::auth::{AuthRounds, DeviceProof, LoginStarted, Session};
 use lockdown_vault::{Hash32, Id};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use std::io::BufRead;
 
 use crate::kt::{AccountEntries, ConsistencyProofWire, InclusionProofWire, SthWire};
 use crate::wire::{
@@ -171,6 +172,8 @@ pub struct HttpTransport {
     base: String,
     #[cfg(feature = "http")]
     client: reqwest::blocking::Client,
+    #[cfg(feature = "http")]
+    trust: lockdown_tls::Trust,
 }
 
 impl std::fmt::Debug for HttpTransport {
@@ -179,29 +182,59 @@ impl std::fmt::Debug for HttpTransport {
     }
 }
 
-/// Installs rustls's `ring` provider once per process. Harmless if another
-/// part of the program installed a provider already.
-#[cfg(feature = "http")]
-fn ensure_tls_provider() {
-    if rustls::crypto::CryptoProvider::get_default().is_none() {
-        let _ = rustls::crypto::ring::default_provider().install_default();
+/// The `User-Agent` every Lockdown client sends: the version and the
+/// platform, which the server shows in the account's session list.
+pub fn user_agent() -> String {
+    format!(
+        "lockdown/{} ({})",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS
+    )
+}
+
+/// Whether `base` may be used: `https://` anywhere, plain `http://` only to
+/// this machine (a session token is a bearer credential and must not cross
+/// a network in the clear; 05-self-host §3).
+pub fn check_base(base: &str) -> Result<()> {
+    let lower = base.to_ascii_lowercase();
+    if lower.starts_with("https://") {
+        return Ok(());
+    }
+    let Some(rest) = lower.strip_prefix("http://") else {
+        return Err(TransportError::Network(format!(
+            "{base} isn't an https:// address"
+        )));
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = match authority.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or(""),
+        None => authority.rsplit_once(':').map_or(authority, |(h, _)| h),
+    };
+    let loopback = host == "localhost"
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback());
+    if loopback {
+        Ok(())
+    } else {
+        Err(TransportError::Network(format!(
+            "{base} is plain http to another machine; Lockdown only talks to a server there over https"
+        )))
     }
 }
 
 impl HttpTransport {
     /// A transport for the server at `base` (`https://host[:port]`, no
-    /// trailing slash needed).
+    /// trailing slash needed; `http://` only to this machine). TLS is 1.3
+    /// with the hybrid X25519MLKEM768 key exchange first (`lockdown-tls`);
+    /// the certificate is checked against the system's store, or only
+    /// against the certificates in `LOCKDOWN_CA_CERT` when that is set.
     pub fn new(base: &str) -> Result<Self> {
-        let base = base.trim_end_matches('/').to_string();
         #[cfg(feature = "http")]
         {
-            ensure_tls_provider();
-            let client = reqwest::blocking::Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
-                .user_agent(concat!("lockdown/", env!("CARGO_PKG_VERSION")))
-                .build()
+            let trust = lockdown_tls::Trust::from_env()
                 .map_err(|e| TransportError::Network(e.to_string()))?;
-            Ok(Self { base, client })
+            Self::with_trust(base, &trust)
         }
         #[cfg(not(feature = "http"))]
         {
@@ -210,8 +243,40 @@ impl HttpTransport {
                     "this build has no HTTP client and the host installed none".into(),
                 ));
             }
-            Ok(Self { base })
+            Ok(Self {
+                base: base.trim_end_matches('/').to_string(),
+            })
         }
+    }
+
+    /// [`HttpTransport::new`] with the certificates to trust given here.
+    #[cfg(feature = "http")]
+    pub fn with_trust(base: &str, trust: &lockdown_tls::Trust) -> Result<Self> {
+        Self::build(base, trust, Some(std::time::Duration::from_secs(30)))
+    }
+
+    #[cfg(feature = "http")]
+    fn build(
+        base: &str,
+        trust: &lockdown_tls::Trust,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<Self> {
+        check_base(base)?;
+        lockdown_tls::install_default_provider();
+        let tls = lockdown_tls::client_config(trust)
+            .map_err(|e| TransportError::Network(e.to_string()))?;
+        let client = reqwest::blocking::Client::builder()
+            .timeout(timeout)
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .user_agent(user_agent())
+            .tls_backend_preconfigured(tls)
+            .build()
+            .map_err(|e| TransportError::Network(e.to_string()))?;
+        Ok(Self {
+            base: base.trim_end_matches('/').to_string(),
+            client,
+            trust: trust.clone(),
+        })
     }
 
     /// The server's base URL.
@@ -670,5 +735,247 @@ impl HttpTransport {
             None,
         )
         .map(|_| ())
+    }
+}
+
+/// The account's sessions and the live channel
+/// (docs/plan/20-self-host-server.md §5–§6). Inherent, like the alerts.
+impl HttpTransport {
+    /// `GET /v1/account/sessions`.
+    pub fn sessions(&self, token: &str) -> Result<wire::SessionList> {
+        self.call::<(), _>(Method::Get, "/v1/account/sessions", Some(token), None)
+    }
+
+    /// `POST /v1/account/sessions/{id}/end`.
+    pub fn end_session(&self, token: &str, id: &str) -> Result<()> {
+        if id.len() != 32 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(TransportError::Network(format!("{id} isn't a session id")));
+        }
+        self.call_raw(
+            Method::Post,
+            &format!("/v1/account/sessions/{id}/end"),
+            Some(token),
+            None,
+        )
+        .map(|_| ())
+    }
+
+    /// `POST /v1/account/sessions/end-others`: every session of the
+    /// account but this one.
+    pub fn end_other_sessions(&self, token: &str) -> Result<wire::SessionsEnded> {
+        self.call::<(), _>(
+            Method::Post,
+            "/v1/account/sessions/end-others",
+            Some(token),
+            None,
+        )
+    }
+
+    /// `GET /v1/events`: opens the live channel. Each read waits at most
+    /// [`EVENTS_READ_TIMEOUT`]; the server writes a keep-alive line every
+    /// 20 s, so a silent connection is a dead one and comes back as an
+    /// error.
+    #[cfg(feature = "http")]
+    pub fn events(&self, token: &str) -> Result<EventStream> {
+        let tls = lockdown_tls::client_config(&self.trust)
+            .map_err(|e| TransportError::Network(e.to_string()))?;
+        let client = reqwest::blocking::Client::builder()
+            .timeout(EVENTS_READ_TIMEOUT)
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .user_agent(user_agent())
+            .tls_backend_preconfigured(tls)
+            .build()
+            .map_err(|e| TransportError::Network(e.to_string()))?;
+        let res = client
+            .get(format!("{}/v1/events", self.base))
+            .header(reqwest::header::AUTHORIZATION, format!("{BEARER}{token}"))
+            .header(reqwest::header::ACCEPT, "text/event-stream")
+            .send()
+            .map_err(|e| TransportError::Network(e.to_string()))?;
+        let status = res.status().as_u16();
+        if !(200..300).contains(&status) {
+            let bytes = res
+                .bytes()
+                .map_err(|e| TransportError::Network(e.to_string()))?;
+            return Err(Self::refused(status, &bytes));
+        }
+        Ok(EventStream {
+            reader: std::io::BufReader::new(res),
+        })
+    }
+}
+
+/// How long one read of the live channel waits before the connection is
+/// taken for dead (three keep-alives missed).
+pub const EVENTS_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(65);
+
+/// The largest event the client reads; a server sending more is cut off.
+const MAX_EVENT_BYTES: usize = 16 * 1024;
+
+/// The live channel, open. Read it with [`EventStream::next_event`].
+#[cfg(feature = "http")]
+pub struct EventStream {
+    reader: std::io::BufReader<reqwest::blocking::Response>,
+}
+
+#[cfg(feature = "http")]
+impl std::fmt::Debug for EventStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("EventStream")
+    }
+}
+
+#[cfg(feature = "http")]
+impl EventStream {
+    /// The next event; `Ok(None)` when the server closed the stream.
+    /// Keep-alives are skipped, and so are events of another name or with
+    /// data that isn't a [`wire::LiveEvent`].
+    pub fn next_event(&mut self) -> Result<Option<wire::LiveEvent>> {
+        loop {
+            match read_sse(&mut self.reader)? {
+                None => return Ok(None),
+                Some(SseItem::Event(e)) => return Ok(Some(e)),
+                Some(SseItem::KeepAlive) => {}
+            }
+        }
+    }
+
+    /// The next event or keep-alive (about every 20 s), so a reader can
+    /// look up between events; `Ok(None)` when the server closed.
+    pub fn next_item(&mut self) -> Result<Option<SseItem>> {
+        read_sse(&mut self.reader)
+    }
+}
+
+/// What the live channel delivered.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SseItem {
+    /// An event.
+    Event(wire::LiveEvent),
+    /// A keep-alive comment: the connection is alive, nothing changed.
+    KeepAlive,
+}
+
+/// Reads server-sent events from `reader` until one named `lockdown`
+/// carries a [`wire::LiveEvent`].
+pub fn next_sse_event(reader: &mut impl std::io::BufRead) -> Result<Option<wire::LiveEvent>> {
+    loop {
+        match read_sse(reader)? {
+            None => return Ok(None),
+            Some(SseItem::Event(e)) => return Ok(Some(e)),
+            Some(SseItem::KeepAlive) => {}
+        }
+    }
+}
+
+fn read_sse(reader: &mut impl std::io::BufRead) -> Result<Option<SseItem>> {
+    let mut name = String::new();
+    let mut data = String::new();
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        let n = std::io::Read::take(&mut *reader, MAX_EVENT_BYTES as u64 + 1)
+            .read_until(b'\n', &mut line)
+            .map_err(|e| TransportError::Network(format!("the live channel stopped: {e}")))?;
+        if n == 0 {
+            return Ok(None);
+        }
+        if line.len() > MAX_EVENT_BYTES || data.len() > MAX_EVENT_BYTES {
+            return Err(TransportError::Decode(
+                "the live channel sent an event too large to read".into(),
+            ));
+        }
+        let text = String::from_utf8_lossy(&line);
+        let text = text.trim_end_matches(['\r', '\n']);
+        if text.is_empty() {
+            // A blank line ends an event.
+            let event = (name.is_empty() || name == "lockdown")
+                .then(|| serde_json::from_str::<wire::LiveEvent>(&data).ok())
+                .flatten();
+            name.clear();
+            data.clear();
+            if let Some(event) = event {
+                return Ok(Some(SseItem::Event(event)));
+            }
+            continue;
+        }
+        if text.starts_with(':') {
+            if name.is_empty() && data.is_empty() {
+                return Ok(Some(SseItem::KeepAlive));
+            }
+            continue;
+        }
+        let (field, value) = text.split_once(':').unwrap_or((text, ""));
+        let value = value.strip_prefix(' ').unwrap_or(value);
+        match field {
+            "event" => name = value.to_string(),
+            "data" => {
+                if !data.is_empty() {
+                    data.push('\n');
+                }
+                data.push_str(value);
+            }
+            _ => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::wire::{LiveEvent, LiveKind};
+
+    #[test]
+    fn only_loopback_may_be_plain_http() {
+        for ok in [
+            "https://lockdown.example",
+            "https://10.0.0.2:8443/",
+            "http://127.0.0.1:8787",
+            "http://localhost:8787",
+            "HTTP://[::1]:8787/",
+            "http://127.9.9.9",
+        ] {
+            assert!(check_base(ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            "http://192.168.1.2:8787",
+            "http://lockdown.example",
+            "http://localhost.example.com",
+            "http://127.0.0.1.example.com",
+            "ftp://127.0.0.1",
+            "lockdown.example",
+        ] {
+            assert!(check_base(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn server_sent_events_parse_and_noise_is_skipped() {
+        let stream = b": keep-alive\n\nevent: lockdown\ndata: {\"v\":1,\"kind\":\"sync\"}\n\nevent: other\ndata: {\"v\":1,\"kind\":\"sync\"}\n\nevent: lockdown\ndata: not json\n\nevent: lockdown\r\ndata: {\"v\":1,\"kind\":\"a_kind_from_the_future\"}\r\n\r\nevent: lockdown\ndata: {\"v\":1,\ndata: \"kind\":\"session_ended\"}\n\n";
+        let mut reader = std::io::BufReader::new(&stream[..]);
+        let mut got = Vec::new();
+        while let Some(e) = next_sse_event(&mut reader).unwrap() {
+            got.push(e);
+        }
+        assert_eq!(
+            got,
+            vec![
+                LiveEvent {
+                    v: 1,
+                    kind: LiveKind::Sync
+                },
+                LiveEvent {
+                    v: 1,
+                    kind: LiveKind::Other
+                },
+                LiveEvent {
+                    v: 1,
+                    kind: LiveKind::SessionEnded
+                },
+            ]
+        );
+        let huge = format!("data: {}\n\n", "x".repeat(MAX_EVENT_BYTES + 10));
+        let mut reader = std::io::BufReader::new(huge.as_bytes());
+        assert!(next_sse_event(&mut reader).is_err());
     }
 }

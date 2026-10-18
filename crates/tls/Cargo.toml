@@ -1,0 +1,30 @@
+[package]
+name = "lockdown-tls"
+description = "Lockdown's TLS: hybrid X25519MLKEM768 key exchange on rustls's ring provider, the client and server configurations, and certificates that reload"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# rustls on its `ring` provider (no aws-lc C build), TLS 1.3 only here.
+rustls = { workspace = true }
+ring.workspace = true
+# ML-KEM-768 (FIPS 203) from RustCrypto: the same crate `x-wing` already
+# links for the vault's hybrid wraps, so no new cryptography joins the tree.
+ml-kem = { version = "0.3.2", default-features = false, features = ["alloc", "zeroize"] }
+zeroize.workspace = true
+# The operating system's certificate store and checks, as reqwest uses it.
+rustls-platform-verifier = "0.7"
+thiserror.workspace = true
+# Test certificates only (`test-certs`): a private CA and a leaf for the
+# handshake tests here and the server's and CLI's TLS tests. Never in an app.
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "ring"], optional = true }
+
+[features]
+test-certs = ["dep:rcgen"]
+
+[dev-dependencies]
+lockdown-tls = { path = ".", features = ["test-certs"] }
+tempfile.workspace = true

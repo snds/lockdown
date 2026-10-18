@@ -215,19 +215,33 @@ pub(crate) type ApiResult<T> = Result<T, ApiError>;
 // --- extractors -----------------------------------------------------------
 
 /// The client's address as a rate-limit key; `local` when the server was
-/// driven without a socket (tests).
+/// driven without a socket (tests). Behind a trusted reverse proxy it is
+/// the address the proxy saw (`client_addr`).
 pub struct Peer(pub String);
 
-impl<S: Send + Sync> FromRequestParts<S> for Peer {
+/// The client's address for `parts`, or `None` without a socket.
+pub fn client_address(parts: &Parts, state: &AppState) -> Option<String> {
+    let peer = parts
+        .extensions
+        .get::<ConnectInfo<std::net::SocketAddr>>()?
+        .0
+        .ip();
+    let forwarded = parts
+        .headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok());
+    Some(crate::client_addr::client_ip(peer, forwarded, &state.config.trusted_proxies).to_string())
+}
+
+impl FromRequestParts<Arc<AppState>> for Peer {
     type Rejection = std::convert::Infallible;
 
-    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Self::Rejection> {
         Ok(Peer(
-            parts
-                .extensions
-                .get::<ConnectInfo<std::net::SocketAddr>>()
-                .map(|c| c.0.ip().to_string())
-                .unwrap_or_else(|| "local".to_string()),
+            client_address(parts, state).unwrap_or_else(|| "local".to_string()),
         ))
     }
 }
@@ -239,6 +253,10 @@ pub struct Session {
     pub account_id: Id,
     /// The device that logged in.
     pub device_id: Id,
+    /// The session's id (the token's nonce).
+    pub session_id: [u8; 16],
+    /// When the token runs out.
+    pub expires_at: i64,
 }
 
 impl FromRequestParts<Arc<AppState>> for Session {
@@ -261,10 +279,15 @@ impl FromRequestParts<Arc<AppState>> for Session {
                 )
             })?;
         match state.tokens.verify(header.trim(), state.now()) {
-            Ok(claims) => Ok(Session {
-                account_id: claims.account_id,
-                device_id: claims.device_id,
-            }),
+            Ok(claims) => {
+                check_session(parts, state, &claims)?;
+                Ok(Session {
+                    account_id: claims.account_id,
+                    device_id: claims.device_id,
+                    session_id: claims.nonce,
+                    expires_at: claims.exp,
+                })
+            }
             Err(TokenError::Expired) => Err(ApiError::new(
                 StatusCode::UNAUTHORIZED,
                 ErrorCode::TokenExpired,
@@ -275,6 +298,56 @@ impl FromRequestParts<Arc<AppState>> for Session {
                 ErrorCode::Unauthenticated,
                 "the session token didn't check out; log in again",
             )),
+        }
+    }
+}
+
+/// A token that verifies still needs its session not to have been ended
+/// (`sessions`); its "last used" moves on at most once a minute. A token
+/// from before the sessions table gets its row here.
+fn check_session(
+    parts: &Parts,
+    state: &AppState,
+    claims: &crate::token::TokenClaims,
+) -> Result<(), ApiError> {
+    let Some(store) = state.storage.sessions() else {
+        return Ok(());
+    };
+    let now = state.now();
+    let address = client_address(parts, state);
+    let client = crate::sessions::client_label(
+        parts
+            .headers
+            .get(header::USER_AGENT)
+            .and_then(|v| v.to_str().ok()),
+    );
+    match store.session(&claims.nonce)? {
+        Some(row) if row.ended_at.is_some() => Err(ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            ErrorCode::Unauthenticated,
+            "this session was ended from one of your devices; log in again",
+        )),
+        Some(row) => {
+            if now.saturating_sub(row.last_seen) >= crate::sessions::TOUCH_EVERY_SECS
+                || row.address != address
+            {
+                store.touch_session(&claims.nonce, now, address.as_deref(), client.as_deref())?;
+            }
+            Ok(())
+        }
+        None => {
+            store.open_session(&crate::sessions::SessionRow {
+                id: claims.nonce,
+                account_id: claims.account_id,
+                device_id: claims.device_id,
+                created_at: claims.iat,
+                last_seen: now,
+                expires_at: claims.exp,
+                address,
+                client,
+                ended_at: None,
+            })?;
+            Ok(())
         }
     }
 }
@@ -556,8 +629,13 @@ pub async fn login_start(
 pub async fn login_finish(
     State(state): State<Arc<AppState>>,
     peer: Peer,
+    headers: axum::http::HeaderMap,
     Cbor(body): Cbor<LoginFinish>,
 ) -> ApiResult<Cbor<LoginFinishReply>> {
+    let user_agent = headers
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
     brake(&state, &peer, None)?;
     let pending = {
         let mut pending = state
@@ -614,15 +692,37 @@ pub async fn login_finish(
             Some(body.device.device_id),
             None,
         )?;
+        state.live.notify(crate::live::Change::account(
+            account.account_id,
+            lockdown_sync::wire::LiveKind::Alerts,
+        ));
     }
     let ttl = i64::try_from(state.config.session_ttl.as_secs()).unwrap_or(i64::MAX);
-    let (token, expires_at) = state
+    let (token, claims) = state
         .tokens
-        .issue(account.account_id, body.device.device_id, state.now(), ttl)
+        .issue_claims(account.account_id, body.device.device_id, state.now(), ttl)
         .map_err(|e| ApiError::internal(e.to_string()))?;
+    if let Some(store) = state.storage.sessions() {
+        store.open_session(&crate::sessions::SessionRow {
+            id: claims.nonce,
+            account_id: account.account_id,
+            device_id: body.device.device_id,
+            created_at: claims.iat,
+            last_seen: claims.iat,
+            expires_at: claims.exp,
+            address: (peer.0 != "local").then(|| peer.0.clone()),
+            client: crate::sessions::client_label(user_agent.as_deref()),
+            ended_at: None,
+        })?;
+        let _ = store.prune_sessions(state.now());
+        state.live.notify(crate::live::Change::account(
+            account.account_id,
+            lockdown_sync::wire::LiveKind::Sessions,
+        ));
+    }
     Ok(Cbor(LoginFinishReply {
         token,
-        expires_at,
+        expires_at: claims.exp,
         profile_id: account.profile_id,
     }))
 }
@@ -1288,4 +1388,74 @@ pub async fn dismiss_alert(
     } else {
         Err(ApiError::not_found(format!("alert {seq}")))
     }
+}
+
+// --- sessions (docs/plan/20-self-host-server.md §6) --------------------------
+
+fn session_store(state: &AppState) -> ApiResult<&dyn crate::sessions::SessionStore> {
+    state
+        .storage
+        .sessions()
+        .ok_or_else(|| ApiError::not_found("session lists on this server"))
+}
+
+/// `GET /v1/account/sessions`: the account's live sessions, oldest first,
+/// the asking one marked.
+pub async fn list_sessions(
+    State(state): State<Arc<AppState>>,
+    session: Session,
+) -> ApiResult<Cbor<lockdown_sync::wire::SessionList>> {
+    let rows = session_store(&state)?.live_sessions(session.account_id, state.now())?;
+    Ok(Cbor(lockdown_sync::wire::SessionList {
+        sessions: rows.iter().map(|r| r.info(&session.session_id)).collect(),
+    }))
+}
+
+fn announce_ended(state: &AppState, account_id: Id, ended: &[[u8; 16]]) {
+    for id in ended {
+        state.live.notify(crate::live::Change {
+            account_id,
+            kind: lockdown_sync::wire::LiveKind::SessionEnded,
+            origin: None,
+            only: Some(*id),
+        });
+    }
+    state.live.notify(crate::live::Change::account(
+        account_id,
+        lockdown_sync::wire::LiveKind::Sessions,
+    ));
+}
+
+/// `POST /v1/account/sessions/{id}/end`: that session's token stops working
+/// at once, everywhere. Ending the asking session is signing out.
+pub async fn end_session(
+    State(state): State<Arc<AppState>>,
+    session: Session,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    let id = crate::sessions::parse_session_id(&id)
+        .ok_or_else(|| ApiError::bad_request("a session id is 32 hex digits"))?;
+    if session_store(&state)?.end_session(session.account_id, &id, state.now())? {
+        announce_ended(&state, session.account_id, &[id]);
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::not_found("that session"))
+    }
+}
+
+/// `POST /v1/account/sessions/end-others`: every session of the account but
+/// the asking one.
+pub async fn end_other_sessions(
+    State(state): State<Arc<AppState>>,
+    session: Session,
+) -> ApiResult<Cbor<lockdown_sync::wire::SessionsEnded>> {
+    let ended = session_store(&state)?.end_other_sessions(
+        session.account_id,
+        &session.session_id,
+        state.now(),
+    )?;
+    announce_ended(&state, session.account_id, &ended);
+    Ok(Cbor(lockdown_sync::wire::SessionsEnded {
+        ended: ended.len() as u64,
+    }))
 }

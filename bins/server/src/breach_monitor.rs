@@ -181,9 +181,8 @@ impl HttpBreachFeed {
         if !endpoint.starts_with("https://") && !local {
             return Err("the breach feed must be an https address".into());
         }
-        if rustls::crypto::CryptoProvider::get_default().is_none() {
-            let _ = rustls::crypto::ring::default_provider().install_default();
-        }
+        // rustls on `ring` with the hybrid X25519MLKEM768 group first.
+        lockdown_tls::install_default_provider();
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(30))
             .redirect(reqwest::redirect::Policy::none())

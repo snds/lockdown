@@ -15,17 +15,20 @@ ecosystem-identity.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
 thiserror.workspace = true
-# The HTTP transport: blocking, TLS through rustls on the `ring` provider
-# (no aws-lc build step), certificates from the platform verifier.
+# The HTTP transport: blocking, TLS 1.3 through rustls on the `ring`
+# provider with the hybrid X25519MLKEM768 group first (lockdown-tls; no
+# aws-lc build step), certificates from the platform verifier.
 reqwest = { workspace = true, optional = true }
-rustls = { workspace = true, optional = true }
+lockdown-tls = { workspace = true, optional = true }
+# The live channel's events are JSON inside server-sent events.
+serde_json.workspace = true
 
 [features]
 default = ["http"]
 # The built-in HTTPS client (blocking reqwest over rustls). A build
 # without it (the web vault, docs/plan/17-web-vault.md) sends through the
 # host's client, installed with `install_http_hook`.
-http = ["dep:reqwest", "dep:rustls"]
+http = ["dep:reqwest", "dep:lockdown-tls"]
 
 [dev-dependencies]
 tempfile.workspace = true

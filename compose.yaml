@@ -1,0 +1,36 @@
+# Lockdown server, one container (docs/self-host.md).
+#
+#   mkdir -p tls && cp fullchain.pem privkey.pem tls/   # your certificate
+#   docker compose up -d --build
+#   docker compose exec lockdown lockdown-server backup keygen   # once; keep it
+#
+# The certificate is read from ./tls and reloaded when it changes (or on
+# `docker compose kill -s HUP lockdown`). The key must be readable by the
+# container's user (uid 65532): `chgrp 65532 tls/privkey.pem && chmod 0640 tls/privkey.pem`.
+services:
+  lockdown:
+    build: .
+    image: lockdown-server:local
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      LOCKDOWN_TLS_CERT: /run/lockdown/tls/fullchain.pem
+      LOCKDOWN_TLS_KEY: /run/lockdown/tls/privkey.pem
+      # Open it for your household's first sign-ups, then set it back to closed.
+      LOCKDOWN_SIGNUPS: closed
+      # Keep attachment files beside the database, not inside it.
+      LOCKDOWN_BLOB_DIR: /data/blobs
+    volumes:
+      - lockdown-data:/data
+      - ./tls:/run/lockdown/tls:ro
+    ports:
+      - "8443:8443"
+    mem_limit: 256m
+
+volumes:
+  lockdown-data:

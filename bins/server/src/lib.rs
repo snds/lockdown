@@ -17,22 +17,33 @@
 //! - [`api`] — the handlers; the wire types are `lockdown_sync::wire`
 //! - [`alerts`] — account alerts: a new device's sign-in, an email breach
 //! - [`breach_monitor`] — the email breach job over an injectable feed
+//! - [`sessions`] — one row per session token, so a session can be ended
+//! - [`live`] — the live channel: content-free "something changed" events
+//! - [`tls`] — TLS on the server itself, hybrid post-quantum first
+//! - [`client_addr`] — the client's address behind trusted reverse proxies
+//! - [`backup`] — the encrypted snapshot under the person's Backup Key
 //! - [`sharing`] / [`sharing_api`] — shared vaults and their members, items
 //!   shared on their own, share links, request links, emergency access
 //! - [`web_vault`] — the built web vault at `/vault/`, with its headers
 //!
 //! The key-transparency log (`storage::kt_log`, served under `/v1/kt/`) is
 //! appended inside the same transactions that accept identity manifests,
-//! vault heads and device logins. Push is not built.
+//! vault heads and device logins. The mobile push relay is not built
+//! (D122); desktop and web devices hear of changes on [`live`].
 
 pub mod alerts;
 pub mod api;
+pub mod backup;
 pub mod breach_monitor;
+pub mod client_addr;
 pub mod keys;
+pub mod live;
 pub mod ratelimit;
+pub mod sessions;
 pub mod sharing;
 pub mod sharing_api;
 pub mod storage;
+pub mod tls;
 pub mod token;
 pub mod web_vault;
 
@@ -59,6 +70,9 @@ use lockdown_crypto::SigningKey;
 pub struct Discovery {
     /// The discovery document version.
     pub v: u16,
+    /// This server's release (05-self-host §7: a client names the release
+    /// it needs when it is too new for this one).
+    pub version: String,
     /// The API versions this server speaks.
     pub api: Vec<u16>,
     /// Features this install offers. Differ by configuration, never by fork (D7).
@@ -83,12 +97,17 @@ pub struct Features {
     /// The key-transparency log's public key, lowercase hex, for outside
     /// auditors (clients pin it from `/v1/kt/sth` on first sight).
     pub kt_log_key: String,
+    /// The live channel at `/v1/events` (content-free change events).
+    pub live: bool,
+    /// The account's session list, with ending a session.
+    pub sessions: bool,
 }
 
 /// The discovery document this build serves.
 pub fn discovery(signups: bool, log_key: &lockdown_crypto::VerifyingKey) -> Discovery {
     Discovery {
         v: 1,
+        version: env!("CARGO_PKG_VERSION").to_string(),
         api: vec![lockdown_sync::wire::API_V],
         features: Features {
             opaque: true,
@@ -98,6 +117,8 @@ pub fn discovery(signups: bool, log_key: &lockdown_crypto::VerifyingKey) -> Disc
             blobs: true,
             push: false,
             kt_log_key: lockdown_crypto::Hash32(log_key.to_bytes()).to_hex(),
+            live: true,
+            sessions: true,
         },
     }
 }
@@ -118,6 +139,8 @@ pub struct Config {
     pub max_blob_bytes: u64,
     /// How long a blob nothing names is kept before it is collected.
     pub blob_grace: Duration,
+    /// Reverse proxies whose `X-Forwarded-For` is believed (`client_addr`).
+    pub trusted_proxies: Vec<client_addr::Cidr>,
     /// The built web vault (`apps/web/dist`) to serve at `/vault/`; `None`
     /// serves none (docs/plan/17-web-vault.md).
     pub web_vault: Option<std::path::PathBuf>,
@@ -138,6 +161,7 @@ impl Default for Config {
             per_login: (10, 1.0 / 6.0),
             max_blob_bytes: DEFAULT_MAX_BLOB_BYTES,
             blob_grace: DEFAULT_BLOB_GRACE,
+            trusted_proxies: Vec::new(),
             web_vault: None,
         }
     }
@@ -181,6 +205,8 @@ pub struct AppState {
     pub per_login: RateLimiter,
     /// The clock (seconds since the Unix epoch), so tests can move time.
     pub clock: Box<dyn Fn() -> i64 + Send + Sync>,
+    /// The live channel's fan-out.
+    pub live: Arc<live::Notifier>,
 }
 
 impl std::fmt::Debug for AppState {
@@ -204,6 +230,7 @@ impl AppState {
             config,
             pending: Mutex::new(HashMap::new()),
             clock: Box::new(|| lockdown_vault::Timestamp::now().0),
+            live: Arc::new(live::Notifier::new()),
         }
     }
 
@@ -324,6 +351,17 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/vault", get(web_vault::redirect))
         .route("/vault/", get(web_vault::index))
         .route("/vault/{*path}", get(web_vault::file))
+        .route("/v1/account/sessions", get(api::list_sessions))
+        .route("/v1/account/sessions/{id}/end", post(api::end_session))
+        .route(
+            "/v1/account/sessions/end-others",
+            post(api::end_other_sessions),
+        )
+        .route("/v1/events", get(live::events))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            live::notify_writes,
+        ))
         .with_state(state)
 }
 
@@ -333,9 +371,55 @@ pub async fn serve(
     state: Arc<AppState>,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
+    let live = state.live.clone();
+    let shutdown = async move {
+        shutdown.await;
+        live.shut_down();
+    };
     axum::serve(
         listener,
         app(state).into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown)
+    .await
+}
+
+/// TLS for [`serve_tls`]: the configuration and where the handshake
+/// counts go.
+#[derive(Clone, Debug)]
+pub struct TlsServing {
+    /// The rustls server configuration (`lockdown_tls::server_config`).
+    pub config: Arc<rustls::ServerConfig>,
+    /// The `Strict-Transport-Security` max-age; 0 sends none.
+    pub hsts_max_age: u64,
+    /// Which groups the handshakes used.
+    pub stats: Arc<tls::TlsStats>,
+}
+
+/// Serves `app(state)` over TLS on `listener` until `shutdown` resolves.
+pub async fn serve_tls(
+    listener: tokio::net::TcpListener,
+    state: Arc<AppState>,
+    tls: TlsServing,
+    shutdown: impl std::future::Future<Output = ()> + Send + 'static,
+) -> std::io::Result<()> {
+    let state_live = state.live.clone();
+    let mut router = app(state);
+    if tls.hsts_max_age > 0 {
+        let value = tls::hsts_value(tls.hsts_max_age);
+        router = router.layer(axum::middleware::from_fn(move |req, next| {
+            tls::hsts(value.clone(), req, next)
+        }));
+    }
+    let listener = tls::TlsListener::new(listener, tls.config, tls.stats)?;
+    let live = state_live;
+    let shutdown = async move {
+        shutdown.await;
+        live.shut_down();
+    };
+    axum::serve(
+        axum::serve::ListenerExt::tap_io(listener, |_| {}),
+        router.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .with_graceful_shutdown(shutdown)
     .await
@@ -346,6 +430,8 @@ pub async fn serve(
 pub struct RunningServer {
     /// Where it listens.
     pub addr: SocketAddr,
+    /// With TLS: which groups the handshakes used.
+    pub tls_stats: Option<Arc<tls::TlsStats>>,
     shutdown: Option<tokio::sync::oneshot::Sender<()>>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
@@ -357,9 +443,14 @@ impl std::fmt::Debug for RunningServer {
 }
 
 impl RunningServer {
-    /// The base URL, `http://127.0.0.1:<port>`.
+    /// The base URL, `http://127.0.0.1:<port>` (`https://` with TLS).
     pub fn url(&self) -> String {
-        format!("http://{}", self.addr)
+        let scheme = if self.tls_stats.is_some() {
+            "https"
+        } else {
+            "http"
+        };
+        format!("{scheme}://{}", self.addr)
     }
 }
 
@@ -376,6 +467,26 @@ impl Drop for RunningServer {
 
 /// Starts the server on a free local port, on a thread of its own.
 pub fn run_in_background(state: Arc<AppState>) -> std::io::Result<RunningServer> {
+    run_on_thread(state, None)
+}
+
+/// [`run_in_background`] over TLS with `config` (HSTS on).
+pub fn run_tls_in_background(
+    state: Arc<AppState>,
+    config: Arc<rustls::ServerConfig>,
+) -> std::io::Result<RunningServer> {
+    run_on_thread(
+        state,
+        Some(TlsServing {
+            config,
+            hsts_max_age: 31_536_000,
+            stats: Arc::new(tls::TlsStats::default()),
+        }),
+    )
+}
+
+fn run_on_thread(state: Arc<AppState>, tls: Option<TlsServing>) -> std::io::Result<RunningServer> {
+    let tls_stats = tls.as_ref().map(|t| t.stats.clone());
     let std_listener = std::net::TcpListener::bind("127.0.0.1:0")?;
     std_listener.set_nonblocking(true)?;
     let addr = std_listener.local_addr()?;
@@ -403,15 +514,19 @@ pub fn run_in_background(state: Arc<AppState>) -> std::io::Result<RunningServer>
                     }
                 };
                 let _ = ready_tx.send(Ok(()));
-                let _ = serve(listener, state, async {
+                let shutdown = async {
                     let _ = rx.await;
-                })
-                .await;
+                };
+                let _ = match tls {
+                    Some(tls) => serve_tls(listener, state, tls, shutdown).await,
+                    None => serve(listener, state, shutdown).await,
+                };
             });
         })?;
     match ready_rx.recv() {
         Ok(Ok(())) => Ok(RunningServer {
             addr,
+            tls_stats,
             shutdown: Some(tx),
             thread: Some(thread),
         }),

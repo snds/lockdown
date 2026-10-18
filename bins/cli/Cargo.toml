@@ -33,3 +33,5 @@ lockdown-server.workspace = true
 # and the same floor for the OPAQUE stretching step.
 ecosystem-identity = { workspace = true, features = ["insecure-test-kdf"] }
 lockdown-crypto = { workspace = true, features = ["insecure-test-kdf"] }
+# A throwaway CA and certificate for the end-to-end test over hybrid TLS.
+lockdown-tls = { workspace = true, features = ["test-certs"] }

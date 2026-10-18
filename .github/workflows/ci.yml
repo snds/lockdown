@@ -190,3 +190,50 @@ jobs:
           name: web-vault-traces
           path: apps/web/test-results
           if-no-files-found: ignore
+
+  # Hybrid post-quantum TLS (docs/plan/20-self-host-server.md §2): the
+  # handshake tests, with Node's OpenSSL 3.5 as an independent client and
+  # server for X25519MLKEM768; `require` fails the job if that OpenSSL is
+  # missing instead of skipping the interop.
+  tls-interop:
+    name: hybrid TLS · OpenSSL interop
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Handshakes, including OpenSSL both ways
+        env:
+          LOCKDOWN_TLS_INTEROP: require
+        run: cargo test -p lockdown-tls
+
+  # The server image (single-container; docs/self-host.md): built from the
+  # Dockerfile and never pushed anywhere, then run read-only with a
+  # throwaway certificate and driven by the real CLI: health, register,
+  # sync, a second device's recovery, a backup, the memory it uses.
+  container:
+    name: container image · smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the image (loaded locally, not pushed)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: lockdown-server:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build the CLI
+        run: cargo build --release -p lockdown-cli
+      - name: Smoke test
+        run: bins/server/container/smoke.sh lockdown-server:ci target/release/lockdown

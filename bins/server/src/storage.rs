@@ -309,6 +309,10 @@ pub trait Storage: Send + Sync {
     fn alerts(&self) -> Option<&dyn crate::alerts::AlertStore> {
         None
     }
+    /// The session table, when this backend has one.
+    fn sessions(&self) -> Option<&dyn crate::sessions::SessionStore> {
+        None
+    }
     /// The sharing tables (`crate::sharing`), when this store keeps them.
     fn sharing(&self) -> Option<&dyn crate::sharing::SharingStore> {
         None
@@ -319,6 +323,9 @@ pub trait Storage: Send + Sync {
 pub struct SqliteStorage {
     path: Option<PathBuf>,
     conn: Mutex<Connection>,
+    /// With `--blob-dir`: attachment bodies live as files here, one per
+    /// blob (`<vault>/<hash>`), and the database keeps only their rows.
+    blob_dir: Option<PathBuf>,
 }
 
 impl std::fmt::Debug for SqliteStorage {
@@ -529,11 +536,49 @@ impl SqliteStorage {
             }
         }
         crate::alerts::create_tables(&conn).map_err(backend)?;
+        crate::sessions::create_tables(&conn).map_err(backend)?;
         crate::sharing::create_tables(&conn).map_err(backend)?;
         Ok(Self {
             path,
             conn: Mutex::new(conn),
+            blob_dir: None,
         })
+    }
+
+    /// Keeps new attachment bodies as files under `dir` instead of in the
+    /// database file (rows, sizes and references stay in the database, so
+    /// every rule about blobs is unchanged). Bodies already in the
+    /// database stay there and are still served. The directory is made
+    /// readable only by the user.
+    pub fn with_blob_dir(mut self, dir: &Path) -> Result<Self> {
+        crate::keys::create_private_dir(dir).map_err(|e| StorageError::Backend(e.to_string()))?;
+        self.blob_dir = Some(dir.to_path_buf());
+        Ok(self)
+    }
+
+    /// How many accounts and vaults the store holds, and the log's size
+    /// (a restore drill's look inside).
+    pub fn counts(&self) -> Result<crate::backup::DbFacts> {
+        let conn = self.lock();
+        let count = |sql: &str| -> Result<u64> {
+            conn.query_row(sql, [], |r| r.get::<_, i64>(0))
+                .map(to_u64)
+                .map_err(backend)
+        };
+        Ok(crate::backup::DbFacts {
+            accounts: count("SELECT COUNT(*) FROM accounts")?,
+            vaults: count("SELECT COUNT(*) FROM vaults")?,
+            log_size: count("SELECT COUNT(*) FROM kt_log")?,
+        })
+    }
+
+    /// Where attachment bodies are kept as files, if they are.
+    pub fn blob_dir(&self) -> Option<&Path> {
+        self.blob_dir.as_deref()
+    }
+
+    fn blob_file(dir: &Path, vault_id: Id, hash: Hash32) -> PathBuf {
+        dir.join(vault_id.to_string()).join(hash.to_hex())
     }
 
     pub(crate) fn lock(&self) -> std::sync::MutexGuard<'_, Connection> {
@@ -1339,13 +1384,25 @@ impl Storage for SqliteStorage {
         if Self::has_blob_in(&tx, vault_id, hash)? {
             return Ok(false);
         }
+        // With a blob directory the body goes to its file first (written
+        // whole and renamed into place), then the row; the row's body is
+        // empty. A row is only ever there for a file that is.
+        let stored: &[u8] = match &self.blob_dir {
+            Some(dir) if !body.is_empty() => {
+                crate::keys::write_private(&Self::blob_file(dir, vault_id, hash), body).map_err(
+                    |e| StorageError::Backend(format!("couldn't write a blob file: {e}")),
+                )?;
+                &[]
+            }
+            _ => body,
+        };
         tx.execute(
             "INSERT INTO blobs (vault_id, hash, size, body, uploaded_at, unreferenced_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL)",
             params![
                 vault_id.to_string(),
                 &hash.0[..],
                 to_i64(body.len() as u64, "a blob size")?,
-                body,
+                stored,
                 now
             ],
         )
@@ -1355,14 +1412,35 @@ impl Storage for SqliteStorage {
     }
 
     fn blob(&self, vault_id: Id, hash: Hash32) -> Result<Option<Vec<u8>>> {
-        let conn = self.lock();
-        conn.query_row(
-            "SELECT body FROM blobs WHERE vault_id = ?1 AND hash = ?2",
-            params![vault_id.to_string(), &hash.0[..]],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(backend)
+        let row: Option<(Vec<u8>, i64)> = self
+            .lock()
+            .query_row(
+                "SELECT body, size FROM blobs WHERE vault_id = ?1 AND hash = ?2",
+                params![vault_id.to_string(), &hash.0[..]],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(backend)?;
+        match row {
+            Some((body, size)) if body.is_empty() && size > 0 => {
+                let Some(dir) = &self.blob_dir else {
+                    return Err(StorageError::Backend(
+                        "a blob lives in the blob directory, but none is set (--blob-dir)".into(),
+                    ));
+                };
+                let bytes = std::fs::read(Self::blob_file(dir, vault_id, hash)).map_err(|e| {
+                    StorageError::Backend(format!("couldn't read a blob file: {e}"))
+                })?;
+                if bytes.len() as u64 != to_u64(size) {
+                    return Err(StorageError::Backend(
+                        "a blob file isn't the size its row says".into(),
+                    ));
+                }
+                Ok(Some(bytes))
+            }
+            Some((body, _)) => Ok(Some(body)),
+            None => Ok(None),
+        }
     }
 
     fn has_blob(&self, vault_id: Id, hash: Hash32) -> Result<bool> {
@@ -1370,13 +1448,38 @@ impl Storage for SqliteStorage {
     }
 
     fn gc_blobs(&self, now: i64, grace_secs: i64) -> Result<usize> {
+        const DUE: &str = "COALESCE(unreferenced_at, uploaded_at) <= ?1 AND NOT EXISTS (SELECT 1 FROM blob_refs WHERE blob_refs.vault_id = blobs.vault_id AND blob_refs.hash = blobs.hash)";
         let conn = self.lock();
         let cutoff = now.saturating_sub(grace_secs);
-        conn.execute(
-            "DELETE FROM blobs WHERE COALESCE(unreferenced_at, uploaded_at) <= ?1 AND NOT EXISTS (SELECT 1 FROM blob_refs WHERE blob_refs.vault_id = blobs.vault_id AND blob_refs.hash = blobs.hash)",
-            params![cutoff],
-        )
-        .map_err(backend)
+        // The files of the rows about to go (bodies in the database go
+        // with their rows).
+        let mut files = Vec::new();
+        if let Some(dir) = &self.blob_dir {
+            let mut stmt = conn
+                .prepare(&format!(
+                    "SELECT vault_id, hash FROM blobs WHERE length(body) = 0 AND size > 0 AND {DUE}"
+                ))
+                .map_err(backend)?;
+            let rows = stmt
+                .query_map(params![cutoff], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
+                })
+                .map_err(backend)?;
+            for row in rows {
+                let (vault, hash) = row.map_err(backend)?;
+                if let (Ok(vault), Some(hash)) = (parse_id(&vault), hash_from(Some(hash))?) {
+                    files.push(Self::blob_file(dir, vault, hash));
+                }
+            }
+        }
+        let n = conn
+            .execute(&format!("DELETE FROM blobs WHERE {DUE}"), params![cutoff])
+            .map_err(backend)?;
+        drop(conn);
+        for file in files {
+            let _ = std::fs::remove_file(file);
+        }
+        Ok(n)
     }
 
     fn log_size(&self) -> Result<u64> {
@@ -1437,6 +1540,10 @@ impl Storage for SqliteStorage {
     }
 
     fn alerts(&self) -> Option<&dyn crate::alerts::AlertStore> {
+        Some(self)
+    }
+
+    fn sessions(&self) -> Option<&dyn crate::sessions::SessionStore> {
         Some(self)
     }
 
