@@ -1,0 +1,187 @@
+{
+  "version": "1.21.2",
+  "userId": "uid-example-0000",
+  "encrypted": false,
+  "vaults": {
+    "share-example-1": {
+      "name": "Personal",
+      "description": "Personal vault",
+      "display": {
+        "color": 0,
+        "icon": 0
+      },
+      "items": [
+        {
+          "itemId": "item-proton-1",
+          "shareId": "share-example-1",
+          "state": 1,
+          "aliasEmail": null,
+          "contentFormatVersion": 1,
+          "createTime": 1700000000,
+          "modifyTime": 1710000000,
+          "pinned": true,
+          "data": {
+            "type": "login",
+            "metadata": {
+              "name": "Example Mail",
+              "note": "Main mailbox.",
+              "itemUuid": "u1"
+            },
+            "extraFields": [
+              {
+                "fieldName": "Recovery code",
+                "type": "hidden",
+                "data": {
+                  "content": "RC-1111-2222"
+                }
+              },
+              {
+                "fieldName": "Second factor",
+                "type": "totp",
+                "data": {
+                  "content": "otpauth://totp/Mail:ada?secret=JBSWY3DPEHPK3PXP"
+                }
+              }
+            ],
+            "content": {
+              "itemEmail": "ada@example.com",
+              "itemUsername": "",
+              "password": "pr0ton-example",
+              "urls": [
+                "https://mail.example.com",
+                "https://example.com"
+              ],
+              "totpUri": "",
+              "passkeys": []
+            }
+          }
+        },
+        {
+          "itemId": "item-proton-2",
+          "shareId": "share-example-1",
+          "state": 1,
+          "aliasEmail": null,
+          "contentFormatVersion": 1,
+          "createTime": 1700000000,
+          "modifyTime": 1700000000,
+          "pinned": false,
+          "data": {
+            "type": "creditCard",
+            "metadata": {
+              "name": "Debit card",
+              "note": "",
+              "itemUuid": "u2"
+            },
+            "extraFields": [],
+            "content": {
+              "cardholderName": "Ada Lovelace",
+              "cardType": 0,
+              "number": "4000056655665556",
+              "verificationNumber": "999",
+              "expirationDate": "2030-04",
+              "pin": "1111"
+            }
+          }
+        },
+        {
+          "itemId": "item-proton-3",
+          "shareId": "share-example-1",
+          "state": 1,
+          "aliasEmail": "shop.x1y2@passmail.example",
+          "contentFormatVersion": 1,
+          "createTime": 1700000000,
+          "modifyTime": 1700000000,
+          "pinned": false,
+          "data": {
+            "type": "alias",
+            "metadata": {
+              "name": "Shopping alias",
+              "note": "",
+              "itemUuid": "u3"
+            },
+            "extraFields": [],
+            "content": {}
+          }
+        },
+        {
+          "itemId": "item-proton-4",
+          "shareId": "share-example-1",
+          "state": 1,
+          "aliasEmail": null,
+          "contentFormatVersion": 1,
+          "createTime": 1700000000,
+          "modifyTime": 1700000000,
+          "pinned": false,
+          "data": {
+            "type": "identity",
+            "metadata": {
+              "name": "Ada",
+              "note": "",
+              "itemUuid": "u4"
+            },
+            "extraFields": [],
+            "content": {
+              "fullName": "Ada Lovelace",
+              "email": "ada@example.com",
+              "phoneNumber": "+44 20 7946 0000",
+              "firstName": "Ada",
+              "middleName": "",
+              "lastName": "Lovelace",
+              "streetAddress": "1 Example Street",
+              "zipOrPostalCode": "N1 1AA",
+              "city": "London",
+              "stateOrProvince": "",
+              "countryOrRegion": "GB",
+              "passportNumber": "000000000",
+              "company": "Analytical Engines"
+            }
+          }
+        },
+        {
+          "itemId": "item-proton-5",
+          "shareId": "share-example-1",
+          "state": 1,
+          "aliasEmail": null,
+          "contentFormatVersion": 1,
+          "createTime": 1700000000,
+          "modifyTime": 1700000000,
+          "pinned": false,
+          "data": {
+            "type": "note",
+            "metadata": {
+              "name": "Locker",
+              "note": "Locker 42, code 1984.",
+              "itemUuid": "u5"
+            },
+            "extraFields": [],
+            "content": {}
+          }
+        },
+        {
+          "itemId": "item-proton-6",
+          "shareId": "share-example-1",
+          "state": 2,
+          "aliasEmail": null,
+          "contentFormatVersion": 1,
+          "createTime": 1700000000,
+          "modifyTime": 1700000000,
+          "pinned": false,
+          "data": {
+            "type": "login",
+            "metadata": {
+              "name": "Trashed",
+              "note": "",
+              "itemUuid": "u6"
+            },
+            "extraFields": [],
+            "content": {
+              "itemEmail": "x@example.com",
+              "password": "x",
+              "urls": []
+            }
+          }
+        }
+      ]
+    }
+  }
+}

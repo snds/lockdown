@@ -43,6 +43,9 @@ use crate::store::{Store, VAULT_RECORD_V, VaultRecord};
 use crate::transparency::SthRef;
 use crate::{Error, Hash32, Id, Result, Timestamp};
 
+mod restore;
+pub use restore::{EXPORT_OPT_IN, ImportSpec, NewAttachment, export_opted_in, is_reserved_field};
+
 /// Who and where a vault belongs to: the ids that go into every piece of
 /// associated data.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]

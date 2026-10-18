@@ -1,0 +1,55 @@
+{
+  "shared_folders": [
+    { "path": "Family", "manage_users": false, "manage_records": true, "can_edit": true, "can_share": false }
+  ],
+  "records": [
+    {
+      "uid": "kQ1x2y3z4A5B6C7D8E9F0g",
+      "title": "Example Bank",
+      "$type": "login",
+      "login": "ada.lovelace",
+      "password": "tr0ub4dor&3",
+      "login_url": "https://bank.example.com",
+      "notes": "Call before travelling.",
+      "custom_fields": {
+        "$oneTimeCode": "otpauth://totp/Example%20Bank:ada?secret=JBSWY3DPEHPK3PXP&issuer=Example%20Bank",
+        "$text:Customer number": "00112233",
+        "$securityQuestion:Memorable word": { "question": "Memorable word", "answer": "lighthouse" }
+      },
+      "folders": [ { "folder": "Finance\\Banks" } ]
+    },
+    {
+      "uid": "kQ1x2y3z4A5B6C7D8E9F0h",
+      "title": "Family card",
+      "$type": "bankCard",
+      "custom_fields": {
+        "$paymentCard": { "cardNumber": "5555555555554444", "cardExpirationDate": "03/2028", "cardSecurityCode": "321" },
+        "$text:cardholderName": "Ada Lovelace",
+        "$pinCode": "4321"
+      },
+      "folders": [ { "shared_folder": "Family" } ]
+    },
+    {
+      "uid": "kQ1x2y3z4A5B6C7D8E9F0i",
+      "title": "Deploy key",
+      "$type": "sshKeys",
+      "login": "deploy",
+      "custom_fields": {
+        "$keyPair": { "publicKey": "ssh-ed25519 AAAAexample deploy@example", "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\nexampleonly\n-----END OPENSSH PRIVATE KEY-----" },
+        "$host": { "hostName": "ci.example.com", "port": "22" }
+      }
+    },
+    {
+      "uid": "kQ1x2y3z4A5B6C7D8E9F0j",
+      "title": "Garage notes",
+      "$type": "encryptedNotes",
+      "custom_fields": { "$note": "Code is the year we moved in." }
+    },
+    {
+      "uid": "kQ1x2y3z4A5B6C7D8E9F0k",
+      "title": "Hobby",
+      "$type": "pamUser",
+      "custom_fields": { "$text:Anything": "kept" }
+    }
+  ]
+}

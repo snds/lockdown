@@ -1,6 +1,6 @@
 [package]
 name = "lockdown-cxf"
-description = "Import and export: FIDO Credential Exchange Format v1.0, CSV; every parser size-capped and hostile-input safe"
+description = "Import and export: FIDO Credential Exchange Format v1.0, CSV, the other managers' files, and Lockdown's own backup format; every parser size-capped and hostile-input safe"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,7 +10,33 @@ repository.workspace = true
 [dependencies]
 lockdown-vault.workspace = true
 lockdown-codes.workspace = true
+lockdown-crypto.workspace = true
+ecosystem-identity.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 data-encoding.workspace = true
 thiserror.workspace = true
+zeroize.workspace = true
+chacha20poly1305.workspace = true
+argon2.workspace = true
+blake3.workspace = true
+hkdf.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+# 1PUX, Proton Pass and Dashlane exports are ZIP files. Only DEFLATE and
+# stored entries are read (the formats use nothing else), every entry is
+# size-capped before and while it inflates. MIT.
+zip = { version = "9.0", default-features = false, features = ["deflate-flate2"] }
+# Bitwarden's password-protected export: AES-256-CBC with HMAC-SHA-256
+# (its "type 2" cipher string) under a PBKDF2-SHA-256 or Argon2id key.
+aes = "0.9"
+cbc = { version = "0.2", features = ["alloc"] }
+pbkdf2 = { version = "0.13", default-features = false, features = ["hmac"] }
+# KeePass KDBX 3.1 / 4 (and the KDBX 4 writer for the exit-path export).
+# MIT; maintained at github.com/sseemayer/keepass-rs.
+keepass = { version = "0.15.3", features = ["save_kdbx4"] }
+
+[dev-dependencies]
+lockdown-crypto = { workspace = true, features = ["insecure-test-kdf"] }
+ecosystem-identity = { workspace = true, features = ["insecure-test-kdf"] }
+lockdown-vault.workspace = true

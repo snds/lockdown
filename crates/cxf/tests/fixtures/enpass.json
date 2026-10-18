@@ -1,0 +1,256 @@
+{
+  "folders": [
+    {
+      "icon": "1008",
+      "parent_uuid": "",
+      "title": "Home",
+      "updated_at": 1700000000,
+      "uuid": "f0f0f0f0-0000-4000-8000-000000000001"
+    }
+  ],
+  "items": [
+    {
+      "archived": 0,
+      "auto_submit": 1,
+      "category": "login",
+      "createdAt": 1690000000,
+      "favorite": 1,
+      "fields": [
+        {
+          "deleted": 0,
+          "label": "Username",
+          "order": 1,
+          "sensitive": 0,
+          "type": "username",
+          "uid": 10,
+          "updated_at": 1690000000,
+          "value": "ada",
+          "value_updated_at": 1690000000
+        },
+        {
+          "deleted": 0,
+          "label": "E-mail",
+          "order": 2,
+          "sensitive": 0,
+          "type": "email",
+          "uid": 12,
+          "updated_at": 1690000000,
+          "value": "ada@example.com",
+          "value_updated_at": 1690000000
+        },
+        {
+          "deleted": 0,
+          "label": "Password",
+          "order": 3,
+          "sensitive": 1,
+          "type": "password",
+          "uid": 11,
+          "updated_at": 1690000000,
+          "value": "enp4ss-example",
+          "value_updated_at": 1690000000
+        },
+        {
+          "deleted": 0,
+          "label": "Website",
+          "order": 4,
+          "sensitive": 0,
+          "type": "url",
+          "uid": 13,
+          "updated_at": 1690000000,
+          "value": "https://cloud.example.com",
+          "value_updated_at": 1690000000
+        },
+        {
+          "deleted": 0,
+          "label": "One-time code",
+          "order": 5,
+          "sensitive": 0,
+          "type": "totp",
+          "uid": 14,
+          "updated_at": 1690000000,
+          "value": "JBSWY3DPEHPK3PXP",
+          "value_updated_at": 1690000000
+        },
+        {
+          "deleted": 0,
+          "label": "Additional details",
+          "order": 6,
+          "sensitive": 0,
+          "type": "section",
+          "uid": 15,
+          "updated_at": 1690000000,
+          "value": "",
+          "value_updated_at": 1690000000
+        },
+        {
+          "deleted": 0,
+          "label": "Recovery PIN",
+          "order": 7,
+          "sensitive": 1,
+          "type": "pin",
+          "uid": 16,
+          "updated_at": 1690000000,
+          "value": "8642",
+          "value_updated_at": 1690000000
+        },
+        {
+          "deleted": 1,
+          "label": "Old field",
+          "order": 8,
+          "sensitive": 0,
+          "type": "text",
+          "uid": 17,
+          "updated_at": 1690000000,
+          "value": "removed",
+          "value_updated_at": 1690000000
+        }
+      ],
+      "attachments": [
+        {
+          "data": "cmVjZWlwdDoga2V0dGxlLCAxIHVuaXQ=",
+          "kind": "text/plain",
+          "name": "receipt.txt",
+          "order": 1,
+          "size": 23,
+          "uuid": "a1a1a1a1-0000-4000-8000-000000000001"
+        }
+      ],
+      "folders": [
+        "f0f0f0f0-0000-4000-8000-000000000001"
+      ],
+      "icon": {
+        "fav": "cloud.example.com",
+        "image": {
+          "file": "misc/login"
+        },
+        "type": 1,
+        "uuid": ""
+      },
+      "note": "Family storage plan.",
+      "subtitle": "ada",
+      "template_type": "login.default",
+      "title": "Example Cloud",
+      "trashed": 0,
+      "updated_at": 1700000000,
+      "uuid": "e1e1e1e1-0000-4000-8000-000000000001"
+    },
+    {
+      "archived": 1,
+      "category": "creditcard",
+      "createdAt": 1690000000,
+      "favorite": 0,
+      "fields": [
+        {
+          "deleted": 0,
+          "label": "Cardholder",
+          "sensitive": 0,
+          "type": "ccName",
+          "value": "Ada Lovelace"
+        },
+        {
+          "deleted": 0,
+          "label": "Number",
+          "sensitive": 0,
+          "type": "ccNumber",
+          "value": "378282246310005"
+        },
+        {
+          "deleted": 0,
+          "label": "CVC",
+          "sensitive": 1,
+          "type": "ccCvc",
+          "value": "1234"
+        },
+        {
+          "deleted": 0,
+          "label": "Expiry date",
+          "sensitive": 0,
+          "type": "ccExpiry",
+          "value": "11/2027"
+        },
+        {
+          "deleted": 0,
+          "label": "PIN",
+          "sensitive": 1,
+          "type": "ccPin",
+          "value": "0000"
+        }
+      ],
+      "folders": [],
+      "note": "",
+      "template_type": "creditcard.default",
+      "title": "Amex",
+      "trashed": 0,
+      "updated_at": 1700000000,
+      "uuid": "e1e1e1e1-0000-4000-8000-000000000002"
+    },
+    {
+      "archived": 0,
+      "category": "computer",
+      "createdAt": 1690000000,
+      "favorite": 0,
+      "fields": [
+        {
+          "deleted": 0,
+          "label": "Station name",
+          "sensitive": 0,
+          "type": "text",
+          "value": "home-net-5g"
+        },
+        {
+          "deleted": 0,
+          "label": "Password",
+          "sensitive": 1,
+          "type": "password",
+          "value": "w1f1-example"
+        },
+        {
+          "deleted": 0,
+          "label": "Security",
+          "sensitive": 0,
+          "type": "text",
+          "value": "WPA3 Personal"
+        }
+      ],
+      "folders": [],
+      "note": "",
+      "template_type": "computer.wifi",
+      "title": "Home 5G",
+      "trashed": 0,
+      "updated_at": 1700000000,
+      "uuid": "e1e1e1e1-0000-4000-8000-000000000003"
+    },
+    {
+      "archived": 0,
+      "category": "note",
+      "favorite": 0,
+      "fields": [],
+      "folders": [],
+      "note": "Ideas for the garden.",
+      "template_type": "note.default",
+      "title": "Garden",
+      "trashed": 0,
+      "uuid": "e1e1e1e1-0000-4000-8000-000000000004"
+    },
+    {
+      "archived": 0,
+      "category": "login",
+      "favorite": 0,
+      "fields": [
+        {
+          "deleted": 0,
+          "label": "Username",
+          "sensitive": 0,
+          "type": "username",
+          "value": "bin"
+        }
+      ],
+      "folders": [],
+      "note": "",
+      "template_type": "login.default",
+      "title": "In the trash",
+      "trashed": 1,
+      "uuid": "e1e1e1e1-0000-4000-8000-000000000005"
+    }
+  ]
+}

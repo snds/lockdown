@@ -11,16 +11,26 @@
 //! - [`csv`] — a small, never-panicking RFC 4180 reader and an
 //!   injection-safe writer, with a login importer over the common header
 //!   names. The reader is one pure function over bytes, the fuzz target.
+//! - [`import`] — the other managers' files (1Password 1PUX, Bitwarden JSON
+//!   plain and password-protected, Proton Pass, KeePass KDBX, Dashlane,
+//!   Keeper, LastPass, Enpass), each read into the same items through
+//!   [`build::Builder`], with what it couldn't carry in words.
+//! - [`archive`] — Lockdown's own backup format (`docs/format/backup-v1.md`):
+//!   the JSON document and the password-sealed container around it.
+//! - [`kdbx_out`] — a KeePass KDBX 4 file of the vault, the exit path.
 //!
 //! Every parser is size-capped by [`Limits`] and treats the file as hostile.
-//! The Lockdown archive (`.lockdown`) and the other-manager importers
-//! (1PUX, Bitwarden JSON, KDBX, …) are not built yet.
 
+pub mod archive;
+pub mod build;
 pub mod convert;
 pub mod csv;
+pub mod import;
+pub mod kdbx_out;
 pub mod model;
+mod unzip;
 
-pub use convert::{ImportedItem, from_items, to_items};
+pub use convert::{ImportedAttachment, ImportedItem, Kept, from_items, to_items};
 pub use model::{Account, Credential, EditableField, Header, Item};
 
 /// What can go wrong on import or export.
@@ -58,6 +68,15 @@ pub enum CxfError {
     /// The feature exists in the plan but not in this build yet.
     #[error("not supported here: {0}")]
     Unsupported(String),
+    /// The file is locked with a password and none was given.
+    #[error("this file is protected with a password; type it to open the file")]
+    PasswordNeeded,
+    /// The password didn't open the file (or the file was changed).
+    #[error("that password didn't open the file, or the file was changed after it was made")]
+    WrongPassword,
+    /// A sealed file failed its check part-way: changed or cut short.
+    #[error("the file was changed or cut short after it was made: {0}")]
+    Tampered(String),
 }
 
 /// The crate's result type.
@@ -74,6 +93,12 @@ pub struct Limits {
     pub max_field_bytes: usize,
     /// Credentials per CXF item.
     pub max_credentials_per_item: usize,
+    /// Bytes per attached file.
+    pub max_attachment_bytes: usize,
+    /// Entries in a ZIP file.
+    pub max_entries: usize,
+    /// Bytes of everything a ZIP file unpacks to, together.
+    pub max_unpacked_bytes: usize,
 }
 
 impl Default for Limits {
@@ -83,6 +108,21 @@ impl Default for Limits {
             max_items: 100_000,
             max_field_bytes: 64 * 1024,
             max_credentials_per_item: 64,
+            max_attachment_bytes: 32 * 1024 * 1024,
+            max_entries: 20_000,
+            max_unpacked_bytes: 256 * 1024 * 1024,
+        }
+    }
+}
+
+impl Limits {
+    /// The caps for a Lockdown backup, which carries attachments inline:
+    /// a bigger file, the same caps on everything inside it.
+    pub fn backup() -> Self {
+        Self {
+            max_bytes: 512 * 1024 * 1024,
+            max_unpacked_bytes: 512 * 1024 * 1024,
+            ..Self::default()
         }
     }
 }

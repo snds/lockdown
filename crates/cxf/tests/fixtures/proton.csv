@@ -1,0 +1,3 @@
+type,name,url,email,username,password,note,totp,createTime,modifyTime,vault
+login,Example Mail,"https://mail.example.com,https://example.com",ada@example.com,,pr0ton-example,Main mailbox.,,1700000000,1710000000,Personal
+note,Locker,,,,,"Locker 42, code 1984.",,1700000000,1700000000,Personal

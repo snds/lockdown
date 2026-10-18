@@ -1,0 +1,28 @@
+url,username,password,totp,extra,name,grouping,fav
+https://shop.example.com/account,ada@example.com,"p,ss""word",JBSWY3DPEHPK3PXP,Bought the kettle here.,Example Shop,Shopping\Home,1
+http://sn,,,,"NoteType:Credit Card
+Language:en-US
+Name on Card:Ada Lovelace
+Type:Visa
+Number:4111111111111111
+Security Code:123
+Start Date:January,2024
+Expiration Date:September,2029
+Notes:Use for travel.
+Second line of the note.",Travel card,Finance,0
+http://sn,,,,"NoteType:Wi-Fi Password
+Language:en-US
+SSID:home-net
+Password:k7Hq3mWx9rTa4nPe
+Connection Type:
+Authentication:WPA2 Personal
+Notes:",Home Wi-Fi,,0
+http://sn,,,,"Plain secure note.
+Nothing typed about it.",Thoughts,,0
+http://sn,,,,"NoteType:Health Insurance
+Language:en-US
+Company:Example Health
+Policy Type:Family
+Member ID:HX-0000
+Notes:",Health plan,,0
+http://,,=SUM(1+1),,,Formula row,,0
