@@ -423,7 +423,8 @@ pub struct ItemsSince {
 
 // --- account alerts (docs/plan/13-security-center.md) ----------------------
 
-/// What an account alert is about.
+/// What an account alert is about. Readers treat a kind they don't know
+/// as [`AlertKind::Other`] and skip it (D62).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AlertKind {
@@ -431,6 +432,13 @@ pub enum AlertKind {
     NewDevice,
     /// The account's email address appeared in a newly known breach.
     EmailBreach,
+    /// A security key or passkey was added to the account's sign-in.
+    SecurityKeyAdded,
+    /// One was removed.
+    SecurityKeyRemoved,
+    /// A kind this build doesn't know.
+    #[serde(other)]
+    Other,
 }
 
 /// A breach an address appeared in, as the breach feed names it.
@@ -463,6 +471,9 @@ pub struct AccountAlert {
     pub breach: Option<BreachNotice>,
     /// Whether a device of the account dismissed it.
     pub dismissed: bool,
+    /// For a security key change: the key's name, as the person gave it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_name: Option<String>,
 }
 
 /// `GET /v1/account/alerts?since=N`: the account's alerts after `N` that

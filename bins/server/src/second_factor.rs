@@ -25,6 +25,18 @@
 //! The same store keeps the crown jewels held back with emergency grants
 //! (`legacy`).
 //!
+//! **Email approval.** On a server with SMTP (`--smtp-url`), an account
+//! without keys whose login is an email address gets the same wait from a
+//! device it has never seen, answered by a one-time link mailed to that
+//! address instead of a key (docs/plan/25-self-host-2.md §5): the link's
+//! page shows the device and asks for Approve or "This wasn't me", so a
+//! mail scanner that fetches links approves nothing. The link carries a
+//! random code; the server keeps its BLAKE3 hash. The account's first
+//! device has nothing to be approved from and isn't asked.
+//!
+//! **Key changes are announced.** Adding or removing a key records an
+//! account alert every device sees and, with SMTP, emails the account.
+//!
 //! What is stored: per account, each key's credential id, COSE public key,
 //! algorithm, counter, name and dates; and the stretching parameters. What
 //! is in memory only: sign-ins and registrations waiting for a key, for
@@ -268,6 +280,8 @@ struct WaitingSignIn {
     origins: Vec<String>,
     expires_at: i64,
     answered: bool,
+    /// For an email approval: BLAKE3 of the link's code.
+    email_code: Option<[u8; 32]>,
 }
 
 /// A key registration started by a session.
@@ -373,6 +387,7 @@ pub(crate) fn begin(
         timeout_ms: TIMEOUT_MS,
         expires_at: now + PENDING_SECS,
         device_label,
+        email_to: None,
     };
     let profile_id = account.profile_id;
     {
@@ -400,6 +415,7 @@ pub(crate) fn begin(
                 origins,
                 expires_at: now + PENDING_SECS,
                 answered: false,
+                email_code: None,
             },
         );
     }
@@ -450,6 +466,7 @@ pub async fn request(
         expires_at: w.expires_at,
         device_label: crate::sessions::client_label(w.user_agent.as_deref())
             .unwrap_or_else(|| "a new device".into()),
+        email_to: w.email_code.map(|_| crate::mail::masked(&w.account.login)),
     }))
 }
 
@@ -466,7 +483,7 @@ pub async fn answer(
         .get_mut(&body.pending_id)
         .filter(|w| w.expires_at > now && !w.answered)
         .ok_or_else(|| ApiError::not_found("that sign-in isn't waiting any more; sign in again"))?;
-    if !w.allow.iter().any(|a| same(a, &body.credential_id)) {
+    if w.email_code.is_some() || !w.allow.iter().any(|a| same(a, &body.credential_id)) {
         return Err(ApiError::forbidden("that key isn't one of this account's"));
     }
     let store = store(&state)?;
@@ -533,6 +550,249 @@ pub async fn poll(
     Ok(Cbor(SecondFactorStatus {
         session: Some(reply),
     }))
+}
+
+// --- approval by email ------------------------------------------------------------------
+
+/// How long an emailed approval link works.
+pub const EMAIL_SECS: i64 = 15 * 60;
+
+/// Whether a sign-in by `device_id` waits for the account's email: SMTP is
+/// set with approval on, the login is an email address, the account has a
+/// device already and has never seen this one.
+pub(crate) fn email_required(
+    state: &AppState,
+    account: &Account,
+    device_id: Id,
+) -> ApiResult<bool> {
+    let Some(mail) = &state.mail else {
+        return Ok(false);
+    };
+    if !mail.verify_new_devices || !crate::breach_monitor::looks_like_email(&account.login) {
+        return Ok(false);
+    }
+    if state
+        .storage
+        .device_pub(account.account_id, device_id)?
+        .is_some()
+    {
+        return Ok(false);
+    }
+    let Some(alerts) = state.storage.alerts() else {
+        return Ok(false);
+    };
+    Ok(alerts.device_count(account.account_id)? > 0)
+}
+
+/// Starts the wait for the account's email: the link goes out, the reply
+/// is a waiting sign-in the device polls like a key's.
+pub(crate) fn begin_email(
+    state: &AppState,
+    account: Account,
+    device_id: Id,
+    device_pub: [u8; 32],
+    peer: &Peer,
+    user_agent: Option<String>,
+) -> ApiResult<LoginFinishReply> {
+    let mail = state
+        .mail
+        .as_ref()
+        .ok_or_else(|| ApiError::internal("this server sends no email"))?;
+    let now = state.now();
+    if !mail.take_verification(account.account_id, now) {
+        return Err(ApiError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            ErrorCode::RateLimited,
+            "this account was sent several approval emails in the last hour; use one of those, or try again later",
+        ));
+    }
+    let code = random()?;
+    let poll_key = random()?;
+    let pending_id = Id::new();
+    let device_label = crate::sessions::client_label(user_agent.as_deref())
+        .unwrap_or_else(|| "a new device".into());
+    let request = SecondFactorRequest {
+        pending_id,
+        challenge: ByteBuf::from(random()?.to_vec()),
+        rp_id: String::new(),
+        allow: Vec::new(),
+        timeout_ms: TIMEOUT_MS,
+        expires_at: now + EMAIL_SECS,
+        device_label: device_label.clone(),
+        email_to: Some(crate::mail::masked(&account.login)),
+    };
+    let link = format!(
+        "{}/approve/{pending_id}?code={}",
+        mail.public_url,
+        data_encoding::HEXLOWER.encode(&code)
+    );
+    let facts = crate::mail::SignInFacts {
+        device: device_label,
+        address: peer.0.clone(),
+        at: now,
+    };
+    let message = crate::mail::verify_device(
+        &account.login,
+        &facts,
+        &link,
+        &mail.public_url,
+        EMAIL_SECS / 60,
+    );
+    let profile_id = account.profile_id;
+    {
+        let mut waiting = lock(&state.relays.second_factor.sign_ins);
+        waiting.retain(|_, w| w.expires_at > now);
+        if waiting.len() >= PENDING_MAX {
+            return Err(ApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ErrorCode::RateLimited,
+                "too many sign-ins are waiting; try again in a minute",
+            ));
+        }
+        waiting.insert(
+            pending_id,
+            WaitingSignIn {
+                account,
+                device_id,
+                device_pub,
+                peer: peer.0.clone(),
+                user_agent,
+                challenge: [0; 32],
+                poll_key,
+                allow: Vec::new(),
+                rp_id: String::new(),
+                origins: Vec::new(),
+                expires_at: now + EMAIL_SECS,
+                answered: false,
+                email_code: Some(*blake3::hash(&code).as_bytes()),
+            },
+        );
+    }
+    mail.outbox.queue(message);
+    Ok(LoginFinishReply {
+        token: String::new(),
+        expires_at: 0,
+        profile_id,
+        second_factor: Some(SecondFactorPending {
+            pending_id,
+            poll_key: ByteBuf::from(poll_key.to_vec()),
+            request,
+        }),
+    })
+}
+
+/// `?code=…` on the approval link.
+#[derive(serde::Deserialize, Default)]
+pub struct ApproveQuery {
+    /// The link's code, hex.
+    #[serde(default)]
+    pub code: String,
+}
+
+fn code_hash(code: &str) -> Option<[u8; 32]> {
+    let bytes = data_encoding::HEXLOWER_PERMISSIVE
+        .decode(code.trim().as_bytes())
+        .ok()?;
+    (bytes.len() == 32).then(|| *blake3::hash(&bytes).as_bytes())
+}
+
+fn gone_page() -> axum::response::Response {
+    crate::pages::page(
+        StatusCode::NOT_FOUND,
+        "This link has run out",
+        "<h1>This link has run out</h1><p>It was used, it ran out after fifteen minutes, or the sign-in it was for stopped. If you are signing in, start again on that device; a new link comes.</p>",
+    )
+}
+
+/// `GET /approve/{pending}?code=…`: what the person sees when they open
+/// the emailed link: the device, and a choice. Opening it changes nothing.
+pub async fn approve_page(
+    State(state): State<Arc<AppState>>,
+    peer: Peer,
+    Path(pending_id): Path<Id>,
+    axum::extract::Query(q): axum::extract::Query<ApproveQuery>,
+) -> axum::response::Response {
+    if brake(&state, &peer, None).is_err() {
+        return crate::pages::page(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Slow down",
+            "<h1>Slow down</h1><p>Too many tries from here; wait a minute.</p>",
+        );
+    }
+    let now = state.now();
+    let waiting = lock(&state.relays.second_factor.sign_ins);
+    let Some(w) = waiting.get(&pending_id).filter(|w| {
+        w.expires_at > now
+            && !w.answered
+            && w.email_code.is_some()
+            && code_hash(&q.code).is_some_and(|h| w.email_code.is_some_and(|c| same(&c, &h)))
+    }) else {
+        return gone_page();
+    };
+    let device = crate::sessions::client_label(w.user_agent.as_deref())
+        .unwrap_or_else(|| "a new device".into());
+    let esc = crate::pages::esc;
+    let body = format!(
+        r#"<h1>A new device wants to sign in</h1><div class="card"><p>Account: <b>{}</b></p><p>Device: <b>{}</b></p><p>From: <span class="mono">{}</span></p><p>Asked: {}</p></div><p>Approve it only if you are signing in on that device right now.</p><form method="post" action="/approve/{pending_id}" class="row"><input type="hidden" name="code" value="{}"><button name="answer" value="approve">Approve</button><button name="answer" value="deny" class="danger">This wasn't me</button></form>"#,
+        esc(&w.account.login),
+        esc(&device),
+        esc(&w.peer),
+        crate::mail::when(w.expires_at - EMAIL_SECS),
+        esc(q.code.trim()),
+    );
+    crate::pages::page(StatusCode::OK, "Approve a new device", &body)
+}
+
+/// `POST /approve/{pending}` (a form: `code`, `answer` = `approve` or
+/// `deny`): the person's choice. Approve lets the device collect its
+/// session; "This wasn't me" stops the sign-in.
+pub async fn approve_answer(
+    State(state): State<Arc<AppState>>,
+    peer: Peer,
+    Path(pending_id): Path<Id>,
+    body: axum::body::Bytes,
+) -> axum::response::Response {
+    if brake(&state, &peer, None).is_err() {
+        return crate::pages::page(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Slow down",
+            "<h1>Slow down</h1><p>Too many tries from here; wait a minute.</p>",
+        );
+    }
+    let fields = crate::pages::form_fields(&body);
+    let code = fields.get("code").map(String::as_str).unwrap_or_default();
+    let approve = match fields.get("answer").map(String::as_str) {
+        Some("approve") => true,
+        Some("deny") => false,
+        _ => return gone_page(),
+    };
+    let now = state.now();
+    let mut waiting = lock(&state.relays.second_factor.sign_ins);
+    let ok = waiting.get(&pending_id).is_some_and(|w| {
+        w.expires_at > now
+            && !w.answered
+            && code_hash(code).is_some_and(|h| w.email_code.is_some_and(|c| same(&c, &h)))
+    });
+    if !ok {
+        return gone_page();
+    }
+    if approve {
+        if let Some(w) = waiting.get_mut(&pending_id) {
+            w.answered = true;
+        }
+        crate::pages::page(
+            StatusCode::OK,
+            "Approved",
+            "<h1>Approved</h1><p>The device carries on signing in by itself. You can close this page.</p>",
+        )
+    } else {
+        waiting.remove(&pending_id);
+        crate::pages::page(
+            StatusCode::OK,
+            "Sign-in stopped",
+            "<h1>Sign-in stopped</h1><p>That device won't be let in. Someone knows your account password: change it from one of your devices (Settings, then Account). Your vault stays locked without your Secret Key, which the server never had.</p>",
+        )
+    }
 }
 
 // --- managing keys -------------------------------------------------------------------
@@ -700,7 +960,39 @@ pub async fn finish(
     store(&state)?
         .add_key(w.account_id, &row)
         .map_err(|_| ApiError::bad_request("that key is already on the account"))?;
+    key_changed(&state, w.account_id, true, &row.name)?;
     Ok(Cbor(row.info()))
+}
+
+/// A key was added or removed: an alert every device of the account sees,
+/// and, with SMTP, an email to the account.
+fn key_changed(state: &AppState, account_id: Id, added: bool, name: &str) -> ApiResult<()> {
+    let now = state.now();
+    if let Some(alerts) = state.storage.alerts() {
+        let kind = if added {
+            lockdown_sync::wire::AlertKind::SecurityKeyAdded
+        } else {
+            lockdown_sync::wire::AlertKind::SecurityKeyRemoved
+        };
+        alerts.record_note_alert(account_id, kind, now, name)?;
+        state.live.notify(crate::live::Change::account(
+            account_id,
+            lockdown_sync::wire::LiveKind::Alerts,
+        ));
+    }
+    if let Some(mail) = &state.mail
+        && let Some(account) = state.storage.account(account_id)?
+        && crate::breach_monitor::looks_like_email(&account.login)
+    {
+        mail.outbox.queue(crate::mail::security_key_changed(
+            &account.login,
+            added,
+            name,
+            now,
+            &mail.public_url,
+        ));
+    }
+    Ok(())
 }
 
 /// `POST /v1/account/security-keys/{id}/remove`.
@@ -713,9 +1005,17 @@ pub async fn remove(
     let credential_id = data_encoding::BASE64URL_NOPAD
         .decode(id.as_bytes())
         .map_err(|_| ApiError::bad_request("that isn't a key id"))?;
-    if !store(&state)?.remove_key(session.account_id, &credential_id)? {
+    let store = store(&state)?;
+    let name = store
+        .keys(session.account_id)?
+        .into_iter()
+        .find(|k| same(&k.credential_id, &credential_id))
+        .map(|k| k.name)
+        .unwrap_or_default();
+    if !store.remove_key(session.account_id, &credential_id)? {
         return Err(ApiError::not_found("that key isn't on the account"));
     }
+    key_changed(&state, session.account_id, false, &name)?;
     Ok(Cbor(list_of(&state, session.account_id, &headers)?))
 }
 

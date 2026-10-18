@@ -7,6 +7,8 @@
 //!   own sign-in, and a device never sees one from before it joined.
 //! - **Email breach.** The breach monitor ([`crate::breach_monitor`])
 //!   records one per breach it learns of for the account's address, once.
+//! - **Security key added or removed.** Every device sees it, with the
+//!   key's name (docs/plan/25-self-host-2.md §5).
 //!
 //! An alert dismissed on one device is dismissed for the account, so the
 //! person deals with it once. The server learns nothing new by keeping
@@ -36,6 +38,19 @@ pub trait AlertStore: Send + Sync {
     /// The alerts after `since` that concern `device_id`: never its own new
     /// sign-in, never a new-device alert from before it joined.
     fn alerts_for(&self, account_id: Id, device_id: Id, since: u64) -> Result<Vec<AccountAlert>>;
+    /// Records an alert that carries a short note (a security key's name).
+    fn record_note_alert(
+        &self,
+        account_id: Id,
+        kind: AlertKind,
+        at: i64,
+        note: &str,
+    ) -> Result<u64> {
+        let _ = (account_id, kind, at, note);
+        Err(StorageError::Backend(
+            "this server keeps no such alerts".into(),
+        ))
+    }
     /// The newest `seq` the account has (0 for none).
     fn alert_seq(&self, account_id: Id) -> Result<u64>;
     /// Marks an alert dismissed for the account; `false` when there is none.
@@ -67,6 +82,9 @@ fn kind_name(kind: AlertKind) -> &'static str {
     match kind {
         AlertKind::NewDevice => "new_device",
         AlertKind::EmailBreach => "email_breach",
+        AlertKind::SecurityKeyAdded => "security_key_added",
+        AlertKind::SecurityKeyRemoved => "security_key_removed",
+        AlertKind::Other => "other",
     }
 }
 
@@ -74,6 +92,8 @@ fn kind_from(name: &str) -> Result<AlertKind> {
     match name {
         "new_device" => Ok(AlertKind::NewDevice),
         "email_breach" => Ok(AlertKind::EmailBreach),
+        "security_key_added" => Ok(AlertKind::SecurityKeyAdded),
+        "security_key_removed" => Ok(AlertKind::SecurityKeyRemoved),
         other => Err(StorageError::Backend(format!(
             "an alert of an unknown kind '{other}' is stored"
         ))),
@@ -103,13 +123,26 @@ pub(crate) fn create_tables(conn: &Conn<'_>) -> std::result::Result<(), DbError>
              address    TEXT NOT NULL,
              PRIMARY KEY (account_id, address)
          );",
-    )
+    )?;
+    // A short note beside an alert (a security key's name), added in place.
+    if !conn.columns("account_alerts")?.iter().any(|c| c == "note") {
+        conn.execute_batch("ALTER TABLE account_alerts ADD COLUMN note TEXT")?;
+    }
+    Ok(())
 }
 
-type AlertRow = (i64, String, i64, Option<String>, Option<Vec<u8>>, i64);
+type AlertRow = (
+    i64,
+    String,
+    i64,
+    Option<String>,
+    Option<Vec<u8>>,
+    i64,
+    Option<String>,
+);
 
 fn alert_from(row: AlertRow) -> Result<AccountAlert> {
-    let (seq, kind, at, device, breach, dismissed) = row;
+    let (seq, kind, at, device, breach, dismissed, note) = row;
     Ok(AccountAlert {
         seq: u64::try_from(seq).unwrap_or(0),
         kind: kind_from(&kind)?,
@@ -126,6 +159,7 @@ fn alert_from(row: AlertRow) -> Result<AccountAlert> {
             })
             .transpose()?,
         dismissed: dismissed != 0,
+        key_name: note,
     })
 }
 
@@ -180,7 +214,7 @@ impl AlertStore for SqlStorage {
             .copied()
             .unwrap_or(i64::MAX);
         let rows: Vec<AlertRow> = conn.query_map(
-            "SELECT seq, kind, at, device_id, breach, dismissed FROM account_alerts
+            "SELECT seq, kind, at, device_id, breach, dismissed, note FROM account_alerts
              WHERE account_id = ?1 AND seq > ?2 ORDER BY seq",
             params![
                 account_id.to_string(),
@@ -194,6 +228,7 @@ impl AlertStore for SqlStorage {
                     r.get(3)?,
                     r.get(4)?,
                     r.get(5)?,
+                    r.get(6)?,
                 ))
             },
         )?;
@@ -212,6 +247,28 @@ impl AlertStore for SqlStorage {
             out.push(alert);
         }
         Ok(out)
+    }
+
+    fn record_note_alert(
+        &self,
+        account_id: Id,
+        kind: AlertKind,
+        at: i64,
+        note: &str,
+    ) -> Result<u64> {
+        let note: String = note.chars().filter(|c| !c.is_control()).take(64).collect();
+        let tx = self.begin()?;
+        let seq: i64 = tx.query_row(
+            "SELECT COALESCE(MAX(seq), 0) + 1 FROM account_alerts WHERE account_id = ?1",
+            params![account_id.to_string()],
+            |r| r.get(0),
+        )?;
+        tx.execute(
+            "INSERT INTO account_alerts (account_id, seq, kind, at, note) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![account_id.to_string(), seq, kind_name(kind), at, note],
+        )?;
+        tx.commit()?;
+        Ok(u64::try_from(seq).unwrap_or(0))
     }
 
     fn alert_seq(&self, account_id: Id) -> Result<u64> {

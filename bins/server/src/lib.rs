@@ -22,6 +22,11 @@
 //! - [`breach_range`] — an operator's own breach feed, by k-anonymity
 //! - [`sessions`] — one row per session token, so a session can be ended
 //! - [`live`] — the live channel: content-free "something changed" events
+//! - [`mail`] — SMTP, the outbox and the plain templates the server sends
+//! - [`pages`] — the server's own script-free HTML pages
+//! - [`admin`] — the operator's admin page and invites
+//! - [`drills`] — scheduled backups and restore drills
+//! - [`kit`] — the operator's printable recovery kit with the Backup Key
 //! - [`tls`] — TLS on the server itself, hybrid post-quantum first
 //! - [`client_addr`] — the client's address behind trusted reverse proxies
 //! - [`backup`] — the encrypted snapshot under the person's Backup Key
@@ -48,9 +53,13 @@ pub mod breach_monitor;
 pub mod breach_range;
 pub mod client_addr;
 pub mod db;
+pub mod drills;
 pub mod keys;
+pub mod kit;
 pub mod legacy;
 pub mod live;
+pub mod mail;
+pub mod pages;
 pub mod ratelimit;
 pub mod relay;
 pub mod s3;
@@ -235,6 +244,11 @@ pub struct AppState {
     pub live: Arc<live::Notifier>,
     /// Device links, phrase checks and sign-ins waiting for a key (`relay`).
     pub relays: relay::Relays,
+    /// Email, when the operator set up SMTP (`mail`).
+    pub mail: Option<mail::MailSettings>,
+    /// The operator's admin page: its key's sign-ins and the schedule's
+    /// state (`admin`).
+    pub admin: admin::AdminState,
 }
 
 impl std::fmt::Debug for AppState {
@@ -260,6 +274,8 @@ impl AppState {
             clock: Box::new(|| lockdown_vault::Timestamp::now().0),
             live: Arc::new(live::Notifier::new()),
             relays: relay::Relays::default(),
+            mail: None,
+            admin: admin::AdminState::default(),
         }
     }
 
@@ -459,6 +475,11 @@ pub fn app(state: Arc<AppState>) -> Router {
             "/v1/account/monitored",
             get(api::monitored).put(api::set_monitored),
         )
+        .route(
+            "/approve/{pending}",
+            get(second_factor::approve_page).post(second_factor::approve_answer),
+        )
+        .merge(admin::routes())
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             live::notify_writes,

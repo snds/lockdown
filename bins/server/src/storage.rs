@@ -331,6 +331,11 @@ pub trait Storage: Send + Sync {
     fn account_security(&self) -> Option<&dyn crate::second_factor::AccountSecurityStore> {
         None
     }
+    /// The SQL store itself, when this is one (the admin page, invites,
+    /// scheduled backups and drills read it directly).
+    fn sql(&self) -> Option<&SqlStorage> {
+        None
+    }
 }
 
 /// Where attachment bodies live when they aren't in the database: files
@@ -417,6 +422,9 @@ impl BlobBodies for BlobDir {
 pub struct SqlStorage {
     path: Option<PathBuf>,
     db: Db,
+    /// How the Postgres database was reached, when it is one (a drill
+    /// makes its scratch schema beside it).
+    pg: Option<PgOptions>,
     /// Where attachment bodies live when not in the database.
     bodies: Option<Arc<dyn BlobBodies>>,
 }
@@ -672,11 +680,12 @@ impl SqlStorage {
     /// The store in a Postgres database (`--database-url`), creating its
     /// tables when they are not there.
     pub fn open_postgres(options: PgOptions) -> Result<Self> {
-        let db = Db::postgres(options)?;
+        let db = Db::postgres(options.clone())?;
         create_schema(&db.conn())?;
         Ok(Self {
             path: None,
             db,
+            pg: Some(options),
             bodies: None,
         })
     }
@@ -710,6 +719,7 @@ impl SqlStorage {
         Ok(Self {
             path,
             db,
+            pg: None,
             bodies: None,
         })
     }
@@ -737,6 +747,11 @@ impl SqlStorage {
     /// Which database holds the store.
     pub fn dialect(&self) -> Dialect {
         self.db.dialect()
+    }
+
+    /// How the Postgres database is reached, when the store is one.
+    pub fn pg_options(&self) -> Option<&PgOptions> {
+        self.pg.as_ref()
     }
 
     /// The SQLite file, when the store is one.
@@ -1665,6 +1680,10 @@ impl Storage for SqlStorage {
     }
 
     fn account_security(&self) -> Option<&dyn crate::second_factor::AccountSecurityStore> {
+        Some(self)
+    }
+
+    fn sql(&self) -> Option<&SqlStorage> {
         Some(self)
     }
 }

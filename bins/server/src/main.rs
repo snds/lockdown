@@ -86,6 +86,39 @@ enum Command {
     /// someone who lost every key and every signed-in device.
     #[command(subcommand)]
     SecurityKeys(SecurityKeysCommand),
+    /// The operator's admin page at `/admin`: its key, and invites.
+    #[command(subcommand)]
+    Admin(AdminCommand),
+}
+
+#[derive(Subcommand, Debug)]
+enum AdminCommand {
+    /// Sets the operator key that opens `/admin`: a new random one, printed
+    /// once, or with `--stdin` one you type (16 characters or more). Only
+    /// its hash is kept.
+    SetKey {
+        #[command(flatten)]
+        store: StoreArgs,
+        /// Read the key from standard input instead of making one.
+        #[arg(long)]
+        stdin: bool,
+    },
+    /// Removes the operator key: `/admin` is closed until a new one is set.
+    ClearKey {
+        #[command(flatten)]
+        store: StoreArgs,
+    },
+    /// Lets one login name register while sign-ups are closed.
+    Invite {
+        #[command(flatten)]
+        store: StoreArgs,
+        /// The login name.
+        #[arg(long)]
+        login: String,
+        /// How many days the invite lasts.
+        #[arg(long, default_value_t = 7)]
+        days: i64,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -112,8 +145,18 @@ enum SecurityKeysCommand {
 
 #[derive(Subcommand, Debug)]
 enum BackupCommand {
-    /// Prints a new Backup Key. Keep it with your recovery kit.
-    Keygen,
+    /// Prints a new Backup Key. Keep it with your recovery kit; with
+    /// `--kit FILE` the operator's printable recovery kit is written too.
+    Keygen {
+        #[command(flatten)]
+        kit: KitArgs,
+    },
+    /// Writes the operator's printable recovery kit for a Backup Key you
+    /// already have (from standard input or `LOCKDOWN_BACKUP_KEY`).
+    Kit {
+        #[command(flatten)]
+        kit: KitArgs,
+    },
     /// Writes a sealed snapshot of the database, the key file and the
     /// attachment files.
     Create {
@@ -138,6 +181,20 @@ enum BackupCommand {
         #[command(flatten)]
         store: StoreArgs,
     },
+}
+
+/// The operator's printable kit.
+#[derive(Args, Debug, Clone)]
+struct KitArgs {
+    /// Write the printable kit (HTML, readable only by you) here.
+    #[arg(long, value_name = "FILE")]
+    kit: Option<PathBuf>,
+    /// The server's address, printed on the kit.
+    #[arg(long, env = "LOCKDOWN_PUBLIC_URL", value_name = "URL")]
+    public_url: Option<String>,
+    /// Where the backups are kept, printed on the kit.
+    #[arg(long, env = "LOCKDOWN_BACKUP_DIR", value_name = "WHERE")]
+    backup_dir: Option<String>,
 }
 
 /// Where the store is: the data directory (key file; the SQLite database
@@ -355,6 +412,68 @@ struct ServeArgs {
     /// Without it no web vault is served.
     #[arg(long, env = "LOCKDOWN_WEB_VAULT", value_name = "DIR")]
     web_vault: Option<PathBuf>,
+    /// The server's public address (`https://vault.example`), for the links
+    /// in email; never taken from a request.
+    #[arg(long, env = "LOCKDOWN_PUBLIC_URL", value_name = "URL")]
+    public_url: Option<String>,
+    /// The SMTP relay for email: `smtps://host[:465]` (TLS) or
+    /// `smtp://host[:587]` (STARTTLS; plain only to this machine).
+    #[arg(
+        long,
+        env = "LOCKDOWN_SMTP_URL",
+        value_name = "URL",
+        requires = "smtp_from"
+    )]
+    smtp_url: Option<String>,
+    /// The relay account.
+    #[arg(
+        long,
+        env = "LOCKDOWN_SMTP_USER",
+        value_name = "NAME",
+        hide_env_values = true
+    )]
+    smtp_user: Option<String>,
+    /// Its password (better in the environment).
+    #[arg(
+        long,
+        env = "LOCKDOWN_SMTP_PASSWORD",
+        value_name = "PASSWORD",
+        hide_env_values = true
+    )]
+    smtp_password: Option<String>,
+    /// The From address (`Lockdown <lockdown@example.com>`).
+    #[arg(long, env = "LOCKDOWN_SMTP_FROM", value_name = "ADDRESS")]
+    smtp_from: Option<String>,
+    /// Certificates (PEM) to trust for the relay instead of the system's.
+    #[arg(long, env = "LOCKDOWN_SMTP_CA", value_name = "PEM")]
+    smtp_ca: Option<PathBuf>,
+    /// Whether a device new to an account waits for the account's email to
+    /// approve it (with SMTP set; accounts with security keys use those).
+    #[arg(long, env = "LOCKDOWN_EMAIL_APPROVAL", value_enum, default_value_t = OnOff::On)]
+    email_approval: OnOff,
+    /// Back the server up into this folder on a schedule, and drill the
+    /// restores (needs the Backup Key).
+    #[arg(long, env = "LOCKDOWN_BACKUP_DIR", value_name = "DIR")]
+    backup_dir: Option<PathBuf>,
+    /// A file holding the Backup Key (a container secret), instead of
+    /// `LOCKDOWN_BACKUP_KEY`.
+    #[arg(long, env = "LOCKDOWN_BACKUP_KEY_FILE", value_name = "FILE")]
+    backup_key_file: Option<PathBuf>,
+    /// Hours between scheduled backups.
+    #[arg(long, env = "LOCKDOWN_BACKUP_EVERY_HOURS", default_value_t = 24)]
+    backup_every_hours: u64,
+    /// How many scheduled backups are kept.
+    #[arg(long, env = "LOCKDOWN_BACKUP_KEEP", default_value_t = 14)]
+    backup_keep: usize,
+    /// Hours between restore drills.
+    #[arg(long, env = "LOCKDOWN_DRILL_EVERY_HOURS", default_value_t = 168)]
+    drill_every_hours: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum OnOff {
+    On,
+    Off,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -458,7 +577,43 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
         ..Config::default()
     };
     let web = config.web_vault.is_some();
-    let state = Arc::new(AppState::new(Box::new(storage), keys, config));
+    let database = match &cli.store.database_url {
+        Some(_) => "Postgres (--database-url)".to_string(),
+        None => format!("SQLite, {}", data.join(backup::DB_NAME).display()),
+    };
+    let attachments = storage
+        .bodies()
+        .map(|b| b.describe())
+        .unwrap_or_else(|| "inside the database".into());
+    let mut state = AppState::new(Box::new(storage), keys, config);
+    if let Some(url) = &cli.smtp_url {
+        let public_url = cli
+            .public_url
+            .as_deref()
+            .ok_or("email needs the server's public address for its links: set --public-url")?;
+        let mailer = lockdown_server::mail::SmtpMailer::new(lockdown_server::mail::SmtpConfig {
+            url: url.clone(),
+            user: cli.smtp_user.clone(),
+            password: cli.smtp_password.clone().map(zeroize::Zeroizing::new),
+            from: cli.smtp_from.clone().unwrap_or_default(),
+            ca: match &cli.smtp_ca {
+                Some(p) => Some(lockdown_tls::read_certs(p).map_err(|e| e.to_string())?),
+                None => None,
+            },
+        })?;
+        let describe = mailer.describe();
+        let outbox = lockdown_server::mail::Outbox::start(Box::new(mailer))
+            .map_err(|e| format!("couldn't start the mail thread: {e}"))?;
+        state.mail = Some(lockdown_server::mail::MailSettings::new(
+            outbox,
+            public_url,
+            cli.email_approval == OnOff::On,
+            describe.clone(),
+        )?);
+        eprintln!("lockdown-server: email through {describe}");
+    }
+    let state = Arc::new(state);
+    let mut breach_words = None;
     let feed: Option<Box<dyn lockdown_server::breach_monitor::BreachFeed>> =
         match (cli.breach_feed_url.as_deref(), cli.breach_range.as_deref()) {
             (Some(url), _) => Some(Box::new(
@@ -470,6 +625,7 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
                     None => lockdown_server::breach_range::Catalog::default(),
                 };
                 let feed = lockdown_server::breach_range::RangeBreachFeed::new(range, catalog)?;
+                breach_words = Some(format!("over the operator's {}", feed.describe()));
                 eprintln!(
                     "lockdown-server: email breach monitoring over the {}",
                     feed.describe()
@@ -496,6 +652,49 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
             pause,
         )
         .map_err(|e| format!("couldn't start the breach monitor: {e}"))?;
+        if breach_words.is_none() {
+            breach_words = Some("over the configured breach feed (a paid key)".into());
+        }
+    }
+    state.admin.set_facts(lockdown_server::admin::ServerFacts {
+        database,
+        attachments,
+        tls: cli.tls_cert.is_some(),
+        breach_feed: breach_words,
+    });
+    if let Some(dir) = &cli.backup_dir {
+        let key = match &cli.backup_key_file {
+            Some(file) => BackupKey::parse(&zeroize::Zeroizing::new(
+                std::fs::read_to_string(file)
+                    .map_err(|e| format!("couldn't read {}: {e}", file.display()))?,
+            ))?,
+            None => match std::env::var_os("LOCKDOWN_BACKUP_KEY").filter(|v| !v.is_empty()) {
+                Some(text) => BackupKey::parse(&text.to_string_lossy())?,
+                None => {
+                    return Err(
+                        "scheduled backups need the Backup Key: LOCKDOWN_BACKUP_KEY or --backup-key-file"
+                            .into(),
+                    );
+                }
+            },
+        };
+        let schedule = Arc::new(lockdown_server::drills::Schedule::new(
+            dir,
+            key,
+            &key_path,
+            Duration::from_secs(cli.backup_every_hours.max(1) * 3600),
+            cli.backup_keep,
+            Duration::from_secs(cli.drill_every_hours.max(1) * 3600),
+        )?);
+        state.admin.set_schedule(schedule.clone());
+        lockdown_server::drills::spawn(state.clone(), schedule)
+            .map_err(|e| format!("couldn't start the backup schedule: {e}"))?;
+        eprintln!(
+            "lockdown-server: backups every {} h into {}, restore drills every {} h",
+            cli.backup_every_hours.max(1),
+            dir.display(),
+            cli.drill_every_hours.max(1)
+        );
     }
     let groups = if cli.tls_pq_only {
         lockdown_tls::Groups::HybridOnly
@@ -601,14 +800,21 @@ fn backup_key() -> Result<BackupKey, String> {
 
 fn run_backup(command: BackupCommand) -> Result<(), String> {
     match command {
-        BackupCommand::Keygen => {
+        BackupCommand::Keygen { kit } => {
             let key = BackupKey::generate()?;
             println!("{}", key.display().as_str());
             eprintln!(
                 "This is your server's Backup Key. It is shown once and the server doesn't keep it: \
                  write it down with your recovery kit. Without it no backup can be opened."
             );
-            Ok(())
+            write_kit(&key, &kit)
+        }
+        BackupCommand::Kit { kit } => {
+            if kit.kit.is_none() {
+                return Err("give the file to write with --kit".into());
+            }
+            let key = backup_key()?;
+            write_kit(&key, &kit)
         }
         BackupCommand::Create { store, out } => {
             let key = backup_key()?;
@@ -665,6 +871,85 @@ fn run_backup(command: BackupCommand) -> Result<(), String> {
             };
             let summary = backup::restore(&input, &key, &target)?;
             println!("restored into {}: {summary}", data.display());
+            Ok(())
+        }
+    }
+}
+
+/// Writes the operator's printable recovery kit when `--kit` names a file
+/// (never over an existing one; user-only).
+fn write_kit(key: &BackupKey, args: &KitArgs) -> Result<(), String> {
+    let Some(path) = &args.kit else {
+        return Ok(());
+    };
+    if path.exists() {
+        return Err(format!(
+            "{} is already there; pick another name",
+            path.display()
+        ));
+    }
+    let html = lockdown_server::kit::operator_kit_html(
+        key,
+        &lockdown_server::kit::KitFacts {
+            server: args.public_url.clone().unwrap_or_default(),
+            backups: args.backup_dir.clone().unwrap_or_default(),
+        },
+        lockdown_vault::Timestamp::now().0,
+    );
+    lockdown_server::kit::write(path, &html)
+        .map_err(|e| format!("couldn't write {}: {e}", path.display()))?;
+    eprintln!(
+        "The operator's recovery kit is in {}: print it, put it away from the server, and delete the file.",
+        path.display()
+    );
+    Ok(())
+}
+
+fn run_admin(command: AdminCommand) -> Result<(), String> {
+    match command {
+        AdminCommand::SetKey { store, stdin } => {
+            let storage = open_storage(&store, false)?;
+            let key = if stdin {
+                let mut line = zeroize::Zeroizing::new(String::new());
+                std::io::stdin()
+                    .take(4096)
+                    .read_to_string(&mut line)
+                    .map_err(|e| format!("couldn't read the key from standard input: {e}"))?;
+                zeroize::Zeroizing::new(line.trim().to_string())
+            } else {
+                lockdown_server::admin::generate_key()?
+            };
+            storage.set_operator_key(&key).map_err(|e| e.to_string())?;
+            if !stdin {
+                println!("{}", key.as_str());
+            }
+            eprintln!(
+                "The operator key for /admin is set{}. Only its hash is kept; a new one can be set the same way.",
+                if stdin { "" } else { " (above, shown once)" }
+            );
+            Ok(())
+        }
+        AdminCommand::ClearKey { store } => {
+            let storage = open_storage(&store, false)?;
+            let had = storage.clear_operator_key().map_err(|e| e.to_string())?;
+            println!(
+                "{}",
+                if had {
+                    "the operator key is removed; /admin is closed"
+                } else {
+                    "there was no operator key"
+                }
+            );
+            Ok(())
+        }
+        AdminCommand::Invite { store, login, days } => {
+            let storage = open_storage(&store, false)?;
+            let now = lockdown_vault::Timestamp::now().0;
+            let days = days.clamp(1, 90);
+            storage
+                .put_invite(login.trim(), now, now + days * 86_400)
+                .map_err(|e| e.to_string())?;
+            println!("{} may register for {days} day(s)", login.trim());
             Ok(())
         }
     }
@@ -732,6 +1017,7 @@ fn main() -> ExitCode {
             tls_cert,
         }) => healthcheck(url, &listen, tls_cert.is_some()),
         Some(Command::SecurityKeys(c)) => run_security_keys(c),
+        Some(Command::Admin(c)) => run_admin(c),
         None => serve(cli.serve),
     };
     match result {

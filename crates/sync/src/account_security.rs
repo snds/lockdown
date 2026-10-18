@@ -249,6 +249,11 @@ pub struct SecondFactorRequest {
     /// The device that is signing in, as it named itself (for the page in
     /// the system browser to say which sign-in it confirms).
     pub device_label: String,
+    /// When the account's email approves the sign-in instead of a key: the
+    /// address the link went to, masked (`s•••@example.com`). `allow` is
+    /// then empty and no key can answer (docs/plan/25-self-host-2.md §5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email_to: Option<String>,
 }
 
 /// Looks a waiting sign-in up by id (the system browser's page, which has
