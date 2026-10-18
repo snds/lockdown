@@ -3,6 +3,7 @@ import type { GateInput, Status } from "@/core/types"
 
 import type { WebClipboard } from "./clipboard"
 import type { Link } from "./link"
+import type { GetAnswer, GetRequest } from "./webauthn"
 
 /**
  * The desktop's `Client` over the web vault's worker (one shared
@@ -41,6 +42,10 @@ export interface WebSession {
   signIn(input: { server: string; login: string; password: string; secretKey: string }): Promise<Status>
   unlock(password: string): Promise<Status>
   signOut(): Promise<void>
+  /** The WebAuthn request of a sign-in waiting for a security key (D253). */
+  signInWaiting(): Promise<GetRequest>
+  /** The key's answer; the server checks it and the sign-in finishes. */
+  signInAnswer(answer: GetAnswer): Promise<Status>
 }
 
 export function webSession(link: Link): WebSession {
@@ -49,6 +54,8 @@ export function webSession(link: Link): WebSession {
     signIn: (input) => link.call("web_sign_in", input),
     unlock: (password) => link.call("web_unlock", { password }),
     signOut: () => link.call("web_sign_out"),
+    signInWaiting: () => link.call("web_sign_in_waiting"),
+    signInAnswer: (answer) => link.call("web_sign_in_answer", { answer }),
   }
 }
 

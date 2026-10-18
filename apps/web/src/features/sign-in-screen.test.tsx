@@ -14,6 +14,8 @@ function session(over: Partial<WebSession> = {}): WebSession {
     signIn: vi.fn(async () => ({}) as Status),
     unlock: vi.fn(async () => ({}) as Status),
     signOut: vi.fn(async () => {}),
+    signInWaiting: vi.fn(),
+    signInAnswer: vi.fn(async () => ({}) as Status),
     ...over,
   }
 }

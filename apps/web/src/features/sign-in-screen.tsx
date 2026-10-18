@@ -17,14 +17,20 @@ import {
 
 import { describeError } from "@/core/client"
 import type { Status } from "@/core/types"
+import { needsSecurityKey } from "@/features/depth/depth-client"
+import { JoinWithDevice } from "@/features/depth/join-device"
 
+import { cameraScanner } from "../core/camera-scan"
 import type { WebSession } from "../core/web-client"
+import { answerWithKey, type GetRequest } from "../core/webauthn"
 
 interface SignInScreenProps {
   session: WebSession
   /** The server this page came from: the only one it may sign in to. */
   server: string
   onSignedIn: (status: Status) => void
+  /** The browser's WebAuthn, for an account that asks for a security key. */
+  credentials?: CredentialsContainer
 }
 
 export function Frame({ children }: { children: ReactNode }) {
@@ -41,7 +47,8 @@ export function Frame({ children }: { children: ReactNode }) {
  * password is stretched and checked in this tab's worker (OPAQUE); the
  * server never receives anything it could test a guess against.
  */
-export function SignInScreen({ session, server, onSignedIn }: SignInScreenProps) {
+export function SignInScreen({ session, server, onSignedIn, credentials }: SignInScreenProps) {
+  const scan = cameraScanner()
   return (
     <Frame>
       <h1 className="mb-1 text-lg font-semibold tracking-tight">Lockdown</h1>
@@ -51,10 +58,14 @@ export function SignInScreen({ session, server, onSignedIn }: SignInScreenProps)
       <Tabs defaultValue="sign-in">
         <TabsList className="mb-4 w-full">
           <TabsTrigger value="sign-in">Sign in</TabsTrigger>
+          <TabsTrigger value="device">With a device</TabsTrigger>
           <TabsTrigger value="new">No account yet?</TabsTrigger>
         </TabsList>
         <TabsContent value="sign-in">
-          <SignInForm session={session} server={server} onSignedIn={onSignedIn} />
+          <SignInForm session={session} server={server} onSignedIn={onSignedIn} credentials={credentials} />
+        </TabsContent>
+        <TabsContent value="device">
+          <JoinWithDevice server={server} onOpened={onSignedIn} scan={scan} />
         </TabsContent>
         <TabsContent value="new">
           <NoAccountYet />
@@ -64,9 +75,23 @@ export function SignInScreen({ session, server, onSignedIn }: SignInScreenProps)
   )
 }
 
-function SignInForm({ session, server, onSignedIn }: Pick<SignInScreenProps, "session" | "server" | "onSignedIn">) {
+function SignInForm({ session, server, onSignedIn, credentials }: Pick<SignInScreenProps, "session" | "server" | "onSignedIn" | "credentials">) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [waiting, setWaiting] = useState<GetRequest | null>(null)
+  const answerKey = async () => {
+    if (!waiting || !credentials) return
+    setBusy(true)
+    setError(null)
+    try {
+      const answer = await answerWithKey(credentials, waiting)
+      if (answer) onSignedIn(await session.signInAnswer(answer))
+    } catch (err) {
+      setError(describeError(err))
+    } finally {
+      setBusy(false)
+    }
+  }
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const form = e.currentTarget
@@ -81,6 +106,12 @@ function SignInForm({ session, server, onSignedIn }: Pick<SignInScreenProps, "se
       form.reset()
       onSignedIn(status)
     } catch (err) {
+      // The password passed; the account asks this new device for a key (D253).
+      if (needsSecurityKey(err)) {
+        form.reset()
+        setWaiting(await session.signInWaiting())
+        return
+      }
       setError(describeError(err))
       const pw = form.elements.namedItem("password")
       if (pw instanceof HTMLInputElement) pw.value = ""
@@ -88,6 +119,17 @@ function SignInForm({ session, server, onSignedIn }: Pick<SignInScreenProps, "se
       setBusy(false)
     }
   }
+  if (waiting)
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="text-sm">Your password is right. Your account asks a new device for a security key too: use it now.</p>
+        {error && <FieldError role="alert">{error}</FieldError>}
+        <Button onClick={() => void answerKey()} disabled={busy || !credentials}>
+          {busy ? <Spinner /> : null}
+          Use my security key
+        </Button>
+      </div>
+    )
   return (
     <form onSubmit={submit} className="flex flex-col gap-4" aria-label="Sign in">
       <FieldGroup>
