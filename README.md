@@ -14,7 +14,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**142 decisions, thirteen build slices, no release yet (2026-10-18).** Of the 122 features committed to v1, 21 are done, 48 are partial, 43 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI and the self-host server exist; the browser extension and the mobile apps do not yet.
+**157 decisions, fourteen build slices, no release yet (2026-10-18).** Of the 122 features committed to v1, 30 are done, 44 are partial, 38 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server and a first browser extension (Chromium and Firefox, through the desktop app) exist; the web vault and the mobile apps do not yet.
 
 | Slice | What it delivered |
 |---|---|
@@ -32,6 +32,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 | **11 · Strength and codes** ✅ | Password strength meter, HOTP next code, copy by reference, unicron 0.9 (D116–D119) |
 | **12 · Security center** ✅ | Breached passwords by k-anonymity, weak and reused report, missing two-step sign-in, lookalike warnings, change-password links, playbooks, new-device alerts ([doc](docs/plan/13-security-center.md), D125–D134) |
 | **13 · Organization** ✅ | Folders, tags, favourites, several vaults with moves (and into or out of crown jewels), archive, self-purging trash, duplicates, expiry reminders, several websites per login, attachments, Markdown notes, version history ([doc](docs/plan/15-organization.md), D145–D154) |
+| **14 · Browser extension** ✅ | MV3 extension for Chromium and Firefox through the desktop app: native-messaging host, pairing with a code, inline menu in a closed shadow root, three checks per fill, save and update prompts, fill shortcut, code fill, Basic Auth, card and address fill, lookalike stop ([doc](docs/plan/16-browser-extension.md), D155–D169) |
 | **Next** | Browser extension (fill, save, passkeys), mobile apps, sharing and family, breach monitoring, packaged and signed releases |
 
 | Real (with tests) | Skeleton (types, traits, one real rule each) |

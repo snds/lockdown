@@ -1,5 +1,5 @@
 {
- "as_of": "c817185",
+ "as_of": "accf2cb",
  "source": "docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)",
  "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser extension exists: extension/ holds only the wasm matcher boundary, its JSON schema and a Playwright clickjacking harness. The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI and the self-host server. The CLI still carries its own copy of the flows and handles logins only for item kinds. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 today; the plan leaves the licence open (05-self-host §12 asks Sean between AGPL-3.0 and a source-available licence for the server), so oss-clients and oss-server wait on that call. Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for desktop, CLI and server only; every one still needs its mobile and extension half when those surfaces exist.",
  "non_v1_built": [
@@ -404,9 +404,11 @@
    "review": false,
    "status": "partial",
    "surfaces": [
-    "core"
+    "core",
+    "desktop",
+    "extension"
    ],
-   "left": "The MV3 extension for Chromium browsers and Firefox and the Safari Web Extension; only the wasm core they will share exists.",
+   "left": "Store packaging, a popup on unicron, a Firefox test run, Windows (named-pipe transport); Safari waits on OS-level work.",
    "evidence": [
     "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)",
     "crates/wasm/src/lib.rs:312 the_wire_functions_answer_without_a_browser",
@@ -421,9 +423,11 @@
    "name": "Inline fill menu",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: the top-layer menu in an extension-origin frame inside a closed shadow root.",
+   "status": "done",
+   "surfaces": [
+    "extension"
+   ],
+   "left": "A Firefox test run; Safari waits on OS-level work.",
    "evidence": [
     "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)"
    ],
@@ -436,11 +440,12 @@
    "name": "Clickjacking-hardened fill",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
-    "core"
+    "core",
+    "extension"
    ],
-   "left": "The real extension using it: the top-layer popover, IntersectionObserver v2 tracking, and the second action wired to TOTP, card and passkey fills.",
+   "left": "Passkey fills once passkeys reach the extension; Firefox has a hit test instead of IntersectionObserver v2.",
    "evidence": [
     "crates/matcher/src/lib.rs:606 never_fill_cross_origin_iframes_without_confirmation",
     "extension/test/fixtures/harness.js:71 (opacity check up the tree)",
@@ -455,12 +460,13 @@
    "name": "Precise URL matching",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
-    "cli"
+    "cli",
+    "extension"
    ],
-   "left": "A way to set per-item rules in the desktop editor (new sites get exact_host) and an extension that applies the decision.",
+   "left": "Per-item match rules in the desktop editor (new sites get exact_host).",
    "evidence": [
     "crates/matcher/src/lib.rs:513 base_domain_is_opt_in",
     "crates/vault/src/field.rs:56 (each URL field carries its match rule)",
@@ -475,9 +481,13 @@
    "name": "Save and update prompts",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: sign-up and change-password detection and the save or update prompt.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop",
+    "extension"
+   ],
+   "left": "A Firefox test run.",
    "evidence": [
     "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)"
    ],
@@ -506,9 +516,11 @@
    "name": "Fill keyboard shortcut",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: fill and fill-code shortcuts in every browser, cycling on repeat.",
+   "status": "done",
+   "surfaces": [
+    "extension"
+   ],
+   "left": "A Firefox test run; letting people change the keys.",
    "evidence": [
     "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)"
    ],
@@ -521,9 +533,12 @@
    "name": "Card and address fill",
    "target": "beat",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: the checkout field classifier, split card fields and the confirm step.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "extension"
+   ],
+   "left": "A Firefox test run; more checkout layouts as they turn up.",
    "evidence": [
     "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)",
     "crates/matcher/src/lib.rs:606 (only the card second-action rule exists)"
@@ -537,9 +552,12 @@
    "name": "HTTP Basic Auth fill",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: answering HTTP auth challenges from the extension on Chromium and Firefox.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "extension"
+   ],
+   "left": "Tested on Chromium only; Firefox run.",
    "evidence": [
     "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)"
    ],
@@ -797,11 +815,12 @@
    "name": "TOTP autofill",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
-    "core"
+    "core",
+    "extension"
    ],
-   "left": "The extension filling single and split six-box code fields after the password.",
+   "left": "A Firefox test run.",
    "evidence": [
     "crates/wasm/src/lib.rs:270 locking_wipes_the_session (WasmSession gives digits for a fill, never the seed)",
     "crates/matcher/src/lib.rs:606 (code fills need the second action)"
@@ -1254,12 +1273,13 @@
    "name": "Lookalike-domain warning",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "extension"
    ],
-   "left": "The hard stop at fill time, in the browser extension.",
+   "left": "Nothing for desktop and the extension; the web vault.",
    "evidence": [
     "crates/matcher/src/lib.rs:583 lookalikes_get_a_hard_stop",
     "crates/matcher/src/lookalike.rs:126 an_empty_table_still_catches_typos_and_decoys_but_not_homoglyphs",
@@ -1277,9 +1297,10 @@
    "status": "partial",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "extension"
    ],
-   "left": "Curated per-site change-password recipes beyond the W3C well-known page.",
+   "left": "The popup opens the well-known page, not the security center's checked link; curated per-site recipes.",
    "evidence": [
     "rg for change-password in crates/ and apps/ finds none"
    ],

@@ -1,22 +1,22 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `c817185`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `accf2cb`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
 **Done** means it works end to end in today's surfaces (core, desktop, CLI, server) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **21** | **48** | **43** | **10** |
+| **All 122 v1 features** | **30** | **44** | **38** | **10** |
 | [Vault & item types](#vault--item-types) | 4 | 8 | 0 | 0 |
 | [Organization & search](#organization--search) | 6 | 1 | 0 | 0 |
-| [Autofill (browser)](#autofill-browser) | 0 | 3 | 6 | 0 |
+| [Autofill (browser)](#autofill-browser) | 7 | 1 | 1 | 0 |
 | [Autofill (mobile & desktop OS)](#autofill-mobile--desktop-os) | 0 | 0 | 6 | 0 |
 | [Passkeys & WebAuthn](#passkeys--webauthn) | 0 | 2 | 6 | 0 |
-| [Two-factor & authenticator](#two-factor--authenticator) | 1 | 3 | 0 | 0 |
+| [Two-factor & authenticator](#two-factor--authenticator) | 2 | 2 | 0 | 0 |
 | [Vendor login bridges](#vendor-login-bridges) | 1 | 4 | 2 | 0 |
 | [Sharing & collaboration](#sharing--collaboration) | 0 | 2 | 4 | 0 |
 | [Family & emergency/recovery](#family--emergencyrecovery) | 0 | 2 | 3 | 0 |
-| [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 3 | 5 | 0 | 0 |
+| [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 4 | 4 | 0 | 0 |
 | [Privacy](#privacy) | 0 | 1 | 1 | 0 |
 | [Import/export & portability](#importexport--portability) | 0 | 3 | 5 | 0 |
 | [Self-hosting & deployment](#self-hosting--deployment) | 0 | 2 | 1 | 1 |
@@ -57,15 +57,15 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser 
 
 ## Autofill (browser)
 
-- [ ] **Browser extension coverage**: Partial · core. The MV3 extension for Chromium browsers and Firefox and the Safari Web Extension; only the wasm core they will share exists.
-- [ ] **Clickjacking-hardened fill**: Partial · core. The real extension using it: the top-layer popover, IntersectionObserver v2 tracking, and the second action wired to TOTP, card and passkey fills.
-- [ ] **Precise URL matching**: Partial · core, cli. A way to set per-item rules in the desktop editor (new sites get exact_host) and an extension that applies the decision.
-- [ ] **Inline fill menu**: Not started · nowhere yet. Everything: the top-layer menu in an extension-origin frame inside a closed shadow root.
-- [ ] **Save and update prompts**: Not started · nowhere yet. Everything: sign-up and change-password detection and the save or update prompt.
+- [x] **Inline fill menu**: Done · extension. A Firefox test run; Safari waits on OS-level work.
+- [x] **Clickjacking-hardened fill**: Done · core, extension. Passkey fills once passkeys reach the extension; Firefox has a hit test instead of IntersectionObserver v2.
+- [x] **Precise URL matching**: Done · core, cli, extension. Per-item match rules in the desktop editor (new sites get exact_host).
+- [x] **Save and update prompts**: Done · core, desktop, extension. A Firefox test run.
+- [x] **Fill keyboard shortcut**: Done · extension. A Firefox test run; letting people change the keys.
+- [x] **Card and address fill**: Done · core, extension. A Firefox test run; more checkout layouts as they turn up.
+- [x] **HTTP Basic Auth fill**: Done · core, extension. Tested on Chromium only; Firefox run.
+- [ ] **Browser extension coverage**: Partial · core, desktop, extension. Store packaging, a popup on unicron, a Firefox test run, Windows (named-pipe transport); Safari waits on OS-level work.
 - [ ] **Per-site fill fixes**: Not started · nowhere yet. Per-site user overrides synced end to end and a signed community fix list.
-- [ ] **Fill keyboard shortcut**: Not started · nowhere yet. Everything: fill and fill-code shortcuts in every browser, cycling on repeat.
-- [ ] **Card and address fill**: Not started · nowhere yet. Everything: the checkout field classifier, split card fields and the confirm step.
-- [ ] **HTTP Basic Auth fill**: Not started · nowhere yet. Everything: answering HTTP auth challenges from the extension on Chromium and Firefox.
 
 ## Autofill (mobile & desktop OS)
 
@@ -90,7 +90,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser 
 ## Two-factor & authenticator
 
 - [x] **Built-in TOTP codes**: Done · core, desktop, cli. Nothing in code for desktop; keeping it on the free tier is a pricing rule.
-- [ ] **TOTP autofill**: Partial · core. The extension filling single and split six-box code fields after the password.
+- [x] **TOTP autofill**: Done · core, extension. A Firefox test run.
 - [ ] **Authenticator importers**: Partial · core, desktop, cli. Google Authenticator transfer batches and Aegis (incl. encrypted), 2FAS, Ente, Proton and Bitwarden files; only single otpauth:// and steam:// links import today.
 - [ ] **Code display aids**: Partial · core, desktop. Clock-skew correction against server time and search focus on launch (haptics are a phone item).
 
@@ -126,10 +126,10 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser 
 - [x] **Breached password check**: Done · core, desktop. The extension's and web vault's view of the same findings.
 - [x] **Weak and reused password report**: Done · core, desktop. Reuse across more than one vault once multiple vaults land.
 - [x] **Missing 2FA report**: Done · core, desktop. A refresh schedule for the bundled 2fa.directory snapshot (D129).
+- [x] **Lookalike-domain warning**: Done · core, desktop, extension. Nothing for desktop and the extension; the web vault.
 - [ ] **Email breach monitoring**: Partial · server. A breach feed key (the built-in feed needs a paid key) and alias monitoring.
 - [ ] **Breach-response playbooks**: Partial · core, desktop. The seven guided incident flows from the plan; seven plain playbooks exist.
-- [ ] **Lookalike-domain warning**: Partial · core, desktop. The hard stop at fill time, in the browser extension.
-- [ ] **One-tap change-password link**: Partial · core, desktop. Curated per-site change-password recipes beyond the W3C well-known page.
+- [ ] **One-tap change-password link**: Partial · core, desktop, extension. The popup opens the well-known page, not the security center's checked link; curated per-site recipes.
 - [ ] **Vault account sign-in alerts**: Partial · server, desktop. OS notifications, a session list that ends tokens, email verification for new devices.
 
 ## Privacy
