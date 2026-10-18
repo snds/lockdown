@@ -67,7 +67,10 @@ pub fn require_hybrid(key: &KemPublicKey, whose: &str) -> Result<()> {
 // key-transparency log stay Ed25519 (docs/plan/22-security-depth.md §6).
 
 /// The identity's ML-DSA-65 signing key, derived from the root key.
-pub fn identity_pq_key(identity: &Identity, keystore: &dyn DeviceKeystore) -> Result<PqSigningKey> {
+pub fn identity_pq_key<K: DeviceKeystore + ?Sized>(
+    identity: &Identity,
+    keystore: &K,
+) -> Result<PqSigningKey> {
     let (irk, _) = crate::handover::root_key(identity, keystore)?;
     let seed = ecosystem_identity::kdf::subkey(irk.expose(), PQ_ISK_INFO)?;
     Ok(PqSigningKey::from_seed(*seed))
@@ -83,6 +86,12 @@ pub fn published_key(profile: &Profile) -> Result<Option<PqVerifyingKey>> {
             "the profile's post-quantum signing key is malformed".into(),
         )),
     }
+}
+
+/// The ML-DSA-65 key a profile record's bytes publish, if any: for a
+/// reader that holds the record but not the identity (the server).
+pub fn published_key_in(profile_record: &[u8]) -> Result<Option<PqVerifyingKey>> {
+    published_key(&Profile::from_bytes(profile_record)?)
 }
 
 /// Publishes this identity's ML-DSA-65 key on its profile, once. Returns
@@ -117,23 +126,46 @@ pub fn publish_key(identity: &mut Identity, keystore: &dyn DeviceKeystore) -> Re
 
 /// The `Device` record field a device marks to say what it supports.
 pub const SUPPORT_FIELD: &str = "lockdown.pq";
-/// What this build supports: 1 reads, keeps and checks `pq_sig` on
-/// identity manifests.
-pub const SUPPORT_LEVEL: u64 = 1;
+/// Level 1: reads, keeps and checks `pq_sig` on identity manifests.
+pub const MANIFEST_LEVEL: u64 = 1;
+/// Level 2: also on vault heads, the log's tree heads and checkpoints
+/// (docs/plan/28-pq-signatures.md).
+pub const HEAD_LEVEL: u64 = 2;
+/// What this build supports, and marks its own record with.
+pub const SUPPORT_LEVEL: u64 = HEAD_LEVEL;
 
-/// Whether `device` says it supports the post-quantum signatures.
+/// Whether `device` says it supports the post-quantum signatures at
+/// `level` or above.
+pub fn supports_level(device: &ecosystem_identity::records::Device, level: u64) -> bool {
+    matches!(device.extra.get(SUPPORT_FIELD), Some(ciborium::Value::Integer(n)) if i128::from(*n) >= i128::from(level))
+}
+
+/// Whether `device` says it supports the post-quantum signature on
+/// identity manifests (level 1).
 pub fn supports(device: &ecosystem_identity::records::Device) -> bool {
-    matches!(device.extra.get(SUPPORT_FIELD), Some(ciborium::Value::Integer(n)) if i128::from(*n) >= i128::from(SUPPORT_LEVEL))
+    supports_level(device, MANIFEST_LEVEL)
 }
 
 /// The devices not revoked that don't say so yet, by name: who holds the
-/// post-quantum signature back.
+/// post-quantum signature on identity manifests back.
 pub fn devices_without_support(identity: &Identity) -> Vec<String> {
-    identity
+    devices_below(identity, MANIFEST_LEVEL)
+}
+
+/// The devices not revoked that don't read post-quantum vault heads yet,
+/// by name: who holds them back.
+pub fn devices_without_head_support(identity: &Identity) -> Vec<String> {
+    devices_below(identity, HEAD_LEVEL)
+}
+
+fn devices_below(identity: &Identity, level: u64) -> Vec<String> {
+    let mut names: Vec<String> = identity
         .devices()
-        .filter(|d| d.revoked_at.is_none() && !supports(d))
+        .filter(|d| d.revoked_at.is_none() && !supports_level(d, level))
         .map(|d| d.name.clone())
-        .collect()
+        .collect();
+    names.sort();
+    names
 }
 
 /// Marks this device's record as supporting the post-quantum signatures,
@@ -149,7 +181,7 @@ pub fn mark_this_device(
             .devices
             .get_mut(&device_id)
             .ok_or_else(|| Error::NotFound(format!("device {device_id} in this identity")))?;
-        if supports(device) {
+        if supports_level(device, SUPPORT_LEVEL) {
             return Ok(false);
         }
         device.extra.insert(
@@ -204,6 +236,135 @@ pub fn verify_manifest(profile: &Profile, manifest: &IdentityManifest) -> Result
         &format!("identity manifest {}", manifest.seq),
     )
     .map_err(|_| broken("the identity manifest's post-quantum signature didn't check out"))
+}
+
+// --- post-quantum vault heads (docs/plan/28-pq-signatures.md) -------------------
+//
+// A vault head is signed by the device that made it (Ed25519) and, beside
+// that, by the identity's ML-DSA-65 key over the same bytes
+// (`ManifestHead.pq_sig`). Every item version is pinned by its BLAKE3 hash
+// in the head, and every head names the one before by hash, so one
+// post-quantum signature on a head covers the whole history behind it:
+// the items need none of their own. The rules:
+//
+// - **Starting.** A device signs heads post-quantum once the profile
+//   publishes the key and every device not revoked marks level 2
+//   ([`HEAD_LEVEL`]), or once the chain it extends already carries one
+//   (another device saw the rollout finish first).
+// - **Checking.** Every `pq_sig` on a head by one of the identity's devices
+//   must verify under the published key. Once a head in a chain carries
+//   one, every later head by the identity's devices must too, and so must
+//   every head from the `seq` this device remembers seeing the first one
+//   at (`HeadMemory::pq_since`), so a server that strips the signatures
+//   from the whole chain is refused, not just ignored.
+// - **Not covered.** Heads signed by other people's devices in a shared
+//   vault stay Ed25519 (their keys would come from pinned contacts; doc 28
+//   §8).
+
+/// What a vault needs to sign and check post-quantum heads.
+#[derive(Clone)]
+pub struct HeadPq {
+    /// The identity's published ML-DSA-65 key.
+    pub key: PqVerifyingKey,
+    /// This device's copy of the signing half, when it holds the root key.
+    pub signer: Option<std::sync::Arc<PqSigningKey>>,
+    /// Whether every device not revoked reads post-quantum heads, so this
+    /// device starts signing them.
+    pub ready: bool,
+    /// The identity's devices: the heads the rules apply to.
+    pub own: std::collections::BTreeSet<ecosystem_identity::records::Id>,
+}
+
+impl std::fmt::Debug for HeadPq {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HeadPq")
+            .field("key", &self.key)
+            .field("signs", &self.signer.is_some())
+            .field("ready", &self.ready)
+            .field("own", &self.own.len())
+            .finish()
+    }
+}
+
+/// Whether the identity's devices all read post-quantum heads and its
+/// profile publishes the key: the rollout rule for heads.
+pub fn heads_ready(identity: &Identity) -> Result<bool> {
+    Ok(published_key(identity.profile())?.is_some()
+        && devices_without_head_support(identity).is_empty())
+}
+
+/// The post-quantum setting for the identity's vaults: `None` while the
+/// profile publishes no key. `signing` is this device's derivation of the
+/// identity's key (`None` where the signer holds no root key); it must be
+/// the key the profile publishes, or the profile was changed under this
+/// device. `own` names the identity's devices.
+pub fn head_pq(
+    identity: &Identity,
+    signing: Option<PqSigningKey>,
+    own: impl IntoIterator<Item = ecosystem_identity::records::Id>,
+) -> Result<Option<HeadPq>> {
+    let Some(key) = published_key(identity.profile())? else {
+        return Ok(None);
+    };
+    if let Some(signing) = &signing
+        && signing.verifying_key() != key
+    {
+        return Err(Error::Invalid(
+            "the profile's post-quantum key isn't the one this identity's root key derives; the profile was changed under this device"
+                .into(),
+        ));
+    }
+    let mut own: std::collections::BTreeSet<_> = own.into_iter().collect();
+    own.extend(identity.devices().map(|d| d.device_id));
+    Ok(Some(HeadPq {
+        key,
+        signer: signing.map(std::sync::Arc::new),
+        ready: heads_ready(identity)?,
+        own,
+    }))
+}
+
+/// Checks the post-quantum rules over `heads` (oldest first), and answers
+/// the `seq` of the first head carrying a verified post-quantum signature.
+/// `key` is the identity's published key (`None` when this device knows
+/// none: then a `pq_sig` can't be checked and counts for nothing); `own`
+/// says which signers are the identity's devices; `since` is the `seq`
+/// this device remembers the first post-quantum head at.
+pub fn check_heads(
+    heads: &[crate::ManifestHead],
+    key: Option<&PqVerifyingKey>,
+    own: &dyn Fn(ecosystem_identity::records::Id) -> bool,
+    since: Option<u64>,
+) -> Result<Option<u64>> {
+    if since.is_some() && key.is_none() {
+        return Err(Error::Invalid(
+            "this device saw post-quantum signatures on this vault but knows no post-quantum key for the identity now; refusing it"
+                .into(),
+        ));
+    }
+    let mut first: Option<u64> = None;
+    for head in heads {
+        if !own(head.signer) {
+            continue;
+        }
+        match (key, &head.pq_sig) {
+            (Some(key), Some(_)) => {
+                head.verify_post_quantum(key)?;
+                first.get_or_insert(head.seq);
+            }
+            (_, None) => {
+                let required = first.is_some() || since.is_some_and(|s| head.seq >= s);
+                if required {
+                    return Err(Error::ChainBroken {
+                        seq: head.seq,
+                        why: "the head lost its post-quantum signature: heads before it carry one, so every later head must; refusing it".into(),
+                    });
+                }
+            }
+            (None, Some(_)) => {}
+        }
+    }
+    Ok(first)
 }
 
 #[cfg(test)]
@@ -261,6 +422,37 @@ mod tests {
         .unwrap();
         assert!(roll_out(&mut identity, &keystore).unwrap());
         assert!(published_key(identity.profile()).unwrap().is_some());
+        // That older device reads manifests but not vault heads (level 1):
+        // heads stay Ed25519 until it says level 2.
+        assert!(!heads_ready(&identity).unwrap());
+        assert_eq!(
+            devices_without_head_support(&identity),
+            ["Lockdown on the old laptop"]
+        );
+        let pq = head_pq(
+            &identity,
+            Some(identity_pq_key(&identity, &keystore).unwrap()),
+            [],
+        )
+        .unwrap()
+        .unwrap();
+        assert!(!pq.ready && pq.signer.is_some());
+        assert!(pq.own.contains(&older) && pq.own.contains(&identity.device_id()));
+        crate::identity::write_identity_store(&mut identity, &keystore, |contents, isk| {
+            let d = contents.devices.get_mut(&older).unwrap();
+            d.extra.insert(
+                SUPPORT_FIELD.into(),
+                ciborium::Value::Integer(HEAD_LEVEL.into()),
+            );
+            d.sign(isk.inner())?;
+            Ok(true)
+        })
+        .unwrap();
+        assert!(heads_ready(&identity).unwrap());
+        assert!(devices_without_head_support(&identity).is_empty());
+        // A derivation that isn't the published key: the profile changed
+        // under this device.
+        assert!(head_pq(&identity, Some(PqSigningKey::from_seed([1; 32])), []).is_err());
         // Once out, it stays out.
         assert!(roll_out(&mut identity, &keystore).unwrap());
         assert!(

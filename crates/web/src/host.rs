@@ -642,6 +642,7 @@ impl WebVault {
             .map(|v| LogPin {
                 log_key: v.log_key,
                 sth: v.sth.clone(),
+                pq_log_key: v.pq_log_key.clone(),
             });
         let memory = HeadMemory::open(&paths.memory_file()).map_err(|e| refused(e.to_string()))?;
         let vaults = self
@@ -649,11 +650,17 @@ impl WebVault {
             .iter()
             .filter_map(|id| memory.vault(*id).map(|h| (*id, h)))
             .collect();
+        let pq_since = self
+            .known_vaults
+            .iter()
+            .filter_map(|id| memory.pq_since(*id).map(|s| (*id, s)))
+            .collect();
         let carried = Carried {
             v: CARRIED_V,
             server: account.server.clone(),
             log,
             vaults,
+            pq_since,
         };
         lockdown_crypto::cbor::to_canonical(&carried)
             .map(Some)
@@ -685,6 +692,7 @@ impl WebVault {
                     identity_logged: None,
                     own_device_logged: false,
                     checked_at: None,
+                    pq_log_key: pin.pq_log_key,
                 },
             )
             .map_err(|e| refused(e.to_string()))?;
@@ -694,6 +702,11 @@ impl WebVault {
         for (vault_id, head) in carried.vaults {
             memory
                 .remember_vault(vault_id, head)
+                .map_err(|e| refused(e.to_string()))?;
+        }
+        for (vault_id, since) in carried.pq_since {
+            memory
+                .remember_pq_since(vault_id, since)
                 .map_err(|e| refused(e.to_string()))?;
         }
         Ok(())
@@ -710,6 +723,10 @@ struct Carried {
     server: String,
     log: Option<LogPin>,
     vaults: BTreeMap<Id, RememberedHead>,
+    /// Per vault, the first post-quantum head the server confirmed (doc 28);
+    /// absent from what an older build carried.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pq_since: BTreeMap<Id, u64>,
 }
 
 /// A server's log as last verified: its key and its newest tree head.
@@ -718,4 +735,7 @@ struct LogPin {
     #[serde(with = "serde_bytes")]
     log_key: [u8; 32],
     sth: SignedTreeHead,
+    /// The server's post-quantum log key, once pinned (doc 28).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pq_log_key: Option<serde_bytes::ByteBuf>,
 }

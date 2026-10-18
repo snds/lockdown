@@ -415,7 +415,7 @@ pub fn current_sth(state: &AppState) -> ApiResult<SignedTreeHead> {
         root: lockdown_crypto::merkle::root(&leaves),
         time: state.now(),
     };
-    SignedTreeHead::sign(head, &state.log_key)
+    SignedTreeHead::sign_hybrid(head, &state.log_key, &state.pq_log_key)
         .map_err(|e| ApiError::internal(format!("couldn't sign the tree head: {e}")))
 }
 
@@ -424,6 +424,9 @@ pub async fn kt_sth(State(state): State<Arc<AppState>>) -> ApiResult<Cbor<SthWir
     Ok(Cbor(SthWire {
         sth: current_sth(&state)?,
         log_key: state.log_key.verifying_key().to_bytes(),
+        pq_log_key: Some(serde_bytes::ByteBuf::from(
+            state.pq_log_key.verifying_key().as_bytes().to_vec(),
+        )),
     }))
 }
 
@@ -1097,6 +1100,44 @@ pub(crate) fn device_key(
         .map_err(|_| ApiError::internal("a stored device key is unusable"))
 }
 
+/// The ML-DSA-65 key the account's newest identity profile publishes, if
+/// any. The records were checked when they were pushed.
+pub(crate) fn account_pq_key(
+    state: &AppState,
+    account_id: Id,
+) -> ApiResult<Option<lockdown_crypto::pq_sign::PqVerifyingKey>> {
+    let st = state.storage.identity_state(account_id)?;
+    if st.seq == 0 {
+        return Ok(None);
+    }
+    let Some(head) = state
+        .storage
+        .identity_heads_since(account_id, st.seq - 1)?
+        .into_iter()
+        .find(|h| h.seq == st.seq)
+    else {
+        return Ok(None);
+    };
+    let manifest = IdentityManifest::from_bytes(&head.body)
+        .map_err(|_| ApiError::internal("a stored identity manifest didn't decode"))?;
+    let refs: Vec<_> = manifest
+        .entries
+        .iter()
+        .filter(|e| e.path == lockdown_vault::identity_set::PROFILE_PATH)
+        .cloned()
+        .collect();
+    let Some(profile) = state
+        .storage
+        .identity_records(account_id, &refs)?
+        .into_iter()
+        .next()
+    else {
+        return Ok(None);
+    };
+    lockdown_vault::pq::published_key_in(&profile.body)
+        .map_err(|_| ApiError::internal("the stored profile's post-quantum key is malformed"))
+}
+
 /// `GET /v1/vaults`.
 pub async fn list_vaults(
     State(state): State<Arc<AppState>>,
@@ -1209,6 +1250,24 @@ pub async fn put_head(
             "the head's device signature didn't check out",
         )
     })?;
+    // A post-quantum signature, when there is one, must check out under
+    // the key the account's profile publishes (docs/plan/28-pq-signatures.md).
+    // Whether a head needs one is the clients' rule; the server refuses
+    // only what can't be right.
+    if head.pq_sig.is_some() {
+        let bad = |message: &str| {
+            ApiError::new(
+                StatusCode::FORBIDDEN,
+                ErrorCode::BadSignature,
+                message.to_string(),
+            )
+        };
+        let pq = account_pq_key(&state, session.account_id)?.ok_or_else(|| {
+            bad("the head carries a post-quantum signature but the account publishes no post-quantum key")
+        })?;
+        head.verify_post_quantum(&pq)
+            .map_err(|_| bad("the head's post-quantum signature didn't check out"))?;
+    }
     match state.storage.accept_head(vault_id, &head, &body)? {
         Ok(accepted) => Ok(Cbor(accepted)),
         Err(refused) => Err(ApiError::head_refused(refused)),

@@ -230,6 +230,8 @@ pub struct AppState {
     pub tokens: TokenSigner,
     /// Signs the key-transparency log's tree heads.
     pub log_key: SigningKey,
+    /// Signs them beside it with ML-DSA-65 (docs/plan/28-pq-signatures.md).
+    pub pq_log_key: lockdown_crypto::pq_sign::PqSigningKey,
     /// The settings.
     pub config: Config,
     /// Logins between their round trips.
@@ -267,6 +269,7 @@ impl AppState {
             opaque: keys.opaque,
             tokens: TokenSigner::new(keys.token_key),
             log_key: keys.log_key,
+            pq_log_key: keys.pq_log_key,
             per_address: RateLimiter::new(config.per_address.0, config.per_address.1),
             per_login: RateLimiter::new(config.per_login.0, config.per_login.1),
             config,
