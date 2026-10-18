@@ -272,9 +272,11 @@ jobs:
             rustc --version
             if [ "${RUNNER_OS}" = macOS ]; then
               # sed reads all of it: head would close the pipe and xcodebuild aborts.
-              xcodebuild -version | sed -n 1p
-              echo "installed: $(ls /Applications | grep '^Xcode_' | tr '\n' ' ')" >&2
+              echo "info: $(xcodebuild -version | sed -n 1p), installed: $(ls /Applications | grep '^Xcode_' | tr '\n' ' ')"
               b=target/universal-apple-darwin/release/bundle
+              for bin in "$b"/macos/*.app/Contents/MacOS/*; do
+                echo "info: $(basename "$bin") $(dwarfdump --uuid "$bin" | awk '{print $2, $3}' | tr '\n' ' ')"
+              done
               (cd "$b/dmg" && shasum -a 256 *.dmg | sed 's#  #  dmg:#')
               (cd "$b/macos" && find . -type f -print0 | sort -z | xargs -0 shasum -a 256 | sed 's#  \./#  app:#')
             else
@@ -284,6 +286,7 @@ jobs:
               (cd "$b/msi" && h *.msi | sed 's#  #  msi:#')
               (cd "$b/nsis" && h *.exe | sed 's#  #  nsis:#')
               (cd target/release && h lockdown-desktop.exe lockdown-native-host.exe | sed 's#  #  exe:#')
+              python packaging/repro/pe-info.py target/release/lockdown-desktop.exe target/release/lockdown-native-host.exe | sed 's/^/info: /'
             fi
           } > other-hashes.txt
           cat other-hashes.txt
@@ -309,13 +312,17 @@ jobs:
             b=other-hashes-$2/other-hashes.txt
             {
               echo "### $1 vs $2"
-              if [ ! -f "$a" ] || [ ! -f "$b" ]; then echo "a build did not finish"; continue; fi
-              echo '```'
-              head -n 2 "$a"; head -n 2 "$b"
-              echo '```'
-              echo "| file | same bytes |"
-              echo "|---|---|"
-              join -1 2 -2 2 <(tail -n +2 "$a" | grep '  ' | sort -k 2) <(tail -n +2 "$b" | grep '  ' | sort -k 2) \
-                | awk '{ print "| " $1 " | " ($2 == $3 ? "yes" : "no") " |" }'
+              if [ ! -f "$a" ] || [ ! -f "$b" ]; then
+                echo "a build did not finish"
+              else
+                echo '```'
+                grep -v '  ' "$a" | sed "s/^/$1: /"
+                grep -v '  ' "$b" | sed "s/^/$2: /"
+                echo '```'
+                echo "| file | same bytes |"
+                echo "|---|---|"
+                join -1 2 -2 2 <(grep '  ' "$a" | sort -k 2) <(grep '  ' "$b" | sort -k 2) \
+                  | awk '{ print "| " $1 " | " ($2 == $3 ? "yes" : "no") " |" }'
+              fi
             } | tee -a "$GITHUB_STEP_SUMMARY"
           done
