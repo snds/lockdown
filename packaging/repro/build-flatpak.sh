@@ -9,7 +9,9 @@
 # lines: the bundle's SHA-256, the OSTree commit, and a SHA-256 over every
 # file's path, mode and content checksum in the commit (`ostree ls -R -C`).
 # OSTree stores no file times, so the content line depends only on the
-# files. The commit carries a time and the builder's metadata; it is
+# files. flatpak-builder records a "source-date-epoch" in
+# /files/manifest.json, the manifest file's own time unless told
+# otherwise, so it is given the commit's time. The commit carries a time and the builder's metadata; it is
 # re-made with SOURCE_DATE_EPOCH as its time (`build-commit-from
 # --timestamp`), so whether the commit and the bundle also match is what
 # the comparison then shows.
@@ -35,7 +37,7 @@ cp -r "$stage" "$root/packaging/flatpak/stage"
 chmod +x "$root/packaging/flatpak/stage/lockdown-"*
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 flatpak-builder --user --disable-rofiles-fuse --force-clean --install-deps-from=flathub \
-  --state-dir="$work/state" \
+  --state-dir="$work/state" --override-source-date-epoch="$epoch" \
   --default-branch="$branch" --repo="$work/repo" "$work/build" "$root/packaging/flatpak/$app.yml"
 ostree --repo="$work/repro" init --mode=archive
 flatpak build-commit-from --src-repo="$work/repo" --timestamp="$when" --no-update-summary "$work/repro" "$ref"
