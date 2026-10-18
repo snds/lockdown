@@ -54,6 +54,7 @@ Every flag has an environment variable, so a container needs no command line. `l
 | `--signups` | `LOCKDOWN_SIGNUPS` | `open` (image: `closed`) | Whether new accounts may register. |
 | `--session-ttl` | `LOCKDOWN_SESSION_TTL` | 28800 (8 h) | How long a sign-in lasts before the device asks for the password again. |
 | `--max-blob` | `LOCKDOWN_MAX_BLOB` | 64 MiB | The largest attachment taken. |
+| `--attachment-quota` | `LOCKDOWN_ATTACHMENT_QUOTA` | 5 GB (5000000000) | The attachment room per account, counted over the vaults it owns (a shared vault's files count against its owner); 0 is no limit. Clients read it at `GET /v1/account/storage`. |
 | `--breach-feed-url`, `--breach-feed-key` | `LOCKDOWN_BREACH_FEED_URL`, `LOCKDOWN_BREACH_FEED_KEY` | none | Email breach monitoring (needs a paid Have I Been Pwned key; off unless set). |
 
 **Sign-ups.** The image starts closed. To let your household register, set `LOCKDOWN_SIGNUPS=open`, have everyone register, then set it back to `closed` and restart. Signing in keeps working while sign-ups are closed.

@@ -101,6 +101,8 @@ pub struct Features {
     pub live: bool,
     /// The account's session list, with ending a session.
     pub sessions: bool,
+    /// `/v1/account/storage`: the attachment room per account (D234).
+    pub storage: bool,
 }
 
 /// The discovery document this build serves.
@@ -119,6 +121,7 @@ pub fn discovery(signups: bool, log_key: &lockdown_crypto::VerifyingKey) -> Disc
             kt_log_key: lockdown_crypto::Hash32(log_key.to_bytes()).to_hex(),
             live: true,
             sessions: true,
+            storage: true,
         },
     }
 }
@@ -139,6 +142,9 @@ pub struct Config {
     pub max_blob_bytes: u64,
     /// How long a blob nothing names is kept before it is collected.
     pub blob_grace: Duration,
+    /// How many bytes of attachments the vaults one account owns may hold
+    /// (D234); `None` is no limit.
+    pub attachment_quota: Option<u64>,
     /// Reverse proxies whose `X-Forwarded-For` is believed (`client_addr`).
     pub trusted_proxies: Vec<client_addr::Cidr>,
     /// The built web vault (`apps/web/dist`) to serve at `/vault/`; `None`
@@ -148,6 +154,9 @@ pub struct Config {
 
 /// The default blob cap: 64 MiB.
 pub const DEFAULT_MAX_BLOB_BYTES: u64 = 64 << 20;
+
+/// The default attachment room per account: 5 GB (D234).
+pub const DEFAULT_ATTACHMENT_QUOTA: u64 = 5_000_000_000;
 
 /// The default grace before an unnamed blob is collected: a day.
 pub const DEFAULT_BLOB_GRACE: Duration = Duration::from_secs(24 * 60 * 60);
@@ -161,6 +170,7 @@ impl Default for Config {
             per_login: (10, 1.0 / 6.0),
             max_blob_bytes: DEFAULT_MAX_BLOB_BYTES,
             blob_grace: DEFAULT_BLOB_GRACE,
+            attachment_quota: Some(DEFAULT_ATTACHMENT_QUOTA),
             trusted_proxies: Vec::new(),
             web_vault: None,
         }
@@ -358,6 +368,7 @@ pub fn app(state: Arc<AppState>) -> Router {
             post(api::end_other_sessions),
         )
         .route("/v1/events", get(live::events))
+        .route("/v1/account/storage", get(api::account_storage))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             live::notify_writes,
