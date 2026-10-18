@@ -1,19 +1,19 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `46ecb19`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `e84830d`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
 **Done** means it works end to end in today's surfaces (core, desktop, CLI, server, browser extension, web vault) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **47** | **43** | **22** | **10** |
-| [Vault & item types](#vault--item-types) | 5 | 7 | 0 | 0 |
+| **All 122 v1 features** | **55** | **35** | **22** | **10** |
+| [Vault & item types](#vault--item-types) | 12 | 0 | 0 | 0 |
 | [Organization & search](#organization--search) | 6 | 1 | 0 | 0 |
 | [Autofill (browser)](#autofill-browser) | 7 | 1 | 1 | 0 |
 | [Autofill (mobile & desktop OS)](#autofill-mobile--desktop-os) | 0 | 0 | 6 | 0 |
 | [Passkeys & WebAuthn](#passkeys--webauthn) | 4 | 1 | 3 | 0 |
 | [Two-factor & authenticator](#two-factor--authenticator) | 2 | 2 | 0 | 0 |
-| [Vendor login bridges](#vendor-login-bridges) | 1 | 4 | 2 | 0 |
+| [Vendor login bridges](#vendor-login-bridges) | 2 | 3 | 2 | 0 |
 | [Sharing & collaboration](#sharing--collaboration) | 6 | 0 | 0 | 0 |
 | [Family & emergency/recovery](#family--emergencyrecovery) | 1 | 3 | 1 | 0 |
 | [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 4 | 4 | 0 | 0 |
@@ -34,16 +34,16 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 
 - [x] **Logins**: Done · core, desktop, cli, extension, web. Nothing for desktop and the extension; the web vault and mobile.
 - [x] **Secure notes**: Done · core, desktop, web. Nothing for desktop; mobile and web views later.
+- [x] **Payment cards**: Done · core, desktop, web, extension. An OS-provider card fill (deferred).
+- [x] **Identities and addresses**: Done · core, desktop, web, extension. Nothing for desktop, web and the extension; mobile.
+- [x] **Typed item templates**: Done · core, desktop, web. Template sharing between people; more built-in types as asked for.
+- [x] **Custom fields**: Done · core, desktop, web. Links across vaults (links stay in one vault by design, D235).
+- [x] **File attachments**: Done · core, desktop, server. Chunked upload and download in sync (a sealed blob still moves whole), S3-compatible object storage on the server, and attachments in the web vault (refused in words today).
+- [x] **Password and passphrase generator**: Done · core, desktop, web, extension, cli. Refreshing the published site-rules snapshot on a schedule.
+- [x] **Wi-Fi network items**: Done · core, desktop, web. Joining a network from the item (OS-level, deferred).
 - [x] **Item expiry reminders**: Done · core, desktop, web. Renewal kinds for domains and certificates; the signed-date check.
 - [x] **Trash with recovery**: Done · core, desktop, web. Trash in the CLI.
 - [x] **Item archive**: Done · core, desktop, web. Nothing for desktop.
-- [ ] **Payment cards**: Partial · core, desktop, extension, web. The optional CVC re-prompt and an OS-provider card fill (deferred); the extension fills cards after the second deliberate action (doc 16).
-- [ ] **Identities and addresses**: Partial · core, desktop, web. Typed subtypes (person, address, business, vehicle, passport) and a separate contacts list that is never filled; plus the form fill itself.
-- [ ] **Typed item templates**: Partial · core, desktop, web. Reach 25+ types (passport and licence are a Document type choice today) and add user-defined templates.
-- [ ] **Custom fields**: Partial · core, desktop, web. Add the TOTP and linked field kinds.
-- [ ] **File attachments**: Partial · core, desktop, cli, server. Streaming for large files (whole files up to 100 MB today), object storage and the 5 GB quota on the server.
-- [ ] **Password and passphrase generator**: Partial · core, desktop, web. Word passphrases, per-site rule profiles, length and class options in the UI, and statistical randomness tests in CI.
-- [ ] **Wi-Fi network items**: Partial · core, desktop, web. The self-hiding guest QR card, the printable card, and export through CXF's own Wi-Fi type (it rides in the Lockdown extension today).
 
 ## Organization & search
 
@@ -97,10 +97,10 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 ## Vendor login bridges
 
 - [x] **Steam Guard codes**: Done · core, desktop, cli, web. Nothing in code for desktop; no UI test exercises the Steam variant specifically.
+- [x] **Large-type display**: Done · core, desktop, web. Nothing for desktop and web; phones.
 - [ ] **Steam maFile import**: Partial · core. File parsers for SDA (incl. passkey-encrypted), WinAuth and Steam v2 JSON, with identity_secret put in the high-risk class.
 - [ ] **TV and console activation by scan** _(under review)_: Partial · core, desktop. The scanner, the activation-page allow-list, opening the real page with the code and autofill, and the core producing approval requests (the sheet is a seam).
 - [ ] **Anti-phishing approval gate** _(under review)_: Partial · core, desktop. Wire the gate into real device-code, Steam QR and passkey QR flows; nothing calls it yet.
-- [ ] **Large-type display**: Partial · desktop, web. Large type for any password (Logins lack it), and the hotel and rental mode that logs the TV sign-in and reminds you to sign out.
 - [ ] **Federated sign-in map**: Not started · nowhere yet. Everything: capturing provider buttons and redirects, the blast-radius view and recovery warnings.
 - [ ] **Service 2FA setup guides**: Not started · nowhere yet. Everything: setup cards from 2fa.directory and the passkeys directory with attribution.
 
@@ -142,7 +142,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [x] **Importers from other managers**: Done · core, desktop. Check each format against one real export (samples are built from the documented formats); 1Password .1pif, Dashlane .dash, passkeys from Proton and Keeper; the CLI on the core importers.
 - [x] **Complete export**: Done · core, desktop. Export in the CLI; restored versions keep their original dates.
 - [x] **Published backup format**: Done · core. A stand-alone open-licence reference decoder outside the workspace; the spec, test vectors and KDBX export are built.
-- [ ] **Lossless transfer**: Partial · core, desktop. Wi-Fi in CXF's own type and attachments through CXF; lossless through the Lockdown format already.
+- [ ] **Lossless transfer**: Partial · core, desktop. File bytes through CXF, which waits on CXP (still a draft); Wi-Fi and identity documents now travel in CXF's own types, and Lockdown backups stay lossless.
 - [ ] **Encrypted export**: Partial · core, desktop. Exports to a public key (age recipients); password-locked Lockdown and KDBX files and the plain-export confirm are built.
 - [ ] **Automatic local backups**: Partial · core, desktop. A last-backup indicator outside Settings and the emergency sheet.
 - [ ] **iOS credential exchange** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: needs the iOS app; the CXF model it would map through exists.

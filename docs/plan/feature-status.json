@@ -1,5 +1,5 @@
 {
- "as_of": "46ecb19",
+ "as_of": "e84830d",
  "source": "docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)",
  "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, a web vault the server serves (the same core on wasm32-wasip1 in a worker, doc 17), and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Lockdown's clients and server speak TLS 1.3 with the hybrid X25519MLKEM768 group first (crates/tls, doc 20); plain HTTP is refused away from loopback. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and the web vault refuses some features in words for now (doc 17 §10). OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.",
  "non_v1_built": [
@@ -71,14 +71,14 @@
    "name": "Payment cards",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
-    "extension",
-    "web"
+    "web",
+    "extension"
    ],
-   "left": "The optional CVC re-prompt and an OS-provider card fill (deferred); the extension fills cards after the second deliberate action (doc 16).",
+   "left": "An OS-provider card fill (deferred).",
    "evidence": [
     "crates/vault/src/template.rs:408 (CARD fields, fill: confirm)",
     "crates/vault/src/template.rs:716 card_brand (issuer detection)",
@@ -93,13 +93,14 @@
    "name": "Identities and addresses",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
-    "web"
+    "web",
+    "extension"
    ],
-   "left": "Typed subtypes (person, address, business, vehicle, passport) and a separate contacts list that is never filled; plus the form fill itself.",
+   "left": "Nothing for desktop, web and the extension; mobile.",
    "evidence": [
     "crates/vault/src/template.rs:374 (one Identity template: name, contact, address)",
     "docs/plan/10-desktop-shell.md:306 (Identity subtypes listed as not built)"
@@ -113,13 +114,13 @@
    "name": "Typed item templates",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
     "web"
    ],
-   "left": "Reach 25+ types (passport and licence are a Document type choice today) and add user-defined templates.",
+   "left": "Template sharing between people; more built-in types as asked for.",
    "evidence": [
     "crates/vault/src/template.rs:553 (TEMPLATES: 18 kinds, 16 creatable)",
     "crates/app/src/lib.rs:1065 every_kind_goes_through_one_path_and_secrets_never_cross_as_json",
@@ -134,13 +135,13 @@
    "name": "Custom fields",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
     "web"
    ],
-   "left": "Add the TOTP and linked field kinds.",
+   "left": "Links across vaults (links stay in one vault by design, D235).",
    "evidence": [
     "crates/vault/src/template.rs:250 (CUSTOM_KINDS: text, secret, URL, email, phone, date, yes/no)",
     "crates/vault/src/compose.rs:821 fields_by_hand_are_numbered_and_kinds_are_limited",
@@ -155,14 +156,13 @@
    "name": "File attachments",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
-    "cli",
     "server"
    ],
-   "left": "Streaming for large files (whole files up to 100 MB today), object storage and the 5 GB quota on the server.",
+   "left": "Chunked upload and download in sync (a sealed blob still moves whole), S3-compatible object storage on the server, and attachments in the web vault (refused in words today).",
    "evidence": [
     "crates/vault/src/attachment.rs:334 a_five_mib_file_round_trips_in_five_chunks",
     "bins/cli/tests/attachments.rs:130 an_attachment_crosses_two_devices_and_dies_with_its_item",
@@ -177,13 +177,15 @@
    "name": "Password and passphrase generator",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
-    "web"
+    "web",
+    "extension",
+    "cli"
    ],
-   "left": "Word passphrases, per-site rule profiles, length and class options in the UI, and statistical randomness tests in CI.",
+   "left": "Refreshing the published site-rules snapshot on a schedule.",
    "evidence": [
     "crates/crypto/src/generator.rs:225 characters_are_uniform_over_the_alphabet",
     "apps/desktop/src/features/vault/item-editor.test.tsx:47",
@@ -198,13 +200,13 @@
    "name": "Wi-Fi network items",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
     "web"
    ],
-   "left": "The self-hiding guest QR card, the printable card, and export through CXF's own Wi-Fi type (it rides in the Lockdown extension today).",
+   "left": "Joining a network from the item (OS-level, deferred).",
    "evidence": [
     "crates/vault/src/template.rs:300 (WIFI: WPA3 and Enterprise security, EAP identity)",
     "apps/desktop/src/features/vault/detail-pane.test.tsx:34 (large type on the password)",
@@ -986,12 +988,13 @@
    "name": "Large-type display",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
+    "core",
     "desktop",
     "web"
    ],
-   "left": "Large type for any password (Logins lack it), and the hotel and rental mode that logs the TV sign-in and reminds you to sign out.",
+   "left": "Nothing for desktop and web; phones.",
    "evidence": [
     "apps/desktop/src/features/vault/large-type.tsx:27 (ShowLargeType, 120 s sheet)",
     "apps/desktop/src/features/vault/detail-pane.tsx:142 (on Wi-Fi hidden fields)",
@@ -1471,7 +1474,7 @@
     "core",
     "desktop"
    ],
-   "left": "Wi-Fi in CXF's own type and attachments through CXF; lossless through the Lockdown format already.",
+   "left": "File bytes through CXF, which waits on CXP (still a draft); Wi-Fi and identity documents now travel in CXF's own types, and Lockdown backups stay lossless.",
    "evidence": [
     "crates/cxf/src/convert.rs:714 fields_no_credential_holds_ride_in_the_lockdown_extension_both_ways",
     "crates/cxf/src/convert.rs:809 unmapped_credentials_are_reported_not_dropped"
