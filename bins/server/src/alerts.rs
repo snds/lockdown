@@ -13,15 +13,14 @@
 //! these: it already knows when a device logs in and which login name the
 //! account has.
 //!
-//! The tables live in the same SQLite file as everything else
+//! The tables live in the same database as everything else
 //! ([`create_tables`] runs with the main schema). They are additive (`IF
 //! NOT EXISTS`), so an older build opens a file that has them.
 
+use crate::db::{Conn, DbError, params};
+use crate::storage::{Account, Result, SqlStorage, StorageError};
 use lockdown_sync::wire::{AccountAlert, AlertKind, BreachNotice};
 use lockdown_vault::Id;
-use rusqlite::{Connection, OptionalExtension, params};
-
-use crate::storage::{Account, Result, SqliteStorage, StorageError};
 
 /// What the server keeps for alerts.
 pub trait AlertStore: Send + Sync {
@@ -43,7 +42,7 @@ pub trait AlertStore: Send + Sync {
     fn dismiss_alert(&self, account_id: Id, seq: u64) -> Result<bool>;
     /// How many devices the account has logged in with.
     fn device_count(&self, account_id: Id) -> Result<u64>;
-    /// Every account, for the breach monitor.
+    /// Every account, by login name, for the breach monitor.
     fn all_accounts(&self) -> Result<Vec<Account>>;
     /// Whether the monitor already alerted this account about `breach`.
     fn breach_seen(&self, account_id: Id, breach: &str) -> Result<bool>;
@@ -64,10 +63,6 @@ pub trait AlertStore: Send + Sync {
     }
 }
 
-fn backend(e: rusqlite::Error) -> StorageError {
-    StorageError::Backend(e.to_string())
-}
-
 fn kind_name(kind: AlertKind) -> &'static str {
     match kind {
         AlertKind::NewDevice => "new_device",
@@ -86,7 +81,7 @@ fn kind_from(name: &str) -> Result<AlertKind> {
 }
 
 /// The alert tables, beside the main schema.
-pub(crate) fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
+pub(crate) fn create_tables(conn: &Conn<'_>) -> std::result::Result<(), DbError> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS account_alerts (
              account_id TEXT NOT NULL REFERENCES accounts(account_id),
@@ -134,7 +129,7 @@ fn alert_from(row: AlertRow) -> Result<AccountAlert> {
     })
 }
 
-impl AlertStore for SqliteStorage {
+impl AlertStore for SqlStorage {
     fn record_alert(
         &self,
         account_id: Id,
@@ -147,15 +142,12 @@ impl AlertStore for SqliteStorage {
             .map(lockdown_crypto::cbor::to_canonical)
             .transpose()
             .map_err(|e| StorageError::Backend(e.to_string()))?;
-        let mut conn = self.lock();
-        let tx = conn.transaction().map_err(backend)?;
-        let seq: i64 = tx
-            .query_row(
-                "SELECT COALESCE(MAX(seq), 0) + 1 FROM account_alerts WHERE account_id = ?1",
-                params![account_id.to_string()],
-                |r| r.get(0),
-            )
-            .map_err(backend)?;
+        let tx = self.begin()?;
+        let seq: i64 = tx.query_row(
+            "SELECT COALESCE(MAX(seq), 0) + 1 FROM account_alerts WHERE account_id = ?1",
+            params![account_id.to_string()],
+            |r| r.get(0),
+        )?;
         tx.execute(
             "INSERT INTO account_alerts (account_id, seq, kind, at, device_id, breach) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
@@ -166,61 +158,45 @@ impl AlertStore for SqliteStorage {
                 device_id.map(|d| d.to_string()),
                 body
             ],
-        )
-        .map_err(backend)?;
-        tx.commit().map_err(backend)?;
+        )?;
+        tx.commit()?;
         Ok(u64::try_from(seq).unwrap_or(0))
     }
 
     fn alerts_for(&self, account_id: Id, device_id: Id, since: u64) -> Result<Vec<AccountAlert>> {
-        let conn = self.lock();
+        let conn = self.conn();
         // When each device joined, by the same clock: a device sees a new
         // device's sign-in only when it was there first.
-        let mut joined = std::collections::HashMap::new();
-        {
-            let mut stmt = conn
-                .prepare("SELECT device_id, first_seen FROM devices WHERE account_id = ?1")
-                .map_err(backend)?;
-            let rows = stmt
-                .query_map(params![account_id.to_string()], |r| {
-                    Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
-                })
-                .map_err(backend)?;
-            for row in rows {
-                let (id, at) = row.map_err(backend)?;
-                joined.insert(id, at);
-            }
-        }
+        let joined: std::collections::HashMap<String, i64> = conn
+            .query_map(
+                "SELECT device_id, first_seen FROM devices WHERE account_id = ?1",
+                params![account_id.to_string()],
+                |r| Ok((r.get::<String>(0)?, r.get::<i64>(1)?)),
+            )?
+            .into_iter()
+            .collect();
         let mine = joined
             .get(&device_id.to_string())
             .copied()
             .unwrap_or(i64::MAX);
-        let mut stmt = conn
-            .prepare(
-                "SELECT seq, kind, at, device_id, breach, dismissed FROM account_alerts
-                 WHERE account_id = ?1 AND seq > ?2 ORDER BY seq",
-            )
-            .map_err(backend)?;
-        let rows = stmt
-            .query_map(
-                params![
-                    account_id.to_string(),
-                    i64::try_from(since).unwrap_or(i64::MAX)
-                ],
-                |r| {
-                    Ok((
-                        r.get::<_, i64>(0)?,
-                        r.get::<_, String>(1)?,
-                        r.get::<_, i64>(2)?,
-                        r.get::<_, Option<String>>(3)?,
-                        r.get::<_, Option<Vec<u8>>>(4)?,
-                        r.get::<_, i64>(5)?,
-                    ))
-                },
-            )
-            .map_err(backend)?
-            .collect::<std::result::Result<Vec<AlertRow>, _>>()
-            .map_err(backend)?;
+        let rows: Vec<AlertRow> = conn.query_map(
+            "SELECT seq, kind, at, device_id, breach, dismissed FROM account_alerts
+             WHERE account_id = ?1 AND seq > ?2 ORDER BY seq",
+            params![
+                account_id.to_string(),
+                i64::try_from(since).unwrap_or(i64::MAX)
+            ],
+            |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            },
+        )?;
         let mut out = Vec::new();
         for row in rows {
             let alert = alert_from(row)?;
@@ -239,52 +215,37 @@ impl AlertStore for SqliteStorage {
     }
 
     fn alert_seq(&self, account_id: Id) -> Result<u64> {
-        let seq: i64 = self
-            .lock()
-            .query_row(
-                "SELECT COALESCE(MAX(seq), 0) FROM account_alerts WHERE account_id = ?1",
-                params![account_id.to_string()],
-                |r| r.get(0),
-            )
-            .map_err(backend)?;
+        let seq: i64 = self.conn().query_row(
+            "SELECT COALESCE(MAX(seq), 0) FROM account_alerts WHERE account_id = ?1",
+            params![account_id.to_string()],
+            |r| r.get(0),
+        )?;
         Ok(u64::try_from(seq).unwrap_or(0))
     }
 
     fn dismiss_alert(&self, account_id: Id, seq: u64) -> Result<bool> {
-        let n = self
-            .lock()
-            .execute(
-                "UPDATE account_alerts SET dismissed = 1 WHERE account_id = ?1 AND seq = ?2",
-                params![account_id.to_string(), i64::try_from(seq).unwrap_or(-1)],
-            )
-            .map_err(backend)?;
+        let n = self.conn().execute(
+            "UPDATE account_alerts SET dismissed = 1 WHERE account_id = ?1 AND seq = ?2",
+            params![account_id.to_string(), i64::try_from(seq).unwrap_or(-1)],
+        )?;
         Ok(n > 0)
     }
 
     fn device_count(&self, account_id: Id) -> Result<u64> {
-        let n: i64 = self
-            .lock()
-            .query_row(
-                "SELECT COUNT(*) FROM devices WHERE account_id = ?1",
-                params![account_id.to_string()],
-                |r| r.get(0),
-            )
-            .map_err(backend)?;
+        let n: i64 = self.conn().query_row(
+            "SELECT COUNT(*) FROM devices WHERE account_id = ?1",
+            params![account_id.to_string()],
+            |r| r.get(0),
+        )?;
         Ok(u64::try_from(n).unwrap_or(0))
     }
 
     fn all_accounts(&self) -> Result<Vec<Account>> {
-        let conn = self.lock();
-        let mut stmt = conn
-            .prepare("SELECT account_id FROM accounts ORDER BY created_at")
-            .map_err(backend)?;
-        let ids: Vec<String> = stmt
-            .query_map([], |r| r.get(0))
-            .map_err(backend)?
-            .collect::<std::result::Result<_, _>>()
-            .map_err(backend)?;
-        drop(stmt);
-        drop(conn);
+        let ids: Vec<String> = self.conn().query_map(
+            "SELECT account_id FROM accounts ORDER BY login",
+            params![],
+            |r| r.get(0),
+        )?;
         let mut out = Vec::new();
         for id in ids {
             let id = Id::parse(&id)
@@ -297,59 +258,43 @@ impl AlertStore for SqliteStorage {
     }
 
     fn breach_seen(&self, account_id: Id, breach: &str) -> Result<bool> {
-        let found: Option<i64> = self
-            .lock()
-            .query_row(
-                "SELECT 1 FROM breach_seen WHERE account_id = ?1 AND name = ?2",
-                params![account_id.to_string(), breach],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(backend)?;
+        let found: Option<i64> = self.conn().query_opt(
+            "SELECT 1 FROM breach_seen WHERE account_id = ?1 AND name = ?2",
+            params![account_id.to_string(), breach],
+            |r| r.get(0),
+        )?;
         Ok(found.is_some())
     }
 
     fn mark_breach_seen(&self, account_id: Id, breach: &str) -> Result<()> {
-        self.lock()
-            .execute(
-                "INSERT OR IGNORE INTO breach_seen (account_id, name) VALUES (?1, ?2)",
-                params![account_id.to_string(), breach],
-            )
-            .map_err(backend)?;
+        self.conn().execute(
+            "INSERT INTO breach_seen (account_id, name) VALUES (?1, ?2) ON CONFLICT DO NOTHING",
+            params![account_id.to_string(), breach],
+        )?;
         Ok(())
     }
 
     fn monitored(&self, account_id: Id) -> Result<Vec<String>> {
-        let conn = self.lock();
-        let mut stmt = conn
-            .prepare(
-                "SELECT address FROM monitored_addresses WHERE account_id = ?1 ORDER BY address",
-            )
-            .map_err(backend)?;
-        let rows = stmt
-            .query_map(params![account_id.to_string()], |r| r.get(0))
-            .map_err(backend)?
-            .collect::<std::result::Result<Vec<String>, _>>()
-            .map_err(backend)?;
-        Ok(rows)
+        Ok(self.conn().query_map(
+            "SELECT address FROM monitored_addresses WHERE account_id = ?1 ORDER BY address",
+            params![account_id.to_string()],
+            |r| r.get(0),
+        )?)
     }
 
     fn set_monitored(&self, account_id: Id, addresses: &[String]) -> Result<()> {
-        let mut conn = self.lock();
-        let tx = conn.transaction().map_err(backend)?;
+        let tx = self.begin()?;
         tx.execute(
             "DELETE FROM monitored_addresses WHERE account_id = ?1",
             params![account_id.to_string()],
-        )
-        .map_err(backend)?;
+        )?;
         for a in addresses {
             tx.execute(
-                "INSERT OR IGNORE INTO monitored_addresses (account_id, address) VALUES (?1, ?2)",
+                "INSERT INTO monitored_addresses (account_id, address) VALUES (?1, ?2) ON CONFLICT DO NOTHING",
                 params![account_id.to_string(), a],
-            )
-            .map_err(backend)?;
+            )?;
         }
-        tx.commit().map_err(backend)
+        Ok(tx.commit()?)
     }
 }
 
@@ -360,7 +305,7 @@ mod tests {
 
     #[test]
     fn a_new_device_alert_reaches_the_other_devices_only_and_dismisses_for_all() {
-        let s = SqliteStorage::open_in_memory().unwrap();
+        let s = SqlStorage::open_scratch().unwrap();
         let account = s
             .create_account("sean@example.com", Id::new(), b"pf")
             .unwrap();
@@ -395,8 +340,11 @@ mod tests {
                 .is_empty()
         );
         // A device that joins later doesn't see a sign-in from before it.
-        s.lock()
-            .execute("UPDATE devices SET first_seen = first_seen - 100", [])
+        s.conn()
+            .execute(
+                "UPDATE devices SET first_seen = first_seen - 100",
+                params![],
+            )
             .unwrap();
         let third = Id::new();
         s.register_device(account.account_id, third, &[3; 32])
@@ -432,7 +380,7 @@ mod tests {
 
     #[test]
     fn breach_alerts_carry_their_notice_and_are_remembered() {
-        let s = SqliteStorage::open_in_memory().unwrap();
+        let s = SqlStorage::open_scratch().unwrap();
         let account = s
             .create_account("sean@example.com", Id::new(), b"pf")
             .unwrap();

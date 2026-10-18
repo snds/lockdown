@@ -44,6 +44,17 @@ tempfile.workspace = true
 zeroize.workspace = true
 # The live channel's event stream (live.rs).
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
+# Postgres beside SQLite (db.rs, `--database-url`): the driver runs on a
+# small runtime of its own, the store waits on it like on the SQLite lock.
+tokio-postgres = { version = "0.7", default-features = false, features = ["runtime"] }
+futures-executor = { version = "0.3", default-features = false, features = ["std"] }
+bytes = "1"
+# Attachment bodies in an S3-compatible bucket (s3.rs): SigV4 is
+# HMAC-SHA-256 over SHA-256 hashes, written here rather than pulling in an
+# SDK.
+hmac.workspace = true
+sha2.workspace = true
+url.workspace = true
 
 [dev-dependencies]
 tower.workspace = true

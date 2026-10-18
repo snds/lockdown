@@ -5,14 +5,18 @@
 //! - `lockdown-server backup keygen` prints a new Backup Key once. Keep it
 //!   with the recovery kit; without it the snapshot is noise.
 //! - `lockdown-server backup create --out FILE` takes a consistent copy of
-//!   the database (`VACUUM INTO`, safe while the server runs), the server
-//!   key file and, with `--blob-dir`, every attachment file, and writes
-//!   them as one sealed file.
+//!   the database (`VACUUM INTO` for SQLite; for Postgres every row, in one
+//!   repeatable-read transaction, into the same SQLite file, so one format
+//!   serves both and a backup restores into either), the server key file
+//!   and every attachment body kept outside the database (files with
+//!   `--blob-dir`, objects in an S3 bucket), and writes them as one sealed
+//!   file. Safe while the server runs.
 //! - `lockdown-server backup verify --in FILE` opens it, checks every
 //!   file's hash and opens the database copy (a restore drill without
 //!   touching anything).
 //! - `lockdown-server backup restore --in FILE --data DIR` writes it back
-//!   into an empty data directory.
+//!   into an empty data directory (or, with `--database-url`, an empty
+//!   Postgres database; attachment bodies to `--blob-dir` or the bucket).
 //!
 //! The format (`lockdown-server-backup` v1):
 //!
@@ -44,7 +48,9 @@ use lockdown_crypto::{Key32, Sealed};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
-use crate::storage::{SCHEMA_VERSION, SqliteStorage};
+use std::sync::Arc;
+
+use crate::storage::{BlobBodies, BlobDir, SCHEMA_VERSION, SqlStorage};
 
 /// The file's first bytes.
 pub const MAGIC: &[u8; 8] = b"LDSRVBK1";
@@ -171,15 +177,14 @@ impl std::fmt::Display for Summary {
     }
 }
 
-/// Where the live server keeps what a snapshot takes.
-#[derive(Clone, Debug)]
-pub struct Sources {
-    /// The database file.
-    pub db: PathBuf,
+/// What a snapshot takes: the open store (its database, and attachment
+/// bodies wherever it keeps them) and the server key file.
+#[derive(Clone, Copy, Debug)]
+pub struct Sources<'a> {
+    /// The store.
+    pub storage: &'a SqlStorage,
     /// The server key file.
-    pub server_key: PathBuf,
-    /// The attachment files' directory, when bodies live as files.
-    pub blob_dir: Option<PathBuf>,
+    pub server_key: &'a Path,
 }
 
 fn io(what: &str, e: std::io::Error) -> String {
@@ -416,16 +421,45 @@ pub fn create(sources: &Sources, key: &BackupKey, out: &Path, now: i64) -> Resul
         )
         .map_err(|e| io("couldn't make a working folder beside the backup", e))?;
     let db_copy = work.path().join(DB_NAME);
-    let storage = SqliteStorage::open(&sources.db).map_err(|e| e.to_string())?;
-    crate::storage::Storage::snapshot_to(&storage, &db_copy).map_err(|e| e.to_string())?;
-    drop(storage);
+    let storage = sources.storage;
+    crate::storage::Storage::snapshot_to(storage, &db_copy).map_err(|e| e.to_string())?;
 
     let mut files: Vec<(String, PathBuf)> = vec![
         (DB_NAME.to_string(), db_copy),
-        (KEY_NAME.to_string(), sources.server_key.clone()),
+        (KEY_NAME.to_string(), sources.server_key.to_path_buf()),
     ];
-    if let Some(dir) = &sources.blob_dir {
-        files.extend(blob_files(dir)?);
+    // Every body kept outside the database: files are read where they are
+    // (every file in the directory, as before), objects in a bucket are
+    // fetched by their rows into the working folder.
+    let outside = storage.outside_blobs().map_err(|e| e.to_string())?;
+    match storage.bodies() {
+        Some(bodies) => match bodies.local_dir() {
+            Some(dir) => files.extend(blob_files(dir)?),
+            None => {
+                for (vault, hash, _) in outside {
+                    let name = format!("{BLOB_PREFIX}{vault}/{}", hash.to_hex());
+                    let bytes = bodies
+                        .get(vault, hash)
+                        .map_err(|e| e.to_string())?
+                        .ok_or_else(|| format!("{name} is missing from where it is kept"))?;
+                    let path = work.path().join(&name);
+                    if let Some(dir) = path.parent() {
+                        crate::keys::create_private_dir(dir)
+                            .map_err(|e| io("couldn't make a working folder", e))?;
+                    }
+                    crate::keys::write_private(&path, &bytes)
+                        .map_err(|e| io("couldn't stage an attachment", e))?;
+                    files.push((name, path));
+                }
+            }
+        },
+        None if !outside.is_empty() => {
+            return Err(
+                "the database names attachment bodies kept outside it, but no place for them is set (--blob-dir or --s3-*)"
+                    .into(),
+            );
+        }
+        None => {}
     }
     let mut manifest = Manifest { files: Vec::new() };
     for (name, path) in &files {
@@ -618,16 +652,6 @@ fn read_backup(
     Ok(summary(&header, &manifest))
 }
 
-/// A rename, or a copy and a delete when `to` is on another file system.
-fn move_file(from: &Path, to: &Path) -> std::io::Result<()> {
-    if std::fs::rename(from, to).is_ok() {
-        return Ok(());
-    }
-    let bytes = std::fs::read(from)?;
-    crate::keys::write_private(to, &bytes)?;
-    std::fs::remove_file(from)
-}
-
 /// Opens and checks a backup, and opens its database copy, changing
 /// nothing.
 pub fn verify(input: &Path, key: &BackupKey) -> Result<(Summary, DbFacts), String> {
@@ -665,18 +689,36 @@ pub struct DbFacts {
 
 fn db_facts(path: &Path) -> Result<DbFacts, String> {
     let storage =
-        SqliteStorage::open(path).map_err(|e| format!("the database copy doesn't open: {e}"))?;
+        SqlStorage::open(path).map_err(|e| format!("the database copy doesn't open: {e}"))?;
     storage.counts().map_err(|e| e.to_string())
 }
 
-/// Writes a backup into an empty data directory (and, with `blob_dir`,
-/// its attachment files there instead of `<data>/blobs`).
-pub fn restore(
-    input: &Path,
-    key: &BackupKey,
-    data: &Path,
-    blob_dir: Option<&Path>,
-) -> Result<Summary, String> {
+/// Where a restore writes.
+#[derive(Clone)]
+pub struct RestoreTarget {
+    /// The (empty) data directory: the key file, and the database unless
+    /// `database` names a Postgres one.
+    pub data: PathBuf,
+    /// An empty Postgres database to restore the rows into, instead of a
+    /// SQLite file in `data`.
+    pub database: Option<crate::db::PgOptions>,
+    /// Where attachment bodies go; `None` is files in `<data>/blobs`.
+    pub bodies: Option<Arc<dyn BlobBodies>>,
+}
+
+impl std::fmt::Debug for RestoreTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RestoreTarget")
+            .field("data", &self.data)
+            .field("postgres", &self.database.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+/// Writes a backup into an empty data directory (or an empty Postgres
+/// database), with its attachment bodies where `target` says.
+pub fn restore(input: &Path, key: &BackupKey, target: &RestoreTarget) -> Result<Summary, String> {
+    let data = target.data.as_path();
     for name in [DB_NAME, KEY_NAME] {
         if data.join(name).exists() {
             return Err(format!(
@@ -686,7 +728,23 @@ pub fn restore(
         }
     }
     crate::keys::create_private_dir(data).map_err(|e| io("couldn't make the data directory", e))?;
-    let blobs = blob_dir.map_or_else(|| data.join("blobs"), Path::to_path_buf);
+    let pg = match &target.database {
+        Some(options) => {
+            let store = SqlStorage::open_postgres(options.clone()).map_err(|e| e.to_string())?;
+            if store.counts().map_err(|e| e.to_string())?.accounts > 0 {
+                return Err(
+                    "that database already holds a server's accounts; restore into an empty one"
+                        .into(),
+                );
+            }
+            Some(store)
+        }
+        None => None,
+    };
+    let bodies: Arc<dyn BlobBodies> = match &target.bodies {
+        Some(b) => b.clone(),
+        None => Arc::new(BlobDir::new(&data.join("blobs")).map_err(|e| e.to_string())?),
+    };
     // Into a staging folder first, so a backup that fails half-way leaves
     // the data directory as it was.
     let staging = tempfile::Builder::new()
@@ -697,20 +755,41 @@ pub fn restore(
         crate::keys::write_private(&staging.path().join(name), bytes)
             .map_err(|e| io(&format!("couldn't write {name}"), e))
     })?;
-    db_facts(&staging.path().join(DB_NAME))?;
+    let staged = staging.path().join(DB_NAME);
+    db_facts(&staged)?;
     for (name, path) in blob_files(&staging.path().join("blobs"))? {
-        let to = blobs.join(name.trim_start_matches(BLOB_PREFIX));
-        if let Some(dir) = to.parent() {
-            crate::keys::create_private_dir(dir)
-                .map_err(|e| io("couldn't make a blob folder", e))?;
-        }
-        move_file(&path, &to).map_err(|e| io("couldn't put a blob in place", e))?;
+        let Some((vault, hash)) = blob_name(&name) else {
+            return Err(format!("the backup holds an attachment named {name:?}"));
+        };
+        let bytes = std::fs::read(&path).map_err(|e| io("couldn't read a staged blob", e))?;
+        bodies
+            .put(vault, hash, &bytes)
+            .map_err(|e| format!("couldn't put an attachment in place: {e}"))?;
     }
-    for name in [KEY_NAME, DB_NAME] {
-        std::fs::rename(staging.path().join(name), data.join(name))
-            .map_err(|e| io(&format!("couldn't put {name} in place"), e))?;
+    if let Some(store) = &pg {
+        let copy = SqlStorage::open(&staged).map_err(|e| e.to_string())?;
+        copy.copy_rows_to(store).map_err(|e| e.to_string())?;
+    }
+    std::fs::rename(staging.path().join(KEY_NAME), data.join(KEY_NAME))
+        .map_err(|e| io(&format!("couldn't put {KEY_NAME} in place"), e))?;
+    if pg.is_none() {
+        std::fs::rename(&staged, data.join(DB_NAME))
+            .map_err(|e| io(&format!("couldn't put {DB_NAME} in place"), e))?;
     }
     Ok(summary)
+}
+
+/// `blobs/<vault>/<hash>` as the vault and the hash.
+fn blob_name(name: &str) -> Option<(lockdown_vault::Id, lockdown_vault::Hash32)> {
+    let rest = name.strip_prefix(BLOB_PREFIX)?;
+    let (vault, hash) = rest.split_once('/')?;
+    let vault = lockdown_vault::Id::parse(vault).ok()?;
+    let bytes: [u8; 32] = data_encoding::HEXLOWER_PERMISSIVE
+        .decode(hash.as_bytes())
+        .ok()?
+        .try_into()
+        .ok()?;
+    Some((vault, lockdown_vault::Hash32(bytes)))
 }
 
 #[cfg(test)]

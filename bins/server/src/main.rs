@@ -44,8 +44,9 @@ use std::time::Duration;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use lockdown_server::backup::{self, BackupKey};
 use lockdown_server::client_addr::Cidr;
+use lockdown_server::db::PgOptions;
 use lockdown_server::keys::ServerKeys;
-use lockdown_server::storage::SqliteStorage;
+use lockdown_server::storage::SqlStorage;
 use lockdown_server::{AppState, Config};
 
 /// The Lockdown server: one binary for cloud and self-host.
@@ -91,9 +92,8 @@ enum Command {
 enum SecurityKeysCommand {
     /// Lists an account's security keys.
     List {
-        /// Where the database is.
-        #[arg(long, env = "LOCKDOWN_DATA", value_name = "DIR")]
-        data: Option<PathBuf>,
+        #[command(flatten)]
+        store: StoreArgs,
         /// The account's login name.
         #[arg(long)]
         login: String,
@@ -102,9 +102,8 @@ enum SecurityKeysCommand {
     /// a new device needs only the password (and, for the vault, the
     /// Secret Key or the recovery kit, which the server never had).
     Clear {
-        /// Where the database is.
-        #[arg(long, env = "LOCKDOWN_DATA", value_name = "DIR")]
-        data: Option<PathBuf>,
+        #[command(flatten)]
+        store: StoreArgs,
         /// The account's login name.
         #[arg(long)]
         login: String,
@@ -119,7 +118,7 @@ enum BackupCommand {
     /// attachment files.
     Create {
         #[command(flatten)]
-        place: DataPlace,
+        store: StoreArgs,
         /// The backup file to write (never over an existing one).
         #[arg(long, value_name = "FILE")]
         out: PathBuf,
@@ -130,31 +129,44 @@ enum BackupCommand {
         #[arg(long = "in", value_name = "FILE")]
         input: PathBuf,
     },
-    /// Writes a backup back into an empty data directory.
+    /// Writes a backup back into an empty data directory (and, with
+    /// `--database-url`, an empty Postgres database).
     Restore {
         /// The backup file.
         #[arg(long = "in", value_name = "FILE")]
         input: PathBuf,
-        /// The (empty) data directory to restore into.
-        #[arg(long, env = "LOCKDOWN_DATA", value_name = "DIR")]
-        data: PathBuf,
-        /// Where attachment files go; default `<data>/blobs`.
-        #[arg(long, env = "LOCKDOWN_BLOB_DIR", value_name = "DIR")]
-        blob_dir: Option<PathBuf>,
+        #[command(flatten)]
+        store: StoreArgs,
     },
 }
 
-#[derive(Args, Debug)]
-struct DataPlace {
-    /// Where the database lives.
+/// Where the store is: the data directory (key file; the SQLite database
+/// unless `--database-url`), and where attachment bodies live.
+#[derive(Args, Debug, Clone)]
+struct StoreArgs {
+    /// Where the database (SQLite) and the server key file live.
     #[arg(long, env = "LOCKDOWN_DATA", value_name = "DIR")]
     data: Option<PathBuf>,
     /// The server key file; default `server-key.cbor` in the data directory.
     #[arg(long, env = "LOCKDOWN_SERVER_KEY", value_name = "PATH")]
     server_key: Option<PathBuf>,
-    /// Where attachment files live, when they are kept as files.
+    /// Keep attachment bodies as files here instead of in the database.
     #[arg(long, env = "LOCKDOWN_BLOB_DIR", value_name = "DIR")]
     blob_dir: Option<PathBuf>,
+    /// A Postgres database instead of the SQLite file
+    /// (`postgres://user:password@host/db`; TLS is required away from this
+    /// machine).
+    #[arg(
+        long,
+        env = "LOCKDOWN_DATABASE_URL",
+        value_name = "URL",
+        hide_env_values = true
+    )]
+    database_url: Option<String>,
+    /// Certificates (PEM) to trust for the database's TLS instead of the
+    /// system's: the database server's private CA.
+    #[arg(long, env = "LOCKDOWN_DATABASE_CA", value_name = "PEM")]
+    database_ca: Option<PathBuf>,
 }
 
 #[derive(Args, Debug)]
@@ -162,14 +174,11 @@ struct ServeArgs {
     /// Address and port to listen on.
     #[arg(long, env = "LOCKDOWN_LISTEN", default_value = "127.0.0.1:8787")]
     listen: String,
-    /// Where the database lives. Default: the platform data directory,
-    /// `lockdown-server` under it.
-    #[arg(long, env = "LOCKDOWN_DATA", value_name = "DIR")]
-    data: Option<PathBuf>,
-    /// The server key file (token key and OPAQUE setup), made on first
-    /// run. Default: `server-key.cbor` in the data directory.
-    #[arg(long, env = "LOCKDOWN_SERVER_KEY", value_name = "PATH")]
-    server_key: Option<PathBuf>,
+    /// The data directory (default: the platform data directory,
+    /// `lockdown-server` under it), the server key file (made on first
+    /// run), the database and where attachment bodies live.
+    #[command(flatten)]
+    store: StoreArgs,
     /// The certificate chain (PEM) for TLS on the server itself.
     #[arg(
         long,
@@ -217,9 +226,6 @@ struct ServeArgs {
         value_name = "CIDR"
     )]
     trusted_proxies: Vec<String>,
-    /// Keep attachment bodies as files here instead of in the database.
-    #[arg(long, env = "LOCKDOWN_BLOB_DIR", value_name = "DIR")]
-    blob_dir: Option<PathBuf>,
     /// How long a session token lives, in seconds.
     #[arg(long, env = "LOCKDOWN_SESSION_TTL", default_value_t = 8 * 60 * 60)]
     session_ttl: u64,
@@ -294,23 +300,45 @@ fn data_dir(data: Option<PathBuf>) -> Result<PathBuf, String> {
     }
 }
 
-fn open_storage(
-    data: &std::path::Path,
-    blob_dir: Option<&std::path::Path>,
-) -> Result<SqliteStorage, String> {
-    let storage = SqliteStorage::open(&data.join(backup::DB_NAME)).map_err(|e| e.to_string())?;
-    match blob_dir {
+/// The store `args` names: Postgres with `--database-url`, else the SQLite
+/// file in the data directory; attachment bodies as files with
+/// `--blob-dir`. `exclusive` holds the database's advisory lock (a
+/// serving server; one per database).
+fn open_storage(args: &StoreArgs, exclusive: bool) -> Result<SqlStorage, String> {
+    let storage = match &args.database_url {
+        Some(url) => SqlStorage::open_postgres(pg_options(args, url, exclusive)?)
+            .map_err(|e| e.to_string())?,
+        None => {
+            let data = data_dir(args.data.clone())?;
+            SqlStorage::open(&data.join(backup::DB_NAME)).map_err(|e| e.to_string())?
+        }
+    };
+    match &args.blob_dir {
         Some(dir) => storage.with_blob_dir(dir).map_err(|e| e.to_string()),
         None => Ok(storage),
     }
 }
 
+fn pg_options(args: &StoreArgs, url: &str, exclusive: bool) -> Result<PgOptions, String> {
+    let mut options = PgOptions::new(url);
+    options.exclusive = exclusive;
+    if let Some(ca) = &args.database_ca {
+        options.ca = Some(lockdown_tls::read_certs(ca).map_err(|e| e.to_string())?);
+    }
+    Ok(options)
+}
+
+fn key_path(args: &StoreArgs) -> Result<PathBuf, String> {
+    match &args.server_key {
+        Some(p) => Ok(p.clone()),
+        None => Ok(data_dir(args.data.clone())?.join(backup::KEY_NAME)),
+    }
+}
+
 fn serve(cli: ServeArgs) -> Result<(), String> {
-    let data = data_dir(cli.data)?;
-    let key_path = cli
-        .server_key
-        .unwrap_or_else(|| data.join(backup::KEY_NAME));
-    let storage = open_storage(&data, cli.blob_dir.as_deref())?;
+    let data = data_dir(cli.store.data.clone())?;
+    let key_path = key_path(&cli.store)?;
+    let storage = open_storage(&cli.store, true)?;
     let keys = ServerKeys::load_or_create(&key_path).map_err(|e| e.to_string())?;
     let trusted_proxies = cli
         .trusted_proxies
@@ -462,20 +490,25 @@ fn run_backup(command: BackupCommand) -> Result<(), String> {
             );
             Ok(())
         }
-        BackupCommand::Create { place, out } => {
+        BackupCommand::Create { store, out } => {
             let key = backup_key()?;
-            let data = data_dir(place.data)?;
-            let sources = backup::Sources {
-                db: data.join(backup::DB_NAME),
-                server_key: place
-                    .server_key
-                    .unwrap_or_else(|| data.join(backup::KEY_NAME)),
-                blob_dir: place.blob_dir,
-            };
-            if !sources.db.exists() {
-                return Err(format!("there is no server database in {}", data.display()));
+            if store.database_url.is_none() {
+                let data = data_dir(store.data.clone())?;
+                if !data.join(backup::DB_NAME).exists() {
+                    return Err(format!("there is no server database in {}", data.display()));
+                }
             }
-            let summary = backup::create(&sources, &key, &out, lockdown_vault::Timestamp::now().0)?;
+            let storage = open_storage(&store, false)?;
+            let server_key = key_path(&store)?;
+            let summary = backup::create(
+                &backup::Sources {
+                    storage: &storage,
+                    server_key: &server_key,
+                },
+                &key,
+                &out,
+                lockdown_vault::Timestamp::now().0,
+            )?;
             println!("wrote {}: {summary}", out.display());
             Ok(())
         }
@@ -489,13 +522,26 @@ fn run_backup(command: BackupCommand) -> Result<(), String> {
             );
             Ok(())
         }
-        BackupCommand::Restore {
-            input,
-            data,
-            blob_dir,
-        } => {
+        BackupCommand::Restore { input, store } => {
             let key = backup_key()?;
-            let summary = backup::restore(&input, &key, &data, blob_dir.as_deref())?;
+            let data = store
+                .data
+                .clone()
+                .ok_or("give the data directory to restore into (--data or LOCKDOWN_DATA)")?;
+            let target = backup::RestoreTarget {
+                data: data.clone(),
+                database: match &store.database_url {
+                    Some(url) => Some(pg_options(&store, url, true)?),
+                    None => None,
+                },
+                bodies: match &store.blob_dir {
+                    Some(dir) => Some(std::sync::Arc::new(
+                        lockdown_server::storage::BlobDir::new(dir).map_err(|e| e.to_string())?,
+                    )),
+                    None => None,
+                },
+            };
+            let summary = backup::restore(&input, &key, &target)?;
             println!("restored into {}: {summary}", data.display());
             Ok(())
         }
@@ -529,12 +575,11 @@ fn healthcheck(url: Option<String>, listen: &str, tls: bool) -> Result<(), Strin
 
 fn run_security_keys(command: SecurityKeysCommand) -> Result<(), String> {
     use lockdown_server::storage::Storage;
-    let (data, login, clear) = match command {
-        SecurityKeysCommand::List { data, login } => (data, login, false),
-        SecurityKeysCommand::Clear { data, login } => (data, login, true),
+    let (store, login, clear) = match command {
+        SecurityKeysCommand::List { store, login } => (store, login, false),
+        SecurityKeysCommand::Clear { store, login } => (store, login, true),
     };
-    let data = data_dir(data)?;
-    let storage = open_storage(&data, None)?;
+    let storage = open_storage(&store, false)?;
     let account = storage
         .account_by_login(login.trim())
         .map_err(|e| e.to_string())?

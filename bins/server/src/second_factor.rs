@@ -45,12 +45,12 @@ use lockdown_sync::account_security::{
 };
 use lockdown_sync::wire::{ErrorCode, LoginFinishReply};
 use lockdown_vault::Id;
-use rusqlite::{Connection, OptionalExtension, params};
 use serde_bytes::ByteBuf;
 
 use crate::AppState;
 use crate::api::{ApiError, ApiResult, Cbor, Peer, Session, brake};
-use crate::storage::{Account, Result, SqliteStorage, StorageError};
+use crate::db::{Conn, DbError, params};
+use crate::storage::{Account, Result, SqlStorage, StorageError};
 
 /// How long a sign-in or a registration waits for a key.
 pub const PENDING_SECS: i64 = 5 * 60;
@@ -94,7 +94,7 @@ impl KeyRow {
 
 /// The tables, beside the main schema (additive; the schema version is
 /// unchanged).
-pub(crate) fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
+pub(crate) fn create_tables(conn: &Conn<'_>) -> std::result::Result<(), DbError> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS security_keys (
              account_id    TEXT NOT NULL,
@@ -138,24 +138,16 @@ pub trait AccountSecurityStore: Send + Sync {
     fn emergency_items(&self, grant: Id) -> Result<Vec<Vec<u8>>>;
 }
 
-fn backend(e: rusqlite::Error) -> StorageError {
-    StorageError::Backend(e.to_string())
-}
-
 fn u32_of(n: i64) -> u32 {
     u32::try_from(n).unwrap_or(0)
 }
 
-impl AccountSecurityStore for SqliteStorage {
+impl AccountSecurityStore for SqlStorage {
     fn keys(&self, account_id: Id) -> Result<Vec<KeyRow>> {
-        let conn = self.lock();
-        let mut stmt = conn
-            .prepare(
-                "SELECT credential_id, name, alg, cose_key, sign_count, created_at, last_used FROM security_keys WHERE account_id = ?1 ORDER BY created_at, credential_id",
-            )
-            .map_err(backend)?;
-        let rows = stmt
-            .query_map(params![account_id.to_string()], |r| {
+        Ok(self.conn().query_map(
+            "SELECT credential_id, name, alg, cose_key, sign_count, created_at, last_used FROM security_keys WHERE account_id = ?1 ORDER BY created_at, credential_id",
+            params![account_id.to_string()],
+            |r| {
                 Ok(KeyRow {
                     credential_id: r.get(0)?,
                     name: r.get(1)?,
@@ -165,28 +157,24 @@ impl AccountSecurityStore for SqliteStorage {
                     created_at: r.get(5)?,
                     last_used: r.get(6)?,
                 })
-            })
-            .map_err(backend)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(backend)
+            },
+        )?)
     }
 
     fn add_key(&self, account_id: Id, key: &KeyRow) -> Result<()> {
-        let conn = self.lock();
-        let n = conn
-            .execute(
-                "INSERT OR IGNORE INTO security_keys (account_id, credential_id, name, alg, cose_key, sign_count, created_at, last_used) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                params![
-                    account_id.to_string(),
-                    key.credential_id,
-                    key.name,
-                    key.alg,
-                    key.cose_key,
-                    i64::from(key.sign_count),
-                    key.created_at,
-                    key.last_used
-                ],
-            )
-            .map_err(backend)?;
+        let n = self.conn().execute(
+            "INSERT INTO security_keys (account_id, credential_id, name, alg, cose_key, sign_count, created_at, last_used) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) ON CONFLICT DO NOTHING",
+            params![
+                account_id.to_string(),
+                key.credential_id,
+                key.name,
+                key.alg,
+                key.cose_key,
+                i64::from(key.sign_count),
+                key.created_at,
+                key.last_used
+            ],
+        )?;
         if n == 0 {
             return Err(StorageError::Backend(
                 "that key is already registered".into(),
@@ -196,61 +184,48 @@ impl AccountSecurityStore for SqliteStorage {
     }
 
     fn remove_key(&self, account_id: Id, credential_id: &[u8]) -> Result<bool> {
-        let n = self
-            .lock()
-            .execute(
-                "DELETE FROM security_keys WHERE account_id = ?1 AND credential_id = ?2",
-                params![account_id.to_string(), credential_id],
-            )
-            .map_err(backend)?;
+        let n = self.conn().execute(
+            "DELETE FROM security_keys WHERE account_id = ?1 AND credential_id = ?2",
+            params![account_id.to_string(), credential_id],
+        )?;
         Ok(n > 0)
     }
 
     fn touch_key(&self, account_id: Id, credential_id: &[u8], count: u32, now: i64) -> Result<()> {
-        self.lock()
-            .execute(
-                "UPDATE security_keys SET sign_count = ?3, last_used = ?4 WHERE account_id = ?1 AND credential_id = ?2",
-                params![account_id.to_string(), credential_id, i64::from(count), now],
-            )
-            .map_err(backend)?;
+        self.conn().execute(
+            "UPDATE security_keys SET sign_count = ?3, last_used = ?4 WHERE account_id = ?1 AND credential_id = ?2",
+            params![account_id.to_string(), credential_id, i64::from(count), now],
+        )?;
         Ok(())
     }
 
     fn clear_keys(&self, account_id: Id) -> Result<usize> {
-        self.lock()
-            .execute(
-                "DELETE FROM security_keys WHERE account_id = ?1",
-                params![account_id.to_string()],
-            )
-            .map_err(backend)
+        Ok(self.conn().execute(
+            "DELETE FROM security_keys WHERE account_id = ?1",
+            params![account_id.to_string()],
+        )?)
     }
 
     fn ksf(&self, account_id: Id) -> Result<Option<Argon2Params>> {
-        self.lock()
-            .query_row(
-                "SELECT m_cost_kib, t_cost, p_cost FROM account_ksf WHERE account_id = ?1",
-                params![account_id.to_string()],
-                |r| {
-                    Ok(Argon2Params {
-                        m_cost_kib: u32_of(r.get(0)?),
-                        t_cost: u32_of(r.get(1)?),
-                        p_cost: u32_of(r.get(2)?),
-                    })
-                },
-            )
-            .optional()
-            .map_err(backend)
+        Ok(self.conn().query_opt(
+            "SELECT m_cost_kib, t_cost, p_cost FROM account_ksf WHERE account_id = ?1",
+            params![account_id.to_string()],
+            |r| {
+                Ok(Argon2Params {
+                    m_cost_kib: u32_of(r.get(0)?),
+                    t_cost: u32_of(r.get(1)?),
+                    p_cost: u32_of(r.get(2)?),
+                })
+            },
+        )?)
     }
 
     fn replace_password(&self, account_id: Id, file: &[u8], ksf: &Argon2Params) -> Result<()> {
-        let mut conn = self.lock();
-        let tx = conn.transaction().map_err(backend)?;
-        let n = tx
-            .execute(
-                "UPDATE accounts SET password_file = ?2 WHERE account_id = ?1",
-                params![account_id.to_string(), file],
-            )
-            .map_err(backend)?;
+        let tx = self.begin()?;
+        let n = tx.execute(
+            "UPDATE accounts SET password_file = ?2 WHERE account_id = ?1",
+            params![account_id.to_string(), file],
+        )?;
         if n == 0 {
             return Err(StorageError::NotFound("the account".into()));
         }
@@ -263,17 +238,16 @@ impl AccountSecurityStore for SqliteStorage {
                 i64::from(ksf.t_cost),
                 i64::from(ksf.p_cost)
             ],
-        )
-        .map_err(backend)?;
-        tx.commit().map_err(backend)
+        )?;
+        Ok(tx.commit()?)
     }
 
     fn put_emergency_items(&self, grant: Id, items: &[(Id, Vec<u8>)]) -> Result<()> {
-        SqliteStorage::put_emergency_items(self, grant, items)
+        SqlStorage::put_emergency_items(self, grant, items)
     }
 
     fn emergency_items(&self, grant: Id) -> Result<Vec<Vec<u8>>> {
-        SqliteStorage::emergency_items(self, grant)
+        SqlStorage::emergency_items(self, grant)
     }
 }
 
@@ -829,7 +803,7 @@ mod tests {
 
     #[test]
     fn keys_and_stretching_are_kept_per_account() {
-        let storage = SqliteStorage::open_in_memory().unwrap();
+        let storage = SqlStorage::open_scratch().unwrap();
         let account =
             crate::storage::Storage::create_account(&storage, "me", Id::new(), b"file").unwrap();
         let a = account.account_id;

@@ -10,7 +10,9 @@
 //! item key, a password, a plain title or URL, or a device signing key;
 //! it orders writes and keeps receipts.
 //!
-//! - [`storage`] — what is kept, behind a trait; SQLite today
+//! - [`storage`] — what is kept, behind a trait; SQLite or Postgres
+//! - [`db`] — the SQL layer both databases run the same statements through
+//! - [`s3`] — attachment bodies in an S3-compatible bucket
 //! - [`keys`] — the server key file (token key, OPAQUE setup), made on first run
 //! - [`token`] — the `lk1` session token
 //! - [`ratelimit`] — the brake on the login endpoints
@@ -37,16 +39,19 @@
 //! vault heads and device logins. The mobile push relay is not built
 //! (D122); desktop and web devices hear of changes on [`live`].
 
+pub mod admin;
 pub mod alerts;
 pub mod api;
 pub mod backup;
 pub mod breach_monitor;
 pub mod client_addr;
+pub mod db;
 pub mod keys;
 pub mod legacy;
 pub mod live;
 pub mod ratelimit;
 pub mod relay;
+pub mod s3;
 pub mod second_factor;
 pub mod sessions;
 pub mod sharing;
@@ -256,10 +261,13 @@ impl AppState {
         }
     }
 
-    /// A state in memory with fresh keys: tests, and a server with no disk.
+    /// A state over a fresh, empty store with fresh keys: tests, and a
+    /// server with no disk. The store is SQLite in memory, or a scratch
+    /// schema in the Postgres database `LOCKDOWN_TEST_DATABASE_URL` names
+    /// ([`storage::SqlStorage::open_scratch`]).
     pub fn in_memory(config: Config) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self::new(
-            Box::new(storage::SqliteStorage::open_in_memory()?),
+            Box::new(storage::SqlStorage::open_scratch()?),
             ServerKeys::generate()?,
             config,
         ))
