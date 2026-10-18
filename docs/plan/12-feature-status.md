@@ -1,12 +1,12 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `51ec3b3`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `46ecb19`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
 **Done** means it works end to end in today's surfaces (core, desktop, CLI, server, browser extension, web vault) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **46** | **42** | **24** | **10** |
+| **All 122 v1 features** | **47** | **43** | **22** | **10** |
 | [Vault & item types](#vault--item-types) | 5 | 7 | 0 | 0 |
 | [Organization & search](#organization--search) | 6 | 1 | 0 | 0 |
 | [Autofill (browser)](#autofill-browser) | 7 | 1 | 1 | 0 |
@@ -19,8 +19,8 @@ _Generated from `feature-status.json` (as of `51ec3b3`) by `render-feature-statu
 | [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 4 | 4 | 0 | 0 |
 | [Privacy](#privacy) | 0 | 1 | 1 | 0 |
 | [Import/export & portability](#importexport--portability) | 3 | 3 | 2 | 0 |
-| [Self-hosting & deployment](#self-hosting--deployment) | 0 | 2 | 1 | 1 |
-| [Security architecture & crypto](#security-architecture--crypto) | 4 | 9 | 4 | 0 |
+| [Self-hosting & deployment](#self-hosting--deployment) | 0 | 3 | 0 | 1 |
+| [Security architecture & crypto](#security-architecture--crypto) | 5 | 9 | 3 | 0 |
 | [Platforms & apps](#platforms--apps) | 3 | 3 | 2 | 1 |
 | [Trust & transparency](#trust--transparency) | 0 | 1 | 1 | 8 |
 
@@ -28,7 +28,7 @@ _Generated from `feature-status.json` (as of `51ec3b3`) by `render-feature-statu
 
 ## Where things stand
 
-No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, a web vault the server serves (the same core on wasm32-wasip1 in a worker, doc 17), and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and the web vault refuses some features in words for now (doc 17 §10). OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.
+No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, a web vault the server serves (the same core on wasm32-wasip1 in a worker, doc 17), and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Lockdown's clients and server speak TLS 1.3 with the hybrid X25519MLKEM768 group first (crates/tls, doc 20); plain HTTP is refused away from loopback. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and the web vault refuses some features in words for now (doc 17 §10). OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.
 
 ## Vault & item types
 
@@ -130,7 +130,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [ ] **Email breach monitoring**: Partial · server. A breach feed key (the built-in feed needs a paid key) and alias monitoring.
 - [ ] **Breach-response playbooks**: Partial · core, desktop. The seven guided incident flows from the plan; seven plain playbooks exist.
 - [ ] **One-tap change-password link**: Partial · core, desktop, extension. The popup opens the well-known page, not the security center's checked link; curated per-site recipes.
-- [ ] **Vault account sign-in alerts**: Partial · server, desktop. OS notifications, a session list that ends tokens, email verification for new devices.
+- [ ] **Vault account sign-in alerts**: Partial · core, desktop, server. OS notifications and email verification for new devices (no SMTP setting yet); the session list that ends tokens at once is built.
 
 ## Privacy
 
@@ -150,9 +150,9 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 
 ## Self-hosting & deployment
 
-- [ ] **Official self-hosting**: Partial · server, web. Packaging, operator docs and support, and the server features later slices need (sharing, push); it is axum plus rusqlite, not sqlx.
-- [ ] **Lightweight single container**: Partial · server. A published container image, Postgres, S3-compatible attachment storage, and the memory measurement.
-- [ ] **Self-hosted live sync**: Not started · nowhere yet. Everything: WebSocket live sync and a push relay for mobile.
+- [ ] **Official self-hosting**: Partial · server, web. An admin page, scheduled restore drills, the Backup Key on the recovery kit, and support; packaging, the operator guide and encrypted server backups are built.
+- [ ] **Lightweight single container**: Partial · server. Publishing the image, Postgres, and S3-compatible attachment storage; the image is built and smoke-tested in CI (5.5 MiB idle, 6.2 MiB loaded, 53 MB image), attachments can be stored as files.
+- [ ] **Self-hosted live sync**: Partial · core, desktop, server. The mobile push relay (shape in D229, mobile deferred), pings to recipients of items shared on their own, and the web vault subscribing.
 - [ ] **Same code as the cloud**: Not code yet · nowhere yet. Needs a cloud, a feature-flag release process and advisory IDs; nothing to build until a hosted service exists.
 
 ## Security architecture & crypto
@@ -161,6 +161,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [x] **Password-authenticated login (PAKE)**: Done · core, server, desktop, cli, web. Nothing in code; it goes into the external audit.
 - [x] **Bound authenticated encryption**: Done · core. Nothing in code; it goes into the external audit.
 - [x] **Rollback and deletion protection**: Done · core, server, cli, desktop, web. Nothing for v1 beyond the audit.
+- [x] **Post-quantum transport**: Done · core, desktop, cli, server. The web vault's transport is the browser's own TLS; an external audit of the hybrid group code (audit item, D215).
 - [ ] **Secret Key**: Partial · core, desktop, cli, server, web. QR transfer of the Secret Key to a new device (it is typed from the kit today) and the opt-out warning path.
 - [ ] **Strong key derivation**: Partial · core. Per-device calibration above the floor and renegotiation on a stronger device (every device uses the desktop floor, D49).
 - [ ] **Malicious-server resistance**: Partial · core, server. The Tamarin or ProVerif model of login, sharing and recovery, and the academic review (not code); sharing's defences (signed envelopes, membership chain, KT-checked keys) are built.
@@ -170,7 +171,6 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [ ] **Memory hygiene**: Partial · core, desktop, web. Locked memory pages kept out of swap; the webview still holds typed and revealed strings briefly (D91).
 - [ ] **Verified local connections**: Partial · desktop, extension. Code-signature checks on macOS and Windows and the Windows named-pipe transport; on Linux and macOS the native host and the desktop check each other by path and SHA-256 today.
 - [ ] **High-risk item class**: Partial · core, desktop, web. The legacy-release rule. Crown jewels stay out of exports and backups unless opted in per item (D121), and items move into and out of the class.
-- [ ] **Post-quantum transport**: Not started · nowhere yet. Everything: hybrid X25519MLKEM768 TLS on the client and the self-host server.
 - [ ] **Hardware-backed biometric unlock**: Not started · nowhere yet. Everything: key slots in the Secure Enclave, StrongBox or TPM that reset when biometrics change.
 - [ ] **Security-key 2FA on the account**: Not started · nowhere yet. Everything: FIDO2 keys and passkeys as account second factors.
 - [ ] **Per-item exposure tiers**: Not started · nowhere yet. Everything: the three per-item tiers and the approval default for high-risk items.

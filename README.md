@@ -14,7 +14,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**212 decisions, eighteen build slices, no release yet (2026-10-18).** Of the 122 features committed to v1, 46 are done, 42 are partial, 24 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
+**227 decisions, nineteen build slices, no release yet (2026-10-18).** Of the 122 features committed to v1, 47 are done, 43 are partial, 22 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
 
 | Slice | What it delivered |
 |---|---|
@@ -37,6 +37,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 | **16 · Passkeys** ✅ | Lockdown as the passkey authenticator through the browser extension: ES256 passkeys made and used on the login record, user verification through the approval gate, two taps to sign in, Signal API with Undo, passkeys in the inline menu, the only-sign-in warning ([doc](docs/plan/19-passkeys.md), D200–D214) |
 | **17 · Sharing, households, emergency access** ✅ | Shared vaults with four rights and re-keying on removal, people's keys checked through key transparency with fingerprints, item sharing, share and request links, fill-only sharing, a household vault, emergency access with a waiting period ([doc](docs/plan/18-sharing.md), D185–D199) |
 | **18 · Web vault** ✅ | The same core in the browser (wasm32-wasip1 in a worker), served by the self-host server at `/vault/` with a strict CSP and hash checks: sign in, unlock, every item kind, organization, codes, lock timers; share and request links open in a plain browser ([doc](docs/plan/17-web-vault.md), D170–D184) |
+| **19 · Self-host server** ✅ | Hybrid post-quantum TLS (X25519MLKEM768) between Lockdown's apps and server, TLS on the server with reload, a hardened container smoke-tested in CI, a live-sync channel, a session list that ends tokens at once, encrypted server backups, an operator guide ([doc](docs/plan/20-self-host-server.md), [guide](docs/self-host.md), D215–D229) |
 | **Next** | Browser extension (fill, save, passkeys), mobile apps, sharing and family, breach monitoring, packaged and signed releases |
 
 | Real (with tests) | Skeleton (types, traits, one real rule each) |
