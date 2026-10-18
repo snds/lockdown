@@ -16,6 +16,7 @@ function session(over: Partial<WebSession> = {}): WebSession {
     signOut: vi.fn(async () => {}),
     signInWaiting: vi.fn(),
     signInAnswer: vi.fn(async () => ({}) as Status),
+    signInContinue: vi.fn(async () => null),
     ...over,
   }
 }
@@ -44,6 +45,26 @@ describe("the web vault's sign-in", () => {
     await userEvent.click(screen.getByRole("button", { name: "Sign in" }))
     expect(await screen.findByRole("alert")).toHaveTextContent("didn't match")
     expect(screen.getByLabelText("Account password")).toHaveValue("")
+  })
+
+  it("waits for the emailed link to approve a new tab, then opens", async () => {
+    const opened = { opened: true } as unknown as Status
+    let answered = 0
+    const s = session({
+      signIn: vi.fn(async () =>
+        Promise.reject({ code: "approval_needed", message: "the server emailed a link to s•••@example.com: open it and choose Approve, and this tab carries on by itself", detail: "email" }),
+      ),
+      signInContinue: vi.fn(async () => (++answered >= 2 ? opened : null)),
+    })
+    const onSignedIn = vi.fn()
+    render(<SignInScreen session={s} server="https://vault.example" onSignedIn={onSignedIn} />)
+    await userEvent.type(screen.getByLabelText("Login name"), "sean@example.com")
+    await userEvent.type(screen.getByLabelText("Account password"), "correct horse")
+    await userEvent.type(screen.getByLabelText("Secret Key"), "A1-ABC")
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }))
+    expect(await screen.findByText(/^The server emailed a link to s•••@example\.com/)).toBeInTheDocument()
+    expect(s.signInWaiting).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(onSignedIn).toHaveBeenCalledWith(opened), { timeout: 6000 })
   })
 
   it("explains where an account comes from instead of making one", async () => {

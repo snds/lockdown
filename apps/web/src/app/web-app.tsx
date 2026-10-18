@@ -64,7 +64,11 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
   const [status, setStatus] = useState<Status | null>(null)
   const [lock, setLock] = useState<LockState | null>(null)
   const [reason, setReason] = useState<LockReason | null>(null)
-  const [nav, setNav] = useState<Nav>({ area: "vault", view: "all" })
+  // `#/devices` (the link in the server's alert emails) opens on Devices,
+  // where every signed-in session can be ended.
+  const [nav, setNav] = useState<Nav>(() =>
+    typeof window !== "undefined" && window.location.hash === "#/devices" ? { area: "devices", view: "all" } : { area: "vault", view: "all" },
+  )
   const [rows, setRows] = useState<ItemSummary[] | null>(null)
   const [rowsError, setRowsError] = useState<string | null>(null)
   const [personas, setPersonas] = useState<PersonaInfo[]>([])

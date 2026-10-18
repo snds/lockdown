@@ -195,14 +195,27 @@ export function JoinWithDevice({ server, onOpened, scan }: { server?: string; on
 /**
  * A sign-in waiting for a security key (§4): the key is used on the
  * server's page, which opens in the system browser; this waits for it.
+ * With `email` set the server mailed the account a link to approve this
+ * device instead (docs/plan/25-self-host-2.md §5): no page opens, and the
+ * wait is the same.
  */
-export function SecondFactorWait({ server, onDone, onCancel }: { server: string; onDone: (lines: string[]) => void; onCancel: () => void }) {
+export function SecondFactorWait({
+  server,
+  email,
+  onDone,
+  onCancel,
+}: {
+  server: string
+  email?: string | null
+  onDone: (lines: string[]) => void
+  onCancel: () => void
+}) {
   const depth = useDepthClient()
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!depth) return
-    void depth.secondFactorOpen(server).catch((e) => setError(describeError(e)))
+    if (!email) void depth.secondFactorOpen(server).catch((e) => setError(describeError(e)))
     const timer = setInterval(() => {
       depth
         .secondFactorWait()
@@ -218,16 +231,20 @@ export function SecondFactorWait({ server, onDone, onCancel }: { server: string;
         })
     }, POLL_MS)
     return () => clearInterval(timer)
-  }, [depth, server, onDone])
+  }, [depth, server, email, onDone])
 
   return (
     <div className="flex flex-col items-center gap-3" aria-live="polite">
-      <p className="text-sm">Your account asks for a security key on a new device. Use it on the page that opened in your browser.</p>
+      <p className="text-sm">
+        {email
+          ? `${email.charAt(0).toUpperCase()}${email.slice(1)}.`
+          : "Your account asks for a security key on a new device. Use it on the page that opened in your browser."}
+      </p>
       {error ? <FieldError role="alert">{error}</FieldError> : <Spinner />}
       <Button variant="ghost-muted" onClick={onCancel}>
         Cancel
       </Button>
-      {depth && (
+      {depth && !email && (
         <Button variant="link" size="sm" onClick={() => void depth.secondFactorOpen(server).catch((e) => setError(describeError(e)))}>
           Open the page again
         </Button>
