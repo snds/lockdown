@@ -23,6 +23,7 @@ import { PasskeyApprovalDialog } from "@/features/passkeys/passkey-approval-dial
 import { RecoveryView } from "@/features/recovery/recovery-view"
 import { SecurityView } from "@/features/security/security-view"
 import { SettingsView } from "@/features/settings/settings-view"
+import { SharingView } from "@/features/sharing/sharing-view"
 import { StatusView } from "@/features/status/status-view"
 import { LockedWash } from "@/features/unlock/locked-wash"
 import { UnlockScreen } from "@/features/unlock/unlock-screen"
@@ -131,6 +132,17 @@ function Root() {
         {nav.area === "recovery" && <RecoveryView status={status} onChanged={refreshStatus} onNotice={notice} />}
         {nav.area === "status" && <StatusView status={status} onStatus={setStatus} onNotice={notice} />}
         {nav.area === "settings" && <SettingsView status={status} lock={lock} onLock={setLock} onChanged={refreshStatus} onNotice={notice} />}
+        {nav.area === "sharing" && (
+          <SharingView
+            rows={rows ?? []}
+            onOpenItem={(id) => {
+              setNav({ area: "vault", view: "all" })
+              setSelected(id)
+            }}
+            onChanged={reload}
+            onNotice={notice}
+          />
+        )}
         {nav.area === "security" && (
           <SecurityView
             onOpenItem={(id) => {

@@ -76,7 +76,16 @@ export interface ItemSummary {
   expires_in_days?: number | null
   /** How many files are attached. */
   attachments?: number
+  /**
+   * Something shared with this person: `fill-only`, `view`, `edit` or
+   * `manage` (docs/plan/18-sharing.md); absent for their own. The UI offers
+   * nothing the right doesn't allow.
+   */
+  access?: Access
 }
+
+/** A person's right in something shared with them. */
+export type Access = "fill-only" | "view" | "edit" | "manage"
 
 /** One value a row offers to copy, by id and field: never the value. */
 export interface CopyTarget {
@@ -137,6 +146,8 @@ export interface ItemDetail {
   attachments?: AttachmentView[]
   /** A crown jewel by its kind or a field: it can never leave the class. */
   crown_jewel_fixed?: boolean
+  /** Something shared with this person: their right (as on `ItemSummary.access`). */
+  access?: Access
 }
 
 /** One one-time code now: values and timing, never the set-up. */
@@ -417,6 +428,18 @@ export interface VaultView {
   items: number
   trash_days: number
   folders: FolderView[]
+  /** How it is shared, when it is (docs/plan/18-sharing.md). */
+  sharing?: VaultShareBadge
+}
+
+/** How a vault is shared, for the sidebar. */
+export interface VaultShareBadge {
+  /** `shared`, `family`, `received` (items shared on their own) or `emergency`. */
+  kind: "shared" | "family" | "received" | "emergency"
+  right: Access
+  owned: boolean
+  owner: string | null
+  people: number
 }
 
 export interface DuplicateGroup {

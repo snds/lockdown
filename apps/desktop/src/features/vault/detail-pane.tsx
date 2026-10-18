@@ -21,6 +21,7 @@ import { PlacePanel } from "@/features/organization/place-panel"
 import { useVaults } from "@/features/organization/vaults-context"
 import { useGate } from "@/app/gate"
 
+import { AccessNote, ItemShare } from "@/features/sharing/item-share"
 import { PasskeysBlock } from "@/features/passkeys/passkeys-block"
 
 import { ItemCrownJewel } from "./crown-jewel"
@@ -151,6 +152,10 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
   const title = item.fields.find((f) => f.field_id === "title")?.value ?? kindLabel(item.kind)
   const trashed = item.state === "trashed"
   const template = forKind(item.kind)
+  // Shared with this person (docs/plan/18-sharing.md): offer only what the right allows.
+  const access = item.access
+  const canEdit = !access || access === "edit" || access === "manage"
+  const fillOnly = access === "fill-only"
   const field = (f: FieldView, format?: SecretFormat, largeType?: string) => {
     const t = fieldOf(item.kind, f.field_id)
     return (
@@ -161,11 +166,19 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
         control={t?.control}
         onNotice={onNotice}
         format={format ?? (t?.grouped ? "groups-of-4" : undefined)}
-        largeType={largeType}
+        largeType={fillOnly ? undefined : largeType}
+        fillOnly={fillOnly}
       />
     )
   }
   const codeBlocks = (item.fields.filter((f) => f.kind === "totp") ?? []).map((f) => {
+    if (fillOnly) {
+      return (
+        <p key={f.field_id} className="text-sm text-muted-foreground">
+          One-time code: filled in the browser only.
+        </p>
+      )
+    }
     const view = codes.codes?.find((c) => c.field_id === f.field_id)
     return view ? (
       <div key={f.field_id} className="flex flex-col items-start gap-1">
@@ -201,7 +214,7 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
             {trashed ? " · in the trash" : ""}
           </p>
         </div>
-        {trashed && (
+        {trashed && canEdit && (
           <div className="flex shrink-0 items-center gap-1">
             <Button variant="outline" size="sm" onClick={restore}>
               <Icon name="restore_from_trash" data-icon="inline-start" />
@@ -215,28 +228,34 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
         )}
         {!trashed && (
           <div className="flex shrink-0 items-center gap-1">
-            {template?.creatable && (
+            <ItemShare item={item} title={title} onNotice={onNotice} />
+            {template?.creatable && canEdit && (
               <Button variant="outline" size="sm" onClick={() => onEdit(item)}>
                 <Icon name="edit" data-icon="inline-start" />
                 Edit
               </Button>
             )}
-            <Button variant="ghost-destructive" size="sm" onClick={() => setConfirm(true)}>
-              <Icon name="delete" data-icon="inline-start" />
-              Trash
-            </Button>
+            {canEdit && (
+              <Button variant="ghost-destructive" size="sm" onClick={() => setConfirm(true)}>
+                <Icon name="delete" data-icon="inline-start" />
+                Trash
+              </Button>
+            )}
           </div>
         )}
       </header>
-      <PlacePanel
-        item={item}
-        title={title}
-        rows={rows}
-        onChanged={onChanged}
-        onReplaced={(newId, text) => (onReplaced ? onReplaced(newId, text) : onChanged(text))}
-        onError={setError}
-      />
-      {!trashed && other && (
+      {access && <AccessNote access={access} />}
+      {canEdit && (
+        <PlacePanel
+          item={item}
+          title={title}
+          rows={rows}
+          onChanged={onChanged}
+          onReplaced={(newId, text) => (onReplaced ? onReplaced(newId, text) : onChanged(text))}
+          onError={setError}
+        />
+      )}
+      {!trashed && other && canEdit && (
         <section aria-label="Resolve the conflict" className="flex flex-col gap-2 rounded-xl border p-3 text-sm">
           <p className="flex items-center gap-2">
             <Badge variant="outline">Needs attention</Badge>
@@ -261,7 +280,15 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
       {!trashed && <ItemSecurity key={`${item.id}:${item.version}`} itemId={item.id} onNotice={onNotice} />}
       {item.crown_jewel ? <ItemCrownJewel title={title}>{body}</ItemCrownJewel> : body}
       {item.crown_jewel && !trashed && <ExportOptIn item={item} onChanged={setItem} onNotice={onNotice} />}
-      <FilesPanel itemId={item.id} files={item.attachments ?? []} editable={!trashed && Boolean(template?.creatable)} onChanged={onChanged} onNotice={onNotice} />
+      {!fillOnly && (
+        <FilesPanel
+          itemId={item.id}
+          files={item.attachments ?? []}
+          editable={!trashed && canEdit && Boolean(template?.creatable)}
+          onChanged={onChanged}
+          onNotice={onNotice}
+        />
+      )}
       <Dialog open={purging} onOpenChange={setPurging}>
         <DialogContent>
           <DialogHeader>

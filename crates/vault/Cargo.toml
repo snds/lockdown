@@ -14,6 +14,8 @@ serde.workspace = true
 serde_bytes.workspace = true
 zeroize.workspace = true
 thiserror.workspace = true
+# Share and request links carry their secret in the URL fragment as base64url.
+data-encoding.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -24,6 +24,12 @@ interface ItemFieldProps {
   largeType?: string
   /** The template's control, when the field is in one: how a plain value is drawn (yes / no, paragraphs). */
   control?: Control
+  /**
+   * Shared with this person to fill only (docs/plan/18-sharing.md): a
+   * hidden field offers no reveal and no copy, only the words. The core
+   * refuses both anyway.
+   */
+  fillOnly?: boolean
 }
 
 function formatPlain(text: string, format: SecretFormat): string {
@@ -59,7 +65,7 @@ const coreWords = (e: unknown): string | undefined => (isAppError(e) ? e.message
  * and the component makes the reveal a tap with the crown-jewel lifetime
  * on its own (a hold cannot outlive the gate's dialog or the OS prompt).
  */
-export function ItemField({ itemId, field, onNotice, format = "plain", largeType, control }: ItemFieldProps) {
+export function ItemField({ itemId, field, onNotice, format = "plain", largeType, control, fillOnly = false }: ItemFieldProps) {
   const client = useClient()
   const gate = useGate()
   const { settings } = useSettings()
@@ -91,6 +97,18 @@ export function ItemField({ itemId, field, onNotice, format = "plain", largeType
     [client, gate, itemId, fieldId, settings.clipboard_clear_secs],
   )
 
+  if (field.hidden && fillOnly) {
+    return (
+      <Item variant="outline" size="sm" data-row="">
+        <ItemContent>
+          <ItemDescription>{field.label}</ItemDescription>
+          <ItemTitle>
+            <span className="text-muted-foreground">Fills in the browser only; never shown or copied.</span>
+          </ItemTitle>
+        </ItemContent>
+      </Item>
+    )
+  }
   if (field.hidden) {
     return (
       <SecretField
