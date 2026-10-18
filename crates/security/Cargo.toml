@@ -15,9 +15,10 @@ sha1.workspace = true
 thiserror.workspace = true
 zeroize.workspace = true
 # The breach range client and the change-password probe: blocking, TLS
-# through rustls on the `ring` provider, as the sync client does.
+# through rustls on the `ring` provider with the hybrid group first
+# (lockdown-tls), as the sync client does.
 reqwest = { workspace = true }
-rustls = { workspace = true }
+lockdown-tls.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

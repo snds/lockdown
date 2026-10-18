@@ -8,7 +8,9 @@
 //! cannot mint one (the key lives in the key file) and a token lists only
 //! which account and device it stands for, never a password or a key.
 //! Tokens are short-lived (the server's `session_ttl`); there is no
-//! refresh yet, a client logs in again.
+//! refresh yet, a client logs in again. The one thing a signature can't
+//! say, that a session was ended from another device, is the sessions
+//! table's job (`crate::sessions`), keyed by the token's nonce.
 
 use data_encoding::BASE64URL_NOPAD;
 use lockdown_crypto::{SigningKey, VerifyingKey, cbor};
@@ -75,6 +77,19 @@ impl TokenSigner {
         now: i64,
         ttl_secs: i64,
     ) -> lockdown_crypto::Result<(String, i64)> {
+        let (token, claims) = self.issue_claims(account_id, device_id, now, ttl_secs)?;
+        Ok((token, claims.exp))
+    }
+
+    /// [`TokenSigner::issue`], answering with the claims too (the nonce is
+    /// the session's id in the sessions table).
+    pub fn issue_claims(
+        &self,
+        account_id: Id,
+        device_id: Id,
+        now: i64,
+        ttl_secs: i64,
+    ) -> lockdown_crypto::Result<(String, TokenClaims)> {
         let claims = TokenClaims {
             v: 1,
             account_id,
@@ -91,7 +106,7 @@ impl TokenSigner {
                 BASE64URL_NOPAD.encode(&body),
                 BASE64URL_NOPAD.encode(&sig)
             ),
-            claims.exp,
+            claims,
         ))
     }
 
