@@ -45,7 +45,9 @@ export function EmergencySheetButton({ onNotice }: { onNotice: (text: string) =>
         Emergency sheet
       </Button>
       <Dialog open={sheet !== null} onOpenChange={(o) => !o && setSheet(null)}>
-        <DialogContent size="lg">
+        {/* Printed alone: the app behind the dialog, the vault included,
+            stays off the paper (index.css, as the recovery kit's page). */}
+        <DialogContent data-print-page="" size="lg">
           {sheet && (
             <>
               <DialogHeader>

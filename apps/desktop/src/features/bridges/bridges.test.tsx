@@ -214,6 +214,8 @@ describe("the bridges views", () => {
     const sheet = await screen.findByRole("article", { name: "Emergency sheet" })
     expect(within(sheet).getByText("Your account")).toBeInTheDocument()
     expect(within(sheet).getByText("Where I keep my recovery kit:")).toBeInTheDocument()
+    // Printed alone, without the app behind it (index.css).
+    expect(sheet.closest("[data-print-page]")).not.toBeNull()
     const print = vi.spyOn(window, "print").mockImplementation(() => {})
     await user.click(screen.getByRole("button", { name: "Print" }))
     expect(print).toHaveBeenCalled()
