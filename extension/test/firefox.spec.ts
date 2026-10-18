@@ -9,11 +9,12 @@
 // starts Firefox's remote debugging server and installs dist/firefox as a
 // temporary add-on over that protocol (the `installTemporaryAddon` request
 // web-ext uses). The moz-extension origin is fixed by the
-// `extensions.webextensions.uuids` preference so the popup has a known URL.
+// `extensions.webextensions.uuids` preference so the popup has a known URL,
+// and the popup is opened by the add-on itself over the same protocol.
 //
 // Skipped where Playwright's Firefox isn't installed, unless
 // LOCKDOWN_REQUIRE_FIREFOX=1 (CI) makes that a failure.
-import { expect, firefox, test, type Browser, type BrowserContext, type Frame, type Page } from "@playwright/test";
+import { expect, firefox, test, type BrowserContext, type Frame, type Page } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { connect } from "node:net";
@@ -39,10 +40,10 @@ const installed = (() => {
 
 let served: Served;
 let desktop: Desktop;
-let browser: Browser;
 let ctx: BrowserContext;
 let scratch: string;
 let port: number;
+let rdp: Rdp;
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
@@ -124,6 +125,25 @@ async function lockdownFrame(page: Page, kind: "menu" | "prompt" = "menu"): Prom
   }
 }
 
+/** Opens the popup in a tab. A page navigated to a moz-extension URL from
+ *  Playwright never loads in Firefox (the navigation hangs), so the add-on
+ *  opens it itself: `tabs.create`, run in its background page over the
+ *  remote protocol, the way a person's toolbar click would open it. */
+async function openPopup(): Promise<Page> {
+  const { addons } = (await rdp.ask("root", "listAddons")) as { addons: { actor: string; id: string }[] };
+  const addon = addons.find((a) => a.id === ADDON_ID);
+  expect(addon, JSON.stringify(addons)).toBeTruthy();
+  const target = (await rdp.ask(addon!.actor, "getTarget")) as { form?: { consoleActor?: string } };
+  const consoleActor = target.form?.consoleActor;
+  expect(consoleActor, JSON.stringify(target)).toBeTruthy();
+  const opened = ctx.waitForEvent("page", { timeout: 30_000 });
+  await rdp.ask(consoleActor!, "evaluateJSAsync", { text: `browser.tabs.create({ url: "/popup.html" })` });
+  const page = await opened;
+  await page.waitForURL(`${ORIGIN}/popup.html`, { timeout: 30_000 });
+  await page.waitForLoadState();
+  return page;
+}
+
 test.beforeAll(async () => {
   served = await serve();
   port = served.port;
@@ -146,8 +166,11 @@ test.beforeAll(async () => {
     }),
   );
   const rdpPort = 6000 + Math.floor(Math.random() * 2000);
-  browser = await firefox.launch({
+  // The browser's own (persistent) context, as the Chromium suite uses, so
+  // a tab the add-on opens (the popup, below) is a page of this context.
+  ctx = await firefox.launchPersistentContext(join(scratch, "ff-profile"), {
     headless: true,
+    viewport: { width: 1000, height: 760 },
     args: ["-start-debugger-server", String(rdpPort)],
     env: { ...process.env, HOME: home, LOCKDOWN_DATA: String(ready.data) },
     firefoxUserPrefs: {
@@ -160,17 +183,15 @@ test.beforeAll(async () => {
       "extensions.originControls.grantByDefault": true,
     },
   });
-  const rdp = await Rdp.open(rdpPort);
+  rdp = await Rdp.open(rdpPort);
   const root = await rdp.ask("root", "getRoot");
   const answer = await rdp.ask(String(root.addonsActor), "installTemporaryAddon", { addonPath: dist, openDevTools: false });
-  rdp.close();
   expect((answer.addon as { id?: string } | undefined)?.id, JSON.stringify(answer)).toBe(ADDON_ID);
-  ctx = await browser.newContext({ viewport: { width: 1000, height: 760 } });
 });
 
 test.afterAll(async () => {
+  rdp?.close();
   await ctx?.close();
-  await browser?.close();
   desktop?.stop();
   await served?.close();
   if (scratch) await rm(scratch, { recursive: true, force: true });
@@ -187,8 +208,7 @@ test("Firefox: before pairing, the inline menu reaches the app through the host 
 });
 
 test("Firefox: pairing by code, then a login fills through the menu, decided in the core", async () => {
-  const p = await ctx.newPage();
-  await p.goto(`${ORIGIN}/popup.html`);
+  const p = await openPopup();
   await p.getByRole("button", { name: "Pair with Lockdown" }).click();
   const shown = (await p.locator(".code").textContent())?.replace(/\s/g, "");
   const request = await desktop.next("pairing", 30_000);

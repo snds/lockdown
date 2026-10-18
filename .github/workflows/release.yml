@@ -190,6 +190,7 @@ jobs:
       - name: Install the bundle and run the host from it
         run: |
           flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak --user install -y --noninteractive flathub org.gnome.Platform//47
           flatpak --user install -y --noninteractive --bundle lockdown-*.flatpak
           out=$(flatpak run --command=lockdown-native-host design.snds.lockdown </dev/null 2>/dev/null | tail -c +5 || true)
           echo "$out"

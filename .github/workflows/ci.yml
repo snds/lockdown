@@ -27,8 +27,10 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+      # Every test binary runs even when one fails, so one run shows every
+      # platform failure (Windows joined the matrix in doc 24).
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --no-fail-fast
       # The generator's statistical tests by name, so a run shows them
       # (docs/plan/21-vault-depth.md): chi-squared, NIST monobit and runs.
       - name: Generator randomness

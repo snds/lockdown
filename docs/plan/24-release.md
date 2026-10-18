@@ -105,7 +105,7 @@ _Status: built, 2026-10-18, under D122 ("desktop and web first"). Nothing in thi
   2. It asks the root actor for `addonsActor`.
   3. It sends `installTemporaryAddon` with `dist/firefox`.
 
-  The add-on's origin is fixed with `extensions.webextensions.uuids`. Firefox finds the host manifest in `$HOME/.mozilla/native-messaging-hosts`, so `HOME` is set to a scratch folder. The suite is skipped where Playwright's Firefox is not installed. CI installs it and sets `LOCKDOWN_REQUIRE_FIREFOX=1`, which turns a skip into a failure.
+  The add-on's origin is fixed with `extensions.webextensions.uuids`. A Playwright navigation to a `moz-extension:` page hangs in Firefox, so the popup is opened by the add-on itself: `browser.tabs.create` evaluated in its background page over the same protocol, as a click on the toolbar button would. Firefox finds the host manifest in `$HOME/.mozilla/native-messaging-hosts`, so `HOME` is set to a scratch folder. The suite is skipped where Playwright's Firefox is not installed. CI installs it and sets `LOCKDOWN_REQUIRE_FIREFOX=1`, which turns a skip into a failure.
 
 ## 7. The Windows named pipe (`crates/pipe`)
 
@@ -159,7 +159,17 @@ Run locally:
 - `cd apps/desktop && node scripts/stage-host.mjs && pnpm tauri build --debug --bundles deb,rpm --config src-tauri/tauri.bundle.conf.json`, then `dpkg-deb -x <deb> /tmp/x && LOCKDOWN_PREFIX=/tmp/x sh packaging/linux/smoke.sh`.
 - `cargo vet --locked`.
 
-## 9. Gaps
+## 9. Merging after this slice
+
+`cargo vet --locked` is a blocking CI job. A branch that adds or bumps a third-party crate fails it until the crate is covered. The merge step:
+
+1. Install cargo-vet 0.10.2: `cargo install cargo-vet --version 0.10.2 --locked`.
+2. Run `cargo vet` to list the crates that are missing.
+3. Run `cargo vet regenerate exemptions`, then commit `supply-chain/`.
+
+Each new exemption shows up in the diff, so it is reviewed with the change that brought the crate. Where an audit already exists in one of the imported sets, `cargo vet regenerate imports` picks it up instead.
+
+## 10. Gaps
 
 - **Certificates and accounts:** Apple Developer ID and notarisation, a Windows code-signing certificate, the Chrome Web Store, Edge Add-ons and AMO listings, and the store ids added to `CHROMIUM_IDS`. These are Sean's to obtain.
 - **Flatpak:** browser connection from the sandbox (§7) and a Flathub build from vendored sources.
@@ -169,7 +179,7 @@ Run locally:
 - **Linux arm64 and Windows arm64** builds are not in the matrix.
 - **unicron:** nothing in this slice touches the UI, so there are no unicron gaps.
 
-## 10. Proposed decisions
+## 11. Proposed decisions
 
 For the coordinator to record. **Flagged** rows are user-visible and need Sean.
 
