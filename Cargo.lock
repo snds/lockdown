@@ -3405,6 +3405,7 @@ name = "lockdown-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "blake3",
  "ciborium",
  "clap",
  "data-encoding",
@@ -3425,6 +3426,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower",
+ "zeroize",
 ]
 
 [[package]]

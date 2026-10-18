@@ -82,6 +82,7 @@ impl Change {
 pub struct Notifier {
     tx: broadcast::Sender<Change>,
     open: Mutex<HashMap<Id, usize>>,
+    stopping: tokio::sync::watch::Sender<bool>,
 }
 
 impl std::fmt::Debug for Notifier {
@@ -105,7 +106,15 @@ impl Notifier {
         Self {
             tx,
             open: Mutex::new(HashMap::new()),
+            stopping: tokio::sync::watch::channel(false).0,
         }
+    }
+
+    /// Closes every open stream (the server is stopping: a graceful
+    /// shutdown would otherwise wait on them for ever). New ones are
+    /// refused from here on.
+    pub fn shut_down(&self) {
+        self.stopping.send_replace(true);
     }
 
     /// Announces `change`. Never blocks; with nobody listening it is
@@ -128,6 +137,9 @@ impl Notifier {
             .open
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if *self.stopping.borrow() {
+            return None;
+        }
         let total: usize = open.values().sum();
         let mine = open.entry(account_id).or_insert(0);
         if *mine >= PER_ACCOUNT || total >= TOTAL {
@@ -191,6 +203,7 @@ enum SessionNow {
 
 struct Stream {
     rx: broadcast::Receiver<Change>,
+    stopping: tokio::sync::watch::Receiver<bool>,
     state: Arc<AppState>,
     session: Session,
     done: bool,
@@ -221,19 +234,30 @@ impl Stream {
             let now = self.state.now();
             let left = u64::try_from(self.session.expires_at.saturating_sub(now)).unwrap_or(0);
             let wait = RECHECK.min(Duration::from_secs(left.max(1)));
-            tokio::select! {
-                got = self.rx.recv() => match got {
-                    Ok(change) => {
-                        if let Some((kind, last)) = self.wants(&change) {
-                            self.done = last;
-                            return Some(event(kind));
-                        }
+            enum Woke {
+                Stop,
+                Got(Result<Change, broadcast::error::RecvError>),
+                Recheck,
+            }
+            let woke = tokio::select! {
+                _ = self.stopping.wait_for(|stop| *stop) => Woke::Stop,
+                got = self.rx.recv() => Woke::Got(got),
+                () = tokio::time::sleep(wait) => Woke::Recheck,
+            };
+            match woke {
+                Woke::Stop => return None,
+                Woke::Got(Ok(change)) => {
+                    if let Some((kind, last)) = self.wants(&change) {
+                        self.done = last;
+                        return Some(event(kind));
                     }
-                    // Missed some: something changed; sync once.
-                    Err(broadcast::error::RecvError::Lagged(_)) => return Some(event(LiveKind::Sync)),
-                    Err(broadcast::error::RecvError::Closed) => return None,
-                },
-                () = tokio::time::sleep(wait) => {
+                }
+                // Missed some: something changed; sync once.
+                Woke::Got(Err(broadcast::error::RecvError::Lagged(_))) => {
+                    return Some(event(LiveKind::Sync));
+                }
+                Woke::Got(Err(broadcast::error::RecvError::Closed)) => return None,
+                Woke::Recheck => {
                     match session_stands(&self.state, &self.session, self.state.now()) {
                         SessionNow::Stands => {}
                         SessionNow::Ended => {
@@ -260,6 +284,7 @@ pub async fn events(State(state): State<Arc<AppState>>, session: Session) -> Res
     };
     let stream = Stream {
         rx: state.live.tx.subscribe(),
+        stopping: state.live.stopping.subscribe(),
         state: state.clone(),
         session,
         done: false,

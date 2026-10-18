@@ -21,6 +21,7 @@
 //! - [`live`] — the live channel: content-free "something changed" events
 //! - [`tls`] — TLS on the server itself, hybrid post-quantum first
 //! - [`client_addr`] — the client's address behind trusted reverse proxies
+//! - [`backup`] — the encrypted snapshot under the person's Backup Key
 //! - [`sharing`] / [`sharing_api`] — shared vaults and their members, items
 //!   shared on their own, share links, request links, emergency access
 //!
@@ -31,6 +32,7 @@
 
 pub mod alerts;
 pub mod api;
+pub mod backup;
 pub mod breach_monitor;
 pub mod client_addr;
 pub mod keys;
@@ -360,6 +362,11 @@ pub async fn serve(
     state: Arc<AppState>,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
+    let live = state.live.clone();
+    let shutdown = async move {
+        shutdown.await;
+        live.shut_down();
+    };
     axum::serve(
         listener,
         app(state).into_make_service_with_connect_info::<SocketAddr>(),
@@ -387,6 +394,7 @@ pub async fn serve_tls(
     tls: TlsServing,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
+    let state_live = state.live.clone();
     let mut router = app(state);
     if tls.hsts_max_age > 0 {
         let value = tls::hsts_value(tls.hsts_max_age);
@@ -395,6 +403,11 @@ pub async fn serve_tls(
         }));
     }
     let listener = tls::TlsListener::new(listener, tls.config, tls.stats)?;
+    let live = state_live;
+    let shutdown = async move {
+        shutdown.await;
+        live.shut_down();
+    };
     axum::serve(
         axum::serve::ListenerExt::tap_io(listener, |_| {}),
         router.into_make_service_with_connect_info::<SocketAddr>(),
