@@ -16,6 +16,8 @@
 //! - `windows` (Windows only): the transport itself, implementing the
 //!   identity crate's [`PeerTransport`] and [`PeerChannel`] with the same
 //!   4-byte big-endian length framing and 64 KiB frame limit as the socket.
+//! - `registry` (Windows only): the per-user registry value each browser
+//!   finds the host manifest by.
 //!
 //! The identity crate's `PeerIdentity` has no Windows variant (it is
 //! `non_exhaustive` and only the identity crate can add one), so a pipe
@@ -35,6 +37,8 @@ use std::path::Path;
 use sha2::{Digest, Sha256};
 
 pub mod check;
+#[cfg(windows)]
+pub mod registry;
 #[cfg(windows)]
 pub mod windows;
 

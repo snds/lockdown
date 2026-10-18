@@ -16,7 +16,8 @@ sha2.workspace = true
 data-encoding.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-# Raw Win32: named pipes, overlapped I/O, process and token queries, SDDL.
+# Raw Win32: named pipes, overlapped I/O, process and token queries, SDDL,
+# and the per-user registry value the browsers find the host manifest by.
 # The same major line Tauri and keyring already pull in.
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
@@ -25,6 +26,7 @@ windows-sys = { version = "0.61", features = [
     "Win32_Storage_FileSystem",
     "Win32_System_IO",
     "Win32_System_Pipes",
+    "Win32_System_Registry",
     "Win32_System_Threading",
 ] }
 

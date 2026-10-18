@@ -563,8 +563,16 @@ impl Endpoint {
         wanted
             .into_iter()
             .map(|b| {
-                manifest::install(os, b, &homes, &self.config.host_binary)
-                    .map_err(|e| format!("couldn't connect {}: {e}", b.name()))
+                let target = manifest::install(os, b, &homes, &self.config.host_binary)
+                    .map_err(|e| format!("couldn't connect {}: {e}", b.name()))?;
+                // Windows: the browser finds the manifest through a
+                // per-user registry value naming it.
+                #[cfg(windows)]
+                if let Some(key) = &target.registry_key {
+                    lockdown_pipe::registry::set_default(key, &target.manifest.to_string_lossy())
+                        .map_err(|e| format!("couldn't connect {}: {e}", b.name()))?;
+                }
+                Ok(target)
             })
             .collect()
     }
