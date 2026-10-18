@@ -64,49 +64,28 @@ jobs:
           echo "real=$real" >> "$GITHUB_OUTPUT"
           echo "version $version, SOURCE_DATE_EPOCH $epoch, real release: $real"
 
-  # deb and rpm through Tauri's bundler, on the oldest supported Ubuntu so
-  # the binaries run on older glibc too.
+  # deb and rpm through Tauri's bundler, reproducibly: inside the pinned
+  # Ubuntu 22.04 container (glibc 2.35, so older systems run them), then
+  # normalised (packaging/repro/build-desktop.sh, docs/plan/29-release-polish.md
+  # §1). reproducible.yml builds the same on two runner images and requires
+  # the same bytes.
   linux:
     name: linux · deb · rpm
     needs: meta
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install WebKitGTK and friends
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libdbus-1-dev libxdo-dev pkg-config
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: release-linux
-      - uses: pnpm/action-setup@v4
-        with:
-          package_json_file: apps/desktop/package.json
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: apps/desktop/pnpm-lock.yaml
-      - name: Install
-        working-directory: apps/desktop
-        run: pnpm install --frozen-lockfile
-      - name: Stage the browser host for the bundler
-        working-directory: apps/desktop
-        run: node scripts/stage-host.mjs --release
-      - name: Build and bundle (deb, rpm)
-        working-directory: apps/desktop
-        run: pnpm tauri build --ci --bundles deb,rpm --config src-tauri/tauri.bundle.conf.json
+      - name: Build and bundle (deb, rpm), pinned and normalised
+        run: packaging/repro/build-desktop.sh build
       - name: Collect
         run: |
           mkdir -p out stage
-          cp target/release/bundle/deb/*.deb target/release/bundle/rpm/*.rpm out/
+          cp build/*.deb build/*.rpm out/
           # What the Flatpak job packs: the same release binaries.
-          cp target/release/lockdown-desktop target/release/lockdown-native-host stage/
-          cp apps/desktop/src-tauri/icons/128x128.png stage/icon-128.png
+          cp build/stage/* stage/
           ls -la out stage
       - uses: actions/upload-artifact@v4
         with:

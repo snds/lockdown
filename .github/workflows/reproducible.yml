@@ -1,8 +1,11 @@
-# Reproducible builds (docs/plan/24-release.md §5): the browser extension's
-# store packages, the server and CLI binaries and the server image are each
-# built twice, on two different runner images, from the same commit, and
-# their SHA-256 must match. The desktop bundles are not in this check yet;
-# the doc says why.
+# Reproducible builds (docs/plan/24-release.md §5,
+# docs/plan/29-release-polish.md §1): the browser extension's store
+# packages, the server and CLI binaries, the server image, the Linux
+# desktop packages (deb, rpm) and the Flatpak's files are each built twice,
+# on two different runner images, from the same commit, and their SHA-256
+# must match. The Flatpak bundle's own bytes, and the macOS and Windows
+# bundles (built on two runner images each outside pull requests), are
+# compared and reported, not required; doc 29 says what differs and why.
 name: Reproducible
 
 on:
@@ -107,3 +110,208 @@ jobs:
           inside=$(awk '$2 == "image:/usr/local/bin/lockdown-server" {print $1}' "$a")
           [ -n "$server" ] && [ "$server" = "$inside" ] || { echo "::error::the image's server differs from the binary"; exit 1; }
           echo "reproducible: $(wc -l < "$a") files, identical on both runners"
+
+  # The Linux desktop packages, built in the pinned container
+  # (packaging/repro/build-desktop.sh) on two runner images.
+  desktop:
+    name: desktop packages on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-22.04]
+    steps:
+      - uses: actions/checkout@v4
+      - name: SOURCE_DATE_EPOCH from the commit
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+      - name: The package normaliser's own test
+        run: python3 packaging/repro/test_normalize_package.py
+      - name: deb, rpm and the release binaries (pinned container)
+        run: packaging/repro/build-desktop.sh out
+      - name: Hashes
+        run: |
+          {
+            (cd out && sha256sum *.deb *.rpm stage/*)
+            # Each package's files, so a difference is easy to place.
+            mkdir x && dpkg-deb -x out/*.deb x
+            (cd x && find . -type f -print0 | sort -z | xargs -0 sha256sum | sed 's#  \./#  deb:#')
+          } | sort -k 2 > desktop-hashes.txt
+          cat desktop-hashes.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-hashes-${{ matrix.runner }}
+          path: desktop-hashes.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-stage-${{ matrix.runner }}
+          path: out/stage/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure() || runner.debug == '1'
+        with:
+          name: desktop-packages-${{ matrix.runner }}
+          path: out/*.*
+          if-no-files-found: ignore
+
+  # The Flatpak from each runner's own release binaries, in the
+  # digest-pinned flatpak-builder image.
+  flatpak:
+    name: flatpak on ${{ matrix.runner }}
+    needs: desktop
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-22.04]
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-47@sha256:8ac0732eb12cfdaa9a12c083718c3809fb5ae95af6d67bc182ef7140da69caec
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - name: SOURCE_DATE_EPOCH from the commit
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-stage-${{ matrix.runner }}
+          path: stage
+      - name: Build, re-commit at the commit's time, bundle
+        run: packaging/repro/build-flatpak.sh stage out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-hashes-${{ matrix.runner }}
+          path: |
+            out/flatpak-hashes.txt
+            out/flatpak-files.txt
+
+  desktop-compare:
+    name: desktop packages, same bytes both times
+    needs: [desktop, flatpak]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "{desktop,flatpak}-hashes-*"
+      - name: Compare
+        run: |
+          a=desktop-hashes-ubuntu-24.04/desktop-hashes.txt
+          b=desktop-hashes-ubuntu-22.04/desktop-hashes.txt
+          cat "$a"
+          if ! diff -u "$a" "$b"; then
+            echo "::error::a desktop package differs between the two runners (lines above)"
+            exit 1
+          fi
+          fa=flatpak-hashes-ubuntu-24.04/flatpak-hashes.txt
+          fb=flatpak-hashes-ubuntu-22.04/flatpak-hashes.txt
+          cat "$fa" "$fb"
+          # Required: the Flatpak's files (OSTree stores no file times).
+          if [ "$(grep flatpak:content "$fa")" != "$(grep flatpak:content "$fb")" ]; then
+            diff -u flatpak-hashes-ubuntu-24.04/flatpak-files.txt flatpak-hashes-ubuntu-22.04/flatpak-files.txt || true
+            echo "::error::the Flatpak's files differ between the two runners"
+            exit 1
+          fi
+          # Reported: the commit and the bundle file.
+          for what in commit bundle; do
+            if [ "$(grep "flatpak:$what" "$fa")" = "$(grep "flatpak:$what" "$fb")" ]; then
+              echo "flatpak $what: identical on both runners"
+            else
+              echo "::warning::the Flatpak $what differs between the runners (reported, not required; docs/plan/29-release-polish.md §1)"
+            fi
+          done
+          echo "reproducible: $(wc -l < "$a") desktop files and the Flatpak's files, identical on both runners"
+
+  # macOS and Windows bundles on two runner images each, compared and
+  # reported (never failing the run): built on pushes to main and by hand,
+  # not on every pull request, because each is a full release build.
+  other-platforms:
+    name: ${{ matrix.runner }} bundles (report)
+    if: github.event_name != 'pull_request'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-14, macos-15, windows-2022, windows-2025]
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: SOURCE_DATE_EPOCH and remapped paths
+        run: |
+          echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+          echo "RUSTFLAGS=--remap-path-prefix=$GITHUB_WORKSPACE=/lockdown --remap-path-prefix=$HOME/.cargo=/cargo" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ startsWith(matrix.runner, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build and bundle, unsigned
+        working-directory: apps/desktop
+        run: |
+          pnpm install --frozen-lockfile
+          if [ "${RUNNER_OS}" = macOS ]; then
+            node scripts/stage-host.mjs --universal --release
+            pnpm tauri build --ci --target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.bundle.conf.json
+          else
+            node scripts/stage-host.mjs --release
+            pnpm tauri build --ci --bundles msi,nsis --config src-tauri/tauri.bundle.conf.json
+          fi
+      - name: Hashes of each bundle and the files in it
+        run: |
+          {
+            rustc --version
+            if [ "${RUNNER_OS}" = macOS ]; then
+              xcodebuild -version | head -n 1
+              b=target/universal-apple-darwin/release/bundle
+              (cd "$b/dmg" && shasum -a 256 *.dmg | sed 's#  #  dmg:#')
+              (cd "$b/macos" && find . -type f -print0 | sort -z | xargs -0 shasum -a 256 | sed 's#  \./#  app:#')
+            else
+              b=target/release/bundle
+              (cd "$b/msi" && sha256sum *.msi | sed 's#  #  msi:#')
+              (cd "$b/nsis" && sha256sum *.exe | sed 's#  #  nsis:#')
+              (cd target/release && sha256sum lockdown-desktop.exe lockdown-native-host.exe | sed 's#  #  exe:#')
+            fi
+          } > other-hashes.txt
+          cat other-hashes.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: other-hashes-${{ matrix.runner }}
+          path: other-hashes.txt
+
+  other-report:
+    name: macOS and Windows bundles (report)
+    needs: other-platforms
+    if: always() && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: other-hashes-*
+      - name: What matches and what differs
+        run: |
+          for pair in "macos-14 macos-15" "windows-2022 windows-2025"; do
+            set -- $pair
+            a=other-hashes-$1/other-hashes.txt
+            b=other-hashes-$2/other-hashes.txt
+            {
+              echo "### $1 vs $2"
+              if [ ! -f "$a" ] || [ ! -f "$b" ]; then echo "a build did not finish"; continue; fi
+              echo '```'
+              head -n 2 "$a"; head -n 2 "$b"
+              echo '```'
+              echo "| file | same bytes |"
+              echo "|---|---|"
+              join -1 2 -2 2 <(tail -n +2 "$a" | grep '  ' | sort -k 2) <(tail -n +2 "$b" | grep '  ' | sort -k 2) \
+                | awk '{ print "| " $1 " | " ($2 == $3 ? "yes" : "no") " |" }'
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+          done
