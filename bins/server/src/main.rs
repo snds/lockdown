@@ -479,6 +479,41 @@ struct ServeArgs {
     /// Hours between restore drills.
     #[arg(long, env = "LOCKDOWN_DRILL_EVERY_HOURS", default_value_t = 168)]
     drill_every_hours: u64,
+    /// Whether each restore drill also signs a client in to the restored
+    /// copy and reads an item back, with an account of the server's own
+    /// (docs/plan/27-web-server-finish.md §3).
+    #[arg(long, env = "LOCKDOWN_DRILL_CLIENT", value_enum, default_value_t = OnOff::On)]
+    drill_client: OnOff,
+    /// Mirror another server's key-transparency log: copy its signed tree
+    /// heads and serve the newest at `/v1/kt/mirror`.
+    #[arg(long, env = "LOCKDOWN_MIRROR_OF", value_name = "URL")]
+    mirror_of: Option<String>,
+    /// Seconds between the mirror's copies.
+    #[arg(
+        long,
+        env = "LOCKDOWN_MIRROR_EVERY_SECS",
+        default_value_t = 300,
+        requires = "mirror_of"
+    )]
+    mirror_every_secs: u64,
+    /// Also write the mirror's head to `DIR/v1/kt/mirror`, for a static file
+    /// host to publish.
+    #[arg(
+        long,
+        env = "LOCKDOWN_MIRROR_OUT",
+        value_name = "DIR",
+        requires = "mirror_of"
+    )]
+    mirror_out: Option<PathBuf>,
+    /// A mirror of this server's log that its clients compare against
+    /// (repeatable; up to eight).
+    #[arg(
+        long = "kt-mirror",
+        env = "LOCKDOWN_KT_MIRRORS",
+        value_name = "URL",
+        value_delimiter = ','
+    )]
+    kt_mirrors: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -633,7 +668,26 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
         )?);
         eprintln!("lockdown-server: email through {describe}");
     }
+    state.mirrors.set_named(&cli.kt_mirrors)?;
     let state = Arc::new(state);
+    if let Some(upstream) = &cli.mirror_of {
+        let mirror = Arc::new(lockdown_server::mirror::Mirror::open(
+            upstream,
+            &data,
+            cli.mirror_out.as_deref(),
+            Duration::from_secs(cli.mirror_every_secs),
+        )?);
+        state.mirrors.set_mirror(mirror.clone());
+        mirror
+            .clone()
+            .spawn(state.clone())
+            .map_err(|e| format!("couldn't start the mirror: {e}"))?;
+        eprintln!(
+            "lockdown-server: mirroring the public log of {} every {} s",
+            mirror.upstream(),
+            cli.mirror_every_secs.max(30)
+        );
+    }
     let mut breach_words = None;
     let feed: Option<Box<dyn lockdown_server::breach_monitor::BreachFeed>> =
         match (cli.breach_feed_url.as_deref(), cli.breach_range.as_deref()) {
@@ -699,14 +753,18 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
                 }
             },
         };
-        let schedule = Arc::new(lockdown_server::drills::Schedule::new(
+        let mut schedule = lockdown_server::drills::Schedule::new(
             dir,
             key,
             &key_path,
             Duration::from_secs(cli.backup_every_hours.max(1) * 3600),
             cli.backup_keep,
             Duration::from_secs(cli.drill_every_hours.max(1) * 3600),
-        )?);
+        )?;
+        if cli.drill_client == OnOff::On {
+            schedule = schedule.with_client_check(&data.join("restore-drill"));
+        }
+        let schedule = Arc::new(schedule);
         state.admin.set_schedule(schedule.clone());
         lockdown_server::drills::spawn(state.clone(), schedule)
             .map_err(|e| format!("couldn't start the backup schedule: {e}"))?;

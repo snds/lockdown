@@ -1,12 +1,12 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `5b950a4`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `2e5a39b`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
 **Done** means it works end to end in today's surfaces (core, desktop, CLI, server, browser extension, web vault) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **80** | **18** | **14** | **10** |
+| **All 122 v1 features** | **82** | **16** | **14** | **10** |
 | [Vault & item types](#vault--item-types) | 12 | 0 | 0 | 0 |
 | [Organization & search](#organization--search) | 7 | 0 | 0 | 0 |
 | [Autofill (browser)](#autofill-browser) | 8 | 1 | 0 | 0 |
@@ -19,8 +19,8 @@ _Generated from `feature-status.json` (as of `5b950a4`) by `render-feature-statu
 | [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 8 | 0 | 0 | 0 |
 | [Privacy](#privacy) | 1 | 1 | 0 | 0 |
 | [Import/export & portability](#importexport--portability) | 5 | 1 | 2 | 0 |
-| [Self-hosting & deployment](#self-hosting--deployment) | 0 | 3 | 0 | 1 |
-| [Security architecture & crypto](#security-architecture--crypto) | 11 | 5 | 1 | 0 |
+| [Self-hosting & deployment](#self-hosting--deployment) | 1 | 2 | 0 | 1 |
+| [Security architecture & crypto](#security-architecture--crypto) | 12 | 4 | 1 | 0 |
 | [Platforms & apps](#platforms--apps) | 3 | 3 | 2 | 1 |
 | [Trust & transparency](#trust--transparency) | 0 | 2 | 0 | 8 |
 
@@ -65,7 +65,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [x] **Fill keyboard shortcut**: Done · extension. A Firefox test run; letting people change the keys.
 - [x] **Card and address fill**: Done · core, extension. A Firefox test run; more checkout layouts as they turn up.
 - [x] **HTTP Basic Auth fill**: Done · core, extension. Tested on Chromium only; Firefox run.
-- [ ] **Browser extension coverage**: Partial · core, desktop, extension. Store submission, driving pairing and fill in Firefox's tests (the install and the host link are tested), and Safari (OS-level); store-ready packages, the Windows named pipe and the popup on unicron are built.
+- [ ] **Browser extension coverage**: Partial · core, desktop, extension. Store submission (Sean's store accounts) and Safari (OS-level); store-ready packages, the Windows named pipe, the popup on unicron, and pairing and fill tested in Chromium and Firefox are built.
 
 ## Autofill (mobile & desktop OS)
 
@@ -150,9 +150,9 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 
 ## Self-hosting & deployment
 
-- [ ] **Official self-hosting**: Partial · server. The last successful restore shown in the clients, a passkey on the admin page, a drill that starts a client against the scratch copy, and support (not code); the admin page, invites, scheduled backups, restore drills and the operator kit are built.
+- [x] **Self-hosted live sync**: Done · core, desktop, web, server. The mobile push relay (D229, mobile deferred); the desktop and the web vault both hold the live channel.
+- [ ] **Official self-hosting**: Partial · server, desktop, web. Update checks, the two-media backup check, and support (not code); the admin page with passkeys, invites, scheduled backups, restore drills that sign a client in, and the operator kit are built.
 - [ ] **Lightweight single container**: Partial · server. Publishing the image (a release step, never automatic); Postgres, S3-compatible attachments and the smoke-tested image are built.
-- [ ] **Self-hosted live sync**: Partial · core, desktop, web, server. The mobile push relay (D229, mobile deferred) and the web vault opening the live channel itself; pings to single-item share recipients are built.
 - [ ] **Same code as the cloud**: Not code yet · nowhere yet. Needs a cloud, a feature-flag release process and advisory IDs; nothing to build until a hosted service exists.
 
 ## Security architecture & crypto
@@ -161,6 +161,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [x] **Secret Key**: Done · core, desktop, web, server. Camera scanning on phones (mobile, deferred); the QR or typed code moves it today.
 - [x] **Password-authenticated login (PAKE)**: Done · core, server, desktop, cli, web. Nothing in code; it goes into the external audit.
 - [x] **Strong key derivation**: Done · core, desktop, web, server. Nothing for desktop and web; mobile calibration.
+- [x] **Authenticated public keys**: Done · core, desktop, web, server. A public mirror run by Lockdown, and mirrors the person adds in the web vault (reachable only when the server names their origin); mirror mode, the comparison, phrase-verified checks and the People screen are built.
 - [x] **Bound authenticated encryption**: Done · core. Nothing in code; it goes into the external audit.
 - [x] **Rollback and deletion protection**: Done · core, server, cli, desktop, web. Nothing for v1 beyond the audit.
 - [x] **Post-quantum transport**: Done · core, desktop, cli, server. The web vault's transport is the browser's own TLS; an external audit of the hybrid group code (audit item, D215).
@@ -169,7 +170,6 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [x] **High-risk item class**: Done · core, desktop, web. Nothing for desktop and web.
 - [x] **Per-item exposure tiers**: Done · core, desktop, web. Nothing for desktop and web; mobile.
 - [ ] **Malicious-server resistance**: Partial · core, server. The Tamarin or ProVerif model of login, sharing and recovery, and the academic review (not code); sharing's defences (signed envelopes, membership chain, KT-checked keys) are built.
-- [ ] **Authenticated public keys**: Partial · core, desktop, server, web. Log mirrors; phrase-verified checks and the People screen in the web vault are built.
 - [ ] **Post-quantum key wrapping**: Partial · core, desktop, web, server, cli. Shared vaults and items shared on their own (Ed25519, D343), session tokens and the device's live sign-in proof, a post-quantum state line in Security (D346), and an outside review; hybrid wraps, ML-DSA-65 on identity manifests, vault heads (covering every item version), the log's tree heads and checkpoints, and the rollout rule are built.
 - [ ] **Memory hygiene**: Partial · core, desktop, web. Locking the identity crate's own key types, and measuring web engines other than Chromium; secret pages are out of swap, core dumps are off, and typed secrets clear on hide and after a minute out of focus.
 - [ ] **Verified local connections**: Partial · desktop, extension. Code-signature checks on macOS and Windows, and a Windows variant of the identity crate's peer type; both ends check each other by process, path and SHA-256 on every platform, Windows through the named pipe.

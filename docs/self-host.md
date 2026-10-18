@@ -67,6 +67,10 @@ Every flag has an environment variable, so a container needs no command line. `l
 | `--email-approval` | `LOCKDOWN_EMAIL_APPROVAL` | `on` (with SMTP) | Whether a device new to an account waits for the account's email to approve it (§10). |
 | `--backup-dir`, `--backup-key-file` | `LOCKDOWN_BACKUP_DIR`, `LOCKDOWN_BACKUP_KEY_FILE` (or `LOCKDOWN_BACKUP_KEY`) | none | Back up on a schedule and drill the restores (§3). |
 | `--backup-every-hours`, `--backup-keep`, `--drill-every-hours` | `LOCKDOWN_BACKUP_EVERY_HOURS`, `LOCKDOWN_BACKUP_KEEP`, `LOCKDOWN_DRILL_EVERY_HOURS` | 24, 14, 168 | How often, how many kept, how often a restore drill runs. |
+| `--drill-client` | `LOCKDOWN_DRILL_CLIENT` | `on` | Whether each restore drill also signs a client in to the restored copy and reads an item back, with an account of the server's own (§3). |
+| `--kt-mirror` | `LOCKDOWN_KT_MIRRORS` (comma-separated) | none | A mirror of this server's public log that its clients compare against; up to eight (§12). |
+| `--mirror-of` | `LOCKDOWN_MIRROR_OF` | none | Make this server a mirror of another server's public log (§12). |
+| `--mirror-every-secs`, `--mirror-out` | `LOCKDOWN_MIRROR_EVERY_SECS`, `LOCKDOWN_MIRROR_OUT` | 300, none | How often the mirror copies; a folder to also write its copy to, for a static file host. |
 
 **Sign-ups.** The image starts closed. To let someone in, invite their login name on the admin page (Invites) or with `lockdown-server admin invite --login them@example.com`: that one name may register, once, within a week, while sign-ups stay closed. Or set `LOCKDOWN_SIGNUPS=open`, have everyone register, then set it back to `closed` and restart. Signing in keeps working while sign-ups are closed.
 
@@ -117,7 +121,7 @@ LOCKDOWN_BACKUP_KEY_FILE=/run/secrets/lockdown-backup-key \
   lockdown-server --data /data --backup-dir /data/backups   # a backup a day, 14 kept, a drill a week
 ```
 
-A **restore drill** opens the newest backup with the Backup Key, restores it into a scratch database (a temporary SQLite file, or a scratch schema in your Postgres), and checks it against the running server: every file's hash, the server key file, the public log (the backup's must be the start of the live one), every vault's chain of heads, every attachment. The result is in the log and on the admin page (Backups; "last successful restore" on the overview, a red banner while the newest drill failed). The server then holds the Backup Key in memory while it runs; leave `--backup-dir` off and run `backup create` from your own scheduler if you'd rather it never did.
+A **restore drill** opens the newest backup with the Backup Key, restores it into a scratch database (a temporary SQLite file, or a scratch schema in your Postgres), and checks it against the running server: every file's hash, the server key file, the public log (the backup's must be the start of the live one), every vault's chain of heads, every attachment. The drill then **signs a client in to the restored copy**: the server keeps one account of its own for this (`lockdown-restore-drill-…`, made once through the server's own loopback address, its files in `<data>/restore-drill/`, holding one login and nothing of anyone's), starts a scratch server over the restored database and key file, signs that account's device in with its password exactly as an app would (every sync check included), and reads its login back. The first drill after the account is made says the client check waits for the next backup. Turn it off with `--drill-client off`. The result is in the log and on the admin page (Backups; "last successful restore" on the overview, a red banner while the newest drill failed), and the apps show the last successful restore in Settings, read from the server. The server then holds the Backup Key in memory while it runs; leave `--backup-dir` off and run `backup create` from your own scheduler if you'd rather it never did.
 
 **Restore** into an empty data directory (it refuses one that already has a server), then start the server on it:
 
@@ -211,5 +215,22 @@ lockdown-server admin set-key --data /data        # prints a new key once (or --
 lockdown-server admin clear-key --data /data      # closes the page
 ```
 
+**Passkeys.** Signed in with the key, add a passkey under **Passkeys** (it asks for your PIN or biometric); from then on the sign-in page also offers **Sign in with a passkey**, which asks for the same check each time. The key keeps working and is the way back in if every passkey is lost; `admin clear-key` closes the page to passkeys too.
+
 Only the key's hash is kept. Signing in gives the browser a cookie for eight hours (an hour unused); every form carries its own anti-forgery token. It shows the release, where the data and attachments live, the setup checks, each account (login name, devices, live sessions, vaults, attachment room used, security keys), invites, backups and drills. It can invite a login name, end an account's sessions, and run a backup or a drill now. It never shows a vault, a key or a token: the server has none. Put it behind the same TLS as everything else; if only you use it, your proxy can also limit `/admin` to your own network.
 
+## 12. Mirrors of the public log
+
+Every Lockdown server keeps a public, signed log of its accounts' keys and vault heads, and every app checks it on each sync. A server that showed you one log and everyone else another would still pass your own checks if you had nothing to compare with. A **mirror** is that comparison: a second server (or a static file host) that copies the signed tree heads, and nothing else, so your apps can hold the log they see against it.
+
+```sh
+# On a second machine (a friend's server, a small VPS): copy vault.example's log every five minutes.
+lockdown-server --data /data-mirror --listen 0.0.0.0:8443 --tls-cert … --tls-key … --mirror-of https://vault.example
+# Or write the copy to a folder a static host publishes (it must serve /v1/kt/mirror with Access-Control-Allow-Origin: *).
+lockdown-server --data /data-mirror --mirror-of https://vault.example --mirror-out /srv/www/lockdown-mirror
+
+# On the account server: name the mirror, so every app checks it (and the web vault may fetch it).
+lockdown-server --data /data --kt-mirror https://mirror.example
+```
+
+The mirror pins the account server's log key on first sight and keeps each new head only if the server proves it continues the last one. If the server's log ever goes back, splits or is rewritten, the mirror records the problem in its log and keeps serving its last good head, which the apps then report. Delete `kt-mirror.cbor` in the mirror's data folder to start it over. Apps remember a mirror once the server names it, so dropping one from `--kt-mirror` doesn't stop the check; people can add their own in Settings → This server. A split shows in the apps in plain words ("This server's public log doesn't match a mirror"); the vault stays readable; until it is explained, share nothing new through that server. Mirrors learn only the log's sizes and roots, never who is in it.

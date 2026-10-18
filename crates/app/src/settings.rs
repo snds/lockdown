@@ -98,6 +98,10 @@ pub struct Settings {
     /// macOS) opens quick access from anywhere while Lockdown runs
     /// (docs/plan/26-desktop-finish.md §2).
     pub quick_access_hotkey: bool,
+    /// Log mirrors the person added (docs/plan/27-web-server-finish.md §4):
+    /// each sync compares the server's log with theirs, beside the ones
+    /// the server names. Changed only through `kt_mirrors_set`.
+    pub kt_mirrors: Vec<String>,
 }
 
 /// Where and how often automatic backups run.
@@ -145,6 +149,7 @@ impl Default for Settings {
             code_clock_correction: true,
             alias_monitoring: false,
             quick_access_hotkey: true,
+            kt_mirrors: Vec::new(),
         }
     }
 }
@@ -211,6 +216,17 @@ impl Settings {
         if s.backup.folder.is_none() {
             s.backup.enabled = false;
         }
+        let mut mirrors = Vec::new();
+        for m in s
+            .kt_mirrors
+            .iter()
+            .filter_map(|m| lockdown_sync::mirror::normalise_mirror(m))
+        {
+            if !mirrors.contains(&m) && mirrors.len() < lockdown_sync::mirror::MAX_MIRRORS {
+                mirrors.push(m);
+            }
+        }
+        s.kt_mirrors = mirrors;
         s
     }
 
@@ -348,6 +364,7 @@ mod tests {
             "code_clock_correction",
             "alias_monitoring",
             "quick_access_hotkey",
+            "kt_mirrors",
         ]
         .into_iter()
         .collect();

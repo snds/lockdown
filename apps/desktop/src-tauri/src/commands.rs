@@ -942,5 +942,8 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         crate::scan::commands::qr_contact_frame,
         crate::hygiene::commands::capture_protect,
         crate::hygiene::commands::memory_report,
+        crate::server_checks::commands::server_restore_drill,
+        crate::server_checks::commands::kt_mirrors,
+        crate::server_checks::commands::kt_mirrors_set,
     ]
 }

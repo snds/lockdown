@@ -68,6 +68,7 @@ mod duplicates;
 pub(crate) mod exposure;
 mod history;
 pub mod items;
+pub(crate) mod mirrors;
 mod organize;
 pub(crate) mod passkeys;
 pub(crate) mod quick;
@@ -910,7 +911,6 @@ impl Session {
     /// Forgets the session token when the server ended this session from
     /// another device (`live`): the account stays, and the next sync asks
     /// for a login instead of failing on a dead token.
-    #[cfg(all(feature = "native", not(target_os = "wasi")))]
     pub(crate) fn forget_session_token(&mut self, token: &str) -> Result<(), String> {
         let path = self.paths.sync_file();
         if let Some(cfg) = self.sync.as_mut()
@@ -1032,7 +1032,11 @@ impl Session {
                 synced_rev: state.synced_rev,
                 last_sync_at: cfg.last_sync_at,
                 session_expires_at: cfg.expires_at,
-                transparency: self.transparency.view(&cfg.server).map(transparency_view),
+                transparency: self.transparency.view(&cfg.server).map(|v| {
+                    let mut t = transparency_view(v);
+                    t.mirrors = mirrors::last(&self.paths.data, &cfg.server);
+                    t
+                }),
             }
         });
         Ok(Status {
@@ -1730,6 +1734,12 @@ impl Session {
             KtSession::begin(&transport, &token, Some(&view)).map_err(|e| e.to_string())?;
         kt.audit(&self.expectations()).map_err(|e| e.to_string())?;
         view = kt.view.clone();
+        // The log mirrors, against the head just verified (a warning in
+        // words on a split; the sync itself stands).
+        let configured = crate::settings::Settings::load(&self.paths.settings_file())
+            .map(|s| s.kt_mirrors)
+            .unwrap_or_default();
+        let checks = mirrors::check(&self.paths.data, &server, &kt, &transport, &configured);
         drop(kt);
         self.transparency
             .remember(&server, view.clone())
@@ -1738,7 +1748,10 @@ impl Session {
             cfg.last_sync_at = Some(lockdown_vault::Timestamp::now().0);
             cfg.save(&self.paths.sync_file())?;
         }
-        Ok(sync_outcome(&report, &view))
+        let mut outcome = sync_outcome(&report, &view);
+        outcome.lines.extend(mirrors::lines(&checks));
+        outcome.transparency.mirrors = checks;
+        Ok(outcome)
     }
 
     /// `lockdown audit`, for the Status screen's "Check now": verifies the
@@ -2048,6 +2061,7 @@ fn transparency_view(view: &ServerView) -> TransparencyView {
         root_prefix: view.sth.root.to_hex()[..16].to_string(),
         audited: view.audited,
         checked_at: view.checked_at,
+        mirrors: Vec::new(),
     }
 }
 

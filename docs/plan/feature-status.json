@@ -1,5 +1,5 @@
 {
- "as_of": "5b950a4",
+ "as_of": "2e5a39b",
  "source": "docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)",
  "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, a web vault the server serves (the same core on wasm32-wasip1 in a worker, doc 17), and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Lockdown's clients and server speak TLS 1.3 with the hybrid X25519MLKEM768 group first (crates/tls, doc 20); plain HTTP is refused away from loopback. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and the web vault refuses some features in words for now (doc 17 §10). OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.",
  "non_v1_built": [
@@ -433,7 +433,7 @@
     "desktop",
     "extension"
    ],
-   "left": "Store submission, driving pairing and fill in Firefox's tests (the install and the host link are tested), and Safari (OS-level); store-ready packages, the Windows named pipe and the popup on unicron are built.",
+   "left": "Store submission (Sean's store accounts) and Safari (OS-level); store-ready packages, the Windows named pipe, the popup on unicron, and pairing and fill tested in Chromium and Firefox are built.",
    "evidence": [
     "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)",
     "crates/wasm/src/lib.rs:312 the_wire_functions_answer_without_a_browser",
@@ -1607,9 +1607,11 @@
    "review": false,
    "status": "partial",
    "surfaces": [
-    "server"
+    "server",
+    "desktop",
+    "web"
    ],
-   "left": "The last successful restore shown in the clients, a passkey on the admin page, a drill that starts a client against the scratch copy, and support (not code); the admin page, invites, scheduled backups, restore drills and the operator kit are built.",
+   "left": "Update checks, the two-media backup check, and support (not code); the admin page with passkeys, invites, scheduled backups, restore drills that sign a client in, and the operator kit are built.",
    "evidence": [
     "bins/server/src/main.rs:1 (one binary for cloud and self-host)",
     "bins/server/src/lib.rs:228 (routes)",
@@ -1658,14 +1660,14 @@
    "name": "Self-hosted live sync",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
     "web",
     "server"
    ],
-   "left": "The mobile push relay (D229, mobile deferred) and the web vault opening the live channel itself; pings to single-item share recipients are built.",
+   "left": "The mobile push relay (D229, mobile deferred); the desktop and the web vault both hold the live channel.",
    "evidence": [
     "docs/plan/07-workspace.md:28 (push listed as not yet)"
    ],
@@ -1787,14 +1789,14 @@
    "name": "Authenticated public keys",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
-    "server",
-    "web"
+    "web",
+    "server"
    ],
-   "left": "Log mirrors; phrase-verified checks and the People screen in the web vault are built.",
+   "left": "A public mirror run by Lockdown, and mirrors the person adds in the web vault (reachable only when the server names their origin); mirror mode, the comparison, phrase-verified checks and the People screen are built.",
    "evidence": [
     "crates/sync/src/kt.rs:798 a_swapped_device_key_an_unknown_device_and_hidden_changes_are_caught",
     "bins/cli/tests/transparency.rs:243 a_forked_log_is_caught_by_the_citation_in_the_vault_head",

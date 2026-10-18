@@ -1,4 +1,5 @@
 import type { CoreError } from "./core"
+import type { LiveNotice } from "./live"
 
 /** A call from the page to the worker. */
 export interface Request {
@@ -14,3 +15,4 @@ export type Response =
   | { id: number; ok: false; error: CoreError }
   | { id: 0; event: "ready" }
   | { id: 0; event: "failed"; message: string }
+  | { id: 0; event: "live"; notice: LiveNotice }

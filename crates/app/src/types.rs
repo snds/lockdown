@@ -2,7 +2,7 @@
 //! nothing a shell must keep secret. Secrets travel as [`Revealed`] bytes
 //! and only when asked for by name.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::Revealed;
 use crate::lock::LockReason;
@@ -342,6 +342,23 @@ pub struct TransparencyView {
     /// When this device last verified the tree head, seconds since the
     /// Unix epoch; `None` for a view remembered before the time was kept.
     pub checked_at: Option<i64>,
+    /// What each log mirror said at the last comparison
+    /// (docs/plan/27-web-server-finish.md §4); empty with none known.
+    pub mirrors: Vec<MirrorCheck>,
+}
+
+/// One mirror's last comparison, as Status and Settings show it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MirrorCheck {
+    /// The mirror's address.
+    pub url: String,
+    /// Who named it: `server` (the account server) or `settings` (you).
+    pub named_by: String,
+    /// What it said, with the words.
+    #[serde(flatten)]
+    pub verdict: lockdown_sync::mirror::MirrorVerdict,
+    /// When this device compared (seconds since the Unix epoch).
+    pub at: i64,
 }
 
 /// The account on the server, as the status shows it.

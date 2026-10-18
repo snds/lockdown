@@ -1,10 +1,13 @@
 import type { CoreError } from "../worker/core"
+import type { LiveNotice } from "../worker/live"
 import type { Request, Response } from "../worker/protocol"
 
 /** What the page needs from the worker: one call in, one answer out. */
 export interface Link {
   call<T>(cmd: string, args?: Record<string, unknown>): Promise<T>
   callBytes(cmd: string, args?: Record<string, unknown>): Promise<Uint8Array>
+  /** Calls `handler` for every live-channel notice the worker raises, until the returned function is called. */
+  onLive?(handler: (notice: LiveNotice) => void): () => void
 }
 
 interface Pending {
@@ -20,6 +23,7 @@ interface Pending {
 export class WorkerLink implements Link {
   private next = 1
   private pending = new Map<number, Pending>()
+  private live = new Set<(notice: LiveNotice) => void>()
   private readonly worker: Worker
   /** Resolves when the core is running; rejects with why it couldn't start. */
   readonly ready: Promise<void>
@@ -35,6 +39,10 @@ export class WorkerLink implements Link {
     worker.onmessage = (event: MessageEvent<Response>) => {
       const msg = event.data
       if ("event" in msg) {
+        if (msg.event === "live") {
+          for (const h of this.live) h(msg.notice)
+          return
+        }
         if (msg.event === "ready") ready()
         else failed({ code: "stopped", message: msg.message })
         return
@@ -56,6 +64,13 @@ export class WorkerLink implements Link {
       const req: Request = { id, cmd, args }
       this.worker.postMessage(req)
     })
+  }
+
+  onLive(handler: (notice: LiveNotice) => void): () => void {
+    this.live.add(handler)
+    return () => {
+      this.live.delete(handler)
+    }
   }
 
   async call<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {

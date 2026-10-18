@@ -354,6 +354,30 @@ async function route(msg: ToBackground, sender: chrome.runtime.MessageSender): P
       }
     }
 
+    // --- pairing from the menu (no popup) -----------------------------------
+    case "menu_pair": {
+      // A deliberate click in the menu frame, never the page: the frame is the
+      // extension's own document, armed only once it has been on screen and
+      // uncovered. The app still asks the person and shows the same code.
+      if (!isExtensionPage(sender, "frame.html")) throw new Error("refused")
+      const m = menuFor(msg.nonce, sender)
+      if (m.kind === "prompt") throw new Error("refused")
+      if (msg.frame_visible === false) return { error: "Something on this page covers Lockdown's menu, so Lockdown won't start pairing." }
+      if (msg.frame_visible === null) {
+        const measured = await sendToFrame<Measured>(m, { t: "measure", nonce: msg.nonce }).catch(() => null)
+        if (measured?.menu_visible === false) return { error: "Something on this page covers Lockdown's menu, so Lockdown won't start pairing." }
+      }
+      try {
+        return await link.pair()
+      } catch (e) {
+        return { error: words(e) }
+      }
+    }
+    case "menu_link":
+      if (!isExtensionPage(sender, "frame.html")) throw new Error("refused")
+      menuFor(msg.nonce, sender)
+      return linkState()
+
     // --- the popup ----------------------------------------------------------
     case "status":
       if (!isExtensionPage(sender, "popup.html")) throw new Error("refused")

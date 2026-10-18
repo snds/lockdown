@@ -4,6 +4,7 @@ import wasmUrl from "../../wasm/lockdown_web.wasm?url"
 import { loadCarried, saveCarried } from "./carried"
 import { Core, CoreFailure, wipe } from "./core"
 import { sameOriginSend } from "./http"
+import { LiveChannel, type LiveTarget } from "./live"
 import type { Request, Response } from "./protocol"
 
 /**
@@ -83,7 +84,68 @@ function signedInLogin(c: Core): unknown {
   }
 }
 
+/** Runs `f` in the call queue, after whatever is queued (the live channel's own calls). */
+function enqueue<T>(f: () => T | Promise<T>): Promise<T> {
+  const run = queue.then(f)
+  queue = run.then(
+    () => undefined,
+    () => undefined,
+  )
+  return run
+}
+
+/** The core's live-channel target now; `null` when locked, signed out, or stopped. */
+function liveTarget(c: Core | null): LiveTarget | null {
+  if (!c) return null
+  try {
+    const reply = c.call("worker_live_target")
+    const v = reply.kind === "json" ? (reply.value as LiveTarget | null) : null
+    return v && typeof v.url === "string" && typeof v.token === "string" ? v : null
+  } catch {
+    return null
+  }
+}
+
+const live = new LiveChannel({
+  origin: self.location.origin,
+  target: () => enqueue(() => liveTarget(core)),
+  sync: () =>
+    enqueue(async () => {
+      if (!core) throw { code: "stopped", message: stopped ?? "the vault stopped" }
+      let reply
+      try {
+        reply = core.call("worker_live_sync")
+      } catch (e) {
+        if (e instanceof CoreFailure) throw e.error
+        trapped()
+        throw { code: "stopped", message: stopped ?? "the vault stopped" }
+      }
+      await keepCarried(core, signedInLogin(core))
+      return reply.value as { pulled: number; lines: string[] }
+    }),
+  ended: (token) =>
+    enqueue(() => {
+      core?.call("worker_live_ended", { token })
+    }),
+  notify: (notice) => post({ id: 0, event: "live", notice }),
+  fetch: (url, init) => fetch(url, init),
+})
+
+/** A trap inside the core (a panic): the instance can't be trusted to
+ *  continue, so every key it held is dropped with it. */
+function trapped() {
+  stopped = "the vault stopped after an internal error; reload the page and sign in again"
+  core?.fs.clear()
+  core = null
+  live.stop()
+}
+
 async function handle(req: Request) {
+  if (req.cmd.startsWith("worker_")) {
+    // The worker's own calls (the live channel's token among them) never answer the page.
+    post({ id: req.id, ok: false, error: { code: "refused", message: "that call is the worker's own" } })
+    return
+  }
   if (!core) {
     post({ id: req.id, ok: false, error: { code: "stopped", message: stopped ?? "the vault is still starting" } })
     return
@@ -110,13 +172,13 @@ async function handle(req: Request) {
     } else {
       // A trap inside the core (a panic): the instance can't be trusted to
       // continue, so every key it held is dropped with it.
-      stopped = "the vault stopped after an internal error; reload the page and sign in again"
-      core?.fs.clear()
-      core = null
-      post({ id: req.id, ok: false, error: { code: "stopped", message: stopped } })
+      trapped()
+      post({ id: req.id, ok: false, error: { code: "stopped", message: stopped ?? "the vault stopped" } })
     }
   } finally {
     for (const v of Object.values(args)) if (v instanceof Uint8Array) wipe(v)
+    // A lock or a sign-out closes the live channel at once; an unlock opens it.
+    live.observe(liveTarget(core))
   }
 }
 
@@ -129,6 +191,7 @@ start()
   .then((c) => {
     core = c
     post({ id: 0, event: "ready" })
+    void live.start()
     setInterval(() => {
       queue = queue.then(() => {
         if (!core) return
@@ -137,6 +200,7 @@ start()
         } catch {
           // A tick that fails changes nothing; the next one tries again.
         }
+        live.observe(liveTarget(core))
       })
     }, TICK_MS)
   })

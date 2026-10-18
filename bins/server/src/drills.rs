@@ -50,6 +50,10 @@ pub struct Schedule {
     keep: usize,
     drill_every: Duration,
     running: AtomicBool,
+    /// The restore-drill account a drill signs a client in with
+    /// (docs/plan/27-web-server-finish.md §3); `None` keeps drills to the
+    /// table checks.
+    client_check: Option<crate::drill_account::DrillAccount>,
 }
 
 impl std::fmt::Debug for Schedule {
@@ -83,7 +87,35 @@ impl Schedule {
             keep: keep.max(1),
             drill_every: drill_every.max(Duration::from_secs(3600)),
             running: AtomicBool::new(false),
+            client_check: None,
         })
+    }
+
+    /// Drills also sign a client in to the restored copy and read an item
+    /// back, with the restore-drill account kept in `dir`.
+    pub fn with_client_check(mut self, dir: &Path) -> Self {
+        self.client_check = Some(crate::drill_account::DrillAccount::at(dir));
+        self
+    }
+
+    /// The restore-drill account, when drills sign a client in.
+    pub fn client_check(&self) -> Option<&crate::drill_account::DrillAccount> {
+        self.client_check.as_ref()
+    }
+
+    /// Makes the restore-drill account on the live server when drills use
+    /// one and it isn't made yet; failures are logged, never fatal.
+    pub fn ensure_client_check(&self, state: &Arc<AppState>) {
+        if let Some(account) = &self.client_check {
+            match account.ensure(state) {
+                Ok(true) => eprintln!(
+                    "lockdown-server: made the restore-drill account (in {})",
+                    account.dir().display()
+                ),
+                Ok(false) => {}
+                Err(e) => eprintln!("lockdown-server: {e}"),
+            }
+        }
     }
 
     /// The backup folder.
@@ -381,7 +413,7 @@ fn drill(state: &AppState, s: &Schedule, file: &Path) -> Result<String, String> 
         }
         bodies += 1;
     }
-    Ok(format!(
+    let summary = format!(
         "restored into a scratch {}: {} account(s), {} vault(s), {} log entries (the start of this server's {}), {} attachment(s), the server key, every head chain whole",
         if restored.dialect() == Dialect::Postgres {
             "Postgres schema"
@@ -393,7 +425,67 @@ fn drill(state: &AppState, s: &Schedule, file: &Path) -> Result<String, String> 
         counts.log_size,
         ours.len(),
         bodies
-    ))
+    );
+    // 6. A client signs in to the restored copy and reads an item back.
+    let Some(account) = &s.client_check else {
+        return Ok(summary);
+    };
+    let made_before_backup = |made: i64| {
+        std::fs::metadata(file)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .and_then(|d| i64::try_from(d.as_secs()).ok())
+            .is_some_and(|written| made <= written)
+    };
+    match account.created_at() {
+        None => Ok(format!(
+            "{summary}; no restore-drill account yet, so no client signed in"
+        )),
+        Some(made) if !made_before_backup(made) => Ok(format!(
+            "{summary}; the restore-drill account is newer than this backup, so a client signs in from the next one"
+        )),
+        Some(_) => {
+            let keys = crate::keys::ServerKeys::load_or_create(&data.join(backup::KEY_NAME))
+                .map_err(|e| format!("the restored key file doesn't load: {e}"))?;
+            let scratch = AppState::new(Box::new(restored), keys, crate::Config::default());
+            let server = crate::run_in_background(Arc::new(scratch))
+                .map_err(|e| format!("couldn't start a server over the restored copy: {e}"))?;
+            account
+                .read_back(&format!("http://{}", server.addr), work.path())
+                .map_err(|e| format!("a client couldn't use the restored copy: {e}"))?;
+            drop(server);
+            Ok(format!("{summary}; {}", crate::drill_account::READ_BACK))
+        }
+    }
+}
+
+/// `GET /v1/server/restore-drill`: what the server's restore drills last
+/// did, from the operator's log, for any signed-in account (the clients
+/// show the last successful restore; docs/plan/27-web-server-finish.md §3).
+pub async fn restore_drill(
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+    _session: crate::api::Session,
+) -> crate::api::ApiResult<crate::api::Cbor<lockdown_sync::wire::RestoreDrill>> {
+    let scheduled = state.admin.schedule().is_some();
+    let Some(store) = state.storage.sql() else {
+        return Ok(crate::api::Cbor(lockdown_sync::wire::RestoreDrill {
+            scheduled,
+            ..Default::default()
+        }));
+    };
+    let events = store
+        .events(Some("drill"), 200)
+        .map_err(|e| crate::api::ApiError::internal(e.to_string()))?;
+    let last = events.first();
+    let good = events.iter().find(|e| e.ok);
+    Ok(crate::api::Cbor(lockdown_sync::wire::RestoreDrill {
+        scheduled,
+        last_run_at: last.map(|e| e.at),
+        last_passed: last.map(|e| e.ok),
+        last_success_at: good.map(|e| e.at),
+        client_read_back: good.is_some_and(|g| g.detail.contains(crate::drill_account::READ_BACK)),
+    }))
 }
 
 /// Runs a backup or a drill on a thread of its own unless one is already
@@ -408,6 +500,7 @@ pub fn run_in_background(state: Arc<AppState>, s: Arc<Schedule>, drill: bool) ->
             let s = s.clone();
             move || {
                 if drill {
+                    s.ensure_client_check(&state);
                     drill_now(&state, &s);
                 } else {
                     let _ = backup_now(&state, &s);
@@ -446,6 +539,8 @@ pub fn spawn(state: Arc<AppState>, s: Arc<Schedule>) -> std::io::Result<()> {
                     now - t >= i64::try_from(s.drill_every_secs()).unwrap_or(i64::MAX)
                 });
                 if (backup_due || drill_due) && !s.running.swap(true, Ordering::SeqCst) {
+                    // Made before the backup, so the backup holds it.
+                    s.ensure_client_check(&state);
                     if backup_due {
                         let _ = backup_now(&state, &s);
                     }

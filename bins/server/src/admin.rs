@@ -463,6 +463,8 @@ struct AdminSession {
 /// the backup schedule.
 #[derive(Default)]
 pub struct AdminState {
+    /// Passkey ceremonies waiting for the browser (`admin_passkeys`).
+    pub(crate) passkeys: crate::admin_passkeys::Ceremonies,
     sessions: Mutex<BTreeMap<[u8; 32], AdminSession>>,
     facts: Mutex<ServerFacts>,
     schedule: Mutex<Option<Arc<crate::drills::Schedule>>>,
@@ -498,7 +500,7 @@ impl AdminState {
         lock(&self.facts).clone()
     }
 
-    fn open(&self, now: i64) -> std::result::Result<(String, [u8; 32]), String> {
+    pub(crate) fn open(&self, now: i64) -> std::result::Result<(String, [u8; 32]), String> {
         let id = lockdown_crypto::rand::random_32().map_err(|e| e.to_string())?;
         let csrf = lockdown_crypto::rand::random_32().map_err(|e| e.to_string())?;
         let mut sessions = lock(&self.sessions);
@@ -587,6 +589,7 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/admin/backups", get(backups))
         .route("/admin/backups/run", post(backup_run))
         .route("/admin/drills/run", post(drill_run))
+        .merge(crate::admin_passkeys::routes())
 }
 
 fn store(state: &AppState) -> Option<&SqlStorage> {
@@ -605,7 +608,7 @@ fn cookie_of(headers: &HeaderMap) -> Option<String> {
 }
 
 /// The signed-in operator's anti-forgery token, or the sign-in page.
-fn signed_in(
+pub(crate) fn signed_in(
     state: &AppState,
     headers: &HeaderMap,
 ) -> std::result::Result<[u8; 32], Box<Response>> {
@@ -623,14 +626,14 @@ fn signed_in(
 }
 
 /// Checks a form's anti-forgery token against the session's.
-fn form_ok(fields: &BTreeMap<String, String>, csrf: &[u8; 32]) -> bool {
+pub(crate) fn form_ok(fields: &BTreeMap<String, String>, csrf: &[u8; 32]) -> bool {
     fields
         .get("csrf")
         .and_then(|t| data_encoding::HEXLOWER_PERMISSIVE.decode(t.as_bytes()).ok())
         .is_some_and(|t| same(&t, csrf))
 }
 
-fn unavailable() -> Response {
+pub(crate) fn unavailable() -> Response {
     page(
         StatusCode::SERVICE_UNAVAILABLE,
         "Admin",
@@ -650,19 +653,21 @@ fn sign_in_page(status: StatusCode, error: Option<&str>) -> Response {
     let error = error
         .map(|e| format!("<p class=\"bad\" role=\"alert\">{}</p>", esc(e)))
         .unwrap_or_default();
-    page(
+    crate::pages::page_with_script(
         status,
         "Admin sign-in",
         &format!(
             "<h1>Lockdown server admin</h1><div class=\"card\"><form method=\"post\" action=\"/admin/sign-in\">\
              <label for=\"key\">Operator key</label><input id=\"key\" name=\"key\" type=\"password\" autocomplete=\"current-password\" required>\
-             {error}<p><button>Sign in</button></p></form></div>\
-             <p class=\"muted\">The operator key is not an account and opens no vault. Lost it? On the server, <code>lockdown-server admin set-key</code> makes a new one.</p>"
+             {error}<p><button>Sign in</button></p></form>\
+             <p><button id=\"pk-sign-in\" class=\"quiet\" type=\"button\" hidden>Sign in with a passkey</button></p><p id=\"pk-status\" class=\"muted\" role=\"status\"></p></div>\
+             <p class=\"muted\">The operator key is not an account and opens no vault. Lost it? On the server, <code>lockdown-server admin set-key</code> makes a new one. A passkey added under Passkeys signs in here too.</p>"
         ),
+        Some(crate::admin_passkeys::SCRIPT),
     )
 }
 
-fn hidden(csrf: &[u8; 32]) -> String {
+pub(crate) fn hidden(csrf: &[u8; 32]) -> String {
     format!(
         "<input type=\"hidden\" name=\"csrf\" value=\"{}\">",
         data_encoding::HEXLOWER.encode(csrf)
@@ -670,6 +675,17 @@ fn hidden(csrf: &[u8; 32]) -> String {
 }
 
 fn shell(csrf: &[u8; 32], current: &str, title: &str, body: &str) -> Response {
+    shell_page(csrf, current, title, body, None)
+}
+
+/// [`shell`], with the one script a page may carry (allowed by its hash).
+pub(crate) fn shell_page(
+    csrf: &[u8; 32],
+    current: &str,
+    title: &str,
+    body: &str,
+    script: Option<&str>,
+) -> Response {
     let link = |href: &str, label: &str| {
         let cur = if href == current {
             " aria-current=\"page\""
@@ -678,18 +694,20 @@ fn shell(csrf: &[u8; 32], current: &str, title: &str, body: &str) -> Response {
         };
         format!("<a href=\"{href}\"{cur}>{label}</a>")
     };
-    page(
+    crate::pages::page_with_script(
         StatusCode::OK,
         title,
         &format!(
-            "<nav aria-label=\"Admin\">{}{}{}{}<form method=\"post\" action=\"/admin/sign-out\" class=\"inline\">{}<button class=\"quiet\">Sign out</button></form></nav><h1>{}</h1>{body}",
+            "<nav aria-label=\"Admin\">{}{}{}{}{}<form method=\"post\" action=\"/admin/sign-out\" class=\"inline\">{}<button class=\"quiet\">Sign out</button></form></nav><h1>{}</h1>{body}",
             link("/admin", "Overview"),
             link("/admin/accounts", "Accounts"),
             link("/admin/invites", "Invites"),
             link("/admin/backups", "Backups"),
+            link("/admin/passkeys", "Passkeys"),
             hidden(csrf),
             esc(title),
         ),
+        script,
     )
 }
 
@@ -987,9 +1005,14 @@ pub async fn accounts(State(state): State<Arc<AppState>>, headers: HeaderMap) ->
             None => size(a.blob_bytes),
         };
         out.push_str(&format!(
-            "<tr><td><a href=\"/admin/accounts/{}\">{}</a></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            "<tr><td><a href=\"/admin/accounts/{}\">{}</a>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
             a.account_id,
             esc(&a.login),
+            if a.login.starts_with(crate::drill_account::LOGIN_PREFIX) {
+                " <span class=\"muted\">(this server's restore-drill account)</span>"
+            } else {
+                ""
+            },
             when(a.created_at),
             a.devices,
             a.live_sessions,
