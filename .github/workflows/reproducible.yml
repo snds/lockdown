@@ -272,14 +272,17 @@ jobs:
             rustc --version
             if [ "${RUNNER_OS}" = macOS ]; then
               xcodebuild -version | head -n 1
+              echo "installed: $(ls /Applications | grep '^Xcode_' | tr '\n' ' ')" >&2
               b=target/universal-apple-darwin/release/bundle
               (cd "$b/dmg" && shasum -a 256 *.dmg | sed 's#  #  dmg:#')
               (cd "$b/macos" && find . -type f -print0 | sort -z | xargs -0 shasum -a 256 | sed 's#  \./#  app:#')
             else
+              # Git Bash's sha256sum marks binary mode with " *".
+              h() { sha256sum "$@" | sed 's# \*#  #'; }
               b=target/release/bundle
-              (cd "$b/msi" && sha256sum *.msi | sed 's#  #  msi:#')
-              (cd "$b/nsis" && sha256sum *.exe | sed 's#  #  nsis:#')
-              (cd target/release && sha256sum lockdown-desktop.exe lockdown-native-host.exe | sed 's#  #  exe:#')
+              (cd "$b/msi" && h *.msi | sed 's#  #  msi:#')
+              (cd "$b/nsis" && h *.exe | sed 's#  #  nsis:#')
+              (cd target/release && h lockdown-desktop.exe lockdown-native-host.exe | sed 's#  #  exe:#')
             fi
           } > other-hashes.txt
           cat other-hashes.txt

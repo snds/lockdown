@@ -23,7 +23,11 @@ when="$(date -u -d "@$epoch" +%Y-%m-%dT%H:%M:%SZ)"
 app=design.snds.lockdown
 branch=stable
 ref="app/$app/x86_64/$branch"
-work="$(mktemp -d)"
+# Inside the checkout: flatpak-builder wants its state, build and repo on
+# one file system.
+work="$root/.flatpak-repro"
+rm -rf "$work"
+mkdir -p "$work"
 
 command -v ostree >/dev/null 2>&1 || dnf install -y -q ostree >/dev/null
 rm -rf "$root/packaging/flatpak/stage"
@@ -31,6 +35,7 @@ cp -r "$stage" "$root/packaging/flatpak/stage"
 chmod +x "$root/packaging/flatpak/stage/lockdown-"*
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 flatpak-builder --user --disable-rofiles-fuse --force-clean --install-deps-from=flathub \
+  --state-dir="$work/state" \
   --default-branch="$branch" --repo="$work/repo" "$work/build" "$root/packaging/flatpak/$app.yml"
 flatpak build-commit-from --src-repo="$work/repo" --timestamp="$when" --no-update-summary "$work/repro" "$ref"
 flatpak build-bundle "$work/repro" "$out/lockdown.flatpak" "$app" "$branch"
