@@ -1,5 +1,5 @@
 //! Share links and request links (02-model §1; matrix rows `share-links`
-//! and `request-link`; `docs/plan/18-sharing.md` §5–§6).
+//! and `request-link`; `docs/plan/18-sharing.md` §7).
 //!
 //! **A share link** ("Send") carries an item, a file or some text to
 //! someone who may have no Lockdown at all. Everything is sealed on the

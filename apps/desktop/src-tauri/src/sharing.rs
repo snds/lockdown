@@ -89,7 +89,10 @@ pub mod commands {
     }
 
     #[tauri::command]
-    pub async fn vault_sharing(app: State<'_, App>, vault_id: String) -> AppResult<VaultSharingView> {
+    pub async fn vault_sharing(
+        app: State<'_, App>,
+        vault_id: String,
+    ) -> AppResult<VaultSharingView> {
         blocking(&app, move |a| a.vault_sharing(&vault_id)).await
     }
 
@@ -102,7 +105,10 @@ pub mod commands {
         gate: Option<GateInput>,
     ) -> AppResult<VaultSharingView> {
         let gate = gate.unwrap_or_default();
-        blocking(&app, move |a| a.share_vault(&vault_id, &login, &right, gate)).await
+        blocking(&app, move |a| {
+            a.share_vault(&vault_id, &login, &right, gate)
+        })
+        .await
     }
 
     #[tauri::command]
@@ -112,7 +118,10 @@ pub mod commands {
         account: String,
         right: String,
     ) -> AppResult<VaultSharingView> {
-        blocking(&app, move |a| a.set_member_right(&vault_id, &account, &right)).await
+        blocking(&app, move |a| {
+            a.set_member_right(&vault_id, &account, &right)
+        })
+        .await
     }
 
     #[tauri::command]
@@ -138,7 +147,10 @@ pub mod commands {
         gate: Option<GateInput>,
     ) -> AppResult<VaultSharingView> {
         let gate = gate.unwrap_or_default();
-        blocking(&app, move |a| a.add_to_household(&vault_id, &login, &right, gate)).await
+        blocking(&app, move |a| {
+            a.add_to_household(&vault_id, &login, &right, gate)
+        })
+        .await
     }
 
     #[tauri::command]
@@ -170,7 +182,10 @@ pub mod commands {
         let gate = gate.unwrap_or_default();
         let options = send_options(days, max_views)?;
         let password = password_of(password);
-        blocking(&app, move |a| a.send_item(&id, password, options, gate).map(bytes)).await
+        blocking(&app, move |a| {
+            a.send_item(&id, password, options, gate).map(bytes)
+        })
+        .await
     }
 
     #[tauri::command]
@@ -184,7 +199,10 @@ pub mod commands {
     ) -> AppResult<Response> {
         let options = send_options(days, max_views)?;
         let password = password_of(password);
-        blocking(&app, move |a| a.send_text(&title, text, password, options).map(bytes)).await
+        blocking(&app, move |a| {
+            a.send_text(&title, text, password, options).map(bytes)
+        })
+        .await
     }
 
     #[tauri::command]
@@ -257,7 +275,11 @@ pub mod commands {
     }
 
     #[tauri::command]
-    pub async fn request_create(app: State<'_, App>, label: String, days: u32) -> AppResult<Response> {
+    pub async fn request_create(
+        app: State<'_, App>,
+        label: String,
+        days: u32,
+    ) -> AppResult<Response> {
         blocking(&app, move |a| a.create_request(&label, days).map(bytes)).await
     }
 
@@ -302,7 +324,10 @@ pub mod commands {
         gate: Option<GateInput>,
     ) -> AppResult<Vec<EmergencyView>> {
         let gate = gate.unwrap_or_default();
-        blocking(&app, move |a| a.add_emergency_contact(&login, days, vaults, gate)).await
+        blocking(&app, move |a| {
+            a.add_emergency_contact(&login, days, vaults, gate)
+        })
+        .await
     }
 
     #[tauri::command]
@@ -320,7 +345,10 @@ pub mod commands {
     }
 
     #[tauri::command]
-    pub async fn emergency_open(app: State<'_, App>, grant: String) -> AppResult<Vec<EmergencyView>> {
+    pub async fn emergency_open(
+        app: State<'_, App>,
+        grant: String,
+    ) -> AppResult<Vec<EmergencyView>> {
         blocking(&app, move |a| a.emergency_open(&grant)).await
     }
 }

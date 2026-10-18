@@ -864,9 +864,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let keystore =
             ecosystem_identity::FileKeystore::open_or_create(&dir.path().join("k.cbor")).unwrap();
-        let identity =
-            ecosystem_identity::Identity::create(&dir.path().join("bob"), "lockdown", "bob", &keystore)
-                .unwrap();
+        let identity = ecosystem_identity::Identity::create(
+            &dir.path().join("bob"),
+            "lockdown",
+            "bob",
+            &keystore,
+        )
+        .unwrap();
         let mut set = RecordSet::from_records(
             identity.profile(),
             identity.personas().cloned(),
@@ -888,7 +892,11 @@ mod tests {
                 .unwrap()
         };
         let good = leaf(account, set.manifest.hash().unwrap());
-        let log = Log(vec![leaf(other, Hash32::ZERO), good.clone(), leaf(other, Hash32::ZERO)]);
+        let log = Log(vec![
+            leaf(other, Hash32::ZERO),
+            good.clone(),
+            leaf(other, Hash32::ZERO),
+        ]);
         let hashes: Vec<Hash32> = log.0.iter().map(|b| merkle::leaf_hash(b)).collect();
         let sth = SignedTreeHead::sign(
             TreeHead {
@@ -903,7 +911,9 @@ mod tests {
             .records
             .iter()
             .filter(|(p, _)| {
-                p.as_str() == PROFILE_PATH || p.starts_with("personas/") || p.starts_with("devices/")
+                p.as_str() == PROFILE_PATH
+                    || p.starts_with("personas/")
+                    || p.starts_with("devices/")
             })
             .map(|(p, b)| RecordWire {
                 path: p.clone(),

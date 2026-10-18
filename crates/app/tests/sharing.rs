@@ -10,6 +10,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use lockdown_app::browser::{FillOutcome, FillWhat, PageFacts};
+use lockdown_app::passkeys::{
+    B64, CreateRequest, GetRequest, Outcome, PasskeyPage, UserVerification,
+};
 use lockdown_app::sharing::SendOptions;
 use lockdown_app::{App, ErrorCode, FieldChange, GateInput, LockPolicy, Paths};
 use lockdown_server::{AppState, Config, RunningServer, run_in_background};
@@ -286,6 +289,13 @@ fn an_item_shared_on_its_own_to_fill_only_and_withdrawn() {
     assert_eq!(row.access.as_deref(), Some("fill-only"));
     assert!(!rows.iter().any(|r| r.id == other), "only that item");
     assert!(bob.reveal(&mail, "pw", GateInput::default()).is_err());
+    // The extension's popup offers Copy only for a row's copy target, and
+    // its copy goes through `reveal_to_use`: neither exists for fill-only.
+    assert!(row.copy.is_none());
+    assert!(
+        bob.reveal_to_use(&mail, "pw", GateInput::default())
+            .is_err()
+    );
     assert!(matches!(
         bob.fill(&mail, FillWhat::Login, None, facts()).unwrap(),
         FillOutcome::Fill(_)
@@ -376,7 +386,18 @@ fn share_links_and_request_links_between_two_people() {
         days: 1,
         max_views: None,
     };
+    let uses = |app: &App| {
+        app.list()
+            .unwrap()
+            .into_iter()
+            .find(|r| r.id == mail)
+            .map(|r| r.uses)
+            .unwrap_or_default()
+    };
+    let before = uses(&alice);
     let link = alice.send_item(&mail, None, options.clone(), pw()).unwrap();
+    // Putting an item in a link is one use, as a copy is (D151).
+    assert_eq!(uses(&alice), before + 1);
     let opened = bob.open_send(link.expose(), None).unwrap();
     assert_eq!(opened.title, "Mail");
     let pw_at = opened.values.iter().position(|v| v.secret).unwrap();
@@ -498,4 +519,81 @@ fn a_household_and_emergency_access_with_its_wait_stop_and_release() {
     alice.emergency_step(&grant, "revoke").unwrap();
     bob.sync().unwrap();
     assert!(!bob.list().unwrap().iter().any(|r| r.id == wifi));
+}
+
+fn passkey_page(url: &str, confirmed: bool) -> PasskeyPage {
+    PasskeyPage {
+        top: url.into(),
+        frame: url.into(),
+        visible: true,
+        user_confirmed: confirmed,
+        related: None,
+    }
+}
+
+/// A passkey on a fill-only item signs in (a passkey only ever "fills"),
+/// but its key is never revealed, and the member can't delete it.
+#[test]
+fn a_fill_only_passkey_signs_in_but_is_never_revealed_or_changed() {
+    let dir = tempfile::tempdir().unwrap();
+    let srv = server();
+    let alice = person(dir.path(), "alice", &srv);
+    let bob = person(dir.path(), "bob", &srv);
+    let url = "https://shop.example.com/login";
+    let req = CreateRequest {
+        rp_id: None,
+        rp_name: "Shop".into(),
+        user_id: B64(b"alice-handle".to_vec()),
+        user_name: "alice".into(),
+        user_display_name: "Alice".into(),
+        challenge: B64(b"create-challenge".to_vec()),
+        algs: vec![-7],
+        user_verification: UserVerification::Discouraged,
+        ..CreateRequest::default()
+    };
+    assert!(matches!(
+        alice
+            .passkey_create(passkey_page(url, false), req.clone(), None)
+            .unwrap(),
+        Outcome::Confirm(_)
+    ));
+    let Outcome::Done(created) = alice
+        .passkey_create(passkey_page(url, true), req, None)
+        .unwrap()
+    else {
+        panic!("the passkey wasn't made");
+    };
+    alice.sync().unwrap();
+    alice.lookup_contact("bob@example.com").unwrap();
+    alice
+        .share_item(&created.item_id, "bob@example.com", "fill-only", pw())
+        .unwrap();
+    bob.sync().unwrap();
+    let get = GetRequest {
+        rp_id: None,
+        challenge: B64(b"get-challenge".to_vec()),
+        ..GetRequest::default()
+    };
+    let signed = bob
+        .passkey_get(
+            passkey_page(url, true),
+            get,
+            &created.item_id,
+            created.credential_id.clone(),
+            None,
+        )
+        .unwrap();
+    assert!(
+        matches!(signed, Outcome::Done(ref a) if a.credential_id == created.credential_id),
+        "a fill-only passkey still signs in: {signed:?}"
+    );
+    assert!(
+        bob.reveal(&created.item_id, "passkey.0.key", GateInput::default())
+            .is_err()
+    );
+    assert!(
+        bob.passkey_delete(&created.item_id, created.credential_id.clone(), pw())
+            .is_err(),
+        "fill only can't change the item"
+    );
 }

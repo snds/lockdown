@@ -673,6 +673,7 @@ impl App {
                 "put this item in a share link",
                 &gate,
             )?;
+            // The session notes the use (D151): the item's secrets left the vault.
             core.session()?
                 .create_send(
                     SendWhat::Item(id),

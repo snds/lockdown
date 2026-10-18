@@ -1132,7 +1132,10 @@ mod tests {
         roster.apply(&removal, &devices).unwrap();
         assert_eq!(roster.key_ref, k2);
         assert_eq!(roster.right_of(bob.party.account_id), None);
-        assert!(roster.ever_wrote(bob.party.account_id));
+        // Bob only ever viewed, so no version of his counts as a writer's;
+        // the owner always does.
+        assert!(!roster.ever_wrote(bob.party.account_id));
+        assert!(roster.ever_wrote(alice.party.account_id));
         events.push(removal);
         // Replayed from the start, the same roster.
         assert_eq!(Roster::replay(&events, &devices).unwrap(), roster);
