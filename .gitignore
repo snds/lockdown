@@ -5,3 +5,4 @@
 /.idea
 /.vscode
 /.flatpak-repro/
+__pycache__/
