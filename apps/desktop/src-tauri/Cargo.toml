@@ -34,7 +34,7 @@ shell = [
 ]
 
 [build-dependencies]
-tauri-build = { version = "2.7.2", optional = true }
+tauri-build = { version = "2.7.2", optional = true , features = [] }
 
 [dependencies]
 lockdown-app.workspace = true
@@ -47,7 +47,7 @@ serde.workspace = true
 serde_json.workspace = true
 zeroize.workspace = true
 # The shell proper.
-tauri = { version = "2.12.3", optional = true }
+tauri = { version = "2.12.3", optional = true , features = [] }
 tauri-plugin-log = { version = "2", optional = true }
 # Opens an item's site in the default browser (http and https only).
 tauri-plugin-opener = { version = "2", optional = true }

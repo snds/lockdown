@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The MSIX package manifest for the Lockdown desktop app
+  (docs/plan/24-release.md §1). build-layout.ps1 fills the version and the
+  publisher and lays the package out; CI packs it unsigned to prove the
+  layout and this manifest are valid. A signed package needs a certificate
+  whose subject equals Publisher (secret WINDOWS_MSIX_PUBLISHER).
+
+  Registry and file-system write virtualization are off so the browser
+  connection works from the package: the app writes the browsers'
+  native-messaging registry value under HKCU and the host manifests under
+  %LOCALAPPDATA%, and a virtualized write would be invisible to the
+  browser (that needs the restricted unvirtualizedResources capability).
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
+  IgnorableNamespaces="uap rescap desktop6">
+  <Identity
+    Name="design.snds.lockdown"
+    Publisher="@PUBLISHER@"
+    Version="@VERSION@"
+    ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>Lockdown</DisplayName>
+    <PublisherDisplayName>Sean Sands</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <desktop6:RegistryWriteVirtualization>disabled</desktop6:RegistryWriteVirtualization>
+    <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+  <Applications>
+    <Application Id="Lockdown" Executable="lockdown-desktop.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Lockdown"
+        Description="Every way you sign in, locked down"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <rescap:Capability Name="unvirtualizedResources" />
+  </Capabilities>
+</Package>

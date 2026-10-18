@@ -6,3 +6,5 @@ src-tauri/target/
 # dsa output: scan and pattern reports are regenerated; only the ratchet baseline is tracked.
 .dsa/*
 !.dsa/baseline.json
+# The native host staged for the bundler (scripts/stage-host.mjs).
+src-tauri/binaries/

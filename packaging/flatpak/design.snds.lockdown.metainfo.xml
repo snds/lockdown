@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>design.snds.lockdown</id>
+  <name>Lockdown</name>
+  <summary>Every way you sign in, locked down</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <developer id="design.snds">
+    <name>Sean Sands</name>
+  </developer>
+  <description>
+    <p>Lockdown is a password manager, passkey provider and authenticator. Its vault is end-to-end encrypted and checked against a signed history, so a server cannot read, swap or roll it back.</p>
+  </description>
+  <launchable type="desktop-id">design.snds.lockdown.desktop</launchable>
+  <url type="homepage">https://github.com/snds/lockdown</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-10-18"/>
+  </releases>
+</component>

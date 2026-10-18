@@ -15,7 +15,8 @@
     "build:native": "cargo build -p lockdown-native-host && cargo build -p lockdown-desktop --example browser-endpoint",
     "typecheck": "tsc -p tsconfig.json",
     "test": "playwright test",
-    "test:headed": "playwright test --headed"
+    "test:headed": "playwright test --headed",
+    "package": "node scripts/pack.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1",

@@ -22,9 +22,16 @@
 # Behind a proxy that re-terminates TLS, pass its CA as a build secret:
 #   docker build --secret id=cargo_ca,src=/path/to/ca.pem .
 
+# Reproducible (docs/plan/24-release.md §5): both base images are pinned by
+# digest, paths are remapped out of the binary, and with
+# `docker buildx build --build-arg SOURCE_DATE_EPOCH=<commit time>
+# --output type=oci,...,rewrite-timestamp=true` two builds of one commit
+# are the same bytes (packaging/repro/build-image.sh; CI checks it).
 ARG RUST_VERSION=1.97
+ARG RUST_DIGEST=@sha256:2775a09d208ff0d7c1f50490c45b62db929e87ba1dcbc3f2132ac71a704bcdd3
+ARG RUNTIME_DIGEST=@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f
 
-FROM rust:${RUST_VERSION}-slim-bookworm AS build
+FROM rust:${RUST_VERSION}-slim-bookworm${RUST_DIGEST} AS build
 WORKDIR /src
 COPY . .
 RUN --mount=type=secret,id=cargo_ca,required=false \
@@ -32,12 +39,13 @@ RUN --mount=type=secret,id=cargo_ca,required=false \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/src/target \
     if [ -f /run/secrets/cargo_ca ]; then export CARGO_HTTP_CAINFO=/run/secrets/cargo_ca; fi; \
+    RUSTFLAGS="--remap-path-prefix=/src=/lockdown --remap-path-prefix=/usr/local/cargo=/cargo" \
     cargo build --locked --release -p lockdown-server \
     && install -D -m 0755 target/release/lockdown-server /out/lockdown-server \
     && mkdir -p /out/data /out/web \
     && if [ -f apps/web/dist/index.html ]; then cp -r apps/web/dist/. /out/web/; fi
 
-FROM gcr.io/distroless/cc-debian12:nonroot
+FROM gcr.io/distroless/cc-debian12:nonroot${RUNTIME_DIGEST}
 COPY --from=build /out/lockdown-server /usr/local/bin/lockdown-server
 COPY --from=build --chown=65532:65532 /out/data /data
 COPY --from=build /out/web /usr/share/lockdown/web

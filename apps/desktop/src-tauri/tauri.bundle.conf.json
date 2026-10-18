@@ -1,0 +1,32 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "bundle": {
+    "active": true,
+    "externalBin": ["binaries/lockdown-native-host"],
+    "publisher": "Sean Sands",
+    "copyright": "Copyright 2026 Sean Sands. Apache-2.0.",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/snds/lockdown",
+    "category": "Utility",
+    "shortDescription": "Every way you sign in, locked down",
+    "longDescription": "Lockdown is a password manager, passkey provider and authenticator. Its vault is end-to-end encrypted and checked against a signed history, so a server cannot read, swap or roll it back.",
+    "linux": {
+      "deb": {
+        "depends": ["libdbus-1-3"],
+        "section": "utils"
+      },
+      "rpm": {
+        "depends": ["dbus-libs"],
+        "release": "1"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "hardenedRuntime": true
+    },
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true }
+    }
+  }
+}

@@ -241,3 +241,55 @@ jobs:
         run: cargo build --release -p lockdown-cli
       - name: Smoke test
         run: bins/server/container/smoke.sh lockdown-server:ci target/release/lockdown
+
+  # The desktop shell on Windows (docs/plan/24-release.md §1): the Tauri
+  # crate with its `shell` feature on (WebView2, Windows Hello, Credential
+  # Manager), its clippy and unit tests, the browser endpoint on the named
+  # pipe among them. The installers are built by release.yml.
+  desktop-windows:
+    name: desktop shell (windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build the web UI
+        run: pnpm build
+      - name: Clippy, the shell feature on
+        run: cargo clippy -p lockdown-desktop --all-targets --features shell -- -D warnings
+      - name: Shell unit tests
+        run: cargo test -p lockdown-desktop --features shell
+
+  # Supply chain (docs/plan/24-release.md §4): every third-party crate in
+  # Cargo.lock is covered by an audit imported from a well-known audit set
+  # or by a recorded exemption in supply-chain/. `--locked` reads the
+  # imports from supply-chain/imports.lock and fetches nothing. A new or
+  # updated crate fails this job until it is audited or exempted
+  # (`cargo vet` says which; `cargo vet regenerate exemptions` records it).
+  vet:
+    name: cargo-vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-vet@0.10.2
+      - name: Vet
+        run: cargo vet --locked
