@@ -124,7 +124,10 @@ mod shell {
             // Losing the window to the dock counts as hidden (the core's
             // hidden-window timer decides when that becomes a lock).
             .on_window_event(|window, event| {
+                // The main window only: the quick-access window hides on
+                // every blur, which is not the app going out of view.
                 if let tauri::WindowEvent::Focused(focused) = event
+                    && window.label() == "main"
                     && let Some(core) = window.try_state::<App>()
                 {
                     let _ = core.set_hidden(!focused && !window.is_visible().unwrap_or(true));

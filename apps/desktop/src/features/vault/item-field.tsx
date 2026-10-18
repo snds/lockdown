@@ -9,6 +9,8 @@ import { useSettings } from "@/app/settings"
 import { describeError, isAppError, useClient } from "@/core/client"
 import type { Control, FieldView } from "@/core/types"
 
+import { protectFor, useHygieneClient } from "@/features/hygiene/hygiene-client"
+
 import { ShowFieldLargeType } from "./large-type"
 
 export type { SecretFormat }
@@ -77,7 +79,16 @@ export function ItemField({ itemId, field, onNotice, format = "plain", largeType
   // runs only while that copy is still the shell's last write (clipboard_clear; D105, D115).
   const lastCopy = useRef<number | null>(null)
 
-  const getSecret = useMemo(() => () => gate.run((g) => client.reveal(itemId, fieldId, g)), [client, gate, itemId, fieldId])
+  // A reveal keeps the window out of screen captures for its lifetime (docs/plan/26-desktop-finish.md §6).
+  const hygiene = useHygieneClient()
+  const getSecret = useMemo(
+    () => async () => {
+      const bytes = await gate.run((g) => client.reveal(itemId, fieldId, g))
+      protectFor(hygiene)
+      return bytes
+    },
+    [client, gate, itemId, fieldId, hygiene],
+  )
 
   const host = useMemo<SecretFieldReferenceHost>(
     () => ({

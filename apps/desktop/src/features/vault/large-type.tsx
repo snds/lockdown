@@ -5,6 +5,7 @@ import { LargeTypeView } from "@unicron/ui/security/large-type-view"
 
 import { useGate } from "@/app/gate"
 import { useClient } from "@/core/client"
+import { useCaptureProtect } from "@/features/hygiene/hygiene-client"
 
 /** How long large type stays up before it hides itself (brief §3.2; `--c-large-type-lifetime`). */
 export const LARGE_TYPE_LIFETIME_S = 120
@@ -26,6 +27,7 @@ interface LargeTypeButtonProps {
  */
 export function ShowLargeType({ title, getSecret, groupSize = 3 }: LargeTypeButtonProps) {
   const [open, setOpen] = useState(false)
+  useCaptureProtect(open)
   return (
     <>
       <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>

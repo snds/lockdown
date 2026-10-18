@@ -5,6 +5,7 @@ import { Button, Dialog, DialogAction, DialogActions, DialogContent, DialogDescr
 import { useGate } from "@/app/gate"
 import { useLocked } from "@/app/locked"
 import { describeError, useClient } from "@/core/client"
+import { useCaptureProtect } from "@/features/hygiene/hygiene-client"
 
 import { WIFI_CARD_LIFETIME_S, qrPath } from "./depth-model"
 
@@ -109,6 +110,7 @@ export function WifiCard({ itemId, ssid, hasPassword }: WifiCardProps) {
     }
   }
 
+  useCaptureProtect(visible)
   return (
     <>
       <Button variant="ghost" size="sm" onClick={() => void open()}>

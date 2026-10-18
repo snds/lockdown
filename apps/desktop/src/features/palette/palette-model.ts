@@ -31,3 +31,11 @@ export function matches(search: string, words: string[]): boolean {
     .filter(Boolean)
     .every((w) => hay.includes(w))
 }
+
+/** How long a code shown in quick access stays on screen. */
+export const SHOWN_CODE_MS = 30_000
+
+/** The keys for the two actions beyond Enter and the copy: shown and spoken. */
+export function actionKeys() {
+  return { fill: isMac() ? "⇧↵" : "Shift+Enter", code: isMac() ? "⌥↵" : "Alt+Enter" }
+}
