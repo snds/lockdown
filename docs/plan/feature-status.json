@@ -1,7 +1,7 @@
 {
- "as_of": "dcf9cc1",
+ "as_of": "51ec3b3",
  "source": "docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)",
- "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is no web vault yet. The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and its web half once the web vault exists. OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.",
+ "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, a web vault the server serves (the same core on wasm32-wasip1 in a worker, doc 17), and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and the web vault refuses some features in words for now (doc 17 §10). OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.",
  "non_v1_built": [
   {
    "id": "cli",
@@ -32,7 +32,8 @@
     "core",
     "desktop",
     "cli",
-    "extension"
+    "extension",
+    "web"
    ],
    "left": "Nothing for desktop and the extension; the web vault and mobile.",
    "evidence": [
@@ -52,7 +53,8 @@
    "status": "done",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Nothing for desktop; mobile and web views later.",
    "evidence": [
@@ -72,7 +74,8 @@
    "status": "partial",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "The card fill itself (extension or OS provider) with the second deliberate action and the optional CVC re-prompt.",
    "evidence": [
@@ -92,7 +95,8 @@
    "status": "partial",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Typed subtypes (person, address, business, vehicle, passport) and a separate contacts list that is never filled; plus the form fill itself.",
    "evidence": [
@@ -111,7 +115,8 @@
    "status": "partial",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Reach 25+ types (passport and licence are a Document type choice today) and add user-defined templates.",
    "evidence": [
@@ -131,7 +136,8 @@
    "status": "partial",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Add the TOTP and linked field kinds.",
    "evidence": [
@@ -173,7 +179,8 @@
    "status": "partial",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Word passphrases, per-site rule profiles, length and class options in the UI, and statistical randomness tests in CI.",
    "evidence": [
@@ -193,7 +200,8 @@
    "status": "partial",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "The self-hiding guest QR card, the printable card, and export through CXF's own Wi-Fi type (it rides in the Lockdown extension today).",
    "evidence": [
@@ -213,7 +221,8 @@
    "status": "done",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Renewal kinds for domains and certificates; the signed-date check.",
    "evidence": [
@@ -233,7 +242,8 @@
    "status": "done",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Trash in the CLI.",
    "evidence": [
@@ -253,7 +263,8 @@
    "status": "done",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Nothing for desktop.",
    "evidence": [
@@ -272,7 +283,8 @@
    "status": "done",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Drag and drop; folders from imports.",
    "evidence": [
@@ -291,7 +303,8 @@
    "status": "done",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Nothing for desktop; the extension and web vault views.",
    "evidence": [
@@ -310,7 +323,8 @@
    "status": "done",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Several vaults in the CLI; a free-tier limit once plans exist.",
    "evidence": [
@@ -329,7 +343,8 @@
    "review": false,
    "status": "partial",
    "surfaces": [
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "The system-wide hotkey outside the window, fill and show-code actions, and a shared Rust search index (search runs over summaries in TypeScript).",
    "evidence": [
@@ -349,7 +364,8 @@
    "status": "done",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Nothing for the desktop; Signal-hidden passkeys join Needs attention once the Signal API exists.",
    "evidence": [
@@ -369,7 +385,8 @@
    "status": "done",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Run it on its own after an import; a side-by-side compare.",
    "evidence": [
@@ -387,7 +404,8 @@
    "status": "done",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Fill counts from the browser extension.",
    "evidence": [
@@ -810,7 +828,8 @@
    "surfaces": [
     "core",
     "desktop",
-    "cli"
+    "cli",
+    "web"
    ],
    "left": "Nothing in code for desktop; keeping it on the free tier is a pricing rule.",
    "evidence": [
@@ -870,7 +889,8 @@
    "status": "partial",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Clock-skew correction against server time and search focus on launch (haptics are a phone item).",
    "evidence": [
@@ -890,7 +910,8 @@
    "surfaces": [
     "core",
     "desktop",
-    "cli"
+    "cli",
+    "web"
    ],
    "left": "Nothing in code for desktop; no UI test exercises the Steam variant specifically.",
    "evidence": [
@@ -966,7 +987,8 @@
    "review": false,
    "status": "partial",
    "surfaces": [
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Large type for any password (Logins lack it), and the hotel and rental mode that logs the TV sign-in and reminds you to sign out.",
    "evidence": [
@@ -1072,13 +1094,14 @@
    "name": "Share links for non-users",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
-    "server"
+    "server",
+    "web"
    ],
-   "left": "Opening a link in a plain browser (the server page is a no-script notice; the web vault slice will open it).",
+   "left": "Item and file links made from the web vault (the desktop makes them; any browser opens them).",
    "evidence": [
     "bins/server/src/lib.rs:228 (no Send routes on the server)"
    ],
@@ -1091,13 +1114,14 @@
    "name": "Request a secret",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
-    "server"
+    "server",
+    "web"
    ],
-   "left": "Answering a request in a plain browser for someone without Lockdown, like share links.",
+   "left": "Keeping an answer as a note from the web vault.",
    "evidence": [
     "bins/server/src/lib.rs:228 (no request-link routes on the server)"
    ],
@@ -1391,7 +1415,8 @@
    "review": false,
    "status": "partial",
    "surfaces": [
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Keep copies out of Windows clipboard history and cloud clipboard, and block screen capture on reveal screens.",
    "evidence": [
@@ -1553,7 +1578,8 @@
    "review": false,
    "status": "partial",
    "surfaces": [
-    "server"
+    "server",
+    "web"
    ],
    "left": "Packaging, operator docs and support, and the server features later slices need (sharing, push); it is axum plus rusqlite, not sqlx.",
    "evidence": [
@@ -1624,7 +1650,8 @@
     "core",
     "server",
     "desktop",
-    "cli"
+    "cli",
+    "web"
    ],
    "left": "Decide whether item kinds and field names (visible per D48) must be hidden too; then the external audit.",
    "evidence": [
@@ -1646,7 +1673,8 @@
     "core",
     "desktop",
     "cli",
-    "server"
+    "server",
+    "web"
    ],
    "left": "QR transfer of the Secret Key to a new device (it is typed from the kit today) and the opt-out warning path.",
    "evidence": [
@@ -1667,7 +1695,8 @@
     "core",
     "server",
     "desktop",
-    "cli"
+    "cli",
+    "web"
    ],
    "left": "Nothing in code; it goes into the external audit.",
    "evidence": [
@@ -1727,7 +1756,8 @@
    "surfaces": [
     "core",
     "desktop",
-    "server"
+    "server",
+    "web"
    ],
    "left": "Passphrase-verified invites, scanning the QR fingerprint (the payload exists), and log mirrors.",
    "evidence": [
@@ -1768,7 +1798,8 @@
     "core",
     "server",
     "cli",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Nothing for v1 beyond the audit.",
    "evidence": [
@@ -1874,7 +1905,8 @@
    "status": "partial",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "Locked memory pages kept out of swap; the webview still holds typed and revealed strings briefly (D91).",
    "evidence": [
@@ -1913,7 +1945,8 @@
    "status": "partial",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
    "left": "The legacy-release rule. Crown jewels stay out of exports and backups unless opted in per item (D121), and items move into and out of the class.",
    "evidence": [
@@ -2029,9 +2062,13 @@
    "name": "Web vault",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: a web vault on the wasm core.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "web",
+    "server"
+   ],
+   "left": "Import, export, backups, attachments, the security center, the recovery kit, passkeys and sharing in the web vault (each refused in words today); offline use; Firefox and Safari test runs; code splitting (the module is about 10 MB).",
    "evidence": [
     "docs/plan/07-workspace.md:26 (the vault surface for the web vault not yet; wasm exports only the matcher and codes)"
    ],

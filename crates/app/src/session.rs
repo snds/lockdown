@@ -32,8 +32,8 @@ use ecosystem_identity::{
 };
 use lockdown_crypto::auth::{DeviceBinding, OpaqueAccountAuth};
 use lockdown_store::{
-    HeadMemory, RememberedHead, ServerView, SqliteStore, SyncedIdentity, TransparencyMemory,
-    write_private,
+    DeviceStore, HeadMemory, RememberedHead, ServerView, SyncedIdentity, TransparencyMemory,
+    open_device_store, write_private,
 };
 use lockdown_sync::wire::ErrorCode;
 use lockdown_sync::{
@@ -115,6 +115,17 @@ impl Paths {
         self.data.join(crate::settings::SETTINGS_FILE)
     }
 
+    /// The rollback memory (`remembered.cbor`: the newest heads accepted).
+    pub fn memory_file(&self) -> PathBuf {
+        self.data.join(MEMORY_FILE)
+    }
+
+    /// The log memory (`transparency.cbor`: per server, the pinned log key
+    /// and the newest tree head verified).
+    pub fn transparency_file(&self) -> PathBuf {
+        self.data.join(TRANSPARENCY_FILE)
+    }
+
     /// What is here before anything opens.
     pub fn probe(&self) -> Result<Probe, String> {
         let identity_present = ecosystem_identity::Store::at(&self.root)
@@ -142,8 +153,12 @@ fn beside(root: &Path) -> PathBuf {
 
 /// A name for this device in the identity's device list and on conflict
 /// copies: `Lockdown on <hostname>` (D68, D74), or plain `Lockdown` when
-/// the hostname can't be read.
+/// the hostname can't be read. A host with a better name for itself (the
+/// web vault names the browser it runs in) sets `LOCKDOWN_DEVICE_NAME`.
 pub fn device_name() -> String {
+    if let Some(name) = std::env::var_os("LOCKDOWN_DEVICE_NAME").filter(|v| !v.is_empty()) {
+        return name.to_string_lossy().into_owned();
+    }
     match hostname() {
         Some(host) => format!("Lockdown on {host}"),
         None => "Lockdown".to_string(),
@@ -253,7 +268,7 @@ pub struct Session {
     paths: Paths,
     keystore: Rc<FileKeystore>,
     identity: Identity,
-    store: SqliteStore,
+    store: DeviceStore,
     memory: HeadMemory,
     synced: SyncedIdentity,
     transparency: TransparencyMemory,
@@ -337,7 +352,7 @@ impl Session {
         .map_err(|e| e.to_string())?;
 
         let mut store =
-            SqliteStore::open(&paths.data.join(STORE_FILE)).map_err(|e| e.to_string())?;
+            open_device_store(&paths.data.join(STORE_FILE)).map_err(|e| e.to_string())?;
         let isk_pub = identity.profile().isk_pub;
         let mut synced = SyncedIdentity::open(&paths.data.join(IDENTITY_SYNC_FILE), Some(&isk_pub))
             .map_err(|e| e.to_string())?;
@@ -847,6 +862,7 @@ impl Session {
     /// Forgets the session token when the server ended this session from
     /// another device (`live`): the account stays, and the next sync asks
     /// for a login instead of failing on a dead token.
+    #[cfg(all(feature = "native", not(target_os = "wasi")))]
     pub(crate) fn forget_session_token(&mut self, token: &str) -> Result<(), String> {
         let path = self.paths.sync_file();
         if let Some(cfg) = self.sync.as_mut()
@@ -1149,6 +1165,32 @@ impl Session {
         cfg.save(&self.paths.sync_file())?;
         self.sync = Some(cfg);
         Ok(lines)
+    }
+
+    /// Takes a fresh session from a sign-in the shell ran itself for this
+    /// account (the web vault's unlock, docs/plan/17-web-vault.md), so the
+    /// next sync uses it.
+    pub fn renew_session(
+        &mut self,
+        server: &str,
+        login: &str,
+        session: lockdown_crypto::auth::Session,
+    ) -> Result<(), String> {
+        let Some(cfg) = self.sync.as_mut() else {
+            return Err("no account on this device; register or log in first".into());
+        };
+        if cfg.server != server.trim_end_matches('/') || cfg.login != login {
+            return Err(format!(
+                "this device's account is {} at {}, not {login} at {server}",
+                cfg.login, cfg.server
+            ));
+        }
+        if session.profile_id != cfg.profile_id {
+            return Err("that session is for another profile".into());
+        }
+        cfg.token = session.token;
+        cfg.expires_at = session.expires_at;
+        cfg.save(&self.paths.sync_file())
     }
 
     /// Rewrites the account slot with the Secret Key mixed in (D70).
@@ -1703,16 +1745,61 @@ pub fn enrol_from_account(
     secret_key: Option<&str>,
 ) -> Result<Vec<String>, String> {
     check_root_empty(paths)?;
-    let secret_key = secret_key.filter(|s| !s.trim().is_empty());
     let keystore = Rc::new(
         FileKeystore::open_or_create(&paths.data.join(KEYSTORE_FILE)).map_err(|e| e.to_string())?,
     );
     let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
     let mut auth = OpaqueAccountAuth::new(transport, login, binding_of(&keystore));
     let (export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
+    enrol_signed_in(
+        paths,
+        auth.rounds(),
+        &keystore,
+        login,
+        export_key,
+        session,
+        secret_key,
+    )
+}
+
+/// [`enrol_from_account`] after a sign-in the shell ran itself with this
+/// device's keystore (the web vault, which must see the export key to seal
+/// its device key, docs/plan/17-web-vault.md): no second password round.
+pub fn enrol_from_sign_in(
+    paths: &Paths,
+    server: &str,
+    login: &str,
+    export_key: ExportKey,
+    session: lockdown_crypto::auth::Session,
+    secret_key: Option<&str>,
+) -> Result<Vec<String>, String> {
+    check_root_empty(paths)?;
+    let keystore_path = paths.data.join(KEYSTORE_FILE);
+    if !keystore_path.exists() {
+        return Err("the sign-in was made without this device's key; sign in again".into());
+    }
+    let keystore =
+        Rc::new(FileKeystore::open_or_create(&keystore_path).map_err(|e| e.to_string())?);
+    let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
+    enrol_signed_in(
+        paths, &transport, &keystore, login, export_key, session, secret_key,
+    )
+}
+
+fn enrol_signed_in(
+    paths: &Paths,
+    transport: &HttpTransport,
+    keystore: &Rc<FileKeystore>,
+    login: &str,
+    export_key: ExportKey,
+    session: lockdown_crypto::auth::Session,
+    secret_key: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let server = transport.base().to_string();
+    let secret_key = secret_key.filter(|s| !s.trim().is_empty());
     let mut synced = SyncedIdentity::open(&paths.data.join(IDENTITY_SYNC_FILE), None)
         .map_err(|e| e.to_string())?;
-    pull_identity(auth.rounds(), &session.token, &mut synced, None).map_err(|e| e.to_string())?;
+    pull_identity(transport, &session.token, &mut synced, None).map_err(|e| e.to_string())?;
     let verified = synced
         .verified()
         .cloned()
@@ -1733,7 +1820,7 @@ pub fn enrol_from_account(
         keystore.as_ref(),
         AccountCredentials {
             auth: &mut prepared,
-            password,
+            password: "",
             secret_key: sk.as_ref(),
         },
         &backup,
@@ -1754,7 +1841,7 @@ pub fn enrol_from_account(
         .remember_identity(identity.head())
         .map_err(|e| e.to_string())?;
     sync_identity_records(
-        auth.rounds(),
+        transport,
         &session.token,
         &mut identity,
         keystore.as_ref(),
@@ -1763,7 +1850,7 @@ pub fn enrol_from_account(
     )?;
     let cfg = SyncConfig {
         v: SYNC_V,
-        server: auth.rounds().base().to_string(),
+        server: server.clone(),
         login: login.to_string(),
         profile_id: session.profile_id,
         token: session.token,
@@ -2031,7 +2118,7 @@ fn pull_new_vaults(
     transport: &dyn Transport,
     token: &str,
     identity: &Identity,
-    store: &mut SqliteStore,
+    store: &mut DeviceStore,
     cfg: &mut SyncConfig,
     kt: &KtSession<'_>,
 ) -> Result<usize, String> {

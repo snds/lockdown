@@ -15,10 +15,16 @@ sha1.workspace = true
 thiserror.workspace = true
 zeroize.workspace = true
 # The breach range client and the change-password probe: blocking, TLS
-# through rustls on the `ring` provider with the hybrid group first
-# (lockdown-tls), as the sync client does.
-reqwest = { workspace = true }
-lockdown-tls.workspace = true
+# through rustls on the `ring` provider with the hybrid X25519MLKEM768
+# group first (lockdown-tls), as the sync client does.
+reqwest = { workspace = true, optional = true }
+lockdown-tls = { workspace = true, optional = true }
+
+[features]
+default = ["http"]
+# The built-in HTTPS client. Without it (the web vault) every fetch is
+# refused in plain words.
+http = ["dep:reqwest", "dep:lockdown-tls"]
 
 [dev-dependencies]
 tempfile.workspace = true

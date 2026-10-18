@@ -3,6 +3,8 @@
 target
 **/node_modules
 **/dist
+# …but the built web vault, when there is one, goes into the image.
+!apps/web/dist
 apps/desktop/.dsa
 extension/test-results
 docs

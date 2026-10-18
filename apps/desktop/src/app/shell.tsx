@@ -25,8 +25,13 @@ interface AppShellProps {
   onLock: () => void
   /** The vaults, folders and tags sections, under the smart views. */
   organization?: ReactNode
+  /** The screens under the views; the desktop's five unless a shell names fewer (the web vault). */
+  screens?: ReadonlyArray<ShellScreen>
   children: ReactNode
 }
+
+/** One screen in the sidebar: where it goes, its icon, its name. */
+export type ShellScreen = readonly [Area, IconName, string]
 
 const VIEWS: Array<[ListView, IconName]> = [
   ["all", "inventory_2"],
@@ -40,7 +45,7 @@ const VIEWS: Array<[ListView, IconName]> = [
   ["deleted", "delete"],
 ]
 
-const SCREENS: Array<[Area, IconName, string]> = [
+const SCREENS: ReadonlyArray<ShellScreen> = [
   ["security", "security", "Security"],
   ["sharing", "group", "Sharing"],
   ["devices", "devices", "Devices"],
@@ -56,7 +61,7 @@ const SCREENS: Array<[Area, IconName, string]> = [
  * own screen, because a code is usually part of a Login (brief §3). Rows
  * take the density knobs through `data-row`.
  */
-export function AppShell({ nav, personas, counts, onNavigate, onLock, organization, children }: AppShellProps) {
+export function AppShell({ nav, personas, counts, onNavigate, onLock, organization, screens = SCREENS, children }: AppShellProps) {
   const active = personas.find((p) => p.active)
   return (
     <div className="flex h-full min-h-0 flex-col md:flex-row">
@@ -92,7 +97,7 @@ export function AppShell({ nav, personas, counts, onNavigate, onLock, organizati
         ))}
         {organization}
         <Separator className="my-1 hidden md:block" />
-        {SCREENS.map(([area, icon, label]) => (
+        {screens.map(([area, icon, label]) => (
           <NavRow key={area} icon={icon} label={label} current={nav.area === area} onClick={() => onNavigate({ area, view: nav.view })} />
         ))}
         <div className="md:mt-auto">

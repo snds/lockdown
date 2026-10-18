@@ -1355,15 +1355,27 @@ fn page(title: &str, body: &str) -> Response {
 }
 
 /// `GET /s/{send}`: what someone who opens a share link in a browser sees.
-pub async fn send_page(Path(_send): Path<String>) -> Response {
+/// On a server that serves the web vault, the web vault's link page (the
+/// fragment, the link's key, rides along without reaching the server).
+pub async fn send_page(State(state): State<Arc<AppState>>, Path(send): Path<String>) -> Response {
+    if let Some(to) = crate::web_vault::link_redirect(&state, "s", &send) {
+        return to;
+    }
     page(
         "A Lockdown share link",
         "<p>Someone shared something with you through Lockdown. It is locked on their device, and the key is in the part of this link after the <code>#</code>, which your browser never sends to this server.</p><p>To open it, paste the whole link into Lockdown: <strong>Sharing → Open a share link</strong>. Opening it in the browser arrives with the Lockdown web vault.</p>",
     )
 }
 
-/// `GET /r/{request}`: what someone who opens a request link sees.
-pub async fn request_page(Path(_request): Path<String>) -> Response {
+/// `GET /r/{request}`: what someone who opens a request link sees; on a
+/// server that serves the web vault, the web vault's answer page.
+pub async fn request_page(
+    State(state): State<Arc<AppState>>,
+    Path(request): Path<String>,
+) -> Response {
+    if let Some(to) = crate::web_vault::link_redirect(&state, "r", &request) {
+        return to;
+    }
     page(
         "Someone asked you for a secret",
         "<p>Someone asked you to send them a password or other secret through Lockdown. What you send is locked to their key on your device, so this server can't read it, and the link takes one answer.</p><p>To answer, paste the whole link into Lockdown: <strong>Sharing → Answer a request</strong>. Answering in the browser arrives with the Lockdown web vault.</p>",

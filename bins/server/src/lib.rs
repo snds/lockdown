@@ -24,6 +24,7 @@
 //! - [`backup`] — the encrypted snapshot under the person's Backup Key
 //! - [`sharing`] / [`sharing_api`] — shared vaults and their members, items
 //!   shared on their own, share links, request links, emergency access
+//! - [`web_vault`] — the built web vault at `/vault/`, with its headers
 //!
 //! The key-transparency log (`storage::kt_log`, served under `/v1/kt/`) is
 //! appended inside the same transactions that accept identity manifests,
@@ -44,6 +45,7 @@ pub mod sharing_api;
 pub mod storage;
 pub mod tls;
 pub mod token;
+pub mod web_vault;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -139,6 +141,9 @@ pub struct Config {
     pub blob_grace: Duration,
     /// Reverse proxies whose `X-Forwarded-For` is believed (`client_addr`).
     pub trusted_proxies: Vec<client_addr::Cidr>,
+    /// The built web vault (`apps/web/dist`) to serve at `/vault/`; `None`
+    /// serves none (docs/plan/17-web-vault.md).
+    pub web_vault: Option<std::path::PathBuf>,
 }
 
 /// The default blob cap: 64 MiB.
@@ -157,6 +162,7 @@ impl Default for Config {
             max_blob_bytes: DEFAULT_MAX_BLOB_BYTES,
             blob_grace: DEFAULT_BLOB_GRACE,
             trusted_proxies: Vec::new(),
+            web_vault: None,
         }
     }
 }
@@ -342,6 +348,9 @@ pub fn app(state: Arc<AppState>) -> Router {
         )
         .route("/s/{send}", get(sharing_api::send_page))
         .route("/r/{request}", get(sharing_api::request_page))
+        .route("/vault", get(web_vault::redirect))
+        .route("/vault/", get(web_vault::index))
+        .route("/vault/{*path}", get(web_vault::file))
         .route("/v1/account/sessions", get(api::list_sessions))
         .route("/v1/account/sessions/{id}/end", post(api::end_session))
         .route(

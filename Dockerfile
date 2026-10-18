@@ -14,6 +14,11 @@
 #   listen on 0.0.0.0 unless LOCKDOWN_INSECURE_HTTP=1 says a reverse proxy
 #   in front does TLS.
 #
+# - The web vault: build it first (apps/web: pnpm build:wasm && pnpm build)
+#   and the image carries apps/web/dist at /usr/share/lockdown/web; serve it
+#   with LOCKDOWN_WEB_VAULT=/usr/share/lockdown/web. Without a build there,
+#   the folder is empty and the server serves no web vault.
+#
 # Behind a proxy that re-terminates TLS, pass its CA as a build secret:
 #   docker build --secret id=cargo_ca,src=/path/to/ca.pem .
 
@@ -29,11 +34,13 @@ RUN --mount=type=secret,id=cargo_ca,required=false \
     if [ -f /run/secrets/cargo_ca ]; then export CARGO_HTTP_CAINFO=/run/secrets/cargo_ca; fi; \
     cargo build --locked --release -p lockdown-server \
     && install -D -m 0755 target/release/lockdown-server /out/lockdown-server \
-    && mkdir -p /out/data
+    && mkdir -p /out/data /out/web \
+    && if [ -f apps/web/dist/index.html ]; then cp -r apps/web/dist/. /out/web/; fi
 
 FROM gcr.io/distroless/cc-debian12:nonroot
 COPY --from=build /out/lockdown-server /usr/local/bin/lockdown-server
 COPY --from=build --chown=65532:65532 /out/data /data
+COPY --from=build /out/web /usr/share/lockdown/web
 ENV LOCKDOWN_DATA=/data \
     LOCKDOWN_LISTEN=0.0.0.0:8443 \
     LOCKDOWN_SIGNUPS=closed \

@@ -37,7 +37,9 @@ pub use engine::{
 };
 pub use identity::{pull_identity, push_identity};
 pub use kt::{AuditExpectations, AuditReport, DeviceExpectations, KtSession};
-pub use transport::{HttpTransport, Transport, TransportError};
+pub use transport::{
+    HttpHook, HttpRequest, HttpTransport, Method, Transport, TransportError, install_http_hook,
+};
 
 use std::collections::BTreeMap;
 

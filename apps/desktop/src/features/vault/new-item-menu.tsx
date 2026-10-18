@@ -1,4 +1,4 @@
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, Icon } from "@unicron/ui"
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, Icon } from "@unicron/ui"
 
 import { useTemplates } from "@/app/templates"
 
@@ -19,13 +19,15 @@ export function NewItemMenu({ onPick }: { onPick: (kind: string) => void }) {
         New item
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuLabel>{error ? "The item kinds didn't load" : templates ? "New item" : "Loading…"}</DropdownMenuLabel>
-        {kinds.map((t) => (
-          <DropdownMenuItem key={t.kind} onClick={() => onPick(t.kind)}>
-            <Icon name={kindIcon(t.kind)} data-icon="inline-start" />
-            {t.name}
-          </DropdownMenuItem>
-        ))}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>{error ? "The item kinds didn't load" : templates ? "New item" : "Loading…"}</DropdownMenuLabel>
+          {kinds.map((t) => (
+            <DropdownMenuItem key={t.kind} onClick={() => onPick(t.kind)}>
+              <Icon name={kindIcon(t.kind)} data-icon="inline-start" />
+              {t.name}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )

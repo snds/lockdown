@@ -223,6 +223,10 @@ struct ServeArgs {
     /// feed's rate limit (HIBP's smallest plan allows ten a minute).
     #[arg(long, env = "LOCKDOWN_BREACH_SCAN_PAUSE_MS", default_value_t = 6500)]
     breach_scan_pause_ms: u64,
+    /// The built web vault (`apps/web/dist`) to serve at `/vault/`.
+    /// Without it no web vault is served.
+    #[arg(long, env = "LOCKDOWN_WEB_VAULT", value_name = "DIR")]
+    web_vault: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -287,8 +291,19 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
         max_blob_bytes: cli.max_blob,
         blob_grace: Duration::from_secs(cli.blob_grace),
         trusted_proxies,
+        web_vault: match cli.web_vault {
+            Some(dir) if dir.join("index.html").is_file() => Some(dir),
+            Some(dir) => {
+                return Err(format!(
+                    "{} has no index.html; build the web vault first (apps/web: pnpm build)",
+                    dir.display()
+                ));
+            }
+            None => None,
+        },
         ..Config::default()
     };
+    let web = config.web_vault.is_some();
     let state = Arc::new(AppState::new(Box::new(storage), keys, config));
     if let Some(url) = cli.breach_feed_url.as_deref() {
         let feed = lockdown_server::breach_monitor::HttpBreachFeed::new(url, cli.breach_feed_key)?;
@@ -336,9 +351,10 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
                 ));
             }
             eprintln!(
-                "lockdown-server listening on http://{local} — PLAIN HTTP, for this machine, tests, or behind a TLS proxy only (data {}, signups {:?})",
+                "lockdown-server listening on http://{local} — PLAIN HTTP, for this machine, tests, or behind a TLS proxy only (data {}, signups {:?}, web vault {})",
                 data.display(),
-                cli.signups
+                cli.signups,
+                if web { "at /vault/" } else { "off" }
             );
             return lockdown_server::serve(listener, state, stop)
                 .await
@@ -360,14 +376,15 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
             });
         }
         eprintln!(
-            "lockdown-server listening on https://{local} (TLS 1.3, {}; data {}, signups {:?})",
+            "lockdown-server listening on https://{local} (TLS 1.3, {}; data {}, signups {:?}, web vault {})",
             if cli.tls_pq_only {
                 "X25519MLKEM768 only"
             } else {
                 "X25519MLKEM768 preferred, X25519 for older clients"
             },
             data.display(),
-            cli.signups
+            cli.signups,
+            if web { "at /vault/" } else { "off" }
         );
         lockdown_server::serve_tls(
             listener,

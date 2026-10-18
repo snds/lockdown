@@ -23,6 +23,7 @@ members = [
     "crates/security",
     "crates/passkey",
     "crates/tls",
+    "crates/web",
 ]
 # The pure-Rust crates: everything that builds on CI without a platform SDK.
 # `ffi` and `wasm` are built with the shells, which bring UniFFI and the wasm
@@ -49,6 +50,7 @@ default-members = [
     "crates/security",
     "crates/passkey",
     "crates/tls",
+    "crates/web",
 ]
 
 [workspace.package]

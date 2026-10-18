@@ -685,7 +685,7 @@ pub fn seal(plain: &[u8], key: &FileKey, kdf: &Kdf, created_at: u64) -> Result<V
     for (i, c) in chunks.into_iter().enumerate() {
         let i32_ = u32::try_from(i).map_err(|_| CxfError::TooLarge {
             found: plain.len(),
-            limit: CHUNK * u32::MAX as usize,
+            limit: CHUNK.saturating_mul(u32::MAX as usize),
         })?;
         let ct = cipher
             .encrypt(

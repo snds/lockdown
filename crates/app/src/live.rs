@@ -17,15 +17,22 @@
 //! [`App::end_session`] and [`App::end_other_sessions`] end them on the
 //! server, which stops those tokens at once.
 
+#[cfg(all(feature = "native", not(target_os = "wasi")))]
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(all(feature = "native", not(target_os = "wasi")))]
 use std::sync::{Arc, Condvar, Mutex};
+#[cfg(all(feature = "native", not(target_os = "wasi")))]
 use std::time::Duration;
 
+#[cfg(all(feature = "native", not(target_os = "wasi")))]
 use lockdown_sync::transport::SseItem;
+#[cfg(all(feature = "native", not(target_os = "wasi")))]
 use lockdown_sync::wire::LiveKind;
 use serde::Serialize;
 
-use crate::{App, AppError, AppResult, SyncOutcome};
+#[cfg(all(feature = "native", not(target_os = "wasi")))]
+use crate::SyncOutcome;
+use crate::{App, AppError, AppResult};
 
 /// What the live channel did, for the shell.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -58,21 +65,25 @@ pub enum LiveNotice {
     SessionEnded,
 }
 
+#[cfg(all(feature = "native", not(target_os = "wasi")))]
 /// Where notices go (the shell turns them into window events).
 pub type LiveSink = Arc<dyn Fn(LiveNotice) + Send + Sync>;
 
+#[cfg(all(feature = "native", not(target_os = "wasi")))]
 /// Keeps the live channel running; dropping it stops it.
 pub struct LiveHandle {
     stop: Arc<AtomicBool>,
     wake: Arc<(Mutex<bool>, Condvar)>,
 }
 
+#[cfg(all(feature = "native", not(target_os = "wasi")))]
 impl std::fmt::Debug for LiveHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("LiveHandle")
     }
 }
 
+#[cfg(all(feature = "native", not(target_os = "wasi")))]
 impl Drop for LiveHandle {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::SeqCst);
@@ -84,8 +95,10 @@ impl Drop for LiveHandle {
     }
 }
 
+#[cfg(all(feature = "native", not(target_os = "wasi")))]
 /// How often the channel thread looks whether the vault opened.
 const IDLE_LOOK: Duration = Duration::from_secs(3);
+#[cfg(all(feature = "native", not(target_os = "wasi")))]
 /// How long bursts of events are gathered into one sync.
 const GATHER: Duration = Duration::from_millis(250);
 
@@ -119,6 +132,7 @@ fn account_error(e: lockdown_sync::TransportError) -> AppError {
 }
 
 impl App {
+    #[cfg(all(feature = "native", not(target_os = "wasi")))]
     /// The server and token when the vault is open and the account has a
     /// session; not activity.
     fn live_target(&self) -> Option<Result<(String, String), String>> {
@@ -127,12 +141,14 @@ impl App {
             .flatten()
     }
 
+    #[cfg(all(feature = "native", not(target_os = "wasi")))]
     /// A sync the live channel asked for: like [`App::sync`], but it
     /// doesn't count as activity for the idle lock.
     fn quiet_sync(&self) -> AppResult<SyncOutcome> {
         self.call(|core| core.session()?.sync().map_err(AppError::refused))
     }
 
+    #[cfg(all(feature = "native", not(target_os = "wasi")))]
     /// Starts the live channel on its own threads; notices go to `sink`.
     pub fn start_live(&self, sink: LiveSink) -> LiveHandle {
         let stop = Arc::new(AtomicBool::new(false));
@@ -219,6 +235,7 @@ impl App {
     }
 }
 
+#[cfg(all(feature = "native", not(target_os = "wasi")))]
 fn wait(stop: &AtomicBool, wake: &(Mutex<bool>, Condvar), d: Duration) {
     let (lock, cv) = wake;
     let guard = lock
@@ -230,6 +247,7 @@ fn wait(stop: &AtomicBool, wake: &(Mutex<bool>, Condvar), d: Duration) {
     let _ = cv.wait_timeout(guard, d);
 }
 
+#[cfg(all(feature = "native", not(target_os = "wasi")))]
 fn sync_side(app: App, stop: Arc<AtomicBool>, wake: Arc<(Mutex<bool>, Condvar)>, sink: LiveSink) {
     let (lock, cv) = &*wake;
     loop {
@@ -266,6 +284,7 @@ fn sync_side(app: App, stop: Arc<AtomicBool>, wake: Arc<(Mutex<bool>, Condvar)>,
     }
 }
 
+#[cfg(all(feature = "native", not(target_os = "wasi")))]
 fn channel_side(
     app: App,
     stop: Arc<AtomicBool>,

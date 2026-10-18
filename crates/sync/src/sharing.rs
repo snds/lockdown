@@ -48,7 +48,7 @@ use serde_bytes::ByteBuf;
 
 use crate::SyncError;
 use crate::engine::session_or;
-use crate::transport::{HttpTransport, Result, Transport};
+use crate::transport::{HttpTransport, Method, Result, Transport};
 use crate::wire::{ItemWire, RecordWire, VaultSummary};
 
 // --- the directory -----------------------------------------------------------
@@ -566,7 +566,7 @@ impl HttpTransport {
         path: &str,
         token: Option<&str>,
     ) -> Result<R> {
-        self.call::<(), R>(reqwest::Method::GET, path, token, None)
+        self.call::<(), R>(Method::Get, path, token, None)
     }
 
     fn post_cbor<T: Serialize, R: serde::de::DeserializeOwned>(
@@ -575,19 +575,18 @@ impl HttpTransport {
         token: Option<&str>,
         body: &T,
     ) -> Result<R> {
-        self.call(reqwest::Method::POST, path, token, Some(body))
+        self.call(Method::Post, path, token, Some(body))
     }
 
     fn post_empty<T: Serialize>(&self, path: &str, token: Option<&str>, body: &T) -> Result<()> {
         let bytes = crate::wire::encode(body)
             .map_err(|e| crate::transport::TransportError::Decode(e.to_string()))?;
-        self.call_raw(reqwest::Method::POST, path, token, Some(bytes))
+        self.call_raw(Method::Post, path, token, Some(bytes))
             .map(|_| ())
     }
 
     fn delete(&self, path: &str, token: Option<&str>) -> Result<()> {
-        self.call_raw(reqwest::Method::DELETE, path, token, None)
-            .map(|_| ())
+        self.call_raw(Method::Delete, path, token, None).map(|_| ())
     }
 
     /// `GET /v1/directory?login=L`.

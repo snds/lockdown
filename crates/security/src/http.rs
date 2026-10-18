@@ -3,7 +3,9 @@
 //! supplies another.
 //!
 //! [`HttpFetch`] is blocking `reqwest` over rustls with the `ring`
-//! provider, like the sync client. It follows no redirect (the probe needs
+//! provider, like the sync client, behind the default `http` feature; a
+//! build without it (the web vault, whose page may call no origin but its
+//! own) has an `HttpFetch` that refuses every call in plain words. It follows no redirect (the probe needs
 //! to see one, and the range API never sends one), keeps no cookies, sends
 //! nothing but the URL and the headers a caller names, times out, and caps
 //! what it reads.
@@ -79,12 +81,14 @@ pub fn allowed_address(url: &str) -> Result<(), FetchError> {
 
 /// Installs rustls's `ring` provider with the hybrid X25519MLKEM768 group
 /// first, once per process (harmless when the sync client already did).
+#[cfg(feature = "http")]
 fn ensure_tls_provider() {
     lockdown_tls::install_default_provider();
 }
 
 /// The real client.
 pub struct HttpFetch {
+    #[cfg(feature = "http")]
     client: reqwest::blocking::Client,
 }
 
@@ -96,6 +100,7 @@ impl std::fmt::Debug for HttpFetch {
 
 impl HttpFetch {
     /// A client with a `timeout` per call.
+    #[cfg(feature = "http")]
     pub fn new(timeout: Duration) -> Result<Self, FetchError> {
         ensure_tls_provider();
         let client = reqwest::blocking::Client::builder()
@@ -109,8 +114,30 @@ impl HttpFetch {
             })?;
         Ok(Self { client })
     }
+
+    /// In a build without the `http` feature: no client, said plainly.
+    #[cfg(not(feature = "http"))]
+    pub fn new(timeout: Duration) -> Result<Self, FetchError> {
+        let _ = timeout;
+        Err(FetchError::Network {
+            host: "the network".into(),
+            why: "this build of Lockdown calls no server but its own".into(),
+        })
+    }
 }
 
+#[cfg(not(feature = "http"))]
+impl Fetch for HttpFetch {
+    fn get(&self, url: &str, _headers: &[(&str, &str)]) -> Result<Fetched, FetchError> {
+        allowed_address(url)?;
+        Err(FetchError::Network {
+            host: host_of(url),
+            why: "this build of Lockdown calls no server but its own".into(),
+        })
+    }
+}
+
+#[cfg(feature = "http")]
 impl Fetch for HttpFetch {
     fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Fetched, FetchError> {
         allowed_address(url)?;

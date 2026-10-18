@@ -25,7 +25,7 @@ out = []
 out.append("# Lockdown: v1 feature status\n")
 out.append(f"_Generated from `feature-status.json` (as of `{data['as_of']}`) by `render-feature-status.py`; edit the JSON, not this file. "
            f"The feature list is the {len(rows)} v1 rows of {data['source']}._\n")
-out.append("**Done** means it works end to end in today's surfaces (core, desktop, CLI, server) with tests. "
+out.append("**Done** means it works end to end in today's surfaces (core, desktop, CLI, server, browser extension, web vault) with tests. "
            "**Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. "
            "**Not code yet** is work that is not software (an audit, a licence call, a bug bounty).\n")
 out.append("| | Done | Partial | Not started | Not code yet |\n|---|---|---|---|---|")

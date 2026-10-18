@@ -3,6 +3,7 @@ import { useMemo, useState } from "react"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
@@ -174,14 +175,16 @@ export function OrganizationNav({ rows, nav, onNavigate }: OrganizationNavProps)
                       Keep trashed items
                     </DropdownMenuSubTrigger>
                     <DropdownMenuSubContent>
-                      <DropdownMenuLabel>Purged on every device after</DropdownMenuLabel>
-                      <DropdownMenuRadioGroup value={String(v.trash_days)} onValueChange={(d) => void setTrashDays(v, Number(d))}>
-                        {TRASH_DAYS.map((d) => (
-                          <DropdownMenuRadioItem key={d} value={String(d)}>
-                            {d === 365 ? "A year" : `${d} days`}
-                          </DropdownMenuRadioItem>
-                        ))}
-                      </DropdownMenuRadioGroup>
+                      <DropdownMenuGroup>
+                        <DropdownMenuLabel>Purged on every device after</DropdownMenuLabel>
+                        <DropdownMenuRadioGroup value={String(v.trash_days)} onValueChange={(d) => void setTrashDays(v, Number(d))}>
+                          {TRASH_DAYS.map((d) => (
+                            <DropdownMenuRadioItem key={d} value={String(d)}>
+                              {d === 365 ? "A year" : `${d} days`}
+                            </DropdownMenuRadioItem>
+                          ))}
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuGroup>
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
                 </DropdownMenuContent>

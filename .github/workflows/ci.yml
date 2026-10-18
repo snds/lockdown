@@ -139,6 +139,58 @@ jobs:
       - name: Shell unit tests
         run: cargo test -p lockdown-desktop --features shell
 
+  # The web vault (docs/plan/17-web-vault.md): lockdown-app built for
+  # wasm32-wasip1 (ring's C needs clang, which the runner has), the page's
+  # typecheck, lint, unit tests (the shim and the real module among them)
+  # and build, then the end-to-end suite: the real server on a throwaway
+  # database serving the built page, the account made with the CLI, the
+  # page driven in Chromium.
+  web:
+    name: web vault · wasm · playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Build the core (wasm32-wasip1)
+        run: pnpm build:wasm
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Lint
+        run: pnpm lint
+      - name: Unit tests
+        run: pnpm test
+      - name: Build the page
+        run: pnpm build
+      - name: Build the server and the CLI
+        run: cargo build -p lockdown-server -p lockdown-cli
+      - name: End to end in Chromium
+        run: pnpm e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: web-vault-traces
+          path: apps/web/test-results
+          if-no-files-found: ignore
+
   # Hybrid post-quantum TLS (docs/plan/20-self-host-server.md §2): the
   # handshake tests, with Node's OpenSSL 3.5 as an independent client and
   # server for X25519MLKEM768; `require` fails the job if that OpenSSL is
