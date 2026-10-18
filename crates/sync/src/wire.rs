@@ -139,6 +139,23 @@ pub enum ErrorCode {
     /// Head: a shared vault moved to a newer Vault Key generation (a member
     /// left); fetch the new key, move the items to it, and sync again.
     KeyRotated,
+    /// Blob: the vault's owner has no room left for attachments on this
+    /// server (D234).
+    QuotaExceeded,
+}
+
+/// `GET /v1/account/storage`: how much of this account's attachment room
+/// its vaults use (D234). `quota` is `None` on a server with no limit.
+/// Counted from the padded blob sizes the server holds, so it is what the
+/// server can see, never a file's real size.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct StorageUsage {
+    /// The format version, 1.
+    pub v: u16,
+    /// Bytes of attachment blobs in the vaults this account owns.
+    pub used: u64,
+    /// The account's limit in bytes, if the server sets one.
+    pub quota: Option<u64>,
 }
 
 /// The body of every error response.

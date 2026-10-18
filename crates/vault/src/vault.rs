@@ -123,6 +123,25 @@ pub struct Vault {
     released_items: BTreeMap<Id, ItemKey>,
 }
 
+/// A file sealed by [`Vault::seal_stream`], not yet on its item.
+#[derive(Clone, Debug)]
+pub struct PreparedAttachment {
+    item_id: Id,
+    reference: AttachmentRef,
+}
+
+impl PreparedAttachment {
+    /// The blob's name, to keep it under.
+    pub fn blob(&self) -> Hash32 {
+        self.reference.blob
+    }
+
+    /// The blob's length.
+    pub fn blob_size(&self) -> u64 {
+        self.reference.blob_size
+    }
+}
+
 /// One attachment of an item, as listed: its sealed facts opened for the
 /// caller, and where its blob is.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -533,6 +552,78 @@ impl Vault {
         self.create_item(kind, class, fields)
     }
 
+    /// [`Self::add_item`] from one template, a kind's own or a variant (D231).
+    pub fn add_item_from(
+        &mut self,
+        template: &crate::Template,
+        title: &str,
+        crown_jewel: bool,
+        changes: Vec<FieldChange>,
+    ) -> Result<Id> {
+        let (class, fields) =
+            crate::compose::compose_new_from(template, title, crown_jewel, changes)?;
+        self.create_item(template.kind, class, fields)
+    }
+
+    /// Makes a Custom item from the person's template held in this vault
+    /// as the item `template_id` (D232).
+    pub fn add_item_from_user(
+        &mut self,
+        template_id: Id,
+        title: &str,
+        crown_jewel: bool,
+        changes: Vec<FieldChange>,
+    ) -> Result<Id> {
+        let def = self.user_template(template_id)?;
+        let (class, fields) =
+            crate::compose::compose_new_user(&def, template_id, title, crown_jewel, changes)?;
+        self.create_item(ItemKind::Custom, class, fields)
+    }
+
+    /// The person's template held as the live item `template_id`.
+    pub fn user_template(&self, template_id: Id) -> Result<crate::UserTemplate> {
+        let item = self.item(template_id)?;
+        if item.kind != ItemKind::Template || item.state != ItemState::Live {
+            return Err(Error::NotFound(format!("template {template_id}")));
+        }
+        crate::UserTemplate::from_fields(&self.open_item(template_id)?)
+    }
+
+    /// Every live template the person made in this vault, by name.
+    pub fn user_templates(&self) -> Result<Vec<(Id, crate::UserTemplate)>> {
+        let mut out = Vec::new();
+        for item in self
+            .items()
+            .filter(|i| i.kind == ItemKind::Template && i.state == ItemState::Live)
+        {
+            // One that doesn't read (a newer build's) is left out, not fatal.
+            if let Ok(def) = crate::UserTemplate::from_fields(&self.open_item(item.item_id)?) {
+                out.push((item.item_id, def));
+            }
+        }
+        out.sort_by(|a, b| {
+            a.1.name
+                .to_lowercase()
+                .cmp(&b.1.name.to_lowercase())
+                .then(a.0.cmp(&b.0))
+        });
+        Ok(out)
+    }
+
+    /// Saves a person's template: a new template item, or with `id` a new
+    /// version of that one. Items already made from it keep their fields.
+    pub fn save_user_template(&mut self, id: Option<Id>, def: &crate::UserTemplate) -> Result<Id> {
+        let fields = def.to_fields()?;
+        match id {
+            None => self.create_item(ItemKind::Template, ItemClass::Standard, fields),
+            Some(id) => {
+                self.user_template(id)?;
+                self.update_item(id, fields)?;
+                Ok(id)
+            }
+        }
+    }
+
     /// Saves a new version of a live item from an edit that names every
     /// field ([`crate::compose::compose_edit`]); `title: None` keeps it.
     /// Returns the version number.
@@ -612,6 +703,115 @@ impl Vault {
         self.pending_blobs.push((sealed.blob_hash, sealed.blob));
         self.commit_head()?;
         Ok((att_id, sealed.blob_hash))
+    }
+
+    /// [`Self::attach`] for a file read from `reader` (`size` bytes),
+    /// sealed chunk by chunk into `out` (a store's [`crate::BlobSink`]),
+    /// so the file is never whole in memory (D233). The item is not
+    /// changed yet: the caller keeps the blob in its store under the name
+    /// this returns, then hands the result to [`Self::add_prepared`], so a
+    /// version never names a blob the store failed to keep.
+    pub fn seal_stream(
+        &self,
+        item_id: Id,
+        name: &str,
+        mime: &str,
+        size: u64,
+        reader: &mut dyn std::io::Read,
+        out: &mut dyn std::io::Write,
+    ) -> Result<PreparedAttachment> {
+        let item = self.item(item_id)?;
+        let item_key = self.item_key(item)?;
+        let att_id = Id::new();
+        let att_key = AttachmentKey::from_bytes(lockdown_crypto::rand::random_32()?);
+        let wrapped = wrap_key(
+            &att_key,
+            &item_key,
+            &self.attachment_key_place(item_id, att_id),
+        )?;
+        let meta = AttachmentMeta {
+            name: name.to_string(),
+            mime: mime.to_string(),
+            size,
+        };
+        let sealed = crate::attachment::seal_attachment_stream(
+            &att_key,
+            &self.attachment_place(item_id, att_id),
+            &meta,
+            reader,
+            out,
+        )?;
+        Ok(PreparedAttachment {
+            item_id,
+            reference: AttachmentRef {
+                att_id,
+                att_key: Some(wrapped),
+                chunks: sealed.chunks,
+                blob: sealed.blob_hash,
+                blob_size: sealed.blob_size,
+                meta: sealed.meta,
+            },
+        })
+    }
+
+    /// Adds a file [`Self::seal_stream`] sealed: a new version of the item
+    /// whose signed attachment list names its blob. Returns the
+    /// attachment's id.
+    pub fn add_prepared(&mut self, prepared: PreparedAttachment) -> Result<Id> {
+        let item_id = prepared.item_id;
+        let item = self.item(item_id)?;
+        let item_key = self.item_key(item)?;
+        let header = item.header();
+        let latest = item.latest()?;
+        let att_id = prepared.reference.att_id;
+        let mut attachments = latest.attachments.clone();
+        attachments.push(prepared.reference);
+        let fields = self.open_envelope(item, latest.n)?;
+        let n = latest.n + 1;
+        let parent_hash = latest.hash(&header)?;
+        let version =
+            self.make_version(&header, &item_key, n, parent_hash, &fields, attachments)?;
+        self.items
+            .get_mut(&item_id)
+            .ok_or_else(|| Error::NotFound(format!("item {item_id}")))?
+            .versions
+            .push(version);
+        self.commit_head()?;
+        Ok(att_id)
+    }
+
+    /// [`Self::open_attachment`] from a blob read in pieces, written to
+    /// `out` chunk by chunk (D233).
+    pub fn open_attachment_to<R: std::io::Read + std::io::Seek>(
+        &self,
+        item_id: Id,
+        att_id: Id,
+        src: &mut R,
+        out: &mut dyn std::io::Write,
+    ) -> Result<AttachmentMeta> {
+        let item = self.item(item_id)?;
+        let latest = item.latest()?;
+        let r = latest
+            .attachments
+            .iter()
+            .find(|a| a.att_id == att_id)
+            .ok_or_else(|| Error::NotFound(format!("attachment {att_id} of item {item_id}")))?;
+        let env = r.att_key.as_ref().ok_or(Error::Shredded {
+            item_id,
+            version_n: latest.n,
+        })?;
+        let item_key = self.item_key(item)?;
+        let key: AttachmentKey =
+            unwrap_key(env, &item_key, &self.attachment_key_place(item_id, att_id))?;
+        crate::attachment::open_attachment_stream(
+            &key,
+            &self.attachment_place(item_id, att_id),
+            r.chunks,
+            r.blob,
+            &r.meta,
+            src,
+            out,
+        )
     }
 
     /// The attachments of an item's newest version, with their sealed

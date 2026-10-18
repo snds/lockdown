@@ -1354,6 +1354,32 @@ pub async fn put_blob(
             "the blob's bytes don't hash to the name in the path",
         ));
     }
+    if let Some(quota) = state.config.attachment_quota
+        && !state.storage.has_blob(vault_id, hash)?
+        && let Some(owner) = state.storage.vault_owner(vault_id)?
+    {
+        // Counted against the vault's owner, whoever writes into it (a
+        // shared vault's member spends the owner's room, as files in a
+        // shared folder do).
+        let used = state.storage.account_blob_bytes(owner)?;
+        if used.saturating_add(body.len() as u64) > quota {
+            let whose = if owner == session.account_id {
+                "your account".to_string()
+            } else {
+                "this vault's owner".to_string()
+            };
+            return Err(ApiError::new(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                ErrorCode::QuotaExceeded,
+                format!(
+                    "{whose} has used {} of {} for attachments on this server; this file needs {} more",
+                    lockdown_sync::bytes_words(used),
+                    lockdown_sync::bytes_words(quota),
+                    lockdown_sync::bytes_words(body.len() as u64)
+                ),
+            ));
+        }
+    }
     let new = state.storage.put_blob(vault_id, hash, &body, state.now())?;
     collect_blobs(&state);
     Ok((
@@ -1368,6 +1394,19 @@ pub async fn put_blob(
             new,
         }),
     ))
+}
+
+/// `GET /v1/account/storage`: the attachment room the vaults this
+/// account owns use, and its limit (D234).
+pub async fn account_storage(
+    State(state): State<Arc<AppState>>,
+    session: Session,
+) -> ApiResult<Cbor<lockdown_sync::wire::StorageUsage>> {
+    Ok(Cbor(lockdown_sync::wire::StorageUsage {
+        v: 1,
+        used: state.storage.account_blob_bytes(session.account_id)?,
+        quota: state.config.attachment_quota,
+    }))
 }
 
 /// `GET /v1/vaults/{vault}/blobs/{hash}` (and `HEAD`): the bytes.

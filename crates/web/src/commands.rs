@@ -435,6 +435,62 @@ fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult<Reply> {
             done()
         }
         "expiry_reminders" => json(web.app().expiry_reminders()?),
+
+        // --- vault depth (docs/plan/21-vault-depth.md) ----------------------
+        "user_templates" => json(web.app().user_templates()?),
+        "save_user_template" => {
+            let vault: Option<String> = opt(args, "vault")?;
+            let id: Option<String> = opt(args, "id")?;
+            let template: lockdown_app::UserTemplateInput = req(args, "template")?;
+            json(
+                web.app()
+                    .save_user_template(vault.as_deref(), id.as_deref(), template)?,
+            )
+        }
+        "delete_user_template" => {
+            web.app()
+                .delete_user_template(&req::<String>(args, "id")?)?;
+            done()
+        }
+        "link_targets" => {
+            let vault: String = req(args, "vaultId")?;
+            let except: Option<String> = opt(args, "except")?;
+            json(web.app().link_targets(&vault, except.as_deref())?)
+        }
+        "generator_preview" => {
+            let recipe: lockdown_app::Recipe = req(args, "recipe")?;
+            let url: Option<String> = opt(args, "url")?;
+            let rule: Option<String> = opt(args, "rule")?;
+            json(
+                web.app()
+                    .generator_preview(&recipe, url.as_deref(), rule.as_deref())?,
+            )
+        }
+        "site_rule" => json(web.app().site_rule(&req::<String>(args, "url")?)),
+        // A secret (the network's password is in the code): bytes, gated.
+        "wifi_qr" => {
+            let id: String = req(args, "id")?;
+            let grid = web.app().wifi_qr(&id, gate(args)?)?;
+            Ok(Reply::Bytes(Zeroizing::new(grid.expose().to_vec())))
+        }
+        "log_away" => {
+            let id: String = req(args, "id")?;
+            let place: String = req(args, "place")?;
+            let hours: u32 = req(args, "remindInHours")?;
+            if !(1..=30 * 24).contains(&hours) {
+                return Err(refused("a reminder is 1 hour to 30 days away"));
+            }
+            json(
+                web.app()
+                    .log_away(&id, &place, i64::from(hours) * 3600, gate(args)?)?,
+            )
+        }
+        "clear_away" => {
+            let id: String = req(args, "id")?;
+            json(web.app().clear_away(&id, req(args, "at")?, gate(args)?)?)
+        }
+        "away_reminders" => json(web.app().away_reminders()?),
+        "storage_usage" => json(web.app().storage_usage()?),
         other => depth::dispatch(web, other, args),
     }
 }

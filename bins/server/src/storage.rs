@@ -291,6 +291,11 @@ pub trait Storage: Send + Sync {
     fn put_blob(&self, vault_id: Id, hash: Hash32, body: &[u8], now: i64) -> Result<bool>;
     /// A blob's bytes.
     fn blob(&self, vault_id: Id, hash: Hash32) -> Result<Option<Vec<u8>>>;
+    /// The account that owns a vault, if the vault is here.
+    fn vault_owner(&self, vault_id: Id) -> Result<Option<Id>>;
+    /// Bytes of every blob held in the vaults `account_id` owns: what its
+    /// attachment quota counts (D234).
+    fn account_blob_bytes(&self, account_id: Id) -> Result<u64>;
     /// Whether a blob is held.
     fn has_blob(&self, vault_id: Id, hash: Hash32) -> Result<bool>;
     /// Removes every blob no item names whose grace period (from its upload,
@@ -1415,6 +1420,23 @@ impl Storage for SqliteStorage {
         .map_err(backend)?;
         tx.commit().map_err(backend)?;
         Ok(true)
+    }
+
+    fn vault_owner(&self, vault_id: Id) -> Result<Option<Id>> {
+        let conn = self.lock();
+        Ok(Self::vault_in(&conn, vault_id)?.map(|v| v.account_id))
+    }
+
+    fn account_blob_bytes(&self, account_id: Id) -> Result<u64> {
+        let conn = self.lock();
+        let total: i64 = conn
+            .query_row(
+                "SELECT COALESCE(SUM(b.size), 0) FROM blobs b JOIN vaults v ON v.vault_id = b.vault_id WHERE v.account_id = ?1",
+                params![account_id.to_string()],
+                |r| r.get(0),
+            )
+            .map_err(backend)?;
+        Ok(to_u64(total))
     }
 
     fn blob(&self, vault_id: Id, hash: Hash32) -> Result<Option<Vec<u8>>> {

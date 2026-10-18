@@ -63,6 +63,26 @@ describe("the desktop's client over the worker", () => {
     await expect(client.openSite("javascript:alert(1)")).rejects.toMatchObject({ code: "refused" })
   })
 
+  it("reaches vault depth with the desktop's names; the guest card comes as bytes; files from disk refuse", async () => {
+    const { link, calls } = fakeLink({ wifi_qr: "grid" })
+    const client = webClient(link, new WebClipboard(board()))
+    await client.saveUserTemplate({ template: { name: "Gym", fields: [] } })
+    await client.generatorPreview({ style: "words", words: 6 }, "https://example.com")
+    await client.logAway({ id: "i1", place: "Hotel TV", remindInHours: 24 }, { confirmed: true })
+    await client.linkTargets("v1", "i1")
+    const grid = await client.wifiQr("w1")
+    expect(new TextDecoder().decode(grid)).toBe("grid")
+    expect(calls).toEqual([
+      { cmd: "save_user_template", args: { vault: null, id: null, template: { name: "Gym", fields: [] } } },
+      { cmd: "generator_preview", args: { recipe: { style: "words", words: 6 }, url: "https://example.com", rule: null } },
+      { cmd: "log_away", args: { id: "i1", place: "Hotel TV", remindInHours: 24, gate: { confirmed: true } } },
+      { cmd: "link_targets", args: { vaultId: "v1", except: "i1" } },
+      { cmd: "wifi_qr", args: { id: "w1" } },
+    ])
+    await expect(client.attachChoose()).rejects.toMatchObject({ code: "refused", message: expect.stringContaining("isn't in the web vault yet") })
+    await expect(client.attachmentSave("i1", "a1", 1)).rejects.toMatchObject({ code: "refused" })
+  })
+
   it("runs the web's own lifecycle", async () => {
     const { link, calls } = fakeLink()
     const session = webSession(link)

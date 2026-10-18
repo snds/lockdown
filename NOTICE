@@ -12,3 +12,14 @@ The security center's two-step sign-in data (crates/security/data/2fa-directory.
 is a snapshot of 2fa.directory (https://github.com/2factorauth/twofactorauth),
 Copyright (c) 2021 2factorauth and Contributors and (c) 2014-2020 Josh Davis,
 under the MIT License; the full notice is in crates/security/data/2fa-directory.LICENSE.
+
+The password generator's passphrase words (crates/crypto/data/eff_large_wordlist.txt)
+are EFF's Long Wordlist by the Electronic Frontier Foundation
+(https://www.eff.org/dice), under the Creative Commons Attribution 3.0 United
+States licence; the notice is in crates/crypto/data/eff_large_wordlist.LICENSE.
+
+The sites' published password rules (crates/app/data/password-rules.json) are a
+snapshot of quirks/password-rules.json from Apple's password-manager-resources
+(https://github.com/apple/password-manager-resources), Copyright 2020-2026
+Apple Inc., under the MIT License; the full notice is in
+crates/app/data/password-rules.LICENSE.

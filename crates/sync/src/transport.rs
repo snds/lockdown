@@ -723,6 +723,11 @@ impl HttpTransport {
         )
     }
 
+    /// `GET /v1/account/storage`: the account's attachment room (D234).
+    pub fn storage(&self, token: &str) -> Result<wire::StorageUsage> {
+        self.call::<(), _>(Method::Get, "/v1/account/storage", Some(token), None)
+    }
+
     /// `POST /v1/account/alerts/{seq}/dismiss`.
     pub fn dismiss_alert(&self, token: &str, seq: u64) -> Result<()> {
         self.call_raw(

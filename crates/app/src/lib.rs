@@ -21,6 +21,7 @@
 
 pub mod approval;
 pub mod browser;
+pub mod depth;
 pub mod devices;
 pub mod key_check;
 pub mod live;
@@ -47,6 +48,7 @@ use std::time::{Instant, SystemTime};
 
 pub use approval::{Approval, ApprovalKind, Approver, GateInput, PasswordApprover, Route};
 pub use lock::{LockPolicy, LockReason};
+pub use lockdown_crypto::generator::Recipe;
 pub use lockdown_vault::{Change, FieldChange, FieldInput, FieldKind};
 pub use revealed::Revealed;
 pub use security::{Dismissal, Finding, SecurityReport};
@@ -290,16 +292,36 @@ impl Core {
         gate: &GateInput,
     ) -> AppResult<Revealed> {
         self.clock.touch(Instant::now());
-        if self
+        // A linked field's value is the other item's, read through that
+        // item's gates and rights (D235).
+        let (target, target_field) = self
+            .session()?
+            .resolve_link(id, field_id)
+            .map_err(AppError::refused)?;
+        if target != id {
+            self.session()?
+                .refuse_fill_only(&target)
+                .map_err(AppError::refused)?;
+        }
+        let original = id;
+        let (id, field_id) = (target.as_str(), target_field.as_str());
+        let crown = self
             .session()?
             .is_crown_jewel(id)
-            .map_err(AppError::refused)?
-        {
+            .map_err(AppError::refused)?;
+        if crown {
             let reason = match kind {
                 ApprovalKind::Use => "copy this protected value",
                 _ => "reveal this protected value",
             };
             self.approve(kind, reason, gate)?;
+        } else if self
+            .session()?
+            .needs_reprompt(id, field_id)
+            .map_err(AppError::refused)?
+        {
+            // The card asks before its security code is used (D238).
+            self.approve(kind, "use this card's security code", gate)?;
         }
         // Ask each time (`protection`): every value out of a non-crown item asks.
         self.exposure_gate(
@@ -315,6 +337,9 @@ impl Core {
             .reveal(id, field_id)
             .map_err(AppError::refused)?;
         self.note_use(id);
+        if original != id {
+            self.note_use(original);
+        }
         Ok(revealed)
     }
 
@@ -370,6 +395,16 @@ impl Core {
         gate: &GateInput,
     ) -> AppResult<Revealed> {
         self.clock.touch(Instant::now());
+        let (target, target_field) = self
+            .session()?
+            .resolve_link(id, field_id)
+            .map_err(AppError::refused)?;
+        if target != id {
+            self.session()?
+                .refuse_fill_only(&target)
+                .map_err(AppError::refused)?;
+        }
+        let (id, field_id) = (target.as_str(), target_field.as_str());
         if self
             .session()?
             .is_crown_jewel(id)
@@ -1652,7 +1687,15 @@ mod tests {
             "title only"
         );
         let json = serde_json::to_string(&rows).unwrap();
-        for secret in ["4111", "123\"", phrase, generated.as_str(), "GEZDGNBV"] {
+        // The number with its space: a random item id can hold "4111".
+        for secret in [
+            "4111 1111",
+            "4111111111111111",
+            "123\"",
+            phrase,
+            generated.as_str(),
+            "GEZDGNBV",
+        ] {
             assert!(!json.contains(secret), "{secret} in the list");
         }
         let detail = app.show(&card, false).unwrap();
@@ -1662,7 +1705,11 @@ mod tests {
             .find(|f| f.field_id == "card.type")
             .unwrap();
         assert_eq!(brand.value.as_deref(), Some("Visa"));
-        assert!(!serde_json::to_string(&detail).unwrap().contains("4111"));
+        assert!(
+            !serde_json::to_string(&detail)
+                .unwrap()
+                .contains("4111 1111")
+        );
 
         // An edit: untouched secrets kept without being sent; a field of your own added.
         let n = app

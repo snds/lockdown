@@ -101,7 +101,6 @@ x-wing = { version = "0.1", default-features = false, features = ["zeroize", "ge
 # (04-security §2 "ML-DSA slot"; docs/plan/22-security-depth.md §6). Same
 # RustCrypto generation as `ml-kem` 0.3 (module-lattice, shake).
 ml-dsa = { version = "0.1.1", default-features = false, features = ["alloc", "zeroize"] }
-qrcode = { version = "0.14.1", default-features = false }
 blake3 = "1.8"
 # The passkey authenticator's P-256 ECDSA and Ed25519 (crates/passkey): the
 # same `ring` rustls already links on its `ring` provider.
@@ -119,6 +118,9 @@ secrecy = "0.10"
 # 0-4 score unicron's `secretStrengthFromScore` maps to a word. MIT. The
 # builder feature (derive_builder) is left off; nothing here needs it.
 zxcvbn = { version = "3.1", default-features = false }
+# The Wi-Fi guest card's QR code (D236): the module grid only, no image
+# encoder, no dependencies of its own (MIT OR Apache-2.0).
+qrcode = { version = "0.14", default-features = false }
 
 # Encoding and data.
 serde = { version = "1.0", features = ["derive"] }

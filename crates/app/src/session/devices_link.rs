@@ -84,7 +84,7 @@ pub(crate) struct OpenLink {
 }
 
 impl Session {
-    fn link_view(&self, link: &OpenLink) -> LinkView {
+    fn device_link_view(&self, link: &OpenLink) -> LinkView {
         let sk = secret_key::state_word(&self.secret_key_state());
         let words = match link.state {
             "waiting" => {
@@ -170,7 +170,7 @@ impl Session {
             state: "waiting",
             offer: Some(offer),
         };
-        let view = self.link_view(&link);
+        let view = self.device_link_view(&link);
         self.link = Some(link);
         Ok(view)
     }
@@ -180,7 +180,7 @@ impl Session {
     pub fn link_poll(&mut self) -> Result<LinkView, String> {
         let mut link = self.link.take().ok_or("no device is being added")?;
         let result = self.link_poll_inner(&mut link);
-        let view = self.link_view(&link);
+        let view = self.device_link_view(&link);
         self.link = Some(link);
         result.map(|()| view)
     }

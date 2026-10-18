@@ -8,12 +8,13 @@ import { useLockWatch } from "@/app/lock-watch"
 import { LockedProvider } from "@/app/locked"
 import { SettingsProvider } from "@/app/settings"
 import { AppShell, type Nav, type ShellScreen } from "@/app/shell"
-import { TemplatesProvider } from "@/app/templates"
+import { TemplatesProvider, useTemplates } from "@/app/templates"
 import { describeError, useClient } from "@/core/client"
 import type { ItemSummary, LockReason, LockState, PersonaInfo, Status, VaultView as VaultEntry } from "@/core/types"
 import { CodesView } from "@/features/codes/codes-view"
 import { DevicesView } from "@/features/devices/devices-view"
 import { useExpiryReminder } from "@/features/organization/expiry"
+import { useAwayReminder } from "@/features/vault/use-away-reminder"
 import { OrganizationNav } from "@/features/organization/organization-nav"
 import { VaultsProvider } from "@/features/organization/vaults-context"
 import { QuickPalette } from "@/features/palette/quick-palette"
@@ -185,6 +186,13 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
     toast(text, { action: { label: "Show", onClick: show } })
   }, [])
   useExpiryReminder(client, status !== null, remind, showExpiring)
+  const showAttention = useCallback(() => setNav({ area: "vault", view: "attention" }), [])
+  useAwayReminder(client, status !== null, remind, showAttention)
+  const { refreshUserTemplates } = useTemplates()
+  const open = status !== null
+  useEffect(() => {
+    if (open) refreshUserTemplates()
+  }, [open, refreshUserTemplates])
 
   if (webError) {
     return (

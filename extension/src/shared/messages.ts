@@ -16,7 +16,7 @@ export type PickWhat = FillWhat | "passkey"
 
 export type ToBackground =
   // from a content script
-  | { t: "register"; nonce: string; kind: MenuKind }
+  | { t: "register"; nonce: string; kind: MenuKind; new_password?: boolean }
   | { t: "unregister"; nonce: string }
   | { t: "offer_save"; username: string; password: string }
   | { t: "top_ready" }
@@ -25,6 +25,7 @@ export type ToBackground =
   | { t: "menu_pick"; nonce: string; item_id: string; what: PickWhat; field?: string | null; confirmed: boolean; frame_visible: boolean | null }
   | { t: "menu_passkey_other"; nonce: string }
   | { t: "menu_close"; nonce: string }
+  | { t: "menu_suggest"; nonce: string; frame_visible: boolean | null }
   | { t: "prompt_data"; nonce: string }
   | { t: "prompt_answer"; nonce: string; save: boolean }
   // from the popup
@@ -52,6 +53,7 @@ export type ToContent =
   | { t: "measure"; nonce: string }
   | { t: "apply"; nonce: string; what: FillWhat; values: FillValue[] }
   | { t: "close"; nonce: string }
+  | { t: "apply_new"; nonce: string; value: string }
   | { t: "hotkey" }
   | { t: "target_login" }
   | { t: "show_prompt" }

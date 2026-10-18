@@ -30,6 +30,10 @@ pub fn templates() -> Vec<TemplateView> {
         .filter(|t| !t.kind.hidden())
         .map(|t| TemplateView {
             kind: t.kind.as_str().to_string(),
+            id: t.id(),
+            variant: t.variant.to_string(),
+            icon: t.icon.to_string(),
+            fills: t.fills(),
             name: t.name.to_string(),
             summary: t.summary.to_string(),
             creatable: t.creatable,
@@ -107,7 +111,7 @@ pub fn field_kind_named(name: &str) -> Result<FieldKind, String> {
 /// template's primary secret where the item holds it, else the item's
 /// first code. A crown jewel's copy still asks first; the core decides.
 pub(crate) fn copy_target(kind: ItemKind, fields: &[PlainField]) -> Option<CopyTarget> {
-    let template = template_for(kind);
+    let template = lockdown_vault::template_of(kind, fields);
     let has = |id: &str| fields.iter().any(|f| f.field_id == id);
     if let Some(p) = template.primary.filter(|p| has(p)) {
         let f = template
@@ -174,11 +178,14 @@ fn normalize_codes(
 ) -> Result<(), String> {
     let template = template_for(kind);
     for change in changes.iter_mut() {
-        let Some(id) = change.field_id.as_deref() else {
-            continue;
-        };
-        let is_code =
-            template.field(id).map(|f| f.control) == Some(Control::Totp) || id.starts_with("code.");
+        // A code of your own (D235's sibling: the TOTP field on any item)
+        // is named by its kind, with or without an id yet.
+        let own_code = change.kind == Some(FieldKind::Totp);
+        let is_code = own_code
+            || change.field_id.as_deref().is_some_and(|id| {
+                template.field(id).map(|f| f.control) == Some(Control::Totp)
+                    || id.starts_with("code.")
+            });
         if !is_code {
             continue;
         }
@@ -209,7 +216,7 @@ fn set_text<'a>(changes: &'a [FieldChange], field_id: &str) -> Option<&'a str> {
 /// The title when the person left it empty: a Login's site host, a code's
 /// issuer and account. Anything else needs one.
 fn derived_title(kind: ItemKind, changes: &[FieldChange]) -> Option<String> {
-    match kind {
+    let by_kind = || match kind {
         ItemKind::Login | ItemKind::Server => {
             let url = set_text(changes, "url.0").or_else(|| set_text(changes, "server.host"))?;
             let url = if url.contains("://") {
@@ -235,7 +242,9 @@ fn derived_title(kind: ItemKind, changes: &[FieldChange]) -> Option<String> {
             }),
         ItemKind::WiFi => set_text(changes, "wifi.ssid").map(str::to_string),
         _ => None,
-    }
+    };
+    // An email account (a Server variant) is named by its address.
+    by_kind().or_else(|| set_text(changes, "email.address").map(str::to_string))
 }
 
 impl Session {
@@ -263,22 +272,56 @@ impl Session {
         mut changes: Vec<FieldChange>,
     ) -> Result<Id, String> {
         self.check_folder(vault_id, &changes)?;
-        let kind = kind_named(kind)?;
+        // `kind` names a kind, a variant (`identity/passport`) or one of
+        // the person's own templates (`user:<id>`; D231, D232).
+        if let Some(tid) = kind.strip_prefix(lockdown_vault::user_template::USER_PREFIX) {
+            let tid = parse_id(tid)?;
+            let def = self.user_template_in(vault_id, tid)?;
+            if crown_jewel {
+                self.refuse_crown_in_shared(vault_id)?;
+            }
+            normalize_codes(ItemKind::Custom, &mut changes, title)?;
+            self.check_links(vault_id, None, &[], &changes, Some(&def))?;
+            let title = title
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .unwrap_or(&def.name)
+                .to_string();
+            let id = self
+                .vault_by_id_mut(vault_id)?
+                .add_item_from_user(tid, &title, crown_jewel, changes)
+                .map_err(|e| e.to_string())?;
+            self.save()?;
+            return Ok(id);
+        }
+        let template = match kind.split_once('/') {
+            Some(_) => lockdown_vault::template_named(kind)
+                .ok_or_else(|| format!("'{kind}' isn't a kind of item"))?,
+            None => lockdown_vault::template_for(kind_named(kind)?),
+        };
+        let kind = template.kind;
         if crown_jewel
-            || lockdown_vault::template_for(kind).crown_jewel_default()
-                == lockdown_vault::CrownJewelDefault::Default
+            || template.crown_jewel_default() == lockdown_vault::CrownJewelDefault::Default
+            || template.fields.iter().any(|f| {
+                f.crown_jewel
+                    && changes
+                        .iter()
+                        .any(|c| c.field_id.as_deref() == Some(f.field_id))
+            })
         {
             self.refuse_crown_in_shared(vault_id)?;
         }
         let given = title.map(str::trim).filter(|t| !t.is_empty());
         normalize_codes(kind, &mut changes, given)?;
+        super::depth::apply_site_rules(kind, &[], &mut changes)?;
+        self.check_links(vault_id, None, &[], &changes, None)?;
         let title = match given {
             Some(t) => t.to_string(),
             None => derived_title(kind, &changes).unwrap_or_default(),
         };
         let id = self
             .vault_by_id_mut(vault_id)?
-            .add_item(kind, &title, crown_jewel, changes)
+            .add_item_from(template, &title, crown_jewel, changes)
             .map_err(|e| e.to_string())?;
         self.save()?;
         Ok(id)
@@ -313,6 +356,14 @@ impl Session {
             .map(str::to_string)
             .or(existing_title);
         normalize_codes(kind, &mut changes, issuer.as_deref())?;
+        let existing = self
+            .holding(item_id)?
+            .open_item(item_id)
+            .map_err(|e| e.to_string())?;
+        super::depth::apply_site_rules(kind, &existing, &mut changes)?;
+        let user = lockdown_vault::user_template_of(&existing)
+            .and_then(|t| self.user_template_in(vault_id, t).ok());
+        self.check_links(vault_id, Some(item_id), &existing, &changes, user.as_ref())?;
         let n = self
             .holding_mut(item_id)?
             .edit_item(item_id, title, changes)
@@ -386,8 +437,12 @@ mod tests {
             "not one a person adds"
         );
         let views = templates();
-        assert_eq!(views.len(), 17, "every kind but the hidden consent record");
-        assert_eq!(views.iter().filter(|t| t.creatable).count(), 16);
+        assert_eq!(
+            views.len(),
+            31,
+            "every template but the hidden records' (consent, vault details, templates)"
+        );
+        assert_eq!(views.iter().filter(|t| t.creatable).count(), 30);
         let wallet = views.iter().find(|t| t.kind == "crypto-wallet").unwrap();
         assert!(wallet.crown_jewel);
         assert!(
@@ -406,7 +461,9 @@ mod tests {
             pw.generator.as_ref().unwrap().words,
             "20 characters: letters and digits, none that look alike"
         );
-        assert_eq!(custom_kinds().len(), 7);
+        assert_eq!(custom_kinds().len(), 9);
+        assert_eq!(field_kind_named("totp").unwrap(), FieldKind::Totp);
+        assert_eq!(field_kind_named("linked").unwrap(), FieldKind::Linked);
     }
 
     #[test]

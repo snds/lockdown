@@ -1200,3 +1200,97 @@ async fn the_identity_chain_is_ordered_pinned_and_revokes_devices() {
     let accepted = put_head(&h, &token_a, &by_a).await.unwrap();
     assert_eq!(accepted.seq, 2);
 }
+
+#[tokio::test]
+async fn attachments_count_against_the_vaults_owner_up_to_the_quota() {
+    let h = harness(Config {
+        attachment_quota: Some(10_000),
+        ..Config::default()
+    });
+    h.register("me@example.com", "correct horse battery staple", Id::new())
+        .await;
+    let local = LocalVault::new(Device::new());
+    let token = h
+        .login(
+            "me@example.com",
+            "correct horse battery staple",
+            &local.device,
+        )
+        .await
+        .unwrap()
+        .token;
+    h.call(
+        "PUT",
+        &format!("/v1/vaults/{}", local.id()),
+        Some(&token),
+        local.record(),
+    )
+    .await;
+    let storage = || async {
+        let (status, body) = h
+            .call("GET", "/v1/account/storage", Some(&token), Vec::new())
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        wire::decode::<wire::StorageUsage>(&body).unwrap()
+    };
+    let start = storage().await;
+    assert_eq!((start.v, start.used, start.quota), (1, 0, Some(10_000)));
+    let put = |bytes: Vec<u8>| async {
+        let name = lockdown_crypto::hash::hash(&bytes).to_hex();
+        h.call(
+            "PUT",
+            &format!("/v1/vaults/{}/blobs/{name}", local.id()),
+            Some(&token),
+            bytes,
+        )
+        .await
+    };
+    let six = vec![6u8; 6_000];
+    assert_eq!(put(six.clone()).await.0, StatusCode::CREATED);
+    assert_eq!(storage().await.used, 6_000);
+    // The same blob again costs nothing and is still accepted.
+    assert_eq!(put(six).await.0, StatusCode::OK);
+    // Over the room left: refused in words, nothing stored.
+    let (status, body) = put(vec![5u8; 5_000]).await;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    let err = wire::decode::<ErrorBody>(&body).unwrap();
+    assert_eq!(err.code, ErrorCode::QuotaExceeded);
+    assert!(
+        err.message.contains("your account has used 6 kB of 10 kB"),
+        "{}",
+        err.message
+    );
+    assert_eq!(storage().await.used, 6_000);
+    // What fits still goes in.
+    assert_eq!(put(vec![4u8; 4_000]).await.0, StatusCode::CREATED);
+    assert_eq!(storage().await.used, 10_000);
+    // No session, no answer.
+    let (status, _) = h.call("GET", "/v1/account/storage", None, Vec::new()).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a_server_without_a_quota_says_so() {
+    let h = harness(Config {
+        attachment_quota: None,
+        ..Config::default()
+    });
+    h.register("me@example.com", "correct horse battery staple", Id::new())
+        .await;
+    let device = Device::new();
+    let token = h
+        .login("me@example.com", "correct horse battery staple", &device)
+        .await
+        .unwrap()
+        .token;
+    let (_, body) = h
+        .call("GET", "/v1/account/storage", Some(&token), Vec::new())
+        .await;
+    let usage = wire::decode::<wire::StorageUsage>(&body).unwrap();
+    assert_eq!((usage.used, usage.quota), (0, None));
+    assert_eq!(
+        Config::default().attachment_quota,
+        Some(lockdown_server::DEFAULT_ATTACHMENT_QUOTA)
+    );
+    assert_eq!(lockdown_server::DEFAULT_ATTACHMENT_QUOTA, 5_000_000_000);
+}

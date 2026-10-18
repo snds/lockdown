@@ -14,6 +14,7 @@ pub mod items;
 pub mod live;
 pub mod organization;
 pub mod security;
+pub mod security_depth;
 pub mod sharing;
 pub mod transfer;
 

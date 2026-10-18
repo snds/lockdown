@@ -323,3 +323,44 @@ mod tests {
         assert!(err.to_string().starts_with("Rollback attempt blocked"));
     }
 }
+
+/// A byte count in plain words, decimal as storage is sold: "512 bytes",
+/// "1.5 MB", "5 GB" (D234).
+pub fn bytes_words(n: u64) -> String {
+    const UNITS: [(u64, &str); 4] = [
+        (1_000_000_000_000, "TB"),
+        (1_000_000_000, "GB"),
+        (1_000_000, "MB"),
+        (1_000, "kB"),
+    ];
+    for (size, unit) in UNITS {
+        if n >= size {
+            let tenths = (n * 10 + size / 2) / size;
+            return if tenths.is_multiple_of(10) {
+                format!("{} {unit}", tenths / 10)
+            } else {
+                format!("{}.{} {unit}", tenths / 10, tenths % 10)
+            };
+        }
+    }
+    if n == 1 {
+        "1 byte".into()
+    } else {
+        format!("{n} bytes")
+    }
+}
+
+#[cfg(test)]
+mod bytes_tests {
+    #[test]
+    fn byte_counts_read_in_words() {
+        use super::bytes_words;
+        assert_eq!(bytes_words(0), "0 bytes");
+        assert_eq!(bytes_words(1), "1 byte");
+        assert_eq!(bytes_words(999), "999 bytes");
+        assert_eq!(bytes_words(1_500_000), "1.5 MB");
+        assert_eq!(bytes_words(5_000_000_000), "5 GB");
+        assert_eq!(bytes_words(4_999_999_999), "5 GB");
+        assert_eq!(bytes_words(1_234_567_890), "1.2 GB");
+    }
+}

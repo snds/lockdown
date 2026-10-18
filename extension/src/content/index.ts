@@ -8,8 +8,8 @@
 import type { MenuKind, ToContent } from "../shared/messages"
 import { extensionOrigin } from "../shared/messages"
 import type { FillWhat } from "../shared/protocol"
-import { capture, classify, firstLoginField, isInput } from "./detect"
-import { apply } from "./fill"
+import { capture, classify, firstLoginField, isInput, isNewPassword } from "./detect"
+import { apply, applyNewPassword } from "./fill"
 import { makeHost } from "./host"
 import { fieldVisibility, hostVisible } from "./visibility"
 
@@ -35,10 +35,10 @@ function nonce(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("")
 }
 
-async function register(el: HTMLInputElement | null, kind: MenuKind): Promise<string> {
+async function register(el: HTMLInputElement | null, kind: MenuKind, newPassword = false): Promise<string> {
   const n = nonce()
   fields.set(n, { el, kind })
-  await chrome.runtime.sendMessage({ t: "register", nonce: n, kind })
+  await chrome.runtime.sendMessage({ t: "register", nonce: n, kind, new_password: newPassword })
   return n
 }
 
@@ -72,7 +72,7 @@ async function openMenu(el: HTMLInputElement, kind: FillWhat, existing?: string)
   if (menu && menu.el === el) return
   closeMenu()
   const before = el.value
-  const n = existing ?? (await register(el, kind))
+  const n = existing ?? (await register(el, kind, kind === "login" && isNewPassword(el)))
   // The person moved on, or started typing, while the menu was being set up.
   if (document.activeElement !== el || el.value !== before) {
     if (!existing) forget(n)
@@ -247,6 +247,21 @@ chrome.runtime.onMessage.addListener((msg: ToContent, sender, sendResponse) => {
         filling = false
       }
       for (const v of msg.values) v.value = ""
+      sendResponse({ filled: n })
+      return false
+    }
+    case "apply_new": {
+      // A password Lockdown made for a new-password field: into it and
+      // the field that repeats it, then the sign-up's own save offer.
+      const f = fields.get(msg.nonce)
+      filling = true
+      let n = 0
+      try {
+        n = f?.el && f.el.isConnected && f.kind === "login" && isNewPassword(f.el) ? applyNewPassword(f.el, msg.value) : 0
+      } finally {
+        filling = false
+      }
+      msg.value = ""
       sendResponse({ filled: n })
       return false
     }
