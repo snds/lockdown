@@ -72,6 +72,11 @@ impl Session {
         let mut passwords: BTreeMap<Vec<u8>, BTreeSet<usize>> = BTreeMap::new();
         let mut codes: BTreeMap<Vec<u8>, BTreeSet<usize>> = BTreeMap::new();
         for vault in self.vaults() {
+            // Only vaults this persona may change: a merge rewrites items.
+            let vault_id = vault.context().vault_id;
+            if self.is_received_vault(vault_id) || self.require_edit(vault_id).is_err() {
+                continue;
+            }
             for item in vault.items() {
                 if item.kind.hidden() || item.state != ItemState::Live {
                     continue;

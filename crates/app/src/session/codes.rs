@@ -80,6 +80,10 @@ impl Session {
             if item.kind.hidden() || item.state != ItemState::Live {
                 continue;
             }
+            // A fill-only item's codes are filled by the browser, never shown.
+            if self.item_right(item.item_id) == Some(lockdown_vault::sharing::Right::FillOnly) {
+                continue;
+            }
             let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
             let title = text_of(&fields, "title").unwrap_or_default();
             for f in &fields {

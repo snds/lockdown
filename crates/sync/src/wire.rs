@@ -123,6 +123,9 @@ pub enum ErrorCode {
     BlobMismatch,
     /// The server failed.
     Internal,
+    /// Head: a shared vault moved to a newer Vault Key generation (a member
+    /// left); fetch the new key, move the items to it, and sync again.
+    KeyRotated,
 }
 
 /// The body of every error response.

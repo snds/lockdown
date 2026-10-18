@@ -80,6 +80,7 @@ impl Session {
     }
 
     pub(crate) fn vault_by_id_mut(&mut self, vault_id: Id) -> Result<&mut Vault, String> {
+        self.require_edit(vault_id)?;
         if self.opened.vault.context().vault_id == vault_id {
             return Ok(&mut self.opened.vault);
         }
@@ -173,6 +174,7 @@ impl Session {
                     .count(),
                 trash_days: info.trash_days(),
                 folders,
+                sharing: self.share_badge(vault.context().vault_id),
             });
         }
         Ok(out)
@@ -388,7 +390,11 @@ impl Session {
             .map_err(|e| e.to_string())?;
         let prefix = format!("{from}/");
         let mut changed = 0;
+        let editable = self.editable_slots();
         for idx in 0..=self.more.len() {
+            if !editable.get(idx).copied().unwrap_or(false) {
+                continue;
+            }
             let vault = if idx == 0 {
                 &mut self.opened.vault
             } else {
@@ -499,6 +505,14 @@ impl Session {
     /// vault). Returns the new id; this device's record of uses follows it.
     fn rehome(&mut self, item_id: Id, target: Id, class: ItemClass) -> Result<Id, String> {
         let source = self.holding(item_id)?.context().vault_id;
+        if self.is_received_vault(source) {
+            return Err("this was shared with you on its own; you can't move it".into());
+        }
+        self.require_edit(source)?;
+        self.require_edit(target)?;
+        if class == ItemClass::CrownJewel {
+            self.refuse_crown_in_shared(target)?;
+        }
         let carried = {
             let store = &self.store;
             self.holding(item_id)?
@@ -633,7 +647,11 @@ impl Session {
     pub fn sweep_trash(&mut self) -> Result<usize, String> {
         let now = now_secs();
         let mut purged = Vec::new();
+        let editable = self.editable_slots();
         for idx in 0..=self.more.len() {
+            if !editable.get(idx).copied().unwrap_or(false) {
+                continue;
+            }
             let vault = if idx == 0 {
                 &mut self.opened.vault
             } else {
@@ -731,6 +749,7 @@ impl Session {
             attachments,
             crown_jewel_fixed: item.class == ItemClass::CrownJewel
                 && crown_jewel_fixed(item.kind, fields),
+            access: self.item_right(item_id).map(|r| r.as_str().to_string()),
         })
     }
 

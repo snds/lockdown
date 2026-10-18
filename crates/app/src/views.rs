@@ -211,6 +211,7 @@ mod tests {
             uses: 0,
             expires_in_days: None,
             attachments: 0,
+            access: None,
         }
     }
 

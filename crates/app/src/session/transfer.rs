@@ -507,6 +507,7 @@ impl Session {
         for vault in self
             .vaults()
             .filter(|v| only.is_none_or(|o| v.context().vault_id == o))
+            .filter(|v| self.exportable(v.context().vault_id))
         {
             let info = vault.info().map_err(|e| e.to_string())?;
             out.vaults.push(DocVault {

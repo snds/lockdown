@@ -17,6 +17,7 @@ lockdown-codes.workspace = true
 lockdown-cxf.workspace = true
 ecosystem-identity.workspace = true
 serde.workspace = true
+serde_bytes.workspace = true
 zeroize.workspace = true
 zxcvbn.workspace = true
 # The security center (security.rs): the breach range check, the 2FA

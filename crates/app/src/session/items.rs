@@ -264,6 +264,12 @@ impl Session {
     ) -> Result<Id, String> {
         self.check_folder(vault_id, &changes)?;
         let kind = kind_named(kind)?;
+        if crown_jewel
+            || lockdown_vault::template_for(kind).crown_jewel_default()
+                == lockdown_vault::CrownJewelDefault::Default
+        {
+            self.refuse_crown_in_shared(vault_id)?;
+        }
         let given = title.map(str::trim).filter(|t| !t.is_empty());
         normalize_codes(kind, &mut changes, given)?;
         let title = match given {

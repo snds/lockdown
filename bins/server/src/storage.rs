@@ -309,6 +309,10 @@ pub trait Storage: Send + Sync {
     fn alerts(&self) -> Option<&dyn crate::alerts::AlertStore> {
         None
     }
+    /// The sharing tables (`crate::sharing`), when this store keeps them.
+    fn sharing(&self) -> Option<&dyn crate::sharing::SharingStore> {
+        None
+    }
 }
 
 /// The SQLite backend.
@@ -525,6 +529,7 @@ impl SqliteStorage {
             }
         }
         crate::alerts::create_tables(&conn).map_err(backend)?;
+        crate::sharing::create_tables(&conn).map_err(backend)?;
         Ok(Self {
             path,
             conn: Mutex::new(conn),
@@ -1432,6 +1437,10 @@ impl Storage for SqliteStorage {
     }
 
     fn alerts(&self) -> Option<&dyn crate::alerts::AlertStore> {
+        Some(self)
+    }
+
+    fn sharing(&self) -> Option<&dyn crate::sharing::SharingStore> {
         Some(self)
     }
 }

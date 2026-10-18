@@ -681,7 +681,7 @@ fn read_values(core: &mut Core, item_id: &str, plan: FillPlan) -> AppResult<Vec<
         FillWhat::Login => {
             plain(&mut out, "user");
             if has_field(&fields, "pw") {
-                let value = core.reveal(item_id, "pw", ApprovalKind::Use, &gate)?;
+                let value = core.reveal_for_fill(item_id, "pw", ApprovalKind::Use, &gate)?;
                 out.push(FillValue {
                     role: "pw".into(),
                     value,
@@ -690,7 +690,7 @@ fn read_values(core: &mut Core, item_id: &str, plan: FillPlan) -> AppResult<Vec<
         }
         FillWhat::Code => {
             let field = plan.code_field.as_deref().unwrap_or("code.0");
-            let value = core.code_now(item_id, field, false, &gate)?;
+            let value = core.code_for_fill(item_id, field, false, &gate)?;
             out.push(FillValue {
                 role: "code".into(),
                 value,
@@ -699,7 +699,7 @@ fn read_values(core: &mut Core, item_id: &str, plan: FillPlan) -> AppResult<Vec<
         FillWhat::Card => {
             for role in ["card.number", "card.cvc"] {
                 if has_field(&fields, role) {
-                    let value = core.reveal(item_id, role, ApprovalKind::Use, &gate)?;
+                    let value = core.reveal_for_fill(item_id, role, ApprovalKind::Use, &gate)?;
                     out.push(FillValue {
                         role: role.into(),
                         value,

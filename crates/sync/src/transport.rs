@@ -222,7 +222,7 @@ impl HttpTransport {
         }
     }
 
-    fn call<T: Serialize, R: DeserializeOwned>(
+    pub(crate) fn call<T: Serialize, R: DeserializeOwned>(
         &self,
         method: reqwest::Method,
         path: &str,
@@ -241,7 +241,7 @@ impl HttpTransport {
         }
     }
 
-    fn call_raw(
+    pub(crate) fn call_raw(
         &self,
         method: reqwest::Method,
         path: &str,

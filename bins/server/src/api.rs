@@ -61,9 +61,7 @@ use lockdown_vault::{Hash32, Id, Item, ManifestHead, VaultRecord};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
-use crate::storage::{
-    IdentityAccept, PushResult, RecordRow, RevocationRow, StorageError, VaultRow,
-};
+use crate::storage::{IdentityAccept, PushResult, RecordRow, RevocationRow, StorageError};
 use crate::token::TokenError;
 use crate::{AppState, Discovery, PENDING_MAX, PENDING_TTL, PendingLogin};
 
@@ -109,7 +107,7 @@ pub struct ApiError {
 }
 
 impl ApiError {
-    fn new(status: StatusCode, code: ErrorCode, message: impl Into<String>) -> Self {
+    pub(crate) fn new(status: StatusCode, code: ErrorCode, message: impl Into<String>) -> Self {
         Self {
             status,
             code,
@@ -119,11 +117,11 @@ impl ApiError {
         }
     }
 
-    fn bad_request(message: impl Into<String>) -> Self {
+    pub(crate) fn bad_request(message: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_REQUEST, ErrorCode::BadRequest, message)
     }
 
-    fn internal(message: impl Into<String>) -> Self {
+    pub(crate) fn internal(message: impl Into<String>) -> Self {
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             ErrorCode::Internal,
@@ -131,11 +129,11 @@ impl ApiError {
         )
     }
 
-    fn not_found(message: impl Into<String>) -> Self {
+    pub(crate) fn not_found(message: impl Into<String>) -> Self {
         Self::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, message)
     }
 
-    fn forbidden(message: impl Into<String>) -> Self {
+    pub(crate) fn forbidden(message: impl Into<String>) -> Self {
         Self::new(StatusCode::FORBIDDEN, ErrorCode::Forbidden, message)
     }
 
@@ -147,7 +145,7 @@ impl ApiError {
         )
     }
 
-    fn rate_limited(wait: std::time::Duration) -> Self {
+    pub(crate) fn rate_limited(wait: std::time::Duration) -> Self {
         let secs = wait.as_secs().max(1);
         Self {
             retry_after: Some(secs),
@@ -159,7 +157,7 @@ impl ApiError {
         }
     }
 
-    fn head_refused(refused: HeadRefused) -> Self {
+    pub(crate) fn head_refused(refused: HeadRefused) -> Self {
         Self {
             head: Some(refused.clone()),
             ..Self::new(StatusCode::CONFLICT, refused.code, refused.message)
@@ -212,7 +210,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-type ApiResult<T> = Result<T, ApiError>;
+pub(crate) type ApiResult<T> = Result<T, ApiError>;
 
 // --- extractors -----------------------------------------------------------
 
@@ -429,7 +427,7 @@ pub async fn kt_entries(
 
 // --- account ----------------------------------------------------------------
 
-fn brake(state: &AppState, peer: &Peer, login: Option<&str>) -> ApiResult<()> {
+pub(crate) fn brake(state: &AppState, peer: &Peer, login: Option<&str>) -> ApiResult<()> {
     let now = Instant::now();
     state
         .per_address
@@ -885,19 +883,8 @@ pub async fn put_identity(
 
 // --- vaults -----------------------------------------------------------------
 
-fn owned_vault(state: &AppState, session: &Session, vault_id: Id) -> ApiResult<VaultRow> {
-    let row = state
-        .storage
-        .vault(vault_id)?
-        .ok_or_else(|| ApiError::not_found(format!("vault {vault_id} isn't on this server")))?;
-    if row.account_id != session.account_id {
-        return Err(ApiError::forbidden("that vault belongs to another account"));
-    }
-    Ok(row)
-}
-
 /// A device the identity revoked may not sign anything new (D73).
-fn check_not_revoked(
+pub(crate) fn check_not_revoked(
     state: &AppState,
     session: &Session,
     device_id: Id,
@@ -918,7 +905,11 @@ fn check_not_revoked(
     }
 }
 
-fn device_key(state: &AppState, session: &Session, device_id: Id) -> ApiResult<VerifyingKey> {
+pub(crate) fn device_key(
+    state: &AppState,
+    session: &Session,
+    device_id: Id,
+) -> ApiResult<VerifyingKey> {
     let key = state
         .storage
         .device_pub(session.account_id, device_id)?
@@ -990,7 +981,7 @@ pub async fn heads_since(
     Path(vault_id): Path<Id>,
     Query(since): Query<Since>,
 ) -> ApiResult<Cbor<HeadsSince>> {
-    let vault = owned_vault(&state, &session, vault_id)?;
+    let vault = crate::sharing_api::readable(&state, &session, vault_id)?;
     let heads = state
         .storage
         .heads_since(vault_id, since.since)?
@@ -1036,7 +1027,8 @@ pub async fn put_head(
             "a head's entries are sorted and unique by item id",
         ));
     }
-    owned_vault(&state, &session, vault_id)?;
+    crate::sharing_api::writable(&state, &session, vault_id)?;
+    crate::sharing_api::check_head_generation(&state, vault_id, head.vault_key_ref)?;
     check_not_revoked(&state, &session, head.signer, vault_id)?;
     let key = device_key(&state, &session, head.signer)?;
     head.verify_signature(&key).map_err(|_| {
@@ -1059,7 +1051,7 @@ pub async fn items_since(
     Path(vault_id): Path<Id>,
     Query(since): Query<Since>,
 ) -> ApiResult<Cbor<ItemsSince>> {
-    let vault = owned_vault(&state, &session, vault_id)?;
+    let vault = crate::sharing_api::readable(&state, &session, vault_id)?;
     let items = state
         .storage
         .items_since(vault_id, since.since)?
@@ -1081,7 +1073,7 @@ pub async fn get_item(
     session: Session,
     Path((vault_id, item_id)): Path<(Id, Id)>,
 ) -> ApiResult<Cbor<ItemWire>> {
-    owned_vault(&state, &session, vault_id)?;
+    crate::sharing_api::readable(&state, &session, vault_id)?;
     let row = state
         .storage
         .item(vault_id, item_id)?
@@ -1114,12 +1106,12 @@ pub async fn push_item(
             item.v
         )));
     }
-    owned_vault(&state, &session, vault_id)?;
+    let vault = crate::sharing_api::writable(&state, &session, vault_id)?;
+    crate::sharing_api::check_item_generation(&state, vault_id, &item)?;
     let latest = item
         .latest()
         .map_err(|_| ApiError::bad_request("an item carries at least one version"))?;
-    check_not_revoked(&state, &session, latest.edited_by, vault_id)?;
-    let key = device_key(&state, &session, latest.edited_by)?;
+    let key = crate::sharing_api::writer_key(&state, &vault, latest.edited_by)?;
     latest.verify(&item.header(), &key).map_err(|_| {
         ApiError::new(
             StatusCode::FORBIDDEN,
@@ -1165,7 +1157,7 @@ pub async fn push_item(
 
 /// The blobs an item's versions still hold a key for: what the server
 /// must have before it takes the item, and what keeps those blobs alive.
-fn item_blobs(item: &Item) -> Vec<Hash32> {
+pub(crate) fn item_blobs(item: &Item) -> Vec<Hash32> {
     let mut out: Vec<Hash32> = Vec::new();
     for a in item
         .versions
@@ -1201,7 +1193,7 @@ pub async fn put_blob(
     body: Bytes,
 ) -> ApiResult<(StatusCode, Cbor<BlobAccepted>)> {
     let hash = blob_name(&hash)?;
-    owned_vault(&state, &session, vault_id)?;
+    crate::sharing_api::writable(&state, &session, vault_id)?;
     if body.len() as u64 > state.config.max_blob_bytes {
         return Err(ApiError::new(
             StatusCode::PAYLOAD_TOO_LARGE,
@@ -1246,7 +1238,7 @@ pub async fn get_blob(
     Path((vault_id, hash)): Path<(Id, String)>,
 ) -> ApiResult<Response> {
     let hash = blob_name(&hash)?;
-    owned_vault(&state, &session, vault_id)?;
+    crate::sharing_api::readable(&state, &session, vault_id)?;
     let body = state
         .storage
         .blob(vault_id, hash)?
