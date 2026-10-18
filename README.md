@@ -14,7 +14,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**302 decisions, twenty-four build slices, no release yet (2026-10-18).** Of the 122 features committed to v1, 80 are done, 17 are partial, 15 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
+**317 decisions, twenty-five build slices, no release yet (2026-10-18).** Of the 122 features committed to v1, 80 are done, 18 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
 
 | Slice | What it delivered |
 |---|---|
@@ -43,6 +43,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 | **22 · Security depth** ✅ | Per-item exposure tiers, approving a new device from an existing one through a blind server relay, the Secret Key handed over sealed, security keys as a second factor, post-quantum wraps and ML-DSA-65 on identity manifests, per-device stretching, the kit test, a yearly drill, password reminders, phrase-verified key checks ([doc](docs/plan/22-security-depth.md), D245–D259) |
 | **23 · Self-host, second pass** ✅ | Postgres and S3-compatible storage beside SQLite, an operator admin page, scheduled backups with restore drills, the operator's recovery kit, SMTP with email approval of new devices and alert emails, desktop notifications, pings for single-item shares, breach monitoring without a paid key ([doc](docs/plan/25-self-host-2.md), D290–D304) |
 | **24 · Desktop and extension finishing** ✅ | One quick-access search index in the core with a system-wide shortcut, search in focus, TV and device sign-in by camera scan with a signed allow-list, the proximity gate wired into every QR flow, the passkey upgrade after any sign-in, the popup on unicron, secret pages out of swap, clipboard-history marks and capture blocking, a People screen in the web vault, the post-quantum rollout rule ([doc](docs/plan/26-desktop-finish.md), D305–D319) |
+| **25 · Release engineering** ✅ | Windows and macOS in CI with the Windows named-pipe browser channel, deb, rpm, Flatpak, universal macOS, MSI, NSIS and MSIX packages, a tag-only release workflow with SBOMs, checksums and Sigstore provenance (draft releases for Sean to publish), cargo-vet, reproducible extension, server and image builds, store-ready extension packages ([doc](docs/plan/24-release.md), D275–D289) |
 | **Next** | Browser extension (fill, save, passkeys), mobile apps, sharing and family, breach monitoring, packaged and signed releases |
 
 | Real (with tests) | Skeleton (types, traits, one real rule each) |

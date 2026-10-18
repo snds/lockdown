@@ -1,12 +1,12 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `a7c49c6`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `263cf75`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
 **Done** means it works end to end in today's surfaces (core, desktop, CLI, server, browser extension, web vault) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **80** | **17** | **15** | **10** |
+| **All 122 v1 features** | **80** | **18** | **14** | **10** |
 | [Vault & item types](#vault--item-types) | 12 | 0 | 0 | 0 |
 | [Organization & search](#organization--search) | 7 | 0 | 0 | 0 |
 | [Autofill (browser)](#autofill-browser) | 8 | 1 | 0 | 0 |
@@ -22,7 +22,7 @@ _Generated from `feature-status.json` (as of `a7c49c6`) by `render-feature-statu
 | [Self-hosting & deployment](#self-hosting--deployment) | 0 | 3 | 0 | 1 |
 | [Security architecture & crypto](#security-architecture--crypto) | 11 | 5 | 1 | 0 |
 | [Platforms & apps](#platforms--apps) | 3 | 3 | 2 | 1 |
-| [Trust & transparency](#trust--transparency) | 0 | 1 | 1 | 8 |
+| [Trust & transparency](#trust--transparency) | 0 | 2 | 0 | 8 |
 
 13 rows are deferred by D122 (OS-level integration and the native mobile apps); they stay on the list, marked.
 
@@ -65,7 +65,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [x] **Fill keyboard shortcut**: Done · extension. A Firefox test run; letting people change the keys.
 - [x] **Card and address fill**: Done · core, extension. A Firefox test run; more checkout layouts as they turn up.
 - [x] **HTTP Basic Auth fill**: Done · core, extension. Tested on Chromium only; Firefox run.
-- [ ] **Browser extension coverage**: Partial · core, desktop, extension. Store packaging, a Firefox test run and the Windows named-pipe transport (the release slice); Safari waits on OS-level work. The popup is on unicron.
+- [ ] **Browser extension coverage**: Partial · core, desktop, extension. Store submission, driving pairing and fill in Firefox's tests (the install and the host link are tested), and Safari (OS-level); store-ready packages, the Windows named pipe and the popup on unicron are built.
 
 ## Autofill (mobile & desktop OS)
 
@@ -172,7 +172,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [ ] **Authenticated public keys**: Partial · core, desktop, server, web. Log mirrors; phrase-verified checks and the People screen in the web vault are built.
 - [ ] **Post-quantum key wrapping**: Partial · core, desktop, web. ML-DSA on device signatures, vault heads and the key-transparency log (they stay Ed25519; plan in doc 26 §10); hybrid wraps, ML-DSA-65 on identity manifests and the D248 rollout rule are built.
 - [ ] **Memory hygiene**: Partial · core, desktop, web. Locking the identity crate's own key types, and measuring web engines other than Chromium; secret pages are out of swap, core dumps are off, and typed secrets clear on hide and after a minute out of focus.
-- [ ] **Verified local connections**: Partial · desktop, extension. Code-signature checks on macOS and Windows and the Windows named-pipe transport; on Linux and macOS the native host and the desktop check each other by path and SHA-256 today.
+- [ ] **Verified local connections**: Partial · desktop, extension. Code-signature checks on macOS and Windows, and a Windows variant of the identity crate's peer type; both ends check each other by process, path and SHA-256 on every platform, Windows through the named pipe.
 - [ ] **Hardware-backed biometric unlock**: Not started · nowhere yet. Everything: key slots in the Secure Enclave, StrongBox or TPM that reset when biometrics change.
 
 ## Platforms & apps
@@ -180,17 +180,17 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [x] **Web vault**: Done · core, web, server. Import, export, backups, attachments, the security center, the recovery kit, passkeys and sharing in the web vault (each refused in words today); offline use; Firefox and Safari test runs; code splitting (the module is about 10 MB).
 - [x] **Offline access**: Done · core, desktop, cli. Nothing for desktop and CLI beyond a background offline queue; the extension and mobile clients need it when they exist.
 - [x] **Non-Electron desktop**: Done · desktop. Nothing; native targets come with the OS-provider features.
-- [ ] **Windows app**: Partial · desktop. A Windows build and test run in CI, MSIX packaging, the passkey plugin and auto-type.
-- [ ] **macOS app**: Partial · desktop. A signed macOS build for Apple silicon and Intel, and the native AutoFill and passkey extensions.
-- [ ] **Linux app**: Partial · desktop. Flatpak, deb and rpm packaging, the SSH agent and TPM-sealed unlock.
+- [ ] **Windows app**: Partial · desktop. The passkey plugin and auto-type (OS-level, deferred), and signing; Windows builds and tests in CI, with MSI, NSIS and unsigned MSIX packages.
+- [ ] **macOS app**: Partial · desktop. Signing and notarisation (waits on a Developer ID; the steps are written), and the native AutoFill and passkey extensions (OS-level, deferred); a universal build and dmg are made in CI.
+- [ ] **Linux app**: Partial · desktop. A browser reaching the app inside the Flatpak, the SSH agent and TPM-sealed unlock (OS-level, deferred); deb, rpm and Flatpak packages are built and smoke-tested.
 - [ ] **iPhone and iPad app** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: the SwiftUI app and the UniFFI bindings.
 - [ ] **Android app** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: the Jetpack Compose app and F-Droid build.
 - [ ] **Usable free tier**: Not code yet · nowhere yet. Needs the plan and pricing decision and its enforcement on the server.
 
 ## Trust & transparency
 
-- [ ] **Signed releases and SBOMs**: Partial · nowhere yet. Signed, attested releases, SBOMs and cargo-vet; there are no releases yet.
-- [ ] **Reproducible builds**: Not started · nowhere yet. Everything: reproducible extension, desktop and Android builds and an independent rebuilder.
+- [ ] **Reproducible builds**: Partial · extension, server, cli. Reproducible desktop bundles and Android builds, and an independent rebuilder; the extension zips, server and CLI binaries and the server image are byte-identical across two runner images.
+- [ ] **Signed releases and SBOMs**: Partial · nowhere yet. Signing certificates and a first tag; the tag-only workflow, SBOMs, checksums, Sigstore provenance, the verification guide and cargo-vet (632 crates still exempted) are built.
 - [ ] **Open-source clients**: Not code yet · nowhere yet. Needs the licence choice: the plan says GPL-3.0 but the code is Apache-2.0 today; and a public repository. Licence settled as Apache-2.0 for now (D120).
 - [ ] **Open-source server**: Not code yet · nowhere yet. Needs the licence choice: the plan says AGPL but the server is Apache-2.0 today. Licence settled as Apache-2.0 for now (D120).
 - [ ] **Published independent audits**: Not code yet · nowhere yet. Needs firms engaged and reports published, plus SOC 2.

@@ -1,5 +1,5 @@
 {
- "as_of": "a7c49c6",
+ "as_of": "263cf75",
  "source": "docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)",
  "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, a web vault the server serves (the same core on wasm32-wasip1 in a worker, doc 17), and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Lockdown's clients and server speak TLS 1.3 with the hybrid X25519MLKEM768 group first (crates/tls, doc 20); plain HTTP is refused away from loopback. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and the web vault refuses some features in words for now (doc 17 §10). OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.",
  "non_v1_built": [
@@ -433,7 +433,7 @@
     "desktop",
     "extension"
    ],
-   "left": "Store packaging, a Firefox test run and the Windows named-pipe transport (the release slice); Safari waits on OS-level work. The popup is on unicron.",
+   "left": "Store submission, driving pairing and fill in Firefox's tests (the install and the host link are tested), and Safari (OS-level); store-ready packages, the Windows named pipe and the popup on unicron are built.",
    "evidence": [
     "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)",
     "crates/wasm/src/lib.rs:312 the_wire_functions_answer_without_a_browser",
@@ -1977,7 +1977,7 @@
     "desktop",
     "extension"
    ],
-   "left": "Code-signature checks on macOS and Windows and the Windows named-pipe transport; on Linux and macOS the native host and the desktop check each other by path and SHA-256 today.",
+   "left": "Code-signature checks on macOS and Windows, and a Windows variant of the identity crate's peer type; both ends check each other by process, path and SHA-256 on every platform, Windows through the named pipe.",
    "evidence": [
     "D33 (process-identity check lives in the identity crate's Linux handshake, unused by Lockdown)",
     "D4"
@@ -2035,7 +2035,7 @@
    "surfaces": [
     "desktop"
    ],
-   "left": "A Windows build and test run in CI, MSIX packaging, the passkey plugin and auto-type.",
+   "left": "The passkey plugin and auto-type (OS-level, deferred), and signing; Windows builds and tests in CI, with MSI, NSIS and unsigned MSIX packages.",
    "evidence": [
     "crates/platform-auth/src/lib.rs:29 (Windows Hello path, compile-checked only)",
     "docs/plan/07-workspace.md:87 (Windows not in the CI matrix)"
@@ -2053,7 +2053,7 @@
    "surfaces": [
     "desktop"
    ],
-   "left": "A signed macOS build for Apple silicon and Intel, and the native AutoFill and passkey extensions.",
+   "left": "Signing and notarisation (waits on a Developer ID; the steps are written), and the native AutoFill and passkey extensions (OS-level, deferred); a universal build and dmg are made in CI.",
    "evidence": [
     "crates/platform-auth/src/lib.rs:74 (Touch ID path)",
     ".github/workflows/ci.yml:19 (core tests on macOS; the desktop job runs on Ubuntu only)"
@@ -2071,7 +2071,7 @@
    "surfaces": [
     "desktop"
    ],
-   "left": "Flatpak, deb and rpm packaging, the SSH agent and TPM-sealed unlock.",
+   "left": "A browser reaching the app inside the Flatpak, the SSH agent and TPM-sealed unlock (OS-level, deferred); deb, rpm and Flatpak packages are built and smoke-tested.",
    "evidence": [
     ".github/workflows/ci.yml:98 (desktop job on WebKitGTK)",
     "apps/desktop/src-tauri/tauri.conf.json:34 (bundle targets all; no packaging pipeline in CI)"
@@ -2235,9 +2235,13 @@
    "name": "Reproducible builds",
    "target": "novel",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: reproducible extension, desktop and Android builds and an independent rebuilder.",
+   "status": "partial",
+   "surfaces": [
+    "extension",
+    "server",
+    "cli"
+   ],
+   "left": "Reproducible desktop bundles and Android builds, and an independent rebuilder; the extension zips, server and CLI binaries and the server image are byte-identical across two runner images.",
    "evidence": [
     ".github/workflows/ci.yml (no release or rebuild job)"
    ],
@@ -2252,7 +2256,7 @@
    "review": false,
    "status": "partial",
    "surfaces": [],
-   "left": "Signed, attested releases, SBOMs and cargo-vet; there are no releases yet.",
+   "left": "Signing certificates and a first tag; the tag-only workflow, SBOMs, checksums, Sigstore provenance, the verification guide and cargo-vet (632 crates still exempted) are built.",
    "evidence": [
     ".github/workflows/ci.yml:33 (cargo-deny job)",
     "deny.toml (bans, licences, sources)",
