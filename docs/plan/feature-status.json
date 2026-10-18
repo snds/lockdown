@@ -1,5 +1,5 @@
 {
- "as_of": "accf2cb",
+ "as_of": "dd7f045",
  "source": "docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)",
  "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser extension exists: extension/ holds only the wasm matcher boundary, its JSON schema and a Playwright clickjacking harness. The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI and the self-host server. The CLI still carries its own copy of the flows and handles logins only for item kinds. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 today; the plan leaves the licence open (05-self-host §12 asks Sean between AGPL-3.0 and a source-available licence for the server), so oss-clients and oss-server wait on that call. Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for desktop, CLI and server only; every one still needs its mobile and extension half when those surfaces exist.",
  "non_v1_built": [
@@ -1403,7 +1403,7 @@
     "core",
     "desktop"
    ],
-   "left": "Attachments, folders and history in the transfer, Wi-Fi in CXF's own type, and a per-item report of what the target app dropped.",
+   "left": "Wi-Fi in CXF's own type and attachments through CXF; lossless through the Lockdown format already.",
    "evidence": [
     "crates/cxf/src/convert.rs:714 fields_no_credential_holds_ride_in_the_lockdown_extension_both_ways",
     "crates/cxf/src/convert.rs:809 unmapped_credentials_are_reported_not_dropped"
@@ -1417,12 +1417,12 @@
    "name": "Importers from other managers",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop"
    ],
-   "left": "Importers for 1PUX, Bitwarden JSON, Proton, KDBX, Dashlane, Keeper, LastPass and Enpass, sandboxed.",
+   "left": "Check each format against one real export (samples are built from the documented formats); 1Password .1pif, Dashlane .dash, passkeys from Proton and Keeper; the CLI on the core importers.",
    "evidence": [
     "crates/cxf/src/csv.rs:267 hostile_inputs_are_errors_not_panics",
     "crates/app/src/session/transfer.rs:30 (CXF and CSV only)",
@@ -1437,12 +1437,12 @@
    "name": "Complete export",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop"
    ],
-   "left": "Attachments, history and folders in the export, as an encrypted archive; export in the CLI.",
+   "left": "Export in the CLI; restored versions keep their original dates.",
    "evidence": [
     "crates/app/src/session/transfer.rs:83 export (CXF or CSV of the live vault)",
     "crates/app/src/lib.rs:1267 every_kind_survives_an_export_and_an_import_and_a_wallet_stays_a_crown_jewel",
@@ -1457,9 +1457,12 @@
    "name": "Encrypted export",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: Argon2id plus AEAD and age-recipient exports, with plaintext behind an extra confirm.",
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Exports to a public key (age recipients); password-locked Lockdown and KDBX files and the plain-export confirm are built.",
    "evidence": [
     "crates/app/src/session/transfer.rs:20 (FORMATS: cxf and csv, both plaintext behind the Reveal gate)"
    ],
@@ -1472,9 +1475,11 @@
    "name": "Published backup format",
    "target": "beat",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: the published backup format, its open-licence reference decoder, and KDBX export.",
+   "status": "done",
+   "surfaces": [
+    "core"
+   ],
+   "left": "A stand-alone open-licence reference decoder outside the workspace; the spec, test vectors and KDBX export are built.",
    "evidence": [
     "crates/cxf/src/lib.rs:16 (the .lockdown archive is not built)"
    ],
@@ -1487,9 +1492,12 @@
    "name": "Automatic local backups",
    "target": "beat",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: scheduled encrypted backups to a chosen folder, the last-backup indicator and the emergency sheet.",
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "A last-backup indicator outside Settings and the emergency sheet.",
    "evidence": [
     "rg for scheduled backups in crates/ and apps/ finds none (the server's VACUUM INTO is the server's own, D56)"
    ],

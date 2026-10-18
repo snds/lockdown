@@ -1,12 +1,12 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `accf2cb`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `dd7f045`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
 **Done** means it works end to end in today's surfaces (core, desktop, CLI, server) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **30** | **44** | **38** | **10** |
+| **All 122 v1 features** | **33** | **44** | **35** | **10** |
 | [Vault & item types](#vault--item-types) | 4 | 8 | 0 | 0 |
 | [Organization & search](#organization--search) | 6 | 1 | 0 | 0 |
 | [Autofill (browser)](#autofill-browser) | 7 | 1 | 1 | 0 |
@@ -18,7 +18,7 @@ _Generated from `feature-status.json` (as of `accf2cb`) by `render-feature-statu
 | [Family & emergency/recovery](#family--emergencyrecovery) | 0 | 2 | 3 | 0 |
 | [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 4 | 4 | 0 | 0 |
 | [Privacy](#privacy) | 0 | 1 | 1 | 0 |
-| [Import/export & portability](#importexport--portability) | 0 | 3 | 5 | 0 |
+| [Import/export & portability](#importexport--portability) | 3 | 3 | 2 | 0 |
 | [Self-hosting & deployment](#self-hosting--deployment) | 0 | 2 | 1 | 1 |
 | [Security architecture & crypto](#security-architecture--crypto) | 4 | 8 | 5 | 0 |
 | [Platforms & apps](#platforms--apps) | 2 | 3 | 3 | 1 |
@@ -139,14 +139,14 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser 
 
 ## Import/export & portability
 
-- [ ] **Lossless transfer**: Partial · core, desktop. Attachments, folders and history in the transfer, Wi-Fi in CXF's own type, and a per-item report of what the target app dropped.
-- [ ] **Importers from other managers**: Partial · core, desktop. Importers for 1PUX, Bitwarden JSON, Proton, KDBX, Dashlane, Keeper, LastPass and Enpass, sandboxed.
-- [ ] **Complete export**: Partial · core, desktop. Attachments, history and folders in the export, as an encrypted archive; export in the CLI.
+- [x] **Importers from other managers**: Done · core, desktop. Check each format against one real export (samples are built from the documented formats); 1Password .1pif, Dashlane .dash, passkeys from Proton and Keeper; the CLI on the core importers.
+- [x] **Complete export**: Done · core, desktop. Export in the CLI; restored versions keep their original dates.
+- [x] **Published backup format**: Done · core. A stand-alone open-licence reference decoder outside the workspace; the spec, test vectors and KDBX export are built.
+- [ ] **Lossless transfer**: Partial · core, desktop. Wi-Fi in CXF's own type and attachments through CXF; lossless through the Lockdown format already.
+- [ ] **Encrypted export**: Partial · core, desktop. Exports to a public key (age recipients); password-locked Lockdown and KDBX files and the plain-export confirm are built.
+- [ ] **Automatic local backups**: Partial · core, desktop. A last-backup indicator outside Settings and the emergency sheet.
 - [ ] **iOS credential exchange** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: needs the iOS app; the CXF model it would map through exists.
 - [ ] **Android credential exchange** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: needs the Android app; the CXF model it would map through exists.
-- [ ] **Encrypted export**: Not started · nowhere yet. Everything: Argon2id plus AEAD and age-recipient exports, with plaintext behind an extra confirm.
-- [ ] **Published backup format**: Not started · nowhere yet. Everything: the published backup format, its open-licence reference decoder, and KDBX export.
-- [ ] **Automatic local backups**: Not started · nowhere yet. Everything: scheduled encrypted backups to a chosen folder, the last-backup indicator and the emergency sheet.
 
 ## Self-hosting & deployment
 
