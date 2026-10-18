@@ -30,6 +30,9 @@ export type ToBackground =
   | { t: "menu_suggest"; nonce: string; frame_visible: boolean | null }
   | { t: "prompt_data"; nonce: string }
   | { t: "prompt_answer"; nonce: string; save: boolean }
+  // pairing started from the menu, with no popup (docs/plan/27-web-server-finish.md §5)
+  | { t: "menu_pair"; nonce: string; frame_visible: boolean | null }
+  | { t: "menu_link"; nonce: string }
   // from the popup
   | { t: "status" }
   | { t: "pair" }

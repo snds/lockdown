@@ -1002,6 +1002,45 @@ impl HttpTransport {
     }
 }
 
+/// Log mirrors and the server's restore drill
+/// (docs/plan/27-web-server-finish.md §3–§4). Inherent, like the alerts.
+impl HttpTransport {
+    /// `GET /v1/kt/mirror` on a mirror (this transport's base is the
+    /// mirror's): the newest head it copied. No session: a mirror is public.
+    pub fn kt_mirror_head(&self) -> Result<crate::mirror::MirrorHead> {
+        self.call::<(), _>(Method::Get, crate::mirror::MIRROR_PATH, None, None)
+    }
+
+    /// `GET /v1/kt/mirrors`: the mirrors the account server names; none
+    /// from a server older than mirrors.
+    pub fn kt_mirrors(&self) -> Result<crate::mirror::KtMirrors> {
+        let (status, body) = self.send(Method::Get, crate::mirror::MIRRORS_PATH, None, None)?;
+        if status == 404 {
+            return Ok(crate::mirror::KtMirrors::default());
+        }
+        if (200..300).contains(&status) {
+            return wire::decode(&body).map_err(|e| TransportError::Decode(e.to_string()));
+        }
+        Err(Self::refused(status, &body))
+    }
+
+    /// `GET /v1/server/restore-drill`: the server's own restore drills, as
+    /// it reports them; `None` from a server older than the endpoint.
+    pub fn restore_drill(&self, token: &str) -> Result<Option<wire::RestoreDrill>> {
+        let (status, body) =
+            self.send(Method::Get, "/v1/server/restore-drill", Some(token), None)?;
+        if status == 404 {
+            return Ok(None);
+        }
+        if (200..300).contains(&status) {
+            return wire::decode(&body)
+                .map(Some)
+                .map_err(|e| TransportError::Decode(e.to_string()));
+        }
+        Err(Self::refused(status, &body))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

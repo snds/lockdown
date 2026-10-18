@@ -26,6 +26,7 @@ import { ExportDialog } from "@/features/export/export-dialog"
 import { ImportWizard } from "@/features/import/import-wizard"
 import { BrowsersSection } from "@/features/browsers/browsers-section"
 import { QuickSettings } from "@/features/quick/quick-settings"
+import { ServerChecks } from "@/features/server/server-checks"
 
 interface SettingsViewProps {
   status: Status
@@ -192,6 +193,8 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
           </div>
         </form>
       </Section>
+
+      <ServerChecks onNotice={onNotice} />
 
       <Section title="Import and export">
         <p className="text-sm text-muted-foreground">

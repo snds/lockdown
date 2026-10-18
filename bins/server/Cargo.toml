@@ -21,6 +21,9 @@ lockdown-vault.workspace = true
 lockdown-sync.workspace = true
 # Security keys on the account: the relying party's checks (second_factor.rs).
 lockdown-passkey.workspace = true
+# The restore drill's client check (drill_account.rs): the real client signs
+# in to the restored copy and reads an item back.
+lockdown-app.workspace = true
 axum.workspace = true
 tokio = { workspace = true, features = ["sync", "signal", "time"] }
 rusqlite.workspace = true
@@ -67,5 +70,7 @@ ciborium.workspace = true
 # Test speed only: the lowered Argon2id floor for the in-process OPAQUE
 # clients the tests drive (07-workspace §2). Never in an app.
 lockdown-crypto = { workspace = true, features = ["insecure-test-kdf"] }
+# The same for the identity the restore-drill account makes in tests.
+ecosystem-identity = { workspace = true, features = ["insecure-test-kdf"] }
 # A throwaway CA and certificate for the TLS tests.
 lockdown-tls = { workspace = true, features = ["test-certs"] }

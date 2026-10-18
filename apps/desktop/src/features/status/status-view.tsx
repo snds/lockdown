@@ -7,6 +7,8 @@ import { describeError, useClient } from "@/core/client"
 import { decodeAndWipe } from "@/core/secret-bytes"
 import type { OncePage as OncePageData, Status, TransparencyView } from "@/core/types"
 import { AccountDialog } from "@/features/account/account-dialog"
+import { SplitWarning } from "@/features/server/server-checks"
+import { splits } from "@/features/server/server-words"
 import { shortId, whenLocal } from "@/lib/format"
 
 import { OncePage, type ShownPage } from "./once-page"
@@ -94,6 +96,8 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
         <Proof ok={status.recovery !== "none"} text={status.recovery !== "none" ? "The Secret Key on your kit was made here; the server has never seen it." : "No recovery kit yet; make one on the Recovery screen."} />
         <Proof ok text={`Your vault history is signed by your devices: head ${status.head_seq}, ${status.head_hash.slice(0, 16)}…`} />
         <Proof ok={!!account?.transparency} text={account ? `The server's public log: ${transparencyLine(account.transparency)}` : "The server's public log is checked once an account exists."} />
+        {account?.transparency && <MirrorProof checks={account.transparency.mirrors} />}
+        <SplitWarning checks={account?.transparency?.mirrors} />
         {audit && (
           <div role="status" className={`flex flex-col gap-1 rounded-md border p-3 text-sm ${audit.ok ? "" : "text-attention-text"}`}>
             <p className="font-medium">{audit.ok ? "Checked just now" : "The check failed"}</p>
@@ -177,6 +181,24 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
 }
 
 /** "N entries, checked <time>": the server's public log as this device last verified it (D78, D79). */
+/** The mirrors' word on the server's log, when any were compared. */
+function MirrorProof({ checks }: { checks: TransparencyView["mirrors"] }) {
+  const all = checks ?? []
+  if (all.length === 0) return null
+  const agree = all.filter((c) => c.state === "agrees").length
+  if (splits(all).length > 0) return null
+  return (
+    <Proof
+      ok={agree > 0}
+      text={
+        agree === all.length
+          ? `${agree === 1 ? "A mirror" : `${agree} mirrors`} of the public log ${agree === 1 ? "agrees" : "agree"} it's the one everyone sees.`
+          : `${agree} of ${all.length} log mirrors agree; the rest couldn't be checked (Settings → This server).`
+      }
+    />
+  )
+}
+
 function transparencyLine(view: TransparencyView | null): string {
   if (!view) return "not checked yet; the next sync verifies it"
   return `${view.log_size} entries, checked ${whenLocal(view.checked_at)}`

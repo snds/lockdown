@@ -313,6 +313,12 @@ impl<'a> KtSession<'a> {
         })
     }
 
+    /// The transport this session checks through (the mirror comparison
+    /// asks the same server for its proofs).
+    pub(crate) fn transport(&self) -> &'a dyn Transport {
+        self.transport
+    }
+
     /// The verified STH.
     pub fn sth(&self) -> &SignedTreeHead {
         &self.view.sth

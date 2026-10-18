@@ -317,7 +317,7 @@ fn store(state: &AppState) -> ApiResult<&dyn AccountSecurityStore> {
 /// The relying party and the origins a key may have been used on, from the
 /// request's `Host`: the host name is the RP ID; the origin is `https://`
 /// it, and on this machine (`localhost`, a loopback address) `http://` too.
-fn relying_party(headers: &HeaderMap) -> ApiResult<(String, Vec<String>)> {
+pub(crate) fn relying_party(headers: &HeaderMap) -> ApiResult<(String, Vec<String>)> {
     let host = headers
         .get(header::HOST)
         .and_then(|v| v.to_str().ok())

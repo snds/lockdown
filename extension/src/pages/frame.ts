@@ -6,7 +6,7 @@
 // measurement of the frame's host stands in (docs/plan/16-browser-extension.md §6).
 
 import type { PickWhat } from "../shared/messages"
-import type { LoginCandidate, MenuData, PasskeyOption, PickAnswer, SaveOffer, SheetData, WalletEntry } from "../shared/protocol"
+import type { LinkState, LoginCandidate, MenuData, PasskeyOption, PickAnswer, SaveOffer, SheetData, WalletEntry } from "../shared/protocol"
 
 const [mode, nonce] = location.hash.slice(1).split(":")
 const root = document.getElementById("app") as HTMLElement
@@ -148,7 +148,7 @@ function row(title: string, sub: string, onPick: (e: MouseEvent) => void, badge?
 
 function renderMenu(data: MenuData) {
   if (data.link.link !== "ready") return message(data.host, data.link.message || "Lockdown isn't reachable.")
-  if (!data.link.paired) return message(data.host, "Pair this browser with Lockdown first: open Lockdown from the toolbar.")
+  if (!data.link.paired) return renderPairOffer(data)
   if (data.link.locked) return message(data.host, "Lockdown is locked. Unlock it to fill.")
   if (data.lookalike_of.length > 0 && data.logins.length === 0) {
     return message(
@@ -211,6 +211,60 @@ function renderMenu(data: MenuData) {
   root.append(ul)
   size(true)
   arm()
+}
+
+// --- pairing from the menu (docs/plan/27-web-server-finish.md §5) ----------
+//
+// The same pairing the popup starts (a fresh key here, a request in the app,
+// one code shown on both sides and approved in the app), reachable from the
+// menu so a browser that can't open the popup pairs from any sign-in page.
+
+/** Not paired yet: one button to start pairing, armed like every choice. */
+function renderPairOffer(data: MenuData) {
+  root.replaceChildren(header(data.host))
+  const p = el("p", "msg", "Pair this browser with Lockdown to fill here.")
+  p.setAttribute("role", "status")
+  if (data.link.message) p.append(el("span", "sub block", data.link.message))
+  const row = el("div", "actions")
+  const go = el("button", "primary", "Pair this browser")
+  go.addEventListener("click", (e) => {
+    if (deliberate(e)) void startPairing(data)
+  })
+  row.append(go)
+  root.append(p, row)
+  size(true)
+  arm()
+}
+
+async function startPairing(data: MenuData) {
+  if (visible === false) return message(data.host, "Something on this page covers Lockdown's menu, so Lockdown won't start pairing.", "stop")
+  const state = await send<LinkState & { error?: string }>({ t: "menu_pair", frame_visible: visible })
+  if (!state || state.error) return message(data.host, state?.error ?? "Lockdown couldn't start pairing.", "stop")
+  if (!state.pairing) return message(data.host, state.message || "Lockdown couldn't start pairing.", "stop")
+  root.replaceChildren(header(data.host))
+  const lead = el("p", "msg", "Check that Lockdown on this computer shows this code, then approve it there.")
+  lead.setAttribute("role", "status")
+  const code = el("p", "msg code", state.pairing.code)
+  code.setAttribute("aria-label", `Pairing code ${state.pairing.code.split("").join(" ")}`)
+  root.append(lead, code)
+  size(true)
+  void waitForPairing(data)
+}
+
+/** Asks the background each second until the app answered. */
+async function waitForPairing(data: MenuData) {
+  const started = Date.now()
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 1000))
+    const s = await send<LinkState & { error?: string }>({ t: "menu_link" }).catch(() => null)
+    if (!s || s.error) return message(data.host, s?.error ?? "This menu isn't open any more.")
+    if (s.pairing && Date.now() - started < 130_000) continue
+    if (!s.paired) return message(data.host, s.message || "This browser isn't paired.", "stop")
+    const next = await send<MenuData & { error?: string }>({ t: "menu_data" })
+    if (!next || next.error) return message(data.host, next?.error ?? "Lockdown isn't reachable.")
+    shownAt = Date.now()
+    return renderMenu(next)
+  }
 }
 
 async function renderPrompt() {

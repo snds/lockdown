@@ -18,6 +18,9 @@
 //!   (with [`DeviceExpectations`], what a device holding an identity
 //!   knows), and the citation check between devices (04-security §6)
 //!
+//! - [`mirror`] — log mirrors: the mirror's own check that a server's log
+//!   keeps continuing, and a client's comparison of its head with a mirror's
+//!
 //! - [`account_security`] — device approval's relay, phrase checks, raised
 //!   password stretching, security keys as a second factor
 //! - [`sharing`] — the sharing half of the protocol: the directory and its
@@ -30,6 +33,7 @@ pub mod account_security;
 pub mod engine;
 pub mod identity;
 pub mod kt;
+pub mod mirror;
 pub mod sharing;
 pub mod transport;
 pub mod wire;

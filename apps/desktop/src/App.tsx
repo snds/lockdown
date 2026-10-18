@@ -33,6 +33,8 @@ import { VaultView } from "@/features/vault/vault-view"
 import { useLive } from "@/features/sessions/use-live"
 import { LiveClientProvider } from "@/features/sessions/live-client"
 import { tauriLiveClient } from "@/app/tauri-live"
+import { tauriServerClient } from "@/app/tauri-server"
+import { ServerClientProvider } from "@/features/server/server-client"
 import { tauriDepthClient } from "@/app/tauri-depth"
 import { DepthClientProvider } from "@/features/depth/depth-client"
 import { RemindersPrompt } from "@/features/depth/reminders"
@@ -136,7 +138,10 @@ function Root() {
   // change from another device was synced in the core; redraw.
   useLive((n) => {
     if (!status) return
-    if (n.kind === "synced") client.status().then(setStatus).catch(() => {})
+    if (n.kind === "synced") {
+      client.status().then(setStatus).catch(() => {})
+      warnOnSplit(n.lines)
+    }
     else if (n.kind === "session_ended") toast.error("This device's session was ended from another of your devices. Log in again on Status to keep syncing.")
     else if (n.kind === "sync_failed") toast.error(`A change from another device didn't sync: ${n.message}`)
   })
@@ -225,6 +230,16 @@ function Root() {
   )
 }
 
+/** A sync whose mirrors caught a split view says so until dismissed (docs/plan/27-web-server-finish.md §4). */
+function warnOnSplit(lines: readonly string[]) {
+  const split = lines.find((l) => l.includes("Split view"))
+  if (split)
+    toast.error("This server's public log doesn't match a mirror: it may be showing you a different history from everyone else. See Status.", {
+      id: "kt-split",
+      duration: Infinity,
+    })
+}
+
 export default function App() {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
@@ -238,7 +253,9 @@ export default function App() {
                     <QuickClientProvider value={tauriQuickClient}>
                       <ScanClientProvider value={tauriScanClient}>
                         <HygieneClientProvider value={tauriHygieneClient}>
-                          <Root />
+                          <ServerClientProvider value={tauriServerClient}>
+                            <Root />
+                          </ServerClientProvider>
                         </HygieneClientProvider>
                       </ScanClientProvider>
                     </QuickClientProvider>

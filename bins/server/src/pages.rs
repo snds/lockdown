@@ -1,5 +1,6 @@
 //! The server's own HTML pages (the admin page, the email approval page):
-//! written on the server, no script at all, one inline style sheet allowed
+//! written on the server, no script but the admin page's one passkey
+//! script (allowed by its hash, `connect-src 'self'`), one inline style sheet allowed
 //! by its hash, forms that post back to the same server only, never framed,
 //! never cached, never sent a referrer. Every value that came from a
 //! person, a device or the network is escaped with [`esc`].
@@ -55,8 +56,29 @@ pub fn csp() -> String {
 
 /// A whole page.
 pub fn page(status: StatusCode, title: &str, body: &str) -> Response {
+    page_with_script(status, title, body, None)
+}
+
+/// The policy of a page that carries `script` inline: that script alone
+/// (by its hash), and requests back to this origin only.
+pub fn csp_with_script(script: &str) -> String {
+    let hash = data_encoding::BASE64.encode(&Sha256::digest(script.as_bytes()));
+    format!("{}; script-src 'sha256-{hash}'; connect-src 'self'", csp())
+}
+
+/// A whole page with at most one inline script, allowed by its hash and
+/// nothing else (the admin page's passkey ceremonies).
+pub fn page_with_script(
+    status: StatusCode,
+    title: &str,
+    body: &str,
+    script: Option<&str>,
+) -> Response {
+    let tag = script
+        .map(|s| format!("<script>{s}</script>"))
+        .unwrap_or_default();
     let html = format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>{}</title><style>{STYLE}</style></head><body><main>{body}</main></body></html>",
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>{}</title><style>{STYLE}</style></head><body><main>{body}</main>{tag}</body></html>",
         esc(title)
     );
     let mut response = (
@@ -69,6 +91,13 @@ pub fn page(status: StatusCode, title: &str, body: &str) -> Response {
     )
         .into_response();
     secure(&mut response);
+    if let Some(s) = script
+        && let Ok(v) = HeaderValue::from_str(&csp_with_script(s))
+    {
+        response
+            .headers_mut()
+            .insert(header::CONTENT_SECURITY_POLICY, v);
+    }
     response
 }
 
