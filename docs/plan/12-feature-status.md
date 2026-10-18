@@ -1,12 +1,12 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `137195c`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `0151bea`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
 **Done** means it works end to end in today's surfaces (core, desktop, CLI, server, browser extension, web vault) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **74** | **23** | **15** | **10** |
+| **All 122 v1 features** | **76** | **21** | **15** | **10** |
 | [Vault & item types](#vault--item-types) | 12 | 0 | 0 | 0 |
 | [Organization & search](#organization--search) | 6 | 1 | 0 | 0 |
 | [Autofill (browser)](#autofill-browser) | 8 | 1 | 0 | 0 |
@@ -16,7 +16,7 @@ _Generated from `feature-status.json` (as of `137195c`) by `render-feature-statu
 | [Vendor login bridges](#vendor-login-bridges) | 5 | 2 | 0 | 0 |
 | [Sharing & collaboration](#sharing--collaboration) | 6 | 0 | 0 | 0 |
 | [Family & emergency/recovery](#family--emergencyrecovery) | 4 | 1 | 0 | 0 |
-| [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 6 | 2 | 0 | 0 |
+| [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 8 | 0 | 0 | 0 |
 | [Privacy](#privacy) | 1 | 1 | 0 | 0 |
 | [Import/export & portability](#importexport--portability) | 5 | 1 | 2 | 0 |
 | [Self-hosting & deployment](#self-hosting--deployment) | 0 | 3 | 0 | 1 |
@@ -125,12 +125,12 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 
 - [x] **Breached password check**: Done · core, desktop. The extension's and web vault's view of the same findings.
 - [x] **Weak and reused password report**: Done · core, desktop. Reuse across more than one vault once multiple vaults land.
+- [x] **Email breach monitoring**: Done · core, desktop, server. Nothing for desktop and the server: the paid feed is optional, and an operator range file or service works without a key.
 - [x] **Missing 2FA report**: Done · core, desktop. A refresh schedule for the bundled 2fa.directory snapshot (D129).
 - [x] **Breach-response playbooks**: Done · core, desktop. The web vault (the security center is refused there today).
 - [x] **Lookalike-domain warning**: Done · core, desktop, extension. Nothing for desktop and the extension; the web vault.
 - [x] **One-tap change-password link**: Done · core, desktop, extension. More curated per-site pages in the signed data.
-- [ ] **Email breach monitoring**: Partial · core, desktop, server. A breach feed key (the built-in feed needs a paid key); alias monitoring is built and opt-in.
-- [ ] **Vault account sign-in alerts**: Partial · core, desktop, server. OS notifications and email verification for new devices (no SMTP setting yet); the session list that ends tokens at once is built.
+- [x] **Vault account sign-in alerts**: Done · core, desktop, server. Phone notifications (mobile, deferred); on macOS, OS notifications show only for the bundled app.
 
 ## Privacy
 
@@ -150,9 +150,9 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 
 ## Self-hosting & deployment
 
-- [ ] **Official self-hosting**: Partial · server, web. An admin page, scheduled restore drills, the Backup Key on the recovery kit, and support; packaging, the operator guide and encrypted server backups are built.
-- [ ] **Lightweight single container**: Partial · server. Publishing the image, Postgres, and S3-compatible attachment storage; the image is built and smoke-tested in CI (5.5 MiB idle, 6.2 MiB loaded, 53 MB image), attachments can be stored as files.
-- [ ] **Self-hosted live sync**: Partial · core, desktop, server. The mobile push relay (shape in D229, mobile deferred), pings to recipients of items shared on their own, and the web vault subscribing.
+- [ ] **Official self-hosting**: Partial · server. The last successful restore shown in the clients, a passkey on the admin page, a drill that starts a client against the scratch copy, and support (not code); the admin page, invites, scheduled backups, restore drills and the operator kit are built.
+- [ ] **Lightweight single container**: Partial · server. Publishing the image (a release step, never automatic); Postgres, S3-compatible attachments and the smoke-tested image are built.
+- [ ] **Self-hosted live sync**: Partial · core, desktop, web, server. The mobile push relay (D229, mobile deferred) and the web vault opening the live channel itself; pings to single-item share recipients are built.
 - [ ] **Same code as the cloud**: Not code yet · nowhere yet. Needs a cloud, a feature-flag release process and advisory IDs; nothing to build until a hosted service exists.
 
 ## Security architecture & crypto
