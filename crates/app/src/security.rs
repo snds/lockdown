@@ -592,14 +592,20 @@ fn assemble(inp: &Inputs<'_>) -> SecurityReport {
             if directory.lookup(&site.domain).is_some() {
                 continue; // a well-known site is itself, not a copy
             }
+            // The closest site wins, not the first found: one whose confusable
+            // skeleton is identical (paypa1 → paypal) before a one-letter
+            // neighbour (paypay), then by name, so every machine agrees.
+            let rank = |t: &Site| (t.skeleton != site.skeleton, t.domain.clone());
             let mine = saved
                 .iter()
-                .find(|(m, other)| *m != n && imitates(&site, other, &equivalent));
+                .filter(|(m, other)| *m != n && imitates(&site, other, &equivalent))
+                .min_by_key(|(_, other)| rank(other));
             let target = match mine {
                 Some((m, other)) => Some((other.domain.clone(), Some(&inp.items[*m]))),
                 None => well_known()
                     .iter()
-                    .find(|t| imitates(&site, t, &equivalent))
+                    .filter(|t| imitates(&site, t, &equivalent))
+                    .min_by_key(|t| rank(t))
                     .map(|t| (t.domain.clone(), None)),
             };
             if let Some((domain, other)) = target {
