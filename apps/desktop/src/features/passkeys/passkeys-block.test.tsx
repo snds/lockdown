@@ -33,10 +33,10 @@ function fake(overrides: Partial<PasskeyClient>): PasskeyClient {
   }
 }
 
-function mount(client: PasskeyClient, onChanged = vi.fn()) {
+function mount(client: PasskeyClient, onChanged = vi.fn(), canEdit = true) {
   render(
     <PasskeyClientProvider value={client}>
-      <PasskeysBlock itemId="i1" title="Example" fields={[]} onChanged={onChanged} />
+      <PasskeysBlock itemId="i1" title="Example" fields={[]} onChanged={onChanged} canEdit={canEdit} />
     </PasskeyClientProvider>,
   )
   return onChanged
@@ -85,6 +85,16 @@ describe("the passkeys on an item", () => {
     expect(row).not.toHaveTextContent("Provider ID")
     await userEvent.setup().click(within(row).getByRole("button", { name: "Delete" }))
     expect(await screen.findByRole("dialog")).toHaveTextContent("The site still lists it until you remove it there")
+  })
+})
+
+describe("a passkey on an item shared without edit", () => {
+  it("offers neither Undo nor Delete, and still lists it", async () => {
+    mount(fake({ list: () => Promise.resolve([view({ hidden: { reason: "The site said it no longer knows this passkey", at: 1_760_000_100 } })]) }), vi.fn(), false)
+    const row = await screen.findByRole("listitem", { name: "Passkey for example.com" })
+    expect(within(row).getByText("hidden by the site")).toBeInTheDocument()
+    expect(within(row).queryByRole("button", { name: "Undo" })).not.toBeInTheDocument()
+    expect(within(row).queryByRole("button", { name: "Delete" })).not.toBeInTheDocument()
   })
 })
 

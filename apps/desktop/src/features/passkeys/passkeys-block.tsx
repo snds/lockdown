@@ -53,8 +53,22 @@ function facts(p: PasskeyView): string {
  * computer last used it, a site's Signal hide with Undo, and Delete,
  * which warns first when the passkey is the account's only way in that
  * Lockdown holds. The key is never drawn: it signs inside the core.
+ * Undo and Delete change the item, so a shared item without edit
+ * (docs/plan/18-sharing.md) offers neither; the core refuses them too.
  */
-export function PasskeysBlock({ itemId, title, fields, onChanged }: { itemId: string; title: string; fields: FieldView[]; onChanged: (notice: string) => void }) {
+export function PasskeysBlock({
+  itemId,
+  title,
+  fields,
+  onChanged,
+  canEdit = true,
+}: {
+  itemId: string
+  title: string
+  fields: FieldView[]
+  onChanged: (notice: string) => void
+  canEdit?: boolean
+}) {
   const client = usePasskeyClient()
   const gate = useGate()
   const [views, setViews] = useState<PasskeyView[] | null>(null)
@@ -126,14 +140,16 @@ export function PasskeysBlock({ itemId, title, fields, onChanged }: { itemId: st
                 )}
               </ItemContent>
               <ItemActions>
-                {p.hidden && (
+                {canEdit && p.hidden && (
                   <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(() => client.restore(itemId, p.credential_id), `The passkey for ${p.rp_id} is offered again.`)}>
                     Undo
                   </Button>
                 )}
-                <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirm(p)}>
-                  Delete
-                </Button>
+                {canEdit && (
+                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirm(p)}>
+                    Delete
+                  </Button>
+                )}
               </ItemActions>
             </Item>
           ))}
