@@ -233,8 +233,19 @@ impl Session {
                 // fields (the export opt-in of D121) or name folders of a
                 // vault it never saw; its folder and tags are applied at
                 // commit, in the vault picked.
+                // The one exception: a template variant this kind has (a
+                // CXF passport lands as a Passport), checked by name.
+                let kind = item.kind;
+                let variant_ok = |f: &PlainField| {
+                    f.field_id == lockdown_vault::TEMPLATE_FIELD
+                        && lockdown_vault::variant_of(std::slice::from_ref(f))
+                            .and_then(|v| lockdown_vault::template_variant(kind, v))
+                            .is_some_and(|t| !t.variant.is_empty())
+                };
+                item.fields.retain(|f| {
+                    variant_ok(f) || !(is_reserved_field(&f.field_id) || is_org_field(&f.field_id))
+                });
                 let own = |id: &str| is_reserved_field(id) || is_org_field(id);
-                item.fields.retain(|f| !own(&f.field_id));
                 for h in &mut item.history {
                     h.retain(|f| !own(&f.field_id));
                 }
@@ -536,7 +547,11 @@ impl Session {
         out: &mut Gathered,
     ) -> Result<(), String> {
         for item in vault.items() {
-            if item.kind.hidden() {
+            // A Lockdown backup (the one gather that takes the trash too)
+            // also carries the person's own templates (D232), so nothing
+            // they made is lost; the other formats have no place for them.
+            let carried_template = trashed && item.kind == ItemKind::Template;
+            if item.kind.hidden() && !carried_template {
                 continue;
             }
             let in_scope = match item.state {

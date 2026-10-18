@@ -316,6 +316,117 @@ pub struct Address {
     pub tel: Option<EditableField>,
 }
 
+/// `wifi` (CXF §"Wifi"): a network's name, security type, passphrase and
+/// whether it is hidden. `networkSecurityType` takes `unsecured`,
+/// `wpa-personal`, `wpa2-personal`, `wpa3-personal` or `wep`.
+#[derive(Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Wifi {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssid: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_security_type: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passphrase: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hidden: Option<EditableField>,
+}
+
+/// `drivers-license`.
+#[derive(Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriversLicense {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_name: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub birth_date: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue_date: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expiry_date: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuing_authority: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub territory: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub country: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license_number: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license_class: Option<EditableField>,
+}
+
+/// `passport`.
+#[derive(Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Passport {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuing_country: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passport_type: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passport_number: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub national_identification_number: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nationality: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_name: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub birth_date: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub birth_place: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sex: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue_date: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expiry_date: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuing_authority: Option<EditableField>,
+}
+
+/// `identity-document`: a national ID card and the like.
+#[derive(Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IdentityDocument {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuing_country: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document_number: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identification_number: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nationality: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_name: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub birth_date: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub birth_place: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sex: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue_date: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expiry_date: Option<EditableField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuing_authority: Option<EditableField>,
+}
+
+/// `file`: a file's id, name, size and SHA-256 (`integrityHash`,
+/// base64url). The format holds no bytes: they belong to the transfer
+/// that carries the document (the exchange protocol, a Working Draft).
+#[derive(Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct File {
+    pub id: String,
+    pub name: String,
+    pub decrypted_size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub integrity_hash: Option<String>,
+}
+
 /// One credential. The JSON carries a `type` field naming the variant.
 #[derive(Clone, PartialEq, Debug)]
 pub enum Credential {
@@ -333,6 +444,16 @@ pub enum Credential {
     PersonName(PersonName),
     /// `address`.
     Address(Address),
+    /// `wifi`.
+    Wifi(Wifi),
+    /// `drivers-license`.
+    DriversLicense(DriversLicense),
+    /// `passport`.
+    Passport(Passport),
+    /// `identity-document`.
+    IdentityDocument(IdentityDocument),
+    /// `file`.
+    File(File),
     /// Any type this crate does not model, kept exactly as read.
     Other {
         /// The `type` value.
@@ -353,6 +474,11 @@ impl Credential {
             Self::Totp(_) => "totp",
             Self::PersonName(_) => "person-name",
             Self::Address(_) => "address",
+            Self::Wifi(_) => "wifi",
+            Self::DriversLicense(_) => "drivers-license",
+            Self::Passport(_) => "passport",
+            Self::IdentityDocument(_) => "identity-document",
+            Self::File(_) => "file",
             Self::Other { kind, .. } => kind,
         }
     }
@@ -379,6 +505,11 @@ impl Serialize for Credential {
             Self::Totp(v) => tagged("totp", v, s),
             Self::PersonName(v) => tagged("person-name", v, s),
             Self::Address(v) => tagged("address", v, s),
+            Self::Wifi(v) => tagged("wifi", v, s),
+            Self::DriversLicense(v) => tagged("drivers-license", v, s),
+            Self::Passport(v) => tagged("passport", v, s),
+            Self::IdentityDocument(v) => tagged("identity-document", v, s),
+            Self::File(v) => tagged("file", v, s),
             Self::Other { raw, .. } => raw.serialize(s),
         }
     }
@@ -406,6 +537,11 @@ impl<'de> Deserialize<'de> for Credential {
             "totp" => Self::Totp(parse(raw)?),
             "person-name" => Self::PersonName(parse(raw)?),
             "address" => Self::Address(parse(raw)?),
+            "wifi" => Self::Wifi(parse(raw)?),
+            "drivers-license" => Self::DriversLicense(parse(raw)?),
+            "passport" => Self::Passport(parse(raw)?),
+            "identity-document" => Self::IdentityDocument(parse(raw)?),
+            "file" => Self::File(parse(raw)?),
             _ => Self::Other { kind, raw },
         })
     }
@@ -478,19 +614,19 @@ mod tests {
             "accounts":[{"id":"YWNjdA","username":"me","email":"","items":[
               {"id":"aXRlbQ","title":"X","credentials":[
                 {"type":"basic-auth","username":{"fieldType":"string","value":"u"},"password":{"fieldType":"concealed-string","value":"p"}},
-                {"type":"wifi","ssid":{"fieldType":"string","value":"home"},"passphrase":{"fieldType":"concealed-string","value":"s"}}
+                {"type":"x-future","ssid":{"fieldType":"string","value":"home"},"passphrase":{"fieldType":"concealed-string","value":"s"}}
               ]}]}]}"#;
         let h = parse(json.as_bytes(), &Limits::default()).unwrap();
         let creds = &h.accounts[0].items[0].credentials;
         assert!(
             matches!(&creds[0], Credential::BasicAuth(b) if b.username.as_ref().unwrap().value == "u")
         );
-        assert!(matches!(&creds[1], Credential::Other { kind, .. } if kind == "wifi"));
+        assert!(matches!(&creds[1], Credential::Other { kind, .. } if kind == "x-future"));
         let out = write(&h).unwrap();
         let again = parse(&out, &Limits::default()).unwrap();
         assert_eq!(again, h);
         let text = String::from_utf8(out).unwrap();
-        assert!(text.contains("\"type\": \"wifi\""));
+        assert!(text.contains("\"type\": \"x-future\""));
         assert!(text.contains("\"type\": \"basic-auth\""));
     }
 

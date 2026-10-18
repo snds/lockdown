@@ -763,6 +763,7 @@ const NATIONAL_ID: &[FieldTemplate] = &[
     field("name.family", "Surname", Control::Text).section("Holder"),
     field("id.nationality", "Nationality", Control::Text).section("Holder"),
     field("id.birth_date", "Date of birth", Control::Date).section("Holder"),
+    field("id.personal_number", "Personal number", Control::Text).section("Holder"),
     NOTES,
 ];
 
