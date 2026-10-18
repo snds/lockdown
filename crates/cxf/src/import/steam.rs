@@ -253,35 +253,33 @@ pub fn read(bytes: &[u8], password: Option<&[u8]>, limits: &Limits) -> Result<Pa
             let entry = manifest
                 .as_ref()
                 .and_then(|m| m.entries.iter().find(|x| x.filename == file));
-            let body: Zeroizing<Vec<u8>> = match (
-                manifest.as_ref().is_some_and(|m| m.encrypted),
-                entry,
-            ) {
-                (
-                    true,
-                    Some(ManifestEntry {
-                        encryption_iv: Some(iv),
-                        encryption_salt: Some(salt),
-                        ..
-                    }),
-                ) => {
-                    let pass = password.ok_or(CxfError::PasswordNeeded)?;
-                    let text = std::str::from_utf8(&e.bytes)
-                        .map_err(|_| parse_err("a maFile isn't text"))?;
-                    let plain = sda_decrypt(pass, salt, iv, text)?;
-                    if serde_json::from_slice::<Value>(&plain).is_err() {
-                        return Err(CxfError::WrongPassword);
+            let body: Zeroizing<Vec<u8>> =
+                match (manifest.as_ref().is_some_and(|m| m.encrypted), entry) {
+                    (
+                        true,
+                        Some(ManifestEntry {
+                            encryption_iv: Some(iv),
+                            encryption_salt: Some(salt),
+                            ..
+                        }),
+                    ) => {
+                        let pass = password.ok_or(CxfError::PasswordNeeded)?;
+                        let text = std::str::from_utf8(&e.bytes)
+                            .map_err(|_| parse_err("a maFile isn't text"))?;
+                        let plain = sda_decrypt(pass, salt, iv, text)?;
+                        if serde_json::from_slice::<Value>(&plain).is_err() {
+                            return Err(CxfError::WrongPassword);
+                        }
+                        plain
                     }
-                    plain
-                }
-                (true, _) => {
-                    parsed.problems.push(format!(
+                    (true, _) => {
+                        parsed.problems.push(format!(
                         "{file} is encrypted but the manifest doesn't list it, so it was skipped"
                     ));
-                    continue;
-                }
-                (false, _) => Zeroizing::new(e.bytes.to_vec()),
-            };
+                        continue;
+                    }
+                    (false, _) => Zeroizing::new(e.bytes.to_vec()),
+                };
             let value: Value = serde_json::from_slice(&body).map_err(json_err("Steam"))?;
             for acc in accounts_in(value)? {
                 n += 1;
