@@ -651,6 +651,78 @@ async fn open_clock_settings(handle: AppHandle) -> AppResult<bool> {
     Ok(true)
 }
 
+// --- the security center (docs/plan/13-security-center.md) -----------------
+
+/// The report from what this device knows now; no network.
+#[tauri::command]
+async fn security_report(app: State<'_, App>) -> AppResult<lockdown_app::SecurityReport> {
+    blocking(&app, |a| a.security_report()).await
+}
+
+/// Checks again: the breach range check (five hex characters per password
+/// leave the device) and the account's alerts, then the report.
+#[tauri::command]
+async fn security_check(app: State<'_, App>) -> AppResult<lockdown_app::SecurityReport> {
+    blocking(&app, |a| a.security_check()).await
+}
+
+/// Dismisses (`until` empty) or snoozes a finding: a setting on the item.
+#[tauri::command]
+async fn security_dismiss(
+    app: State<'_, App>,
+    item_id: String,
+    key: String,
+    until: Option<i64>,
+) -> AppResult<lockdown_app::SecurityReport> {
+    blocking(&app, move |a| a.security_dismiss(&item_id, &key, until)).await
+}
+
+/// Brings a dismissed or snoozed finding back.
+#[tauri::command]
+async fn security_restore(
+    app: State<'_, App>,
+    item_id: String,
+    key: String,
+) -> AppResult<lockdown_app::SecurityReport> {
+    blocking(&app, move |a| a.security_restore(&item_id, &key)).await
+}
+
+/// Dismisses an account alert for every device of the account.
+#[tauri::command]
+async fn security_dismiss_alert(
+    app: State<'_, App>,
+    seq: u64,
+) -> AppResult<lockdown_app::SecurityReport> {
+    blocking(&app, move |a| a.security_dismiss_alert(seq)).await
+}
+
+/// Opens the item's change-password page in the default browser and says
+/// which page it was.
+#[tauri::command]
+async fn security_change_password(
+    app: State<'_, App>,
+    handle: AppHandle,
+    item_id: String,
+) -> AppResult<lockdown_app::security::ChangeLink> {
+    blocking(&app, move |a| {
+        crate::security::change_password(&a, &item_id, |url| {
+            handle
+                .opener()
+                .open_url(url, None::<&str>)
+                .map_err(|e| format!("couldn't open the browser: {e}"))
+        })
+    })
+    .await
+}
+
+/// What to do about each kind of finding.
+#[tauri::command]
+async fn security_playbooks(
+    app: State<'_, App>,
+) -> AppResult<Vec<lockdown_app::security::Playbook>> {
+    Ok(app.security_playbooks())
+}
+
 /// Every command the webview may call.
 pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
@@ -698,5 +770,12 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         audit,
         import_items,
         export_items,
+        security_report,
+        security_check,
+        security_dismiss,
+        security_restore,
+        security_dismiss_alert,
+        security_change_password,
+        security_playbooks,
     ]
 }

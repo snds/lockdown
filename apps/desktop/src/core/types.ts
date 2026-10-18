@@ -225,6 +225,17 @@ export interface Settings {
   idle_lock_secs: number | null
   hidden_lock_secs: number | null
   server: string | null
+  /*
+   * The security center's three settings. The core always sends them;
+   * optional here so a settings object built before they existed still
+   * type-checks, and absent means the core's default.
+   */
+  /** The breached-password check (five hex characters of each password's hash leave the device). Default on. */
+  breach_check?: boolean
+  /** An `https://` range API or `file:///folder`; `null` is the public Pwned Passwords API. */
+  breach_endpoint?: string | null
+  /** Whether "Change password" asks the site for its change-password page first. Default on. */
+  change_password_check?: boolean
 }
 
 // --- approvals (D101) ------------------------------------------------------------
@@ -325,4 +336,72 @@ export interface FieldChangeInput {
   text?: string
   secret?: number[]
   flag?: boolean
+}
+
+// --- the security center (crates/app/src/security.rs) ----------------------------
+
+export type FindingKind = "breached" | "reused" | "weak" | "missing_2fa" | "lookalike" | "new_sign_in" | "exposed_email"
+export type Severity = "urgent" | "important" | "suggested"
+
+/** A finding dismissed (`until: null`) or snoozed until a time; a setting on the item, so it syncs. */
+export interface Dismissal {
+  at: number
+  until: number | null
+}
+
+export interface RelatedItem {
+  id: string
+  title: string
+}
+
+/** One finding, in words: never a password, a hash or a reuse key. */
+export interface Finding {
+  id: string
+  kind: FindingKind
+  severity: Severity
+  title: string
+  detail: string
+  /** What a dismissal is filed under on the item (`weak:pw`). */
+  key: string
+  item_id: string | null
+  item_title: string | null
+  item_kind: string | null
+  field_id: string | null
+  /** The item's website as typed; never a crown jewel's. */
+  site: string | null
+  related: RelatedItem[]
+  /** The site's own page on turning on two-step sign-in. */
+  setup_url: string | null
+  change_password: boolean
+  playbook: string
+  /** An account alert's number. */
+  alert: number | null
+  at: number | null
+  dismissed: Dismissal | null
+}
+
+export interface SecurityReport {
+  findings: Finding[]
+  dismissed: Finding[]
+  counts: { urgent: number; important: number; suggested: number }
+  passwords: number
+  breach: { enabled: boolean; source: string; checked_at: number | null; checked: number; unchecked: number; message: string | null }
+  alerts: { account: boolean; checked_at: number | null; message: string | null }
+  directory: { source: string; licence: string; date: string; sites: number }
+  generated_at: number
+}
+
+/** What to do about one kind of finding; the last step confirms the fix. */
+export interface Playbook {
+  id: string
+  title: string
+  summary: string
+  steps: string[]
+}
+
+/** The page "Change password" opened. */
+export interface ChangeLink {
+  url: string
+  kind: "well_known" | "site_root"
+  checked: boolean
 }
