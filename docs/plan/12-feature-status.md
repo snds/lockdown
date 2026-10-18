@@ -24,6 +24,8 @@ _Generated from `feature-status.json` (as of `71bee69`) by `render-feature-statu
 | [Platforms & apps](#platforms--apps) | 2 | 3 | 3 | 1 |
 | [Trust & transparency](#trust--transparency) | 0 | 1 | 1 | 8 |
 
+13 rows are deferred by D122 (OS-level integration and the native mobile apps); they stay on the list, marked.
+
 ## Where things stand
 
 No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser extension exists: extension/ holds only the wasm matcher boundary, its JSON schema and a Playwright clickjacking harness. The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI and the self-host server. The CLI still carries its own copy of the flows and handles logins only for item kinds. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 today; the plan leaves the licence open (05-self-host §12 asks Sean between AGPL-3.0 and a source-available licence for the server), so oss-clients and oss-server wait on that call. Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for desktop, CLI and server only; every one still needs its mobile and extension half when those surfaces exist.
@@ -67,20 +69,20 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser 
 
 ## Autofill (mobile & desktop OS)
 
-- [ ] **iOS AutoFill provider**: Not started · nowhere yet. Everything: the iOS app and its AutoFill credential provider extension.
-- [ ] **Android autofill and Credential Manager**: Not started · nowhere yet. Everything: the Android app, AutofillService and CredentialProviderService.
-- [ ] **Autofill health check**: Not started · nowhere yet. Everything: there is no OS provider or extension link to check yet.
-- [ ] **One-time-code AutoFill on iOS**: Not started · nowhere yet. Everything: one-time-code AutoFill needs the iOS app first.
-- [ ] **Native macOS AutoFill**: Not started · nowhere yet. Everything: the native macOS credential provider extension for passwords, passkeys and codes.
-- [ ] **Fill into any Mac app**: Not started · nowhere yet. Everything: accessibility-based fill on a global shortcut with a code-signature check.
+- [ ] **iOS AutoFill provider** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: the iOS app and its AutoFill credential provider extension.
+- [ ] **Android autofill and Credential Manager** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: the Android app, AutofillService and CredentialProviderService.
+- [ ] **Autofill health check** _(deferred: OS-level, D122)_: Not started · nowhere yet. Everything: there is no OS provider or extension link to check yet.
+- [ ] **One-time-code AutoFill on iOS** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: one-time-code AutoFill needs the iOS app first.
+- [ ] **Native macOS AutoFill** _(deferred: OS-level, D122)_: Not started · nowhere yet. Everything: the native macOS credential provider extension for passwords, passkeys and codes.
+- [ ] **Fill into any Mac app** _(deferred: OS-level, D122)_: Not started · nowhere yet. Everything: accessibility-based fill on a global shortcut with a code-signature check.
 
 ## Passkeys & WebAuthn
 
 - [ ] **Passkey storage and sync**: Partial · core, desktop, server. Creating and using passkeys (WebAuthn L3 provider on every platform); today a passkey can only be imported, stored, synced and viewed.
 - [ ] **Passkey management view**: Partial · core, desktop. Provider ID (AAGUID), backup flags, last use, and a delete that warns when it is the account's only sign-in.
-- [ ] **Phone as authenticator (iPhone)**: Not started · nowhere yet. Everything: needs the iOS credential provider.
-- [ ] **Phone as authenticator (Android)**: Not started · nowhere yet. Everything: needs the Android CredentialProviderService.
-- [ ] **Windows 11 passkey plugin**: Not started · nowhere yet. Everything: the COM IPluginAuthenticator plugin, Windows Hello verification and MSIX packaging.
+- [ ] **Phone as authenticator (iPhone)** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: needs the iOS credential provider.
+- [ ] **Phone as authenticator (Android)** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: needs the Android CredentialProviderService.
+- [ ] **Windows 11 passkey plugin** _(deferred: OS-level, D122)_: Not started · nowhere yet. Everything: the COM IPluginAuthenticator plugin, Windows Hello verification and MSIX packaging.
 - [ ] **Browser passkey fallback**: Not started · nowhere yet. Everything: the WebAuthn override where no OS provider exists, and the coexistence convention.
 - [ ] **Automatic passkey upgrade**: Not started · nowhere yet. Everything: needs the OS providers and passkey creation.
 - [ ] **WebAuthn Signal API handling**: Not started · nowhere yet. Everything: handling the three Signal API calls with soft delete and undo.
@@ -140,8 +142,8 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser 
 - [ ] **Lossless transfer**: Partial · core, desktop. Attachments, folders and history in the transfer, Wi-Fi in CXF's own type, and a per-item report of what the target app dropped.
 - [ ] **Importers from other managers**: Partial · core, desktop. Importers for 1PUX, Bitwarden JSON, Proton, KDBX, Dashlane, Keeper, LastPass and Enpass, sandboxed.
 - [ ] **Complete export**: Partial · core, desktop. Attachments, history and folders in the export, as an encrypted archive; export in the CLI.
-- [ ] **iOS credential exchange**: Not started · nowhere yet. Everything: needs the iOS app; the CXF model it would map through exists.
-- [ ] **Android credential exchange**: Not started · nowhere yet. Everything: needs the Android app; the CXF model it would map through exists.
+- [ ] **iOS credential exchange** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: needs the iOS app; the CXF model it would map through exists.
+- [ ] **Android credential exchange** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: needs the Android app; the CXF model it would map through exists.
 - [ ] **Encrypted export**: Not started · nowhere yet. Everything: Argon2id plus AEAD and age-recipient exports, with plaintext behind an extra confirm.
 - [ ] **Published backup format**: Not started · nowhere yet. Everything: the published backup format, its open-licence reference decoder, and KDBX export.
 - [ ] **Automatic local backups**: Not started · nowhere yet. Everything: scheduled encrypted backups to a chosen folder, the last-backup indicator and the emergency sheet.
@@ -180,8 +182,8 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser 
 - [ ] **Windows app**: Partial · desktop. A Windows build and test run in CI, MSIX packaging, the passkey plugin and auto-type.
 - [ ] **macOS app**: Partial · desktop. A signed macOS build for Apple silicon and Intel, and the native AutoFill and passkey extensions.
 - [ ] **Linux app**: Partial · desktop. Flatpak, deb and rpm packaging, the SSH agent and TPM-sealed unlock.
-- [ ] **iPhone and iPad app**: Not started · nowhere yet. Everything: the SwiftUI app and the UniFFI bindings.
-- [ ] **Android app**: Not started · nowhere yet. Everything: the Jetpack Compose app and F-Droid build.
+- [ ] **iPhone and iPad app** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: the SwiftUI app and the UniFFI bindings.
+- [ ] **Android app** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: the Jetpack Compose app and F-Droid build.
 - [ ] **Web vault**: Not started · nowhere yet. Everything: a web vault on the wasm core.
 - [ ] **Usable free tier**: Not code yet · nowhere yet. Needs the plan and pricing decision and its enforcement on the server.
 
@@ -189,8 +191,8 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser 
 
 - [ ] **Signed releases and SBOMs**: Partial · nowhere yet. Signed, attested releases, SBOMs and cargo-vet; there are no releases yet.
 - [ ] **Reproducible builds**: Not started · nowhere yet. Everything: reproducible extension, desktop and Android builds and an independent rebuilder.
-- [ ] **Open-source clients**: Not code yet · nowhere yet. Needs the licence choice: the plan says GPL-3.0 but the code is Apache-2.0 today; and a public repository.
-- [ ] **Open-source server**: Not code yet · nowhere yet. Needs the licence choice: the plan says AGPL but the server is Apache-2.0 today.
+- [ ] **Open-source clients**: Not code yet · nowhere yet. Needs the licence choice: the plan says GPL-3.0 but the code is Apache-2.0 today; and a public repository. Licence settled as Apache-2.0 for now (D120).
+- [ ] **Open-source server**: Not code yet · nowhere yet. Needs the licence choice: the plan says AGPL but the server is Apache-2.0 today. Licence settled as Apache-2.0 for now (D120).
 - [ ] **Published independent audits**: Not code yet · nowhere yet. Needs firms engaged and reports published, plus SOC 2.
 - [ ] **Public bug bounty**: Not code yet · nowhere yet. Needs a public bounty programme with malicious-server scenarios in scope.
 - [ ] **Security advisories in release notes**: Not code yet · nowhere yet. Needs a release process that lists advisory IDs and CVEs.

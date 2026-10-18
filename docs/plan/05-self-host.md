@@ -166,7 +166,7 @@ Vaultwarden is an unofficial Rust server for Bitwarden's clients. It is the clea
 ## 12. Open questions
 
 1. **One name or two products.** Does the bundle ship under one name, or as Lockdown and Mailbird with a documented pairing? One name is simpler to market and harder to keep honest about D2 ("each works alone"). Recommendation: two products, one bundle repository, one install command **[uncertain]** until the ecosystem has a name (01-identity §11).
-2. **Licence for the server that keeps self-hosting free.** The apps take an OSI-approved licence (D1 layer C). For the server, AGPL-3.0 keeps every hosted fork open; a source-available licence protects revenue but weakens the trust claim, as 2FAS's BUSL did (brief §7.2). Needs Sean's call before the first public commit of server code.
+2. ~~**Licence for the server that keeps self-hosting free.**~~ **Settled for now by D120: Apache-2.0 for clients and server.** The original question follows. The apps take an OSI-approved licence (D1 layer C). For the server, AGPL-3.0 keeps every hosted fork open; a source-available licence protects revenue but weakens the trust claim, as 2FAS's BUSL did (brief §7.2). Needs Sean's call before the first public commit of server code.
 3. Whether cross-publish of checkpoints (§6) is on or off by default. This doc says on, with the privacy sentence shown.
 4. Who owns the restore-drill schedule and alerts when the bundle runs only Lockdown: the Lockdown server must then carry the backup job itself.
 5. Hardware figures (§8) need measurement on a small ARM board and on a 2 GiB VPS.

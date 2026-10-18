@@ -34,13 +34,16 @@ for c, rs in cats.items():
     k = Counter(r["status"] for r in rs)
     anchor = "".join(ch for ch in c.lower().replace(" ", "-") if ch.isalnum() or ch == "-")
     out.append(f"| [{c}](#{anchor}) | {k['done']} | {k['partial']} | {k['not-started']} | {k['n/a-yet']} |")
-out.append("")
+deferred = sum(1 for r in rows if r.get("deferred"))
+out.append(f"\n{deferred} rows are deferred by D122 (OS-level integration and the native mobile apps); they stay on the list, marked.\n")
 out.append("## Where things stand\n")
 out.append(data["notes"] + "\n")
 for c, rs in cats.items():
     out.append(f"## {c}\n")
     for r in sorted(rs, key=lambda r: ORDER.index(r["status"])):
         review = " _(under review)_" if r["review"] else ""
+        if r.get("deferred"):
+            review += " _(deferred: " + {"os": "OS-level", "mobile": "native mobile"}[r["deferred"]] + ", D122)_"
         where = ", ".join(r["surfaces"]) if r["surfaces"] else "nowhere yet"
         out.append(f"- [{MARK[r['status']]}] **{r['name']}**{review}: {WORD[r['status']]} · {where}. {r['left']}")
     out.append("")
