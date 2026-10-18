@@ -3420,6 +3420,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "zeroize",
+ "zxcvbn",
 ]
 
 [[package]]

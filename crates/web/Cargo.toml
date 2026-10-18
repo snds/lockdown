@@ -27,6 +27,12 @@ serde.workspace = true
 serde_bytes.workspace = true
 serde_json.workspace = true
 zeroize.workspace = true
+# The strength meter's timer (lockdown-app's zxcvbn) on a wasm32 target
+# reads the browser's clock through wasm-bindgen, which a WASI module has
+# not; this feature takes the time from the import `zxcvbn.
+# unix_time_milliseconds_imported`, which the worker provides. Native
+# builds are unaffected (the feature only exists for wasm32).
+zxcvbn = { workspace = true, features = ["custom_wasm_env"] }
 
 [dev-dependencies]
 tempfile.workspace = true

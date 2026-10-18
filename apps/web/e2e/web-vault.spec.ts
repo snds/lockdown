@@ -95,13 +95,13 @@ test("sign in as a new device, find, create, edit, find, lock, unlock and sign o
 
   // Create a login.
   await page.getByRole("button", { name: "New item" }).click()
-  await page.getByRole("menuitem", { name: "Login" }).click()
+  await page.getByRole("menuitem", { name: /^\W*\w*\s*Login$/ }).first().click()
   const editor = page.getByRole("dialog")
   await editor.getByLabel("Title").fill("Example mail")
   await editor.getByLabel("Username").fill("me@example.com")
   await editor.getByLabel("Password", { exact: true }).fill("a-long-unique-password-1")
   await editor.getByLabel("Website").first().fill("https://mail.example.com")
-  await editor.getByRole("button", { name: "Add" }).click()
+  await editor.getByRole("button", { name: "Add", exact: true }).click()
   await expect(editor).toBeHidden()
   const row = page.getByRole("button", { name: /Example mail/ }).first()
   await expect(row).toBeVisible()
@@ -111,7 +111,7 @@ test("sign in as a new device, find, create, edit, find, lock, unlock and sign o
   await page.getByRole("button", { name: "Edit", exact: true }).click()
   const edit = page.getByRole("dialog")
   await edit.getByLabel("Title").fill("Example mail (work)")
-  await edit.getByRole("button", { name: "Save" }).click()
+  await edit.getByRole("button", { name: "Save", exact: true }).click()
   await expect(edit).toBeHidden()
 
   // Find it, and only it.

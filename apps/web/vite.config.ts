@@ -49,13 +49,33 @@ function subresourceIntegrity(): Plugin {
   }
 }
 
+/**
+ * Sonner (the toasts) writes its stylesheet into a `<style>` element when
+ * it loads, which the web vault's Content Security Policy refuses (no
+ * inline style). The same rules ship as `sonner/dist/styles.css`, which
+ * main.tsx imports, so the build drops the run-time copy. A sonner whose
+ * code no longer matches fails the build rather than the page.
+ */
+function sonnerWithoutInlineStyle(): Plugin {
+  return {
+    name: "lockdown-sonner-no-inline-style",
+    enforce: "pre",
+    transform(code, id) {
+      if (!/[\\/]sonner[\\/]dist[\\/]index\.m?js$/.test(id)) return null
+      const out = code.replace(/^__insertCSS\(".*"\);$/m, "")
+      if (out === code) throw new Error("sonner no longer injects its CSS the way this build expects; check vite.config.ts")
+      return { code: out, map: null }
+    },
+  }
+}
+
 if (process.env.NODE_ENV === "production" && !existsSync(wasm)) {
   throw new Error("apps/web/wasm/lockdown_web.wasm is missing: run `pnpm build:wasm` first")
 }
 
 export default defineConfig({
   base: "/vault/",
-  plugins: [react(), tailwindcss(), subresourceIntegrity()],
+  plugins: [sonnerWithoutInlineStyle(), react(), tailwindcss(), subresourceIntegrity()],
   define: {
     __LOCKDOWN_WASM_SHA384__: JSON.stringify(wasmHash()),
   },

@@ -433,7 +433,7 @@ impl WebVault {
         let locked = self.app.tick();
         #[cfg(not(target_os = "wasi"))]
         let locked = self.app.lock_state().map(|s| s.locked).unwrap_or(true);
-        if locked {
+        if locked && self.account.is_some() {
             self.forget_open_state();
         }
         locked
@@ -447,7 +447,13 @@ impl WebVault {
         }
     }
 
+    /// What an open vault needed, gone: the key file and the token. Only
+    /// for a signed-in tab: before a sign-in succeeds the key file is the
+    /// pending device key, which [`Self::start_empty`] keeps.
     fn forget_open_state(&mut self) {
+        if self.account.is_none() {
+            return;
+        }
         wipe_file(&self.paths.keystore());
         if let (Some(account), Some(store)) = (self.account.as_ref(), secrets::store()) {
             store.delete(&secrets::session_key(&account.server, &account.login));

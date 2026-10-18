@@ -98,6 +98,8 @@ export class Core {
     const instance = await WebAssembly.instantiate(options.module, {
       wasi_snapshot_preview1: wasi.imports(),
       lockdown,
+      // The password strength estimate's timer (zxcvbn's custom_wasm_env).
+      zxcvbn: { unix_time_milliseconds_imported: () => BigInt(Date.now()) },
     })
     const exports = instance.exports as unknown as Exports
     wasi.bind(exports.memory)

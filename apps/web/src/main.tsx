@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client"
 
 import { ClientProvider } from "@/core/client"
 
+import "sonner/dist/styles.css"
 import "./index.css"
 import { WebApp } from "./app/web-app"
 import { WebClipboard } from "./core/clipboard"

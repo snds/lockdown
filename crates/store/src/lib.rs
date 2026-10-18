@@ -15,8 +15,11 @@
 //!   table, every write to one vault in one transaction
 //! - [`MemoryStore`] — the in-memory store for tests, the offscreen
 //!   WASM document and the web vault
+//! - [`SnapshotStore`] — the same records as the SQLite file, kept in
+//!   memory and written whole to one file on every change, for a build
+//!   with no SQLite
 //! - [`DeviceStore`] — the store a device keeps its vaults in:
-//!   [`SqliteStore`] with the default `sqlite` feature, [`MemoryStore`]
+//!   [`SqliteStore`] with the default `sqlite` feature, [`SnapshotStore`]
 //!   without it (the web vault, docs/plan/17-web-vault.md)
 //! - [`HeadMemory`] — what this device remembers about each vault's newest
 //!   accepted head, kept in a separate file so a vault file put back from
@@ -30,6 +33,7 @@
 
 pub mod memory;
 pub mod remembered;
+pub mod snapshot;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 pub mod synced_identity;
@@ -38,6 +42,7 @@ pub mod transparency;
 pub use lockdown_vault::store::{Store, StoreError, StoreResult, VAULT_RECORD_V, VaultRecord};
 pub use memory::MemoryStore;
 pub use remembered::{HeadMemory, RememberedHead, write_private};
+pub use snapshot::SnapshotStore;
 #[cfg(feature = "sqlite")]
 pub use sqlite::{SCHEMA_VERSION, SqliteStore};
 pub use synced_identity::{AcceptError, SyncedIdentity};
@@ -50,10 +55,11 @@ pub type Result<T> = StoreResult<T>;
 #[cfg(feature = "sqlite")]
 pub type DeviceStore = SqliteStore;
 
-/// The store a device keeps its vaults in: memory only, in a build with no
-/// SQLite (the web vault, where the vault lives as long as the tab).
+/// The store a device keeps its vaults in, in a build with no SQLite: the
+/// same records in one snapshot file (in the web vault, a file in the
+/// worker's memory, which outlives a lock and dies with the tab).
 #[cfg(not(feature = "sqlite"))]
-pub type DeviceStore = MemoryStore;
+pub type DeviceStore = SnapshotStore;
 
 /// Opens the device's store at `path`: the SQLite file, made when missing.
 #[cfg(feature = "sqlite")]
@@ -61,10 +67,10 @@ pub fn open_device_store(path: &std::path::Path) -> StoreResult<DeviceStore> {
     SqliteStore::open(path)
 }
 
-/// Opens the device's store: an empty one in memory. `path` is where the
-/// SQLite file would be; nothing is written there.
+/// Opens the device's store beside `path` (where the SQLite file would
+/// be): the snapshot file of the same name ending `.store`, empty when
+/// missing.
 #[cfg(not(feature = "sqlite"))]
 pub fn open_device_store(path: &std::path::Path) -> StoreResult<DeviceStore> {
-    let _ = path;
-    Ok(MemoryStore::new())
+    SnapshotStore::open(&path.with_extension("store"))
 }

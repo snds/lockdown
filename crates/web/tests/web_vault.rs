@@ -150,7 +150,18 @@ fn two_tabs_sign_in_with_the_secret_key_and_share_one_vault_with_the_desktop() {
         json!({ "server": url, "login": LOGIN, "password": "not the password", "secretKey": secret_key }),
     );
     assert!(wrong.message.contains("didn't match"), "{}", wrong.message);
+    let malformed = err(
+        &mut second,
+        "web_sign_in",
+        json!({ "server": url, "login": LOGIN, "password": PASSWORD, "secretKey": "A1-NOT-THE-KEY" }),
+    );
+    assert_eq!(malformed.code, lockdown_app::ErrorCode::Refused);
+    // The worker ticks every second between attempts; that keeps the
+    // pending key too.
+    assert_eq!(ok(&mut second, "tick", json!({})), json!(true));
 
+    // The attempts that reached the server were this tab's one pending
+    // device, which the next sign-in enrols: no stranger in the log.
     sign_in(&mut second, &url, &secret_key, None);
     assert_eq!(titles(&mut second), vec!["Netflix"]);
     let pw = bytes(&mut second, "reveal", json!({ "id": netflix, "fieldId": "pw" }));
