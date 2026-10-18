@@ -77,8 +77,8 @@ jobs:
           cache-dependency-path: extension/pnpm-lock.yaml
       - name: Install
         run: pnpm install --frozen-lockfile
-      - name: Chromium
-        run: pnpm exec playwright install --with-deps chromium
+      - name: Chromium and Firefox
+        run: pnpm exec playwright install --with-deps chromium firefox
       - name: Build wasm
         run: pnpm run build:wasm
       - name: Build the native host and the desktop endpoint fixture
@@ -87,7 +87,11 @@ jobs:
         run: pnpm typecheck
       - name: Build the extension (Chromium and Firefox)
         run: pnpm build
+      # Firefox runs too (test/firefox.spec.ts); here a missing Firefox is
+      # a failure, not a skip.
       - name: Red team and end to end in the browser
+        env:
+          LOCKDOWN_REQUIRE_FIREFOX: "1"
         run: pnpm test
       - uses: actions/upload-artifact@v4
         if: failure()

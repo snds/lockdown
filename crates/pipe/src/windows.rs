@@ -50,9 +50,9 @@ use windows_sys::Win32::Storage::FileSystem::{
 };
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 use windows_sys::Win32::System::Pipes::{
-    ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeClientProcessId,
-    GetNamedPipeServerProcessId, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE,
-    PIPE_UNLIMITED_INSTANCES, PIPE_WAIT, WaitNamedPipeW,
+    ConnectNamedPipe, CreateNamedPipeW, GetNamedPipeClientProcessId, GetNamedPipeServerProcessId,
+    PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES,
+    PIPE_WAIT, WaitNamedPipeW,
 };
 use windows_sys::Win32::System::Threading::{
     CreateEventW, GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_NAME_WIN32,
@@ -321,7 +321,10 @@ impl Peer {
     }
 }
 
-/// One connection over the pipe.
+/// One connection over the pipe. Dropping it closes the handle and never
+/// calls `DisconnectNamedPipe`, which would throw away what the other end
+/// has not read yet (a last `refused` frame, say); each instance serves
+/// one connection, so there is nothing to reuse.
 pub struct PipeChannel {
     pipe: Owned,
     server: bool,
@@ -434,15 +437,6 @@ impl PipeChannel {
             }
         }
         Ok(())
-    }
-}
-
-impl Drop for PipeChannel {
-    fn drop(&mut self) {
-        if self.server {
-            // SAFETY: the handle is a server end this channel owns.
-            unsafe { DisconnectNamedPipe(self.pipe.0) };
-        }
     }
 }
 
