@@ -391,7 +391,10 @@ mod tests {
         let a = p.hold("/home/ada/export.lockdown".into());
         assert_eq!(a.name, "export.lockdown");
         assert_eq!(p.get(a.token).unwrap().display().to_string(), a.path);
-        assert!(p.get(a.token + 1).is_none(), "a number never handed out names nothing");
+        assert!(
+            p.get(a.token + 1).is_none(),
+            "a number never handed out names nothing"
+        );
         assert!(p.take(a.token).is_some());
         assert!(p.get(a.token).is_none());
         for i in 0..10 {

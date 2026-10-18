@@ -30,7 +30,7 @@ pub fn export_opted_in(fields: &[PlainField]) -> bool {
 /// Whether a field id is one the app keeps for itself (never drawn as a
 /// field, never named by an edit).
 pub fn is_reserved_field(field_id: &str) -> bool {
-    field_id.starts_with("lockdown.")
+    crate::compose::is_reserved(field_id)
 }
 
 /// A file to attach as an item comes in.

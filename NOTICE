@@ -7,3 +7,8 @@ of the License at http://www.apache.org/licenses/LICENSE-2.0.
 
 This project consumes the ecosystem-identity crate
 (https://github.com/snds/ecosystem-identity), also under Apache-2.0.
+
+The security center's two-step sign-in data (crates/security/data/2fa-directory.json)
+is a snapshot of 2fa.directory (https://github.com/2factorauth/twofactorauth),
+Copyright (c) 2021 2factorauth and Contributors and (c) 2014-2020 Josh Davis,
+under the MIT License; the full notice is in crates/security/data/2fa-directory.LICENSE.

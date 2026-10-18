@@ -62,6 +62,7 @@ use crate::views;
 mod backup;
 mod codes;
 pub mod items;
+pub(crate) mod security;
 pub(crate) mod transfer;
 
 const KEYSTORE_FILE: &str = "device-key.cbor";
@@ -691,9 +692,10 @@ impl Session {
         let item = vault.item(item_id).map_err(|e| e.to_string())?;
         let latest = item.latest().map_err(|e| e.to_string())?;
         let fields = vault.open_item(item_id).map_err(|e| e.to_string())?;
+        // Lockdown's own fields (the security center's settings) are never shown.
         let views = fields
             .iter()
-            .filter(|f| !lockdown_vault::is_reserved_field(&f.field_id))
+            .filter(|f| !lockdown_vault::is_reserved(&f.field_id))
             .map(|f| field_view(f, reveal))
             .collect();
         Ok(ItemDetail {

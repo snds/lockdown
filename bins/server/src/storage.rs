@@ -305,6 +305,10 @@ pub trait Storage: Send + Sync {
     /// Writes a consistent copy of the whole store to `path` (the backup
     /// job's primitive, 05-self-host §4).
     fn snapshot_to(&self, path: &Path) -> Result<()>;
+    /// The account alerts (`crate::alerts`), when this store keeps them.
+    fn alerts(&self) -> Option<&dyn crate::alerts::AlertStore> {
+        None
+    }
 }
 
 /// The SQLite backend.
@@ -520,13 +524,14 @@ impl SqliteStorage {
                 .map_err(backend)?;
             }
         }
+        crate::alerts::create_tables(&conn).map_err(backend)?;
         Ok(Self {
             path,
             conn: Mutex::new(conn),
         })
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, Connection> {
+    pub(crate) fn lock(&self) -> std::sync::MutexGuard<'_, Connection> {
         // A poisoned lock means a handler panicked mid-call; the database
         // itself is transactional, so carrying on is safe.
         self.conn
@@ -1424,5 +1429,9 @@ impl Storage for SqliteStorage {
         conn.execute("VACUUM INTO ?1", params![target])
             .map_err(backend)?;
         Ok(())
+    }
+
+    fn alerts(&self) -> Option<&dyn crate::alerts::AlertStore> {
+        Some(self)
     }
 }

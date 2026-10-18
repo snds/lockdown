@@ -9,6 +9,7 @@ pub mod approver;
 pub mod clipboard;
 pub mod codes;
 pub mod items;
+pub mod security;
 pub mod transfer;
 
 #[cfg(feature = "shell")]

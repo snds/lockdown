@@ -23,6 +23,18 @@ use crate::{Error, Result};
 /// The match rule a new web address gets (the importers' default).
 pub const DEFAULT_MATCH_RULE: &str = "exact_host";
 
+/// Fields whose id starts with this are kept by Lockdown itself, not by a
+/// person: the security center's per-item settings (`lockdown.security`,
+/// docs/plan/13-security-center.md). They sync and export with the item
+/// like any field, a shell never sees them in `show`, an edit keeps them
+/// without naming them, and an add or edit that names one is refused.
+pub const RESERVED_PREFIX: &str = "lockdown.";
+
+/// Whether `field_id` is one of Lockdown's own ([`RESERVED_PREFIX`]).
+pub fn is_reserved(field_id: &str) -> bool {
+    field_id.starts_with(RESERVED_PREFIX)
+}
+
 /// A value as a shell sends it.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum FieldInput {
@@ -412,6 +424,11 @@ fn no_repeats(changes: &[FieldChange]) -> Result<()> {
         if id == "title" {
             return Err(invalid("the title is passed on its own, not as a field"));
         }
+        if is_reserved(id) {
+            return Err(invalid(format!(
+                "'{id}' is kept by Lockdown itself and isn't changed from an editor"
+            )));
+        }
         if !seen.insert(id) {
             return Err(invalid(format!("'{id}' is named twice")));
         }
@@ -516,29 +533,10 @@ pub fn compose_edit(
             })
             .unwrap_or_default(),
     };
-    // The app's own fields (the export opt-in, D121) ride along unnamed,
-    // as the title does: no editor draws them, so none can name them.
-    let reserved: Vec<PlainField> = existing
+    for f in existing
         .iter()
-        .filter(|f| crate::vault::is_reserved_field(&f.field_id))
-        .cloned()
-        .collect();
-    if changes
-        .iter()
-        .filter_map(|c| c.field_id.as_deref())
-        .any(crate::vault::is_reserved_field)
+        .filter(|f| f.field_id != "title" && !is_reserved(&f.field_id))
     {
-        return Err(invalid(
-            "that field is the app's own and isn't changed by an edit",
-        ));
-    }
-    let existing: Vec<PlainField> = existing
-        .iter()
-        .filter(|f| !crate::vault::is_reserved_field(&f.field_id))
-        .cloned()
-        .collect();
-    let existing = existing.as_slice();
-    for f in existing.iter().filter(|f| f.field_id != "title") {
         if !changes
             .iter()
             .any(|c| c.field_id.as_deref() == Some(f.field_id.as_str()))
@@ -551,8 +549,13 @@ pub fn compose_edit(
     }
     let mut fields: Vec<PlainField> = Vec::new();
     let mut customs = Vec::new();
-    // Existing fields first, in their order, so an untouched item keeps its shape.
+    // Existing fields first, in their order, so an untouched item keeps its
+    // shape; Lockdown's own fields ride along as they are.
     for f in existing.iter().filter(|f| f.field_id != "title") {
+        if is_reserved(&f.field_id) {
+            fields.push(f.clone());
+            continue;
+        }
         let change = changes
             .iter()
             .find(|c| c.field_id.as_deref() == Some(f.field_id.as_str()))
@@ -646,9 +649,7 @@ pub fn compose_edit(
     }
     missing_required(template, &fields)?;
     derive(kind, &mut fields);
-    let mut out = ordered(template, title, fields);
-    out.extend(reserved);
-    Ok(out)
+    Ok(ordered(template, title, fields))
 }
 
 #[cfg(test)]
@@ -1124,7 +1125,7 @@ mod tests {
         )
         .unwrap();
         assert!(crate::export_opted_in(&fields), "kept, unnamed");
-        assert_eq!(ids(&fields), ["title", "seed", crate::EXPORT_OPT_IN]);
+        assert!(ids(&fields).contains(&crate::EXPORT_OPT_IN));
         let err = compose_edit(
             ItemKind::CryptoWallet,
             &existing,
@@ -1135,6 +1136,62 @@ mod tests {
             ],
         )
         .unwrap_err();
-        assert!(err.to_string().contains("the app's own"), "{err}");
+        assert!(err.to_string().contains("kept by Lockdown"), "{err}");
+    }
+
+    #[test]
+    fn lockdowns_own_fields_ride_along_and_cannot_be_named() {
+        let (_, mut before) = compose_new(
+            ItemKind::Login,
+            "Example",
+            false,
+            vec![
+                FieldChange::text("user", "me"),
+                FieldChange::secret("pw", b"hunter2"),
+            ],
+        )
+        .unwrap();
+        before.push(PlainField::text(
+            "lockdown.security",
+            "Security review",
+            r#"{"weak":{"until":null}}"#,
+        ));
+        // An edit that names only the person's fields keeps Lockdown's own.
+        let after = compose_edit(
+            ItemKind::Login,
+            &before,
+            Some("Example"),
+            vec![FieldChange::text("user", "me2"), FieldChange::keep("pw")],
+        )
+        .unwrap();
+        assert_eq!(
+            text_of(&after, "lockdown.security").as_deref(),
+            Some(r#"{"weak":{"until":null}}"#)
+        );
+        assert_eq!(text_of(&after, "user").as_deref(), Some("me2"));
+        // Naming it, in an edit or an add, is refused.
+        for change in [
+            FieldChange::keep("lockdown.security"),
+            FieldChange::text("lockdown.security", "{}"),
+        ] {
+            let err = compose_edit(
+                ItemKind::Login,
+                &before,
+                None,
+                vec![FieldChange::keep("user"), FieldChange::keep("pw"), change],
+            )
+            .unwrap_err();
+            assert!(err.to_string().contains("kept by Lockdown"), "{err}");
+        }
+        assert!(
+            compose_new(
+                ItemKind::Login,
+                "x",
+                false,
+                vec![FieldChange::text("lockdown.security", "{}")]
+            )
+            .is_err()
+        );
+        assert!(is_reserved("lockdown.security") && !is_reserved("custom.0"));
     }
 }

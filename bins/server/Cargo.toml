@@ -28,6 +28,10 @@ serde.workspace = true
 serde_bytes.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+# The email breach monitor's feed client (breach_monitor.rs): blocking, on
+# its own thread, TLS through rustls on the `ring` provider.
+reqwest = { workspace = true }
+rustls = { workspace = true }
 
 [dev-dependencies]
 tower.workspace = true

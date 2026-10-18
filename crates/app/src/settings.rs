@@ -67,6 +67,17 @@ pub struct Settings {
     pub hidden_lock_secs: Option<u64>,
     /// The server the join, register and log-in forms suggest.
     pub server: Option<String>,
+    /// Whether the security center checks stored passwords against known
+    /// breaches (five hex characters of each password's SHA-1 leave the
+    /// device; docs/plan/13-security-center.md).
+    pub breach_check: bool,
+    /// Where the breach ranges come from: an `https://` range API (the
+    /// prefix is appended) or `file:///folder` of range files. `None` is
+    /// the public Pwned Passwords API.
+    pub breach_endpoint: Option<String>,
+    /// Whether "Change password" asks the site whether it has a
+    /// change-password page before offering it.
+    pub change_password_check: bool,
     /// Automatic encrypted backups (preferences only: the key they are
     /// sealed under lives in `backup-key.cbor`, sealed under the vault's
     /// key, never here).
@@ -110,6 +121,9 @@ impl Default for Settings {
             idle_lock_secs: policy.idle.map(|d| d.as_secs()),
             hidden_lock_secs: policy.hidden.map(|d| d.as_secs()),
             server: None,
+            breach_check: true,
+            breach_endpoint: None,
+            change_password_check: true,
             backup: BackupSettings::default(),
         }
     }
@@ -155,6 +169,12 @@ impl Settings {
         s.hidden_lock_secs = s.hidden_lock_secs.map(|n| n.clamp(10, 4 * 3600));
         s.server = s
             .server
+            .as_deref()
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(str::to_string);
+        s.breach_endpoint = s
+            .breach_endpoint
             .as_deref()
             .map(str::trim)
             .filter(|t| !t.is_empty())
@@ -300,6 +320,9 @@ mod tests {
             "idle_lock_secs",
             "hidden_lock_secs",
             "server",
+            "breach_check",
+            "breach_endpoint",
+            "change_password_check",
             "backup",
         ]
         .into_iter()
@@ -318,5 +341,31 @@ mod tests {
                 .into(),
             "the backup key is never in the settings file"
         );
+    }
+
+    #[test]
+    fn the_security_checks_default_on_and_an_older_file_reads_them_as_on() {
+        let s = Settings::default();
+        assert!(s.breach_check && s.change_password_check);
+        assert_eq!(s.breach_endpoint, None);
+        // A file written before the security center existed.
+        #[derive(serde::Serialize)]
+        struct Older {
+            v: u16,
+            server: Option<String>,
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(SETTINGS_FILE);
+        let bytes = lockdown_crypto::cbor::to_canonical(&Older { v: 1, server: None }).unwrap();
+        std::fs::write(&path, bytes).unwrap();
+        let loaded = Settings::load(&path).unwrap();
+        assert!(loaded.breach_check && loaded.change_password_check);
+        // An empty source is the public one.
+        let blank = Settings {
+            breach_endpoint: Some("   ".into()),
+            ..Settings::default()
+        }
+        .clamped();
+        assert_eq!(blank.breach_endpoint, None);
     }
 }
