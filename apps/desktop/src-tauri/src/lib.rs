@@ -9,6 +9,7 @@ pub mod approver;
 pub mod browser;
 pub mod clipboard;
 pub mod codes;
+pub mod depth;
 pub mod items;
 pub mod live;
 pub mod organization;

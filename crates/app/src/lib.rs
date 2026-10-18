@@ -43,6 +43,7 @@ use std::time::{Instant, SystemTime};
 
 pub use approval::{Approval, ApprovalKind, Approver, GateInput, PasswordApprover, Route};
 pub use lock::{LockPolicy, LockReason};
+pub use lockdown_crypto::generator::Recipe;
 pub use lockdown_vault::{Change, FieldChange, FieldInput, FieldKind};
 pub use revealed::Revealed;
 pub use security::{Dismissal, Finding, SecurityReport};

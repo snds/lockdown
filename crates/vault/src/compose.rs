@@ -1893,10 +1893,7 @@ mod tests {
             vec![FieldChange::new("pw", words.clone())],
         )
         .unwrap();
-        assert_eq!(
-            text_of(&fields, "pw").unwrap().split('-').count() >= 4,
-            true
-        );
+        assert!(text_of(&fields, "pw").unwrap().split('-').count() >= 4);
         let site = SiteRule::parse("minlength: 6; maxlength: 6; required: digit;").unwrap();
         let (_, fields) = compose_new(
             ItemKind::Login,

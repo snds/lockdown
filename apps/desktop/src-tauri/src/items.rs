@@ -21,7 +21,9 @@
 //! A secret is a byte array, never a string, and is wiped when the input
 //! drops; `set` carries exactly one of `text`, `secret` or `flag`.
 
-use lockdown_app::{AppError, AppResult, Change, FieldChange, FieldInput, field_kind_named};
+use lockdown_app::{
+    AppError, AppResult, Change, FieldChange, FieldInput, Recipe, field_kind_named,
+};
 use serde::Deserialize;
 use zeroize::{Zeroize, Zeroizing};
 
@@ -37,6 +39,10 @@ pub struct FieldChangeInput {
     flag: Option<bool>,
     #[serde(default)]
     match_rule: Option<String>,
+    /// With `generate`: the person's options (D230), `{"style": "words",
+    /// "words": 6}` or `{"style": "characters", "length": 24, …}`.
+    #[serde(default)]
+    recipe: Option<Recipe>,
 }
 
 impl Drop for FieldChangeInput {
@@ -79,8 +85,14 @@ impl FieldChangeInput {
                     self.action
                 )));
             }
+            _ if self.recipe.is_some() && self.action != "generate" => {
+                return Err(refused(format!("{name}: options go with 'generate' only")));
+            }
             "keep" => Change::Keep,
-            "generate" => Change::Generate,
+            "generate" => match self.recipe.take() {
+                Some(recipe) => Change::GenerateWith(recipe, None),
+                None => Change::Generate,
+            },
             "remove" => Change::Remove,
             "set" => {
                 if values != 1 {
@@ -136,6 +148,38 @@ mod tests {
     fn parse(json: &str) -> AppResult<Vec<FieldChange>> {
         let inputs: Vec<FieldChangeInput> = serde_json::from_str(json).unwrap();
         into_changes(inputs)
+    }
+
+    #[test]
+    fn a_generate_carries_the_persons_options() {
+        let changes = parse(
+            r#"[{"field_id": "pw", "action": "generate", "recipe": {"style": "words", "words": 5, "separator": " "}},
+                {"field_id": "pin", "action": "generate", "recipe": {"style": "characters", "length": 12, "digits": true, "symbols": false}}]"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            &changes[0].change,
+            Change::GenerateWith(lockdown_app::Recipe::Words { words: 5, separator, .. }, None) if separator == " "
+        ));
+        assert!(matches!(
+            &changes[1].change,
+            Change::GenerateWith(
+                lockdown_app::Recipe::Characters {
+                    length: 12,
+                    symbols: false,
+                    ..
+                },
+                None
+            )
+        ));
+        assert!(parse(r#"[{"field_id": "pw", "action": "keep", "recipe": {"style": "words", "words": 5}}]"#).is_err());
+        // A style the core doesn't know doesn't even read.
+        assert!(
+            serde_json::from_str::<Vec<FieldChangeInput>>(
+                r#"[{"field_id": "pw", "action": "generate", "recipe": {"style": "emoji"}}]"#
+            )
+            .is_err()
+        );
     }
 
     #[test]

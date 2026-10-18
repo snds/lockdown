@@ -333,7 +333,7 @@ pub fn bytes_words(n: u64) -> String {
     for (size, unit) in UNITS {
         if n >= size {
             let tenths = (n * 10 + size / 2) / size;
-            return if tenths % 10 == 0 {
+            return if tenths.is_multiple_of(10) {
                 format!("{} {unit}", tenths / 10)
             } else {
                 format!("{}.{} {unit}", tenths / 10, tenths % 10)

@@ -1422,7 +1422,7 @@ mod tests {
         // 02-model §4 and the matrix: 25 or more typed templates.
         let creatable = TEMPLATES.iter().filter(|t| t.creatable).count();
         assert_eq!(creatable, 30);
-        assert!(creatable - 1 >= 25, "25+ typed, the custom item aside");
+        assert!(creatable > 25, "25+ typed, the custom item aside");
         assert_eq!(
             template_named("identity"),
             Some(template_for(ItemKind::Identity))
