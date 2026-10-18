@@ -220,4 +220,41 @@ describe("a sign-in that waits for a security key", () => {
     await waitFor(() => expect(onOpened).toHaveBeenCalled(), SLOW)
     expect(openVault).toHaveBeenCalledWith(true)
   })
+
+  it("waits for the emailed approval link without opening a page", async () => {
+    const accountLogin = vi.fn(() =>
+      Promise.reject({
+        code: "approval_needed",
+        message: "the server emailed a link to s•••@example.com: open it and choose Approve, and this device carries on by itself",
+        detail: "email",
+      }),
+    )
+    const openVault = vi.fn(() => Promise.resolve({ devices: 2 } as never))
+    const secondFactorOpen = vi.fn(() => Promise.resolve())
+    const secondFactorWait = vi.fn(() => Promise.resolve(["enrolled"]))
+    const onOpened = vi.fn()
+    render(
+      <ClientProvider
+        value={fakeClient({
+          accountLogin,
+          openVault,
+          probe: () => Promise.resolve({ root: "/r", data: "/d", identity_present: false, device_key_present: false, account_present: false, device_name: "test" }),
+        })}
+      >
+        <DepthClientProvider value={fakeDepth({ secondFactorOpen, secondFactorWait })}>
+          <UnlockScreen onOpened={onOpened} />
+        </DepthClientProvider>
+      </ClientProvider>,
+    )
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole("tab", { name: "Join" }))
+    await user.type(screen.getByLabelText("Server"), "https://vault.example")
+    await user.type(screen.getByLabelText("Login name"), "sean@example.com")
+    await user.type(screen.getByLabelText("Account password"), "a long account password")
+    await user.click(screen.getByRole("button", { name: "Join" }))
+    expect(await screen.findByText(/^The server emailed a link to s•••@example\.com/)).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Open the page again" })).not.toBeInTheDocument()
+    await waitFor(() => expect(onOpened).toHaveBeenCalled(), SLOW)
+    expect(secondFactorOpen).not.toHaveBeenCalled()
+  })
 })

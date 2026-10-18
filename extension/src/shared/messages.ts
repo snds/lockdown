@@ -35,6 +35,7 @@ export type ToBackground =
   | { t: "pair" }
   | { t: "search"; query: string }
   | { t: "copy"; item_id: string; tab_id?: number }
+  | { t: "code_show"; item_id: string }
   | { t: "site"; tab_id?: number }
   | { t: "fill_tab"; tab_id: number; item_id: string }
   | { t: "change_link"; item_id: string }

@@ -7,11 +7,17 @@ use ecosystem_identity::SymmetricKey;
 use secrecy::{ExposeSecret, SecretBox};
 use zeroize::Zeroizing;
 
+use crate::locked::PageLock;
+
 /// A 256-bit symmetric key. It implements the identity crate's
 /// [`SymmetricKey`], so it can be handed to that crate's `wrap` and `unwrap`
 /// unchanged. Lockdown's own key types (vault, item, version, attachment)
-/// are newtypes over this.
-pub struct Key32(SecretBox<[u8; 32]>);
+/// are newtypes over this. Its page is locked out of swap while it lives
+/// ([`crate::locked`]).
+pub struct Key32 {
+    key: SecretBox<[u8; 32]>,
+    _pages: Option<PageLock>,
+}
 
 impl Key32 {
     /// A fresh random key.
@@ -22,11 +28,16 @@ impl Key32 {
 
 impl SymmetricKey for Key32 {
     fn from_bytes(bytes: [u8; 32]) -> Self {
-        Self(SecretBox::new(Box::new(bytes)))
+        let boxed = SecretBox::new(Box::new(bytes));
+        let lock = PageLock::of(boxed.expose_secret());
+        Self {
+            key: boxed,
+            _pages: lock,
+        }
     }
 
     fn expose(&self) -> &[u8; 32] {
-        self.0.expose_secret()
+        self.key.expose_secret()
     }
 }
 
@@ -43,29 +54,33 @@ impl fmt::Debug for Key32 {
 }
 
 /// Plaintext bytes that are wiped when dropped: a decrypted field, a
-/// password, a seed phrase. Debug prints only the length.
-pub struct SecretBytes(Zeroizing<Vec<u8>>);
+/// password, a seed phrase. Debug prints only the length. Its pages are
+/// locked out of swap while it lives ([`crate::locked`]).
+pub struct SecretBytes {
+    bytes: Zeroizing<Vec<u8>>,
+    _pages: Option<PageLock>,
+}
 
 impl SecretBytes {
     /// Takes ownership of `bytes`; they are wiped when this value drops.
     pub fn new(bytes: Vec<u8>) -> Self {
-        Self(Zeroizing::new(bytes))
+        Self::from(Zeroizing::new(bytes))
     }
 
     /// The bytes. Use them at once; never copy them into a `String` that
     /// outlives this value.
     pub fn expose(&self) -> &[u8] {
-        &self.0
+        &self.bytes
     }
 
     /// How many bytes.
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.bytes.len()
     }
 
     /// Whether there are no bytes.
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.bytes.is_empty()
     }
 }
 
@@ -77,13 +92,17 @@ impl From<Vec<u8>> for SecretBytes {
 
 impl From<Zeroizing<Vec<u8>>> for SecretBytes {
     fn from(v: Zeroizing<Vec<u8>>) -> Self {
-        Self(v)
+        let lock = PageLock::of(&v);
+        Self {
+            bytes: v,
+            _pages: lock,
+        }
     }
 }
 
 impl fmt::Debug for SecretBytes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "SecretBytes({} bytes)", self.0.len())
+        write!(f, "SecretBytes({} bytes)", self.bytes.len())
     }
 }
 

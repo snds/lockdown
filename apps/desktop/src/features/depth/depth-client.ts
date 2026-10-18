@@ -225,3 +225,8 @@ export function promptFor(r: RemindersView | null): "kit-test" | "password" | "d
 export function needsSecurityKey(e: unknown): boolean {
   return isAppError(e) && e.code === "approval_needed" && e.detail === "security_key"
 }
+
+/** Whether an error is the core saying the server emailed a link to approve this new device. */
+export function needsEmailApproval(e: unknown): boolean {
+  return isAppError(e) && e.code === "approval_needed" && e.detail === "email"
+}

@@ -25,11 +25,13 @@ use ecosystem_identity::SymmetricKey as _;
 use ecosystem_identity::kem::{KemAlg, KemPublicKey};
 use ecosystem_identity::keystore::DeviceKeystore;
 use ecosystem_identity::records::Profile;
-use ecosystem_identity::{Head, Identity};
+use ecosystem_identity::{Head, Identity, Record as _};
 use lockdown_crypto::pq_sign::{PqSigningKey, PqVerifyingKey};
 
 use crate::identity_set::IdentityManifest;
 use crate::{Error, Result};
+#[cfg(test)]
+use ecosystem_identity::records::Id;
 
 /// The profile field publishing the identity's ML-DSA-65 public key.
 pub const PQ_ISK_FIELD: &str = "lockdown.pq_isk";
@@ -100,6 +102,80 @@ pub fn publish_key(identity: &mut Identity, keystore: &dyn DeviceKeystore) -> Re
     )
 }
 
+// --- the rollout rule (D248's audit item; docs/plan/26-desktop-finish.md §10) ----
+//
+// A client from before the post-quantum signature decodes a manifest that
+// carries `pq_sig` but drops the field when it re-encodes one, so its hash
+// of the manifest differs and its chain check fails. So the key is
+// published (and with it, the second signature required) only once every
+// device of the identity says it reads and keeps the field: each device
+// marks its own `Device` record (`lockdown.pq`, signed by the identity key
+// like a rename; the identity crate keeps fields it doesn't know), and a
+// device publishes the key only when every device not revoked carries the
+// mark. Once published it stays; a device added later is a build that
+// already reads it, since it is this build or newer.
+
+/// The `Device` record field a device marks to say what it supports.
+pub const SUPPORT_FIELD: &str = "lockdown.pq";
+/// What this build supports: 1 reads, keeps and checks `pq_sig` on
+/// identity manifests.
+pub const SUPPORT_LEVEL: u64 = 1;
+
+/// Whether `device` says it supports the post-quantum signatures.
+pub fn supports(device: &ecosystem_identity::records::Device) -> bool {
+    matches!(device.extra.get(SUPPORT_FIELD), Some(ciborium::Value::Integer(n)) if i128::from(*n) >= i128::from(SUPPORT_LEVEL))
+}
+
+/// The devices not revoked that don't say so yet, by name: who holds the
+/// post-quantum signature back.
+pub fn devices_without_support(identity: &Identity) -> Vec<String> {
+    identity
+        .devices()
+        .filter(|d| d.revoked_at.is_none() && !supports(d))
+        .map(|d| d.name.clone())
+        .collect()
+}
+
+/// Marks this device's record as supporting the post-quantum signatures,
+/// once. Returns the new head when it wrote one.
+pub fn mark_this_device(
+    identity: &mut Identity,
+    keystore: &dyn DeviceKeystore,
+) -> Result<Option<Head>> {
+    crate::identity::check_manager_public(identity)?;
+    let device_id = identity.device_id();
+    crate::identity::write_identity_store(identity, keystore, |contents, isk| {
+        let device = contents
+            .devices
+            .get_mut(&device_id)
+            .ok_or_else(|| Error::NotFound(format!("device {device_id} in this identity")))?;
+        if supports(device) {
+            return Ok(false);
+        }
+        device.extra.insert(
+            SUPPORT_FIELD.to_string(),
+            ciborium::Value::Integer(SUPPORT_LEVEL.into()),
+        );
+        device.sign(isk.inner())?;
+        Ok(true)
+    })
+}
+
+/// The rollout rule: marks this device, then publishes the key only when
+/// every device not revoked supports it (or it is published already).
+/// Answers whether the key is published now.
+pub fn roll_out(identity: &mut Identity, keystore: &dyn DeviceKeystore) -> Result<bool> {
+    mark_this_device(identity, keystore)?;
+    if published_key(identity.profile())?.is_some() {
+        return Ok(true);
+    }
+    if !devices_without_support(identity).is_empty() {
+        return Ok(false);
+    }
+    publish_key(identity, keystore)?;
+    Ok(true)
+}
+
 /// Adds the ML-DSA-65 signature to a manifest already signed with Ed25519.
 pub fn sign_manifest(manifest: &mut IdentityManifest, key: &PqSigningKey) -> Result<()> {
     let sig = key.sign(&manifest.signable()?, MANIFEST_CONTEXT)?;
@@ -141,5 +217,57 @@ mod tests {
         require_hybrid(&hybrid, "Sam").unwrap();
         let err = require_hybrid(&classical, "Sam").unwrap_err().to_string();
         assert!(err.contains("Sam has only a classical"), "{err}");
+    }
+
+    #[test]
+    fn the_key_is_published_only_once_every_device_says_it_keeps_the_signature() {
+        use ecosystem_identity::FileKeystore;
+        let dir = tempfile::tempdir().unwrap();
+        let keystore = FileKeystore::open_or_create(&dir.path().join("a.cbor")).unwrap();
+        let mut identity =
+            Identity::create(&dir.path().join("a"), "lockdown", "a", &keystore).unwrap();
+        // A second device from an older build: its record has no mark.
+        let older = Id::new();
+        crate::identity::write_identity_store(&mut identity, &keystore, |contents, isk| {
+            let mut d = contents.devices.values().next().unwrap().clone();
+            d.device_id = older;
+            d.name = "Lockdown on the old laptop".into();
+            d.extra.remove(SUPPORT_FIELD);
+            d.sign(isk.inner())?;
+            contents.devices.insert(older, d);
+            Ok(true)
+        })
+        .unwrap();
+        assert!(!roll_out(&mut identity, &keystore).unwrap(), "held back");
+        assert!(published_key(identity.profile()).unwrap().is_none());
+        assert_eq!(
+            devices_without_support(&identity),
+            ["Lockdown on the old laptop"]
+        );
+        assert!(supports(
+            identity
+                .devices()
+                .find(|d| d.device_id == identity.device_id())
+                .unwrap()
+        ));
+        // The older device updates (its record gets the mark): now it goes out.
+        crate::identity::write_identity_store(&mut identity, &keystore, |contents, isk| {
+            let d = contents.devices.get_mut(&older).unwrap();
+            d.extra
+                .insert(SUPPORT_FIELD.into(), ciborium::Value::Integer(1.into()));
+            d.sign(isk.inner())?;
+            Ok(true)
+        })
+        .unwrap();
+        assert!(roll_out(&mut identity, &keystore).unwrap());
+        assert!(published_key(identity.profile()).unwrap().is_some());
+        // Once out, it stays out.
+        assert!(roll_out(&mut identity, &keystore).unwrap());
+        assert!(
+            mark_this_device(&mut identity, &keystore)
+                .unwrap()
+                .is_none(),
+            "marked once"
+        );
     }
 }

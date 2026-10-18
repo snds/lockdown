@@ -63,6 +63,15 @@ pub enum LiveNotice {
     Sessions,
     /// This device's session was ended from another device: log in again.
     SessionEnded,
+    /// Something the person should hear about even with the window in the
+    /// background (a new device signed in, a security key changed): the
+    /// shell shows it as an OS notification. Plain words, no value.
+    Notify {
+        /// The notification's title.
+        title: String,
+        /// Its text.
+        body: String,
+    },
 }
 
 #[cfg(all(feature = "native", not(target_os = "wasi")))]
@@ -125,6 +134,41 @@ pub struct SessionView {
     pub expires_at: i64,
     /// Whether it is this device's own session.
     pub current: bool,
+}
+
+/// The OS notifications for new account alerts: a device new to the
+/// account, a security key added or removed (docs/plan/25-self-host-2.md
+/// §5). Dismissed alerts, breaches (Security shows those) and kinds this
+/// build doesn't know make none.
+pub fn notices_for(alerts: &[lockdown_sync::wire::AccountAlert]) -> Vec<LiveNotice> {
+    use lockdown_sync::wire::AlertKind;
+    alerts
+        .iter()
+        .filter(|a| !a.dismissed)
+        .filter_map(|a| {
+            let name = a
+                .key_name
+                .as_deref()
+                .map(|n| format!("\u{201c}{n}\u{201d}"))
+                .unwrap_or_else(|| "A security key".into());
+            let (title, body) = match a.kind {
+                AlertKind::NewDevice => (
+                    "New device signed in".to_string(),
+                    "A device that hadn't signed in to your Lockdown account before just did. If it wasn't you, end its session and revoke it in Devices.".to_string(),
+                ),
+                AlertKind::SecurityKeyAdded => (
+                    "Security key added".to_string(),
+                    format!("{name} was added to your Lockdown account's sign-in. If it wasn't you, end the sessions you don't know in Devices and change your account password."),
+                ),
+                AlertKind::SecurityKeyRemoved => (
+                    "Security key removed".to_string(),
+                    format!("{name} was removed from your Lockdown account's sign-in. If it wasn't you, end the sessions you don't know in Devices and change your account password."),
+                ),
+                AlertKind::EmailBreach | AlertKind::Other => return None,
+            };
+            Some(LiveNotice::Notify { title, body })
+        })
+        .collect()
 }
 
 fn account_error(e: lockdown_sync::TransportError) -> AppError {
@@ -294,6 +338,9 @@ fn channel_side(
     let mut pause = Duration::from_secs(2);
     // A token the server said was ended: don't knock again with it.
     let mut ended: Option<String> = None;
+    // The newest alert already shown as an OS notification: set when the
+    // channel first opens, so only what happens from then on notifies.
+    let mut notified: Option<u64> = None;
     while !stop.load(Ordering::SeqCst) {
         let (server, token) = match app.live_target() {
             Some(Ok(pair)) if ended.as_deref() != Some(pair.1.as_str()) => pair,
@@ -315,6 +362,12 @@ fn channel_side(
             }
         };
         pause = Duration::from_secs(2);
+        if notified.is_none()
+            && let Ok(t) = lockdown_sync::HttpTransport::new(&server)
+            && let Ok(a) = t.account_alerts(&token, u64::MAX >> 1)
+        {
+            notified = Some(a.current_seq);
+        }
         sink(LiveNotice::Connected);
         let why = loop {
             if stop.load(Ordering::SeqCst) {
@@ -329,7 +382,18 @@ fn channel_side(
                             .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
                         cv.notify_all();
                     }
-                    LiveKind::Alerts => sink(LiveNotice::Alerts),
+                    LiveKind::Alerts => {
+                        sink(LiveNotice::Alerts);
+                        if let Some(since) = notified
+                            && let Ok(t) = lockdown_sync::HttpTransport::new(&server)
+                            && let Ok(a) = t.account_alerts(&token, since)
+                        {
+                            notified = Some(a.current_seq.max(since));
+                            for n in notices_for(&a.alerts) {
+                                sink(n);
+                            }
+                        }
+                    }
                     LiveKind::Sessions => sink(LiveNotice::Sessions),
                     LiveKind::SessionEnded => {
                         let t = token.clone();
@@ -360,5 +424,44 @@ fn channel_side(
             sink(LiveNotice::Disconnected { message });
             wait(&stop, &wake, pause);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lockdown_sync::wire::{AccountAlert, AlertKind};
+
+    fn alert(kind: AlertKind, key_name: Option<&str>, dismissed: bool) -> AccountAlert {
+        AccountAlert {
+            seq: 1,
+            kind,
+            at: 0,
+            device_id: None,
+            breach: None,
+            dismissed,
+            key_name: key_name.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn new_devices_and_key_changes_notify_and_nothing_else_does() {
+        let n = notices_for(&[
+            alert(AlertKind::NewDevice, None, false),
+            alert(AlertKind::SecurityKeyRemoved, Some("Blue key"), false),
+            alert(AlertKind::SecurityKeyAdded, None, true),
+            alert(AlertKind::EmailBreach, None, false),
+            alert(AlertKind::Other, None, false),
+        ]);
+        assert_eq!(n.len(), 2);
+        match &n[1] {
+            LiveNotice::Notify { title, body } => {
+                assert_eq!(title, "Security key removed");
+                assert!(body.contains("\u{201c}Blue key\u{201d}"));
+            }
+            other => panic!("{other:?}"),
+        }
+        let json = serde_json::to_value(&n[0]).unwrap();
+        assert_eq!(json["kind"], "notify");
     }
 }

@@ -109,7 +109,7 @@ test("nothing fills before the browser is paired", async () => {
 test("pairing shows the same code in the browser and the app, and the app approves it", async () => {
   const p = await popup();
   await p.getByRole("button", { name: "Pair with Lockdown" }).click();
-  const shown = (await p.locator(".code").textContent())?.replace(/\s/g, "");
+  const shown = (await p.getByLabel(/^Pairing code/).textContent())?.replace(/\s/g, "");
   const request = await desktop.next("pairing");
   expect(shown).toBe(request.code);
   expect(String(request.name)).toMatch(/on Linux|on macOS|on Windows/);
@@ -299,6 +299,71 @@ test("the popup fills the page in front", async () => {
   await p.getByRole("button", { name: "Fill" }).click();
   await expect(page.locator("#pass")).toHaveValue("correct-horse-1");
   await p.close();
+  await page.close();
+});
+
+// docs/plan/26-desktop-finish.md §1: the popup asks the core's one index,
+// forgives a typo and says so, and shows a code in place through the app.
+test("the popup's quick access forgives a typo and shows a code, never its set-up", async () => {
+  const made = await desktop.ask("add-code otpauth://totp/Shop:me?secret=JBSWY3DPEHPK3PXP&issuer=Shop Shop code", "code_added");
+  expect(made.id).toBeTruthy();
+  const p = await popup();
+  await expect(p.getByRole("searchbox", { name: "Search Lockdown" })).toBeFocused();
+  await p.getByRole("searchbox").fill("shop cdoe");
+  const results = p.getByRole("list", { name: "Results" });
+  await expect(results.getByRole("listitem")).toHaveCount(1);
+  await expect(results).toContainText("Close match");
+  await results.getByRole("button", { name: "Show code for Shop code" }).click();
+  await expect(p.getByLabel(/^Code \d \d \d \d \d \d$/)).toBeVisible();
+  await expect(p.locator("body")).not.toContainText("JBSWY3DP");
+  await p.close();
+});
+
+// §1: "Fill in the browser" from the desktop's quick access puts that login
+// first on its site, here and in the popup.
+test("a login quick access asked to fill comes first on its site", async () => {
+  const started = await desktop.ask(`quick-fill ${items.local}`, "quick_fill");
+  expect((started.started as { host: string }).host).toBe("localhost");
+  const page = await ctx.newPage();
+  await page.goto(at("localhost", "/ext/login.html"));
+  const tab = await tabId(`*://localhost/*`);
+  const p = await popup(`?tab=${tab}`);
+  const row = p.getByRole("list", { name: "Logins for localhost" }).getByRole("listitem").first();
+  await expect(row).toContainText("Local site");
+  await expect(row).toContainText("From quick access");
+  await p.close();
+  await page.close();
+});
+
+// §3: a TV's code read by the camera, the person's yes in the app, then the
+// real activation page: the login picked is offered first and fills there.
+test("a TV sign-in opens the real page and the extension fills the login picked", async () => {
+  await ctx.route("https://www.youtube.com/**", (r) =>
+    r.fulfill({
+      contentType: "text/html",
+      body: '<!doctype html><title>Activate</title><h1>Enter the code</h1><form><input id="user" name="email" autocomplete="username"><input id="pass" type="password" name="password"></form>',
+    }),
+  );
+  const other = await desktop.ask("login https://www.youtube.com other@example.com other-pass-8 YouTube other", "login");
+  const tv = await desktop.ask("login https://www.youtube.com tv@example.com tv-pass-9 YouTube TV", "login");
+  const scanned = await desktop.ask("scan-camera https://www.youtube.com/activate?user_code=WDJB-MJHT", "scanned");
+  const outcome = scanned.outcome as { decision: string; activation_id: string; accounts: { item_id: string }[]; host: string };
+  expect(outcome.decision).toBe("approve");
+  expect(outcome.host).toBe("www.youtube.com");
+  expect(outcome.accounts.map((a) => a.item_id).sort()).toEqual([String(other.id), String(tv.id)].sort());
+  const approved = await desktop.ask(`activation-approve ${outcome.activation_id} ${tv.id}`, "activation");
+  const url = (approved.started as { url: string }).url;
+  expect(url).toBe("https://www.youtube.com/activate?user_code=WDJB-MJHT");
+  const page = await ctx.newPage();
+  await page.goto(url);
+  await page.focus("#user");
+  const menu = await lockdownFrame(page);
+  const first = menu.getByRole("button", { name: /YouTube/ }).first();
+  await expect(first).toContainText("YouTube TV");
+  await expect(first).toBeEnabled();
+  await first.click();
+  await expect(page.locator("#user")).toHaveValue("tv@example.com");
+  await expect(page.locator("#pass")).toHaveValue("tv-pass-9");
   await page.close();
 });
 

@@ -10,7 +10,8 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "noUnusedLocals": true,
-    "noUnusedParameters": true
+    "noUnusedParameters": true,
+    "jsx": "react-jsx"
   },
-  "include": ["src/**/*.ts", "pkg/*.d.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "pkg/*.d.ts", "vite.popup.config.ts"]
 }

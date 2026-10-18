@@ -46,6 +46,8 @@ export interface WebSession {
   signInWaiting(): Promise<GetRequest>
   /** The key's answer; the server checks it and the sign-in finishes. */
   signInAnswer(answer: GetAnswer): Promise<Status>
+  /** Whether the waiting sign-in was approved (by a key, or the emailed link); the vault once it was. */
+  signInContinue(): Promise<Status | null>
 }
 
 export function webSession(link: Link): WebSession {
@@ -56,6 +58,7 @@ export function webSession(link: Link): WebSession {
     signOut: () => link.call("web_sign_out"),
     signInWaiting: () => link.call("web_sign_in_waiting"),
     signInAnswer: (answer) => link.call("web_sign_in_answer", { answer }),
+    signInContinue: () => link.call("web_sign_in_continue"),
   }
 }
 

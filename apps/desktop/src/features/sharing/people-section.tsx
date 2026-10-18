@@ -26,6 +26,8 @@ import {
 
 import { describeError } from "@/core/client"
 import { PhraseIncomingList, PhraseInvite } from "@/features/depth/key-check"
+import { CameraView } from "@/features/scan/camera-view"
+import { useScanClient, type Frame } from "@/features/scan/scan-client"
 
 import { useSharingClient, type ContactView } from "./sharing-client"
 
@@ -170,11 +172,11 @@ export function PeopleSection({ contacts, online, onChanged, onNotice }: PeopleS
 /** Compares the fingerprint the other person reads out (or shows) with the one pinned here. */
 function CompareDialog({ contact, onClose, onVerified }: { contact: ContactView | null; onClose: () => void; onVerified: (c: ContactView) => void }) {
   const sharing = useSharingClient()
+  const scanner = useScanClient()
   const [error, setError] = useState<string | null>(null)
-  const submit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
+  const [scanning, setScanning] = useState(false)
+  const check = async (typed: string) => {
     if (!contact) return
-    const typed = String(new FormData(e.currentTarget).get("fingerprint") ?? "")
     setError(null)
     try {
       onVerified(await sharing.verify(contact.account_id, typed))
@@ -182,12 +184,25 @@ function CompareDialog({ contact, onClose, onVerified }: { contact: ContactView 
       setError(describeError(err))
     }
   }
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    await check(String(new FormData(e.currentTarget).get("fingerprint") ?? ""))
+  }
+  // Their screen's QR code, read by the core from the camera's frames (D190's `lockdown:contact:v1:` payload).
+  const onFrame = async (frame: Frame) => {
+    const qr = await scanner.contactFrame(frame)
+    if (!qr) return false
+    setScanning(false)
+    await check(qr)
+    return true
+  }
   return (
     <Dialog
       open={contact !== null}
       onOpenChange={(o) => {
         if (!o) {
           setError(null)
+          setScanning(false)
           onClose()
         }
       }}
@@ -205,9 +220,20 @@ function CompareDialog({ contact, onClose, onVerified }: { contact: ContactView 
           <Field>
             <FieldLabel htmlFor="compare-input">What they read out</FieldLabel>
             <Input id="compare-input" name="fingerprint" inputMode="numeric" autoComplete="off" />
-            <FieldDescription>Spaces don't matter. If it doesn't match, don't share with this account.</FieldDescription>
+            <FieldDescription>
+              Spaces don't matter, and the code under their QR (<code>lockdown:contact:v1:…</code>) can be pasted here too. If it doesn't match, don't
+              share with this account.
+            </FieldDescription>
           </Field>
         </form>
+        {scanning ? (
+          <CameraView label="The camera's picture of their QR code" onFrame={onFrame} onError={setError} />
+        ) : (
+          <Button variant="outline" size="sm" onClick={() => setScanning(true)}>
+            <Icon name="qr_code_scanner" data-icon="inline-start" />
+            Scan their QR code
+          </Button>
+        )}
         {error && <FieldError role="alert">{error}</FieldError>}
         <DialogActions>
           <DialogAction kind="cancel" onClick={onClose}>

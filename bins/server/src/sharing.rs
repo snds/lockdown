@@ -10,19 +10,14 @@
 //! right), because it must refuse a write from a member without `edit`
 //! and must not hand a vault to someone who isn't in it.
 //!
-//! The tables live in the same SQLite file as everything else
+//! The tables live in the same database as everything else
 //! ([`create_tables`] runs with the main schema), additive (`IF NOT
 //! EXISTS`), so an older build opens a file that has them.
 
+use crate::db::{Conn, DbError, DbResult, FromValue, Row, ToSql, params};
+use crate::storage::{Result, SqlStorage, StorageError};
 use lockdown_vault::Id;
 use lockdown_vault::sharing::{Party, Right, VaultKind};
-use rusqlite::{Connection, OptionalExtension, params};
-
-use crate::storage::{Result, SqliteStorage, StorageError};
-
-fn backend(e: rusqlite::Error) -> StorageError {
-    StorageError::Backend(e.to_string())
-}
 
 fn id_of(text: &str) -> Result<Id> {
     Id::parse(text).map_err(|_| StorageError::Backend(format!("a bad id is stored: {text}")))
@@ -60,7 +55,7 @@ fn i(n: u64) -> i64 {
 }
 
 /// The sharing tables, beside the main schema.
-pub(crate) fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
+pub(crate) fn create_tables(conn: &Conn<'_>) -> std::result::Result<(), DbError> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS shared_vaults (
              vault_id      TEXT PRIMARY KEY NOT NULL,
@@ -483,61 +478,50 @@ fn grant_from(row: GrantColumns) -> Result<GrantRow> {
 
 const GRANT_COLUMNS: &str = "grant_id, owner_account, contact_account, body, state, requested_at";
 
-impl SqliteStorage {
+impl SqlStorage {
     fn query_rows<T, R>(
         &self,
         sql: &str,
-        args: &[&dyn rusqlite::ToSql],
-        read: impl Fn(&rusqlite::Row<'_>) -> rusqlite::Result<R>,
+        args: &[&dyn ToSql],
+        read: impl Fn(&Row) -> DbResult<R>,
         convert: impl Fn(R) -> Result<T>,
     ) -> Result<Vec<T>> {
-        let conn = self.lock();
-        let mut stmt = conn.prepare(sql).map_err(backend)?;
-        let rows = stmt
-            .query_map(args, read)
-            .map_err(backend)?
-            .collect::<std::result::Result<Vec<R>, _>>()
-            .map_err(backend)?;
+        let rows = self.conn().query_map(sql, args, read)?;
         rows.into_iter().map(convert).collect()
     }
 
     fn add_emergency_event(
-        tx: &Connection,
+        tx: &Conn<'_>,
         grant_id: Id,
         kind: &str,
         by: Id,
         step: Option<&[u8]>,
         at: i64,
     ) -> Result<()> {
-        let seq: i64 = tx
-            .query_row(
-                "SELECT COALESCE(MAX(seq), 0) + 1 FROM emergency_events WHERE grant_id = ?1",
-                params![grant_id.to_string()],
-                |r| r.get(0),
-            )
-            .map_err(backend)?;
+        let seq: i64 = tx.query_row(
+            "SELECT COALESCE(MAX(seq), 0) + 1 FROM emergency_events WHERE grant_id = ?1",
+            params![grant_id.to_string()],
+            |r| r.get(0),
+        )?;
         tx.execute(
             "INSERT INTO emergency_events (grant_id, seq, at, kind, by_account, step) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![grant_id.to_string(), seq, at, kind, by.to_string(), step],
-        )
-        .map_err(backend)?;
+        )?;
         Ok(())
     }
 }
 
 #[allow(clippy::type_complexity)]
-fn read8<A, B, C, D, E, F, G, H>(
-    r: &rusqlite::Row<'_>,
-) -> rusqlite::Result<(A, B, C, D, E, F, G, H)>
+fn read8<A, B, C, D, E, F, G, H>(r: &Row) -> DbResult<(A, B, C, D, E, F, G, H)>
 where
-    A: rusqlite::types::FromSql,
-    B: rusqlite::types::FromSql,
-    C: rusqlite::types::FromSql,
-    D: rusqlite::types::FromSql,
-    E: rusqlite::types::FromSql,
-    F: rusqlite::types::FromSql,
-    G: rusqlite::types::FromSql,
-    H: rusqlite::types::FromSql,
+    A: FromValue,
+    B: FromValue,
+    C: FromValue,
+    D: FromValue,
+    E: FromValue,
+    F: FromValue,
+    G: FromValue,
+    H: FromValue,
 {
     Ok((
         r.get(0)?,
@@ -552,15 +536,15 @@ where
 }
 
 #[allow(clippy::type_complexity)]
-fn read7<A, B, C, D, E, F, G>(r: &rusqlite::Row<'_>) -> rusqlite::Result<(A, B, C, D, E, F, G)>
+fn read7<A, B, C, D, E, F, G>(r: &Row) -> DbResult<(A, B, C, D, E, F, G)>
 where
-    A: rusqlite::types::FromSql,
-    B: rusqlite::types::FromSql,
-    C: rusqlite::types::FromSql,
-    D: rusqlite::types::FromSql,
-    E: rusqlite::types::FromSql,
-    F: rusqlite::types::FromSql,
-    G: rusqlite::types::FromSql,
+    A: FromValue,
+    B: FromValue,
+    C: FromValue,
+    D: FromValue,
+    E: FromValue,
+    F: FromValue,
+    G: FromValue,
 {
     Ok((
         r.get(0)?,
@@ -574,14 +558,14 @@ where
 }
 
 #[allow(clippy::type_complexity)]
-fn read6<A, B, C, D, E, F>(r: &rusqlite::Row<'_>) -> rusqlite::Result<(A, B, C, D, E, F)>
+fn read6<A, B, C, D, E, F>(r: &Row) -> DbResult<(A, B, C, D, E, F)>
 where
-    A: rusqlite::types::FromSql,
-    B: rusqlite::types::FromSql,
-    C: rusqlite::types::FromSql,
-    D: rusqlite::types::FromSql,
-    E: rusqlite::types::FromSql,
-    F: rusqlite::types::FromSql,
+    A: FromValue,
+    B: FromValue,
+    C: FromValue,
+    D: FromValue,
+    E: FromValue,
+    F: FromValue,
 {
     Ok((
         r.get(0)?,
@@ -593,17 +577,13 @@ where
     ))
 }
 
-impl SharingStore for SqliteStorage {
+impl SharingStore for SqlStorage {
     fn shared_vault(&self, vault_id: Id) -> Result<Option<SharedRow>> {
-        let row: Option<SharedColumns> = self
-            .lock()
-            .query_row(
-                "SELECT owner_account, kind, key_ref, seq, head FROM shared_vaults WHERE vault_id = ?1",
-                params![vault_id.to_string()],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
-            )
-            .optional()
-            .map_err(backend)?;
+        let row: Option<SharedColumns> = self.conn().query_opt(
+            "SELECT owner_account, kind, key_ref, seq, head FROM shared_vaults WHERE vault_id = ?1",
+            params![vault_id.to_string()],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        )?;
         row.map(|r| shared_from(vault_id, r)).transpose()
     }
 
@@ -611,33 +591,29 @@ impl SharingStore for SqliteStorage {
         self.query_rows(
             "SELECT body FROM membership_events WHERE vault_id = ?1 AND seq > ?2 ORDER BY seq",
             &[&vault_id.to_string(), &i(since)],
-            |r| r.get::<_, Vec<u8>>(0),
+            |r| r.get::<Vec<u8>>(0),
             Ok,
         )
     }
 
     fn accept_membership(&self, write: MembershipWrite<'_>) -> Result<bool> {
-        let mut conn = self.lock();
-        let tx = conn.transaction().map_err(backend)?;
+        let tx = self.begin()?;
         let vault = write.vault_id.to_string();
-        let current: i64 = tx
-            .query_row(
-                "SELECT COALESCE(MAX(seq), 0) FROM membership_events WHERE vault_id = ?1",
-                params![vault],
-                |r| r.get(0),
-            )
-            .map_err(backend)?;
+        let current: i64 = tx.query_row(
+            "SELECT COALESCE(MAX(seq), 0) FROM membership_events WHERE vault_id = ?1",
+            params![vault],
+            |r| r.get(0),
+        )?;
         if u(current) + 1 != write.event.1 {
             return Ok(false);
         }
         tx.execute(
             "INSERT INTO membership_events (vault_id, seq, body) VALUES (?1, ?2, ?3)",
             params![vault, i(write.event.1), write.event.0],
-        )
-        .map_err(backend)?;
+        )?;
         let s = write.shared;
         tx.execute(
-            "INSERT OR REPLACE INTO shared_vaults (vault_id, owner_account, kind, key_ref, seq, head) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO shared_vaults (vault_id, owner_account, kind, key_ref, seq, head) VALUES (?1, ?2, ?3, ?4, ?5, ?6)\n             ON CONFLICT (vault_id) DO UPDATE SET owner_account = excluded.owner_account, kind = excluded.kind, key_ref = excluded.key_ref, seq = excluded.seq, head = excluded.head",
             params![
                 vault,
                 s.owner_account.to_string(),
@@ -646,13 +622,11 @@ impl SharingStore for SqliteStorage {
                 i(s.seq),
                 &s.head.0[..]
             ],
-        )
-        .map_err(backend)?;
+        )?;
         tx.execute(
             "DELETE FROM vault_members WHERE vault_id = ?1",
             params![vault],
-        )
-        .map_err(backend)?;
+        )?;
         for m in write.members {
             tx.execute(
                 "INSERT INTO vault_members (vault_id, account_id, right_name, party, active) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -663,23 +637,20 @@ impl SharingStore for SqliteStorage {
                     cbor(&m.party)?,
                     i64::from(m.active)
                 ],
-            )
-            .map_err(backend)?;
+            )?;
         }
         for (account, key_ref, body) in write.envelopes {
             tx.execute(
-                "INSERT OR REPLACE INTO share_envelopes (vault_id, key_ref, account_id, body) VALUES (?1, ?2, ?3, ?4)",
+                "INSERT INTO share_envelopes (vault_id, key_ref, account_id, body) VALUES (?1, ?2, ?3, ?4)\n                 ON CONFLICT (vault_id, key_ref, account_id) DO UPDATE SET body = excluded.body",
                 params![vault, key_ref.to_string(), account.to_string(), body],
-            )
-            .map_err(backend)?;
+            )?;
         }
         // Envelopes of older generations are dead once a rotation lands.
         tx.execute(
             "DELETE FROM share_envelopes WHERE vault_id = ?1 AND key_ref != ?2",
             params![vault, s.key_ref.to_string()],
-        )
-        .map_err(backend)?;
-        tx.commit().map_err(backend)?;
+        )?;
+        tx.commit()?;
         Ok(true)
     }
 
@@ -687,7 +658,7 @@ impl SharingStore for SqliteStorage {
         self.query_rows(
             "SELECT right_name, party, active FROM vault_members WHERE vault_id = ?1 ORDER BY account_id",
             &[&vault_id.to_string()],
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?, r.get::<_, i64>(2)?)),
+            |r| Ok((r.get::<String>(0)?, r.get::<Vec<u8>>(1)?, r.get::<i64>(2)?)),
             |(right, party, active)| {
                 Ok(MemberRow {
                     party: uncbor(&party)?,
@@ -702,7 +673,7 @@ impl SharingStore for SqliteStorage {
         self.query_rows(
             "SELECT vault_id, right_name FROM vault_members WHERE account_id = ?1 AND active = 1 ORDER BY vault_id",
             &[&account.to_string()],
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+            |r| Ok((r.get::<String>(0)?, r.get::<String>(1)?)),
             |(v, right)| Ok((id_of(&v)?, right_from(&right)?)),
         )
     }
@@ -713,7 +684,7 @@ impl SharingStore for SqliteStorage {
             &[&account.to_string()],
             |r| {
                 Ok((
-                    r.get::<_, String>(0)?,
+                    r.get::<String>(0)?,
                     (r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?),
                 ))
             },
@@ -722,21 +693,18 @@ impl SharingStore for SqliteStorage {
     }
 
     fn share_envelope(&self, vault_id: Id, key_ref: Id, account: Id) -> Result<Option<Vec<u8>>> {
-        self.lock()
-            .query_row(
-                "SELECT body FROM share_envelopes WHERE vault_id = ?1 AND key_ref = ?2 AND account_id = ?3",
-                params![vault_id.to_string(), key_ref.to_string(), account.to_string()],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(backend)
+        Ok(self.conn().query_opt(
+            "SELECT body FROM share_envelopes WHERE vault_id = ?1 AND key_ref = ?2 AND account_id = ?3",
+            params![vault_id.to_string(), key_ref.to_string(), account.to_string()],
+            |r| r.get(0),
+        )?)
     }
 
     fn put_item_share(&self, row: &ItemShareRow) -> Result<()> {
-        self.lock()
+        self.conn()
             .execute(
                 &format!(
-                    "INSERT OR REPLACE INTO item_shares ({ITEM_SHARE_COLUMNS}, recipient_account) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+                    "INSERT INTO item_shares ({ITEM_SHARE_COLUMNS}, recipient_account) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)\n                     ON CONFLICT (share_id) DO UPDATE SET vault_id = excluded.vault_id, item_id = excluded.item_id, owner_account = excluded.owner_account, recipient = excluded.recipient, right_name = excluded.right_name, envelope = excluded.envelope, created_at = excluded.created_at, recipient_account = excluded.recipient_account"
                 ),
                 params![
                     row.share_id.to_string(),
@@ -749,8 +717,7 @@ impl SharingStore for SqliteStorage {
                     row.created_at,
                     row.recipient.account_id.to_string()
                 ],
-            )
-            .map_err(backend)?;
+            )?;
         Ok(())
     }
 
@@ -788,35 +755,27 @@ impl SharingStore for SqliteStorage {
     }
 
     fn delete_item_share(&self, share_id: Id) -> Result<bool> {
-        Ok(self
-            .lock()
-            .execute(
-                "DELETE FROM item_shares WHERE share_id = ?1",
-                params![share_id.to_string()],
-            )
-            .map_err(backend)?
-            > 0)
+        Ok(self.conn().execute(
+            "DELETE FROM item_shares WHERE share_id = ?1",
+            params![share_id.to_string()],
+        )? > 0)
     }
 
     fn put_send(&self, row: &SendRow) -> Result<()> {
         let password = row.password.as_ref().map(cbor).transpose()?;
-        self.lock()
-            .execute(
-                &format!(
-                    "INSERT INTO sends ({SEND_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
-                ),
-                params![
-                    row.send_id.to_string(),
-                    row.owner_account.to_string(),
-                    row.created_at,
-                    row.expires_at,
-                    row.max_views.map(i64::from),
-                    i64::from(row.views),
-                    password,
-                    row.body
-                ],
-            )
-            .map_err(backend)?;
+        self.conn().execute(
+            &format!("INSERT INTO sends ({SEND_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"),
+            params![
+                row.send_id.to_string(),
+                row.owner_account.to_string(),
+                row.created_at,
+                row.expires_at,
+                row.max_views.map(i64::from),
+                i64::from(row.views),
+                password,
+                row.body
+            ],
+        )?;
         Ok(())
     }
 
@@ -833,12 +792,12 @@ impl SharingStore for SqliteStorage {
 
     fn count_view(&self, send_id: Id, now: i64) -> Result<bool> {
         Ok(self
-            .lock()
+            .conn()
             .execute(
                 "UPDATE sends SET views = views + 1 WHERE send_id = ?1 AND expires_at > ?2 AND (max_views IS NULL OR views < max_views)",
                 params![send_id.to_string(), now],
             )
-            .map_err(backend)?
+            ?
             > 0)
     }
 
@@ -854,27 +813,21 @@ impl SharingStore for SqliteStorage {
     }
 
     fn delete_send(&self, account: Id, send_id: Id) -> Result<bool> {
-        Ok(self
-            .lock()
-            .execute(
-                "DELETE FROM sends WHERE send_id = ?1 AND owner_account = ?2",
-                params![send_id.to_string(), account.to_string()],
-            )
-            .map_err(backend)?
-            > 0)
+        Ok(self.conn().execute(
+            "DELETE FROM sends WHERE send_id = ?1 AND owner_account = ?2",
+            params![send_id.to_string(), account.to_string()],
+        )? > 0)
     }
 
     fn purge_sends(&self, now: i64) -> Result<usize> {
-        self.lock()
-            .execute(
-                "DELETE FROM sends WHERE expires_at <= ?1 OR (max_views IS NOT NULL AND views >= max_views)",
-                params![now],
-            )
-            .map_err(backend)
+        Ok(self.conn().execute(
+            "DELETE FROM sends WHERE expires_at <= ?1 OR (max_views IS NOT NULL AND views >= max_views)",
+            params![now],
+        )?)
     }
 
     fn put_request(&self, row: &RequestRow) -> Result<()> {
-        self.lock()
+        self.conn()
             .execute(
                 &format!(
                     "INSERT INTO secret_requests ({REQUEST_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
@@ -888,8 +841,7 @@ impl SharingStore for SqliteStorage {
                     row.answer,
                     row.answered_at
                 ],
-            )
-            .map_err(backend)?;
+            )?;
         Ok(())
     }
 
@@ -906,12 +858,12 @@ impl SharingStore for SqliteStorage {
 
     fn answer_request(&self, request_id: Id, answer: &[u8], now: i64) -> Result<bool> {
         Ok(self
-            .lock()
+            .conn()
             .execute(
                 "UPDATE secret_requests SET answer = ?2, answered_at = ?3 WHERE request_id = ?1 AND answer IS NULL AND expires_at > ?3",
                 params![request_id.to_string(), answer, now],
             )
-            .map_err(backend)?
+            ?
             > 0)
     }
 
@@ -927,19 +879,14 @@ impl SharingStore for SqliteStorage {
     }
 
     fn delete_request(&self, account: Id, request_id: Id) -> Result<bool> {
-        Ok(self
-            .lock()
-            .execute(
-                "DELETE FROM secret_requests WHERE request_id = ?1 AND owner_account = ?2",
-                params![request_id.to_string(), account.to_string()],
-            )
-            .map_err(backend)?
-            > 0)
+        Ok(self.conn().execute(
+            "DELETE FROM secret_requests WHERE request_id = ?1 AND owner_account = ?2",
+            params![request_id.to_string(), account.to_string()],
+        )? > 0)
     }
 
     fn put_grant(&self, row: &GrantRow, envelopes: &[(Id, Vec<u8>)], at: i64) -> Result<()> {
-        let mut conn = self.lock();
-        let tx = conn.transaction().map_err(backend)?;
+        let tx = self.begin()?;
         tx.execute(
             &format!(
                 "INSERT INTO emergency_grants ({GRANT_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
@@ -952,17 +899,15 @@ impl SharingStore for SqliteStorage {
                 row.state,
                 row.requested_at
             ],
-        )
-        .map_err(backend)?;
+        )?;
         for (vault, body) in envelopes {
             tx.execute(
                 "INSERT INTO emergency_envelopes (grant_id, vault_id, body) VALUES (?1, ?2, ?3)",
                 params![row.grant_id.to_string(), vault.to_string(), body],
-            )
-            .map_err(backend)?;
+            )?;
         }
         Self::add_emergency_event(&tx, row.grant_id, "created", row.owner_account, None, at)?;
-        tx.commit().map_err(backend)
+        Ok(tx.commit()?)
     }
 
     fn grant(&self, grant_id: Id) -> Result<Option<GrantRow>> {
@@ -1006,22 +951,19 @@ impl SharingStore for SqliteStorage {
         event: (&str, Id, Option<&[u8]>),
         at: i64,
     ) -> Result<()> {
-        let mut conn = self.lock();
-        let tx = conn.transaction().map_err(backend)?;
+        let tx = self.begin()?;
         tx.execute(
             "UPDATE emergency_grants SET state = ?2, requested_at = ?3 WHERE grant_id = ?1",
             params![grant_id.to_string(), state, requested_at],
-        )
-        .map_err(backend)?;
+        )?;
         if state == "revoked" || state == "declined" {
             tx.execute(
                 "DELETE FROM emergency_envelopes WHERE grant_id = ?1",
                 params![grant_id.to_string()],
-            )
-            .map_err(backend)?;
+            )?;
         }
         Self::add_emergency_event(&tx, grant_id, event.0, event.1, event.2, at)?;
-        tx.commit().map_err(backend)
+        Ok(tx.commit()?)
     }
 
     fn replace_grant_envelopes(
@@ -1031,17 +973,15 @@ impl SharingStore for SqliteStorage {
         by: Id,
         at: i64,
     ) -> Result<()> {
-        let mut conn = self.lock();
-        let tx = conn.transaction().map_err(backend)?;
+        let tx = self.begin()?;
         for (vault, body) in envelopes {
             tx.execute(
-                "INSERT OR REPLACE INTO emergency_envelopes (grant_id, vault_id, body) VALUES (?1, ?2, ?3)",
+                "INSERT INTO emergency_envelopes (grant_id, vault_id, body) VALUES (?1, ?2, ?3)\n                 ON CONFLICT (grant_id, vault_id) DO UPDATE SET body = excluded.body",
                 params![grant_id.to_string(), vault.to_string(), body],
-            )
-            .map_err(backend)?;
+            )?;
         }
         Self::add_emergency_event(&tx, grant_id, "envelopes", by, None, at)?;
-        tx.commit().map_err(backend)
+        Ok(tx.commit()?)
     }
 
     fn emergency_events(&self, grant_id: Id) -> Result<Vec<EmergencyEventRow>> {
@@ -1050,11 +990,11 @@ impl SharingStore for SqliteStorage {
             &[&grant_id.to_string()],
             |r| {
                 Ok((
-                    r.get::<_, i64>(0)?,
-                    r.get::<_, i64>(1)?,
-                    r.get::<_, String>(2)?,
-                    r.get::<_, String>(3)?,
-                    r.get::<_, Option<Vec<u8>>>(4)?,
+                    r.get::<i64>(0)?,
+                    r.get::<i64>(1)?,
+                    r.get::<String>(2)?,
+                    r.get::<String>(3)?,
+                    r.get::<Option<Vec<u8>>>(4)?,
                 ))
             },
             |(seq, at, kind, by, step)| {
@@ -1073,7 +1013,7 @@ impl SharingStore for SqliteStorage {
         self.query_rows(
             "SELECT vault_id, body FROM emergency_envelopes WHERE grant_id = ?1 ORDER BY vault_id",
             &[&grant_id.to_string()],
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?)),
+            |r| Ok((r.get::<String>(0)?, r.get::<Vec<u8>>(1)?)),
             |(v, b)| Ok((id_of(&v)?, b)),
         )
     }

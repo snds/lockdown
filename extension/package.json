@@ -16,13 +16,29 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "playwright test",
     "test:headed": "playwright test --headed",
-    "package": "node scripts/pack.mjs"
+    "package": "node scripts/pack.mjs",
+    "ds:scan": "dsa scan --config dsa.config.json",
+    "ds:ratchet": "dsa ratchet --config dsa.config.json"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1",
+    "@snds/dsa": "github:snds/dsa#cc4cb051cf6097f7810eacc770ebaaba3feb97ea",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/chrome": "0.3.4",
     "@types/node": "22.19.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "esbuild": "0.28.2",
-    "typescript": "5.9.3"
+    "tailwindcss": "^4.3.3",
+    "typescript": "5.9.3",
+    "vite": "^8.3.4"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.9.0",
+    "@unicron/ui": "https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.12.0/unicron-ui-0.12.0.tgz",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "sonner": "^2.0.8"
   }
 }

@@ -180,6 +180,7 @@ pub fn handle(shared: &Shared, conn: &mut Conn, frame: &[u8]) -> Zeroizing<Vec<u
         "basic_auth" => return basic_auth(shared, &head.id, frame),
         "search" => args::<Search>(frame).and_then(|a| search(&shared.app, &a.query, a.limit)),
         "copy" => args::<ItemRef>(frame).and_then(|a| copy(shared, &a.item_id)),
+        "code_show" => args::<ItemRef>(frame).and_then(|a| code_show(shared, &a.item_id)),
         "offer_save" => offer_save(shared, conn, frame),
         "save" => args::<OfferRef>(frame).and_then(|a| save(shared, conn, &a.offer_id)),
         "dismiss" => args::<OfferRef>(frame).map(|a| {
@@ -379,43 +380,34 @@ fn basic_auth(shared: &Shared, id: &Value, frame: &[u8]) -> Zeroizing<Vec<u8>> {
     }
 }
 
-/// The search over item summaries: every word a plain substring of the
-/// title, username, website host, subtitle or kind, in any order (the
-/// desktop list's rule, D118). Live items only; a crown jewel by title and
-/// kind (D113).
+/// The search over item summaries, through the core's quick-access index
+/// (`lockdown_app::quick`, docs/plan/26-desktop-finish.md §1): ranked,
+/// forgiving a typo, live items only, a crown jewel by title and kind
+/// (D113), the same answer the desktop's palette gets. The answer's shape
+/// is the popup's, as before (D62).
 pub fn search(app: &App, query: &str, limit: Option<usize>) -> Result<Value, Refusal> {
-    let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
     let limit = limit.unwrap_or(MAX_RESULTS).clamp(1, MAX_RESULTS);
-    let rows = app.list()?;
-    let mut items = Vec::new();
-    for row in rows.into_iter().filter(|r| r.state == "live") {
-        let host = lockdown_matcher::Origin::parse(&row.site)
-            .map(|o| o.host)
-            .unwrap_or_default();
-        let keywords = [
-            row.title.to_lowercase(),
-            row.username.to_lowercase(),
-            host.clone(),
-            row.subtitle.to_lowercase(),
-            row.kind.clone(),
-        ];
-        if !words.iter().all(|w| keywords.iter().any(|k| k.contains(w))) {
-            continue;
-        }
-        items.push(json!({
-            "item_id": row.id,
-            "kind": row.kind,
-            "title": row.title,
-            "username": row.username,
-            "host": host,
-            "subtitle": row.subtitle,
-            "crown_jewel": row.crown_jewel,
-            "copy": row.copy.as_ref().map(|c| json!({ "label": c.label, "how": c.how })),
-        }));
-        if items.len() == limit {
-            break;
-        }
-    }
+    let items: Vec<Value> = app
+        .search(query, limit)?
+        .into_iter()
+        .map(|hit| {
+            let row = hit.item;
+            let host = lockdown_matcher::Origin::parse(&row.site)
+                .map(|o| o.host)
+                .unwrap_or_default();
+            json!({
+                "item_id": row.id,
+                "kind": row.kind,
+                "title": row.title,
+                "username": row.username,
+                "host": host,
+                "subtitle": row.subtitle,
+                "crown_jewel": row.crown_jewel,
+                "copy": row.copy.as_ref().map(|c| json!({ "label": c.label, "how": c.how, "field_id": c.field_id })),
+                "exact": hit.exact,
+            })
+        })
+        .collect();
     Ok(json!({ "items": items }))
 }
 
@@ -443,6 +435,37 @@ fn copy(shared: &Shared, item_id: &str) -> Result<Value, Refusal> {
         .copy(value)
         .map_err(|m| Refusal::new("refused", m))?;
     Ok(json!({ "label": target.label, "clears_in_secs": clears_in_secs }))
+}
+
+/// Shows an item's one-time code in the popup (quick access's show-code
+/// action, docs/plan/26-desktop-finish.md §1): the code valid now and how
+/// long it lasts, through the same `Use` gate a copy or a fill of it takes
+/// (a crown jewel's is answered in the app), counted as a use. Never the set-up.
+fn code_show(shared: &Shared, item_id: &str) -> Result<Value, Refusal> {
+    let rows = shared.app.list()?;
+    let row = rows
+        .into_iter()
+        .find(|r| r.id == item_id && r.state == "live")
+        .ok_or_else(|| Refusal::new("not_found", "that item isn't in the vault"))?;
+    let target = row
+        .copy
+        .filter(|c| c.how == "code")
+        .ok_or_else(|| Refusal::new("refused", "this item has no one-time code"))?;
+    let code = shared
+        .app
+        .quick_code(item_id, &target.field_id, GateInput::default())?;
+    let code = Zeroizing::new(
+        std::str::from_utf8(code.expose())
+            .map_err(|_| Refusal::new("refused", "that code isn't text"))?
+            .to_string(),
+    );
+    let seconds_left = shared
+        .app
+        .codes()?
+        .into_iter()
+        .find(|c| c.item_id == item_id && c.field_id == target.field_id)
+        .and_then(|c| c.seconds_left);
+    Ok(json!({ "code": code.as_str(), "seconds_left": seconds_left, "title": row.title }))
 }
 
 fn offer_save(shared: &Shared, conn: &Conn, frame: &[u8]) -> Result<Value, Refusal> {

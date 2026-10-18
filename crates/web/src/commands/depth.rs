@@ -7,7 +7,7 @@
 
 use serde_json::Value;
 
-use super::{Reply, done, gate, json, opt, req, secret_text, unknown};
+use super::{Reply, done, gate, json, opt, req, secret_text};
 use crate::host::WebVault;
 use crate::security::{
     CreateAnswer, GetAnswer, page_key_finish, page_key_request, page_sign_in_answer,
@@ -121,6 +121,6 @@ pub(super) fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult
                 answer,
             )?)
         }
-        other => unknown(other),
+        other => super::finish::dispatch(web, other, args),
     }
 }

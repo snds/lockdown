@@ -10,8 +10,9 @@ The MV3 extension for Chromium (Chrome, Edge, Brave, Chromium) and Firefox, buil
 | `src/content/` | The content script: field detection (`detect.ts`), the visibility rule (`visibility.ts`, the same rule as the harness), writing approved values (`fill.ts`), the menu host in a closed shadow root in the top layer, and save capture (`index.ts`). |
 | `src/main/webauthn.ts` | The one script in the page's own world (top frame, `document_start`): wraps `navigator.credentials.create/get` and the Signal API so Lockdown can be the passkey provider, chained onto whatever was there; it carries no authority ([`docs/plan/19-passkeys.md`](../docs/plan/19-passkeys.md) §3). |
 | `src/content/passkeys.ts`, `src/background/passkeys.ts` | The passkey bridge in the top frame's isolated world (the wrapper's port, the passkey sheet) and the background's half (the open requests, the app's passkey ops, conditional mediation in the inline menu). |
-| `src/pages/` | `frame.ts`: the in-page menu, the save prompt and the passkey sheet (an extension-origin frame, armed only while IntersectionObserver v2 says it is uncovered). `popup.ts`: pairing, the page's logins, search, copy through the app, the lookalike stop, the change-password link. |
-| `static/` | `frame.html`, `popup.html`, `ui.css`. |
+| `src/pages/` | `frame.ts`: the in-page menu, the save prompt and the passkey sheet (an extension-origin frame, armed only while IntersectionObserver v2 says it is uncovered). Plain HTML and `static/ui.css`, loading nothing a page could influence. |
+| `src/popup/`, `vite.popup.config.ts`, `dsa.config.json` | The toolbar popup on unicron (React, `@unicron/ui`, Tailwind v4 built by Vite): pairing, the page's logins, quick access over the core's search index, copy through the app, a code shown in place, the lookalike stop, fill fixes, aliases ([`docs/plan/26-desktop-finish.md`](../docs/plan/26-desktop-finish.md) §9). `pnpm ds:ratchet` holds its design-system baseline. |
+| `static/` | `frame.html`, `ui.css`. |
 | `build-wasm.sh` | Builds `lockdown-wasm` for `wasm32-unknown-unknown` and runs the pinned `wasm-bindgen` CLI into `pkg/` (ES module, `--target web`). |
 | `schema/` | JSON Schema for every message across the matcher boundary. `crates/matcher/tests/wire_schema.rs` keeps it in step with the Rust structs. |
 | `test/clickjacking.spec.ts`, `test/fixtures/{harness.js,top.html,frame.html}` | The red team against the wasm build alone, unchanged. |
@@ -31,7 +32,8 @@ pnpm exec playwright install --with-deps chromium          # once per machine
 pnpm run build:wasm      # pkg/
 pnpm run build:native    # lockdown-native-host and the endpoint fixture
 pnpm typecheck
-pnpm build               # dist/chromium, dist/firefox
+pnpm build               # dist/chromium, dist/firefox (the popup through Vite)
+pnpm ds:ratchet          # the popup's design-system ratchet
 pnpm test                # LOCKDOWN_TEST_BINS=<dir> runs private copies of the host and the endpoint fixture
 ```
 

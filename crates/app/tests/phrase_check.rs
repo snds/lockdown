@@ -110,6 +110,9 @@ fn a_contact_can_also_be_verified_by_scanning_their_code() {
     );
     let scanned = bob.sharing_overview().unwrap().fingerprint_qr;
     assert!(scanned.starts_with("lockdown:contact:v1:"));
+    // A device that never shared still names its own account in the code
+    // (docs/plan/26-desktop-finish.md §8: the web vault's contacts screen).
+    assert!(scanned.contains(&b.account_id), "{scanned}");
     assert!(
         alice
             .verify_contact(&b.account_id, &scanned)

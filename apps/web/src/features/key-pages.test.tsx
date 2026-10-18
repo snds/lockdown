@@ -67,6 +67,7 @@ describe("a web sign-in that asks for a security key", () => {
       signOut: vi.fn(),
       signInWaiting: vi.fn(async () => getReq),
       signInAnswer: vi.fn(async () => ({}) as Status),
+      signInContinue: vi.fn(async () => null),
     }
     const onSignedIn = vi.fn()
     const credentials = { get: vi.fn(async () => assertion) } as unknown as CredentialsContainer

@@ -17,15 +17,14 @@
 //! Rows are dropped a week after their token ran out (an ended session's
 //! row is kept at least that long, so its token can never come back).
 //!
-//! The table lives in the server's SQLite file beside the rest
+//! The table lives in the server's database beside the rest
 //! ([`create_tables`] runs with the main schema). It is additive (`IF NOT
 //! EXISTS`); the schema version is unchanged.
 
+use crate::db::{Conn, DbError, DbResult, Row, params};
+use crate::storage::{Result, SqlStorage, StorageError};
 use lockdown_sync::wire::SessionInfo;
 use lockdown_vault::Id;
-use rusqlite::{Connection, OptionalExtension, params};
-
-use crate::storage::{Result, SqliteStorage, StorageError};
 
 /// How long a session's row outlives the session.
 pub const KEEP_AFTER_END_SECS: i64 = 7 * 24 * 60 * 60;
@@ -117,12 +116,8 @@ pub trait SessionStore: Send + Sync {
     fn prune_sessions(&self, now: i64) -> Result<usize>;
 }
 
-fn backend(e: rusqlite::Error) -> StorageError {
-    StorageError::Backend(e.to_string())
-}
-
 /// The sessions table, beside the main schema.
-pub(crate) fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
+pub(crate) fn create_tables(conn: &Conn<'_>) -> std::result::Result<(), DbError> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS sessions (
              session_id BLOB PRIMARY KEY NOT NULL,
@@ -153,7 +148,7 @@ type Columns = (
 
 const COLUMNS: &str = "session_id, account_id, device_id, created_at, last_seen, expires_at, address, client, ended_at";
 
-fn read_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Columns> {
+fn read_row(r: &Row) -> DbResult<Columns> {
     Ok((
         r.get(0)?,
         r.get(1)?,
@@ -182,37 +177,31 @@ fn row_from(c: Columns) -> Result<SessionRow> {
     })
 }
 
-impl SessionStore for SqliteStorage {
+impl SessionStore for SqlStorage {
     fn open_session(&self, row: &SessionRow) -> Result<()> {
-        self.lock()
-            .execute(
-                "INSERT OR IGNORE INTO sessions (session_id, account_id, device_id, created_at, last_seen, expires_at, address, client, ended_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![
-                    &row.id[..],
-                    row.account_id.to_string(),
-                    row.device_id.to_string(),
-                    row.created_at,
-                    row.last_seen,
-                    row.expires_at,
-                    row.address,
-                    row.client,
-                    row.ended_at
-                ],
-            )
-            .map_err(backend)?;
+        self.conn().execute(
+            "INSERT INTO sessions (session_id, account_id, device_id, created_at, last_seen, expires_at, address, client, ended_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) ON CONFLICT DO NOTHING",
+            params![
+                &row.id[..],
+                row.account_id.to_string(),
+                row.device_id.to_string(),
+                row.created_at,
+                row.last_seen,
+                row.expires_at,
+                row.address,
+                row.client,
+                row.ended_at
+            ],
+        )?;
         Ok(())
     }
 
     fn session(&self, id: &[u8; 16]) -> Result<Option<SessionRow>> {
-        let conn = self.lock();
-        let found = conn
-            .query_row(
-                &format!("SELECT {COLUMNS} FROM sessions WHERE session_id = ?1"),
-                params![&id[..]],
-                read_row,
-            )
-            .optional()
-            .map_err(backend)?;
+        let found = self.conn().query_opt(
+            &format!("SELECT {COLUMNS} FROM sessions WHERE session_id = ?1"),
+            params![&id[..]],
+            read_row,
+        )?;
         found.map(row_from).transpose()
     }
 
@@ -223,40 +212,32 @@ impl SessionStore for SqliteStorage {
         address: Option<&str>,
         client: Option<&str>,
     ) -> Result<()> {
-        self.lock()
-            .execute(
-                "UPDATE sessions SET last_seen = MAX(last_seen, ?2), address = COALESCE(?3, address), client = COALESCE(?4, client) WHERE session_id = ?1",
-                params![&id[..], now, address, client],
-            )
-            .map_err(backend)?;
+        self.conn().execute(
+            "UPDATE sessions SET last_seen = CASE WHEN last_seen > ?2 THEN last_seen ELSE ?2 END, address = COALESCE(?3, address), client = COALESCE(?4, client) WHERE session_id = ?1",
+            params![&id[..], now, address, client],
+        )?;
         Ok(())
     }
 
     fn live_sessions(&self, account_id: Id, now: i64) -> Result<Vec<SessionRow>> {
-        let conn = self.lock();
-        let mut stmt = conn
-            .prepare(&format!(
-                "SELECT {COLUMNS} FROM sessions WHERE account_id = ?1 AND ended_at IS NULL AND expires_at > ?2 ORDER BY created_at, session_id"
-            ))
-            .map_err(backend)?;
-        let rows = stmt
-            .query_map(params![account_id.to_string(), now], read_row)
-            .map_err(backend)?;
-        let mut out = Vec::new();
-        for row in rows {
-            out.push(row_from(row.map_err(backend)?)?);
-        }
-        Ok(out)
+        self.conn()
+            .query_map(
+                &format!(
+                    "SELECT {COLUMNS} FROM sessions WHERE account_id = ?1 AND ended_at IS NULL AND expires_at > ?2 ORDER BY created_at, session_id"
+                ),
+                params![account_id.to_string(), now],
+                read_row,
+            )?
+            .into_iter()
+            .map(row_from)
+            .collect()
     }
 
     fn end_session(&self, account_id: Id, id: &[u8; 16], now: i64) -> Result<bool> {
-        let n = self
-            .lock()
-            .execute(
-                "UPDATE sessions SET ended_at = ?3 WHERE session_id = ?1 AND account_id = ?2 AND ended_at IS NULL AND expires_at > ?3",
-                params![&id[..], account_id.to_string(), now],
-            )
-            .map_err(backend)?;
+        let n = self.conn().execute(
+            "UPDATE sessions SET ended_at = ?3 WHERE session_id = ?1 AND account_id = ?2 AND ended_at IS NULL AND expires_at > ?3",
+            params![&id[..], account_id.to_string(), now],
+        )?;
         Ok(n > 0)
     }
 
@@ -266,48 +247,36 @@ impl SessionStore for SqliteStorage {
         keep: &[u8; 16],
         now: i64,
     ) -> Result<Vec<[u8; 16]>> {
-        let mut conn = self.lock();
-        let tx = conn.transaction().map_err(backend)?;
-        let mut ended = Vec::new();
-        {
-            let mut stmt = tx
-                .prepare(
-                    "SELECT session_id FROM sessions WHERE account_id = ?1 AND session_id != ?2 AND ended_at IS NULL AND expires_at > ?3 ORDER BY created_at, session_id",
-                )
-                .map_err(backend)?;
-            let rows = stmt
-                .query_map(params![account_id.to_string(), &keep[..], now], |r| {
-                    r.get::<_, Vec<u8>>(0)
-                })
-                .map_err(backend)?;
-            for row in rows {
-                let id: [u8; 16] = row
-                    .map_err(backend)?
-                    .try_into()
-                    .map_err(|_| StorageError::Backend("a stored session has a bad id".into()))?;
-                ended.push(id);
-            }
-        }
+        let tx = self.begin()?;
+        let ended = tx
+            .query_map(
+                "SELECT session_id FROM sessions WHERE account_id = ?1 AND session_id != ?2 AND ended_at IS NULL AND expires_at > ?3 ORDER BY created_at, session_id",
+                params![account_id.to_string(), &keep[..], now],
+                |r| r.get::<Vec<u8>>(0),
+            )?
+            .into_iter()
+            .map(|id| {
+                <[u8; 16]>::try_from(id)
+                    .map_err(|_| StorageError::Backend("a stored session has a bad id".into()))
+            })
+            .collect::<Result<Vec<_>>>()?;
         tx.execute(
             "UPDATE sessions SET ended_at = ?3 WHERE account_id = ?1 AND session_id != ?2 AND ended_at IS NULL AND expires_at > ?3",
             params![account_id.to_string(), &keep[..], now],
-        )
-        .map_err(backend)?;
-        tx.commit().map_err(backend)?;
+        )?;
+        tx.commit()?;
         Ok(ended)
     }
 
     fn prune_sessions(&self, now: i64) -> Result<usize> {
         let cutoff = now.saturating_sub(KEEP_AFTER_END_SECS);
-        self.lock()
-            .execute(
-                // An ended session's row stays until its token has run out
-                // as well: without the row, the token would be taken for
-                // one from before this table and start a new row.
-                "DELETE FROM sessions WHERE expires_at < ?1",
-                params![cutoff],
-            )
-            .map_err(backend)
+        Ok(self.conn().execute(
+            // An ended session's row stays until its token has run out
+            // as well: without the row, the token would be taken for
+            // one from before this table and start a new row.
+            "DELETE FROM sessions WHERE expires_at < ?1",
+            params![cutoff],
+        )?)
     }
 }
 
@@ -343,7 +312,7 @@ mod tests {
 
     #[test]
     fn sessions_open_once_list_in_order_end_and_prune() {
-        let store = SqliteStorage::open_in_memory().unwrap();
+        let store = SqlStorage::open_scratch().unwrap();
         let (a, b) = (Id::new(), Id::new());
         store.open_session(&row(a, 2, 200, 10_000)).unwrap();
         store.open_session(&row(a, 1, 100, 10_000)).unwrap();

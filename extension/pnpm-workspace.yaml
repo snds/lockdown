@@ -1,0 +1,11 @@
+# This directory is its own pnpm root, like apps/desktop and apps/web.
+# @snds/dsa (the design-system ratchet) is a git dependency whose `prepare`
+# script compiles TypeScript on install; nothing else may run a script.
+onlyBuiltDependencies:
+  - "@snds/dsa"
+
+overrides:
+  # As apps/desktop: @unicron/ui pins its tokens by exact version, which is
+  # not on a registry; point the dependency at the same release tarball the
+  # desktop uses, so the popup and the app draw from one set of tokens.
+  "@unicron/tokens": https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.6.0/unicron-tokens-0.6.0.tgz

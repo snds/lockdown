@@ -24,15 +24,18 @@ pub mod bridges;
 pub mod browser;
 pub mod depth;
 pub mod devices;
+pub mod hygiene;
 pub mod key_check;
 pub mod live;
 pub mod lock;
 pub mod passkeys;
 pub mod protection;
 pub mod qr;
+pub mod quick;
 pub mod recency;
 pub mod reminders;
 mod revealed;
+pub mod scan;
 pub mod secrets;
 pub mod security;
 mod session;
@@ -48,6 +51,7 @@ use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::{Instant, SystemTime};
 
 pub use approval::{Approval, ApprovalKind, Approver, GateInput, PasswordApprover, Route};
+pub use hygiene::MemoryReport;
 pub use lock::{LockPolicy, LockReason};
 pub use lockdown_crypto::generator::Recipe;
 pub use lockdown_vault::{Change, FieldChange, FieldInput, FieldKind};
@@ -180,6 +184,10 @@ struct Core {
     /// The bridges slice's state: the clock check, the extension's
     /// sign-in observations (docs/plan/23-bridges.md).
     bridges: bridges::BridgesState,
+    /// Fills started from quick access, waiting for the extension (`quick`).
+    quick_fills: Vec<quick::PendingFill>,
+    /// The scan flow's gate, last outcome and waiting activations (`scan`).
+    scan: scan::ScanState,
 }
 
 impl Core {
@@ -208,6 +216,8 @@ impl Core {
             recent_fills: Vec::new(),
             depth: devices::Depth::default(),
             bridges: bridges::BridgesState::default(),
+            quick_fills: Vec::new(),
+            scan: scan::ScanState::default(),
         }
     }
 
@@ -496,6 +506,8 @@ impl Core {
         self.depth.forget();
         self.security_forget();
         self.bridges.forget();
+        self.quick_fills.clear();
+        self.scan.forget();
         self.last_reason = Some(reason);
     }
 

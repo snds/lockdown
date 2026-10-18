@@ -5,7 +5,7 @@ import { Button, Field, FieldDescription, FieldError, FieldGroup, FieldLabel, In
 import { useSettings } from "@/app/settings"
 import { describeError, useClient } from "@/core/client"
 import type { LockReason, Probe, Status } from "@/core/types"
-import { needsSecurityKey } from "@/features/depth/depth-client"
+import { needsEmailApproval, needsSecurityKey } from "@/features/depth/depth-client"
 import { JoinWithDevice, SecondFactorWait } from "@/features/depth/join-device"
 
 import { FirstRunCreate, Step } from "./first-run"
@@ -184,6 +184,7 @@ function JoinForm({ mode, onOpened }: { mode: "join" | "recover"; onOpened: (s: 
   const [error, setError] = useState<string | null>(null)
   const [notes, setNotes] = useState<string[]>([])
   const [waiting, setWaiting] = useState<string | null>(null)
+  const [emailed, setEmailed] = useState<string | null>(null)
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const form = e.currentTarget
@@ -205,6 +206,12 @@ function JoinForm({ mode, onOpened }: { mode: "join" | "recover"; onOpened: (s: 
       // A new device on an account with security keys waits for one (D250).
       if (needsSecurityKey(err)) {
         form.reset()
+        setEmailed(null)
+        setWaiting(field("server"))
+      } else if (needsEmailApproval(err)) {
+        // The server emailed the account a link to approve this device.
+        form.reset()
+        setEmailed(describeError(err))
         setWaiting(field("server"))
       } else setError(describeError(err))
     } finally {
@@ -215,6 +222,7 @@ function JoinForm({ mode, onOpened }: { mode: "join" | "recover"; onOpened: (s: 
     return (
       <SecondFactorWait
         server={waiting}
+        email={emailed}
         onCancel={() => setWaiting(null)}
         onDone={(lines) => {
           setWaiting(null)

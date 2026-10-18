@@ -66,6 +66,15 @@ enum Command {
     },
     /// List the items in the vault.
     List,
+    /// Find items by title, website, username or kind, best first, with a
+    /// typo forgiven (the same index as the app's quick access).
+    Search {
+        /// The words to find, in any order.
+        words: Vec<String>,
+        /// The most results to print.
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
     /// Show one item. Hidden fields are masked unless --reveal.
     Show {
         /// The item id, as `list` prints it.
@@ -487,6 +496,10 @@ fn run(cli: Cli) -> Result<Vec<String>, String> {
         Command::List => {
             App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?.list_lines()
         }
+        Command::Search { words, limit } => {
+            App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?
+                .search_lines(&words.join(" "), limit.clamp(1, 200))
+        }
         Command::Show { id, reveal } => {
             App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?
                 .show_lines(&id, reveal)
@@ -668,6 +681,8 @@ fn run(cli: Cli) -> Result<Vec<String>, String> {
 }
 
 fn main() -> ExitCode {
+    // No core file of a process that holds keys (docs/plan/26-desktop-finish.md §7).
+    lockdown_crypto::locked::harden_process();
     match run(Cli::parse()) {
         Ok(lines) => {
             for l in lines {

@@ -639,6 +639,14 @@ impl Session {
         Ok(ContactView::of(&contact))
     }
 
+    /// This persona's account, learnt from the server's directory as
+    /// [`Session::learn_account`] does.
+    fn learn_own_account(&mut self) -> Result<Id, String> {
+        let (transport, token, server) = self.online()?;
+        let sth = self.verified_sth(&transport, &token, &server)?;
+        self.learn_account(&transport, &token, &sth)
+    }
+
     /// This persona's own fingerprint: what someone who pinned it reads.
     pub fn own_fingerprint(&self) -> Result<(String, String), String> {
         let bytes = lockdown_vault::contact::fingerprint_bytes(
@@ -2399,6 +2407,12 @@ impl Session {
             .iter()
             .filter(|e| e.mine && e.state == "requested")
             .count();
+        // The code others paste or scan names this account: learn it from the
+        // directory (checked against the log) the first time, so a device
+        // that never shared yet still shows a whole code.
+        if online && self.sharing.account_id().is_none() {
+            let _ = self.learn_own_account();
+        }
         let (fingerprint, fingerprint_qr) = self.own_fingerprint().unwrap_or_default();
         Ok(SharingOverview {
             online,

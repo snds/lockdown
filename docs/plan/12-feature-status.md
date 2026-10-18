@@ -1,22 +1,22 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `137195c`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `a7c49c6`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
 **Done** means it works end to end in today's surfaces (core, desktop, CLI, server, browser extension, web vault) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **74** | **23** | **15** | **10** |
+| **All 122 v1 features** | **80** | **17** | **15** | **10** |
 | [Vault & item types](#vault--item-types) | 12 | 0 | 0 | 0 |
-| [Organization & search](#organization--search) | 6 | 1 | 0 | 0 |
+| [Organization & search](#organization--search) | 7 | 0 | 0 | 0 |
 | [Autofill (browser)](#autofill-browser) | 8 | 1 | 0 | 0 |
 | [Autofill (mobile & desktop OS)](#autofill-mobile--desktop-os) | 0 | 0 | 6 | 0 |
-| [Passkeys & WebAuthn](#passkeys--webauthn) | 4 | 1 | 3 | 0 |
-| [Two-factor & authenticator](#two-factor--authenticator) | 3 | 1 | 0 | 0 |
-| [Vendor login bridges](#vendor-login-bridges) | 5 | 2 | 0 | 0 |
+| [Passkeys & WebAuthn](#passkeys--webauthn) | 5 | 0 | 3 | 0 |
+| [Two-factor & authenticator](#two-factor--authenticator) | 4 | 0 | 0 | 0 |
+| [Vendor login bridges](#vendor-login-bridges) | 6 | 1 | 0 | 0 |
 | [Sharing & collaboration](#sharing--collaboration) | 6 | 0 | 0 | 0 |
 | [Family & emergency/recovery](#family--emergencyrecovery) | 4 | 1 | 0 | 0 |
-| [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 6 | 2 | 0 | 0 |
+| [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 8 | 0 | 0 | 0 |
 | [Privacy](#privacy) | 1 | 1 | 0 | 0 |
 | [Import/export & portability](#importexport--portability) | 5 | 1 | 2 | 0 |
 | [Self-hosting & deployment](#self-hosting--deployment) | 0 | 3 | 0 | 1 |
@@ -50,10 +50,10 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [x] **Folders**: Done · core, desktop, web. Drag and drop; folders from imports.
 - [x] **Tags**: Done · core, desktop, web. Nothing for desktop; the extension and web vault views.
 - [x] **Multiple vaults**: Done · core, desktop, web. Several vaults in the CLI; a free-tier limit once plans exist.
+- [x] **Global quick-access palette**: Done · core, desktop, web, extension, cli. The system-wide shortcut on Wayland, which has no global-shortcut API for apps (OS-level); macOS, Windows and X11 have it.
 - [x] **Smart categories**: Done · core, desktop, web. Nothing for the desktop; Signal-hidden passkeys join Needs attention once the Signal API exists.
 - [x] **Duplicate finder**: Done · core, desktop, web. Run it on its own after an import; a side-by-side compare.
 - [x] **Favorites and recency ranking**: Done · core, desktop, web. Fill counts from the browser extension.
-- [ ] **Global quick-access palette**: Partial · desktop, web. The system-wide hotkey outside the window, fill and show-code actions, and a shared Rust search index (search runs over summaries in TypeScript).
 
 ## Autofill (browser)
 
@@ -65,7 +65,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [x] **Fill keyboard shortcut**: Done · extension. A Firefox test run; letting people change the keys.
 - [x] **Card and address fill**: Done · core, extension. A Firefox test run; more checkout layouts as they turn up.
 - [x] **HTTP Basic Auth fill**: Done · core, extension. Tested on Chromium only; Firefox run.
-- [ ] **Browser extension coverage**: Partial · core, desktop, extension. Store packaging, a popup on unicron, a Firefox test run, Windows (named-pipe transport); Safari waits on OS-level work.
+- [ ] **Browser extension coverage**: Partial · core, desktop, extension. Store packaging, a Firefox test run and the Windows named-pipe transport (the release slice); Safari waits on OS-level work. The popup is on unicron.
 
 ## Autofill (mobile & desktop OS)
 
@@ -80,9 +80,9 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 
 - [x] **Passkey storage and sync**: Done · core, desktop, extension. The OS providers (macOS, Windows, iOS, Android) are deferred; through the extension, passkeys are made, used and synced.
 - [x] **Browser passkey fallback**: Done · core, desktop, extension. A Firefox test run; Windows waits on the named-pipe transport; Safari and the OS providers are deferred.
+- [x] **Automatic passkey upgrade**: Done · core, extension. The OS-level automatic upgrade (deferred); in the extension it follows any sign-in Lockdown saw.
 - [x] **WebAuthn Signal API handling**: Done · core, desktop, extension. A Firefox test run.
 - [x] **Passkey management view**: Done · core, desktop. Last use is per computer, not synced.
-- [ ] **Automatic passkey upgrade**: Partial · core, extension. The OS-level automatic upgrade (deferred); in the extension it works only right after Lockdown filled that login's password on that site.
 - [ ] **Phone as authenticator (iPhone)** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: needs the iOS credential provider.
 - [ ] **Phone as authenticator (Android)** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: needs the Android CredentialProviderService.
 - [ ] **Windows 11 passkey plugin** _(deferred: OS-level, D122)_: Not started · nowhere yet. Everything: the COM IPluginAuthenticator plugin, Windows Hello verification and MSIX packaging.
@@ -92,17 +92,17 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [x] **Built-in TOTP codes**: Done · core, desktop, cli, web. Nothing in code for desktop; keeping it on the free tier is a pricing rule.
 - [x] **TOTP autofill**: Done · core, extension. A Firefox test run.
 - [x] **Authenticator importers**: Done · core, desktop. Proton Authenticator's locked export (refused in words today); the web vault (imports are refused there).
-- [ ] **Code display aids**: Partial · core, desktop, web. Search focus on launch; the clock check against the account server is built (haptics are a phone item).
+- [x] **Code display aids**: Done · core, desktop, web, extension. Nothing for desktop and web; haptics are a phone item.
 
 ## Vendor login bridges
 
 - [x] **Steam Guard codes**: Done · core, desktop, cli, web. Nothing in code for desktop; no UI test exercises the Steam variant specifically.
 - [x] **Steam maFile import**: Done · core, desktop. Nothing for desktop; trades are never confirmed by design.
+- [x] **Anti-phishing approval gate** _(under review)_: Done · core, desktop, web. Nothing for desktop and web: device codes, passkey QR and Steam QR go through the gate (only a camera scan passes).
 - [x] **Large-type display**: Done · core, desktop, web. Nothing for desktop and web; phones.
 - [x] **Federated sign-in map**: Done · core, desktop, extension. Capture on mobile; more provider sign-in pages as they turn up.
 - [x] **Service 2FA setup guides**: Done · core, desktop. Refreshing the bundled directories on a schedule.
-- [ ] **TV and console activation by scan** _(under review)_: Partial · core, desktop. The scanner, the activation-page allow-list, opening the real page with the code and autofill, and the core producing approval requests (the sheet is a seam).
-- [ ] **Anti-phishing approval gate** _(under review)_: Partial · core, desktop. Wire the gate into real device-code, Steam QR and passkey QR flows; nothing calls it yet.
+- [ ] **TV and console activation by scan** _(under review)_: Partial · core, desktop, web, extension. Checking the allow-list's parameter names against the live vendor pages, and exercising the desktop camera in a real engine; scan, allow-list, approval, opening the page and filling are built and tested in Chromium.
 
 ## Sharing & collaboration
 
@@ -125,17 +125,17 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 
 - [x] **Breached password check**: Done · core, desktop. The extension's and web vault's view of the same findings.
 - [x] **Weak and reused password report**: Done · core, desktop. Reuse across more than one vault once multiple vaults land.
+- [x] **Email breach monitoring**: Done · core, desktop, server. Nothing for desktop and the server: the paid feed is optional, and an operator range file or service works without a key.
 - [x] **Missing 2FA report**: Done · core, desktop. A refresh schedule for the bundled 2fa.directory snapshot (D129).
 - [x] **Breach-response playbooks**: Done · core, desktop. The web vault (the security center is refused there today).
 - [x] **Lookalike-domain warning**: Done · core, desktop, extension. Nothing for desktop and the extension; the web vault.
 - [x] **One-tap change-password link**: Done · core, desktop, extension. More curated per-site pages in the signed data.
-- [ ] **Email breach monitoring**: Partial · core, desktop, server. A breach feed key (the built-in feed needs a paid key); alias monitoring is built and opt-in.
-- [ ] **Vault account sign-in alerts**: Partial · core, desktop, server. OS notifications and email verification for new devices (no SMTP setting yet); the session list that ends tokens at once is built.
+- [x] **Vault account sign-in alerts**: Done · core, desktop, server. Phone notifications (mobile, deferred); on macOS, OS notifications show only for the bundled app.
 
 ## Privacy
 
 - [x] **Third-party alias services**: Done · core, desktop, extension. Aliases from the extension's save prompt (the popup makes them, D268); the web vault.
-- [ ] **Clipboard and screenshot hygiene**: Partial · desktop, web. Keep copies out of Windows clipboard history and cloud clipboard, and block screen capture on reveal screens.
+- [ ] **Clipboard and screenshot hygiene**: Partial · desktop, web. Verifying the Windows and macOS marks on those platforms (built, not yet run there); Linux has no capture-blocking call.
 
 ## Import/export & portability
 
@@ -150,9 +150,9 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 
 ## Self-hosting & deployment
 
-- [ ] **Official self-hosting**: Partial · server, web. An admin page, scheduled restore drills, the Backup Key on the recovery kit, and support; packaging, the operator guide and encrypted server backups are built.
-- [ ] **Lightweight single container**: Partial · server. Publishing the image, Postgres, and S3-compatible attachment storage; the image is built and smoke-tested in CI (5.5 MiB idle, 6.2 MiB loaded, 53 MB image), attachments can be stored as files.
-- [ ] **Self-hosted live sync**: Partial · core, desktop, server. The mobile push relay (shape in D229, mobile deferred), pings to recipients of items shared on their own, and the web vault subscribing.
+- [ ] **Official self-hosting**: Partial · server. The last successful restore shown in the clients, a passkey on the admin page, a drill that starts a client against the scratch copy, and support (not code); the admin page, invites, scheduled backups, restore drills and the operator kit are built.
+- [ ] **Lightweight single container**: Partial · server. Publishing the image (a release step, never automatic); Postgres, S3-compatible attachments and the smoke-tested image are built.
+- [ ] **Self-hosted live sync**: Partial · core, desktop, web, server. The mobile push relay (D229, mobile deferred) and the web vault opening the live channel itself; pings to single-item share recipients are built.
 - [ ] **Same code as the cloud**: Not code yet · nowhere yet. Needs a cloud, a feature-flag release process and advisory IDs; nothing to build until a hosted service exists.
 
 ## Security architecture & crypto
@@ -169,9 +169,9 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [x] **High-risk item class**: Done · core, desktop, web. Nothing for desktop and web.
 - [x] **Per-item exposure tiers**: Done · core, desktop, web. Nothing for desktop and web; mobile.
 - [ ] **Malicious-server resistance**: Partial · core, server. The Tamarin or ProVerif model of login, sharing and recovery, and the academic review (not code); sharing's defences (signed envelopes, membership chain, KT-checked keys) are built.
-- [ ] **Authenticated public keys**: Partial · core, desktop, server, web. Log mirrors, and a contacts screen in the web vault to scan a QR into; phrase-verified checks are built.
-- [ ] **Post-quantum key wrapping**: Partial · core, desktop, web. ML-DSA on device signatures, vault heads and the key-transparency log (they stay Ed25519); new wraps go to hybrid keys and identity manifests carry ML-DSA-65. Every device needs this release before any publishes its post-quantum key.
-- [ ] **Memory hygiene**: Partial · core, desktop, web. Locked memory pages kept out of swap; the webview still holds typed and revealed strings briefly (D91).
+- [ ] **Authenticated public keys**: Partial · core, desktop, server, web. Log mirrors; phrase-verified checks and the People screen in the web vault are built.
+- [ ] **Post-quantum key wrapping**: Partial · core, desktop, web. ML-DSA on device signatures, vault heads and the key-transparency log (they stay Ed25519; plan in doc 26 §10); hybrid wraps, ML-DSA-65 on identity manifests and the D248 rollout rule are built.
+- [ ] **Memory hygiene**: Partial · core, desktop, web. Locking the identity crate's own key types, and measuring web engines other than Chromium; secret pages are out of swap, core dumps are off, and typed secrets clear on hide and after a minute out of focus.
 - [ ] **Verified local connections**: Partial · desktop, extension. Code-signature checks on macOS and Windows and the Windows named-pipe transport; on Linux and macOS the native host and the desktop check each other by path and SHA-256 today.
 - [ ] **Hardware-backed biometric unlock**: Not started · nowhere yet. Everything: key slots in the Secure Enclave, StrongBox or TPM that reset when biometrics change.
 

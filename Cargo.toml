@@ -124,6 +124,10 @@ zxcvbn = { version = "3.1", default-features = false }
 # The Wi-Fi guest card's QR code (D236): the module grid only, no image
 # encoder, no dependencies of its own (MIT OR Apache-2.0).
 qrcode = { version = "0.14", default-features = false }
+# Reading a QR code from a camera frame or an image file in the core
+# (docs/plan/26-desktop-finish.md §3): the grid finder and decoder only,
+# no image crate (MIT OR Apache-2.0, AND ISC for its Reed-Solomon part).
+rqrr = { version = "0.11", default-features = false }
 
 # Encoding and data.
 serde = { version = "1.0", features = ["derive"] }

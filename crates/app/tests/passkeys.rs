@@ -753,6 +753,70 @@ fn the_upgrade_after_a_password_sign_in_needs_lockdowns_own_recent_fill() {
 }
 
 #[test]
+fn the_upgrade_also_follows_a_password_sign_in_lockdown_saw_but_did_not_fill() {
+    // docs/plan/26-desktop-finish.md §5: the person typed the saved
+    // password themselves (or another tool filled it); the extension's save
+    // capture saw it and the core found it equal to the saved one.
+    let (_dir, app) = fresh();
+    let login = app
+        .add_login("https://example.com", "me", b"typed-pw".to_vec(), None)
+        .unwrap();
+    let url = "https://example.com/welcome";
+    let mut req = create_req(None, "me", b"me");
+    req.conditional = true;
+    // A wrong password typed: no upgrade.
+    assert!(matches!(
+        app.save_proposal("https://example.com/login", "me", b"wrong")
+            .unwrap(),
+        lockdown_app::browser::SaveProposal::Update { .. }
+    ));
+    assert!(matches!(
+        app.passkey_create(page(url, false), req.clone(), None)
+            .unwrap(),
+        Outcome::Refused(_)
+    ));
+    // The right one, on another site: still no.
+    assert!(matches!(
+        app.save_proposal("https://example.org/login", "me", b"typed-pw")
+            .unwrap(),
+        lockdown_app::browser::SaveProposal::New { .. }
+    ));
+    assert!(matches!(
+        app.passkey_create(page(url, false), req.clone(), None)
+            .unwrap(),
+        Outcome::Refused(_)
+    ));
+    // The right one here: the site's automatic upgrade joins that login.
+    assert!(matches!(
+        app.save_proposal("https://example.com/login", "me", b"typed-pw")
+            .unwrap(),
+        lockdown_app::browser::SaveProposal::Same { .. }
+    ));
+    let made = done(
+        app.passkey_create(page(url, false), req.clone(), None)
+            .unwrap(),
+    );
+    assert_eq!(made.item_id, login);
+
+    // A sign-in saved from the prompt counts too: a new login, then its upgrade.
+    let saved = app
+        .save_login(
+            "https://shop.example/login",
+            "buyer",
+            b"new-pw".to_vec(),
+            None,
+        )
+        .unwrap();
+    let mut shop = create_req(None, "buyer", b"buyer");
+    shop.conditional = true;
+    let made = done(
+        app.passkey_create(page("https://shop.example/account", false), shop, None)
+            .unwrap(),
+    );
+    assert_eq!(made.item_id, saved);
+}
+
+#[test]
 fn a_made_passkey_survives_a_cxf_export_and_import_and_still_signs() {
     let (_dir, app) = fresh();
     let url = "https://example.com/";

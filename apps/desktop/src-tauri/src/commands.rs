@@ -184,10 +184,9 @@ pub(crate) fn copy_with_timer(
     let text = std::str::from_utf8(revealed.expose())
         .map(|s| zeroize::Zeroizing::new(s.to_string()))
         .map_err(|_| failed("this field isn't text"))?;
-    handle
-        .clipboard()
-        .write_text(text.as_str())
-        .map_err(|e| failed(format!("couldn't copy: {e}")))?;
+    // Written with the marks that keep it out of clipboard history and
+    // cloud clipboard (hygiene.rs); read back and cleared as before.
+    crate::hygiene::write_secret(text.as_str()).map_err(failed)?;
     let generation = guard.note_written(text.as_bytes());
     drop(text);
     drop(revealed);
@@ -929,5 +928,19 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         crate::bridges::commands::guide_sources,
         crate::bridges::commands::emergency_sheet,
         crate::bridges::commands::export_save_age,
+        crate::quick::commands::quick_search,
+        crate::quick::commands::quick_code,
+        crate::quick::commands::quick_fill,
+        crate::quick::commands::quick_hide,
+        crate::quick::commands::quick_open_main,
+        crate::quick::commands::quick_hotkey_status,
+        crate::quick::commands::quick_hotkey_set,
+        crate::scan::commands::scan_frame,
+        crate::scan::commands::scan_text,
+        crate::scan::commands::activation_approve,
+        crate::scan::commands::activation_cancel,
+        crate::scan::commands::qr_contact_frame,
+        crate::hygiene::commands::capture_protect,
+        crate::hygiene::commands::memory_report,
     ]
 }

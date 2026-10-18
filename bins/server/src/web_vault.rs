@@ -48,10 +48,13 @@ base-uri 'none'; \
 form-action 'none'; \
 frame-ancestors 'none'";
 
-/// Device APIs the vault never uses, all off.
-const PERMISSIONS_POLICY: &str = "accelerometer=(), camera=(), display-capture=(), \
+/// Device APIs the vault never uses, all off; the two it does use, its own
+/// origin only: the camera (a device link, a TV's code, a contact's QR,
+/// read in the tab; docs/plan/26-desktop-finish.md §3) and WebAuthn get (a
+/// security key at sign-in, D257).
+const PERMISSIONS_POLICY: &str = "accelerometer=(), camera=(self), display-capture=(), \
 geolocation=(), gyroscope=(), hid=(), magnetometer=(), microphone=(), midi=(), \
-payment=(), publickey-credentials-get=(), serial=(), usb=(), xr-spatial-tracking=()";
+payment=(), publickey-credentials-get=(self), serial=(), usb=(), xr-spatial-tracking=()";
 
 /// The largest file served (the WebAssembly module is about 10 MB).
 const MAX_FILE: u64 = 64 << 20;
@@ -274,5 +277,21 @@ mod tests {
         assert!(!csp.contains("http") && !csp.contains('*'));
         assert!(csp.contains("frame-ancestors 'none'"));
         assert!(csp.contains("default-src 'none'"));
+    }
+
+    #[test]
+    fn the_page_may_use_the_camera_and_webauthn_and_nothing_else() {
+        let p = PERMISSIONS_POLICY;
+        assert!(p.contains("camera=(self)") && p.contains("publickey-credentials-get=(self)"));
+        for off in [
+            "microphone=()",
+            "geolocation=()",
+            "display-capture=()",
+            "usb=()",
+            "payment=()",
+        ] {
+            assert!(p.contains(off), "{off}");
+        }
+        assert!(!p.contains('*'));
     }
 }

@@ -41,6 +41,7 @@ use tower::ServiceExt;
 struct Harness {
     router: Router,
     clock: Arc<AtomicI64>,
+    state: Arc<AppState>,
 }
 
 fn harness() -> Harness {
@@ -53,9 +54,11 @@ fn harness() -> Harness {
     let mut state = AppState::in_memory(config).unwrap();
     let c = clock.clone();
     state.clock = Box::new(move || c.load(Ordering::SeqCst));
+    let state = Arc::new(state);
     Harness {
-        router: app(Arc::new(state)),
+        router: app(state.clone()),
         clock,
+        state,
     }
 }
 
@@ -717,10 +720,26 @@ async fn items_shared_on_their_own_reach_only_their_recipient() {
             .await,
         StatusCode::BAD_REQUEST
     );
+    let mut heard = h.state.live.subscribe();
     assert_eq!(
         h.status("POST", "/v1/shares/items", alice.t(), &create)
             .await,
         StatusCode::NO_CONTENT
+    );
+    // Bob hears of it on his live channel at once (self-host-push).
+    let pinged = std::iter::from_fn(|| heard.try_recv().ok())
+        .any(|c| c.account_id == bob.party.account_id && c.kind == wire::LiveKind::Sync);
+    assert!(pinged, "the recipient's devices are told to sync");
+    // And of every change Alice makes to the item.
+    let current = vault.item(item_id).unwrap().clone();
+    push(&h, &alice, &current, current.rev).await.unwrap();
+    let pinged = std::iter::from_fn(|| heard.try_recv().ok())
+        .any(|c| c.account_id == bob.party.account_id && c.kind == wire::LiveKind::Sync);
+    assert!(pinged, "an edit of a shared item reaches its recipient");
+    assert!(
+        !std::iter::from_fn(|| heard.try_recv().ok())
+            .any(|c| c.account_id == carol.party.account_id),
+        "nobody else hears"
     );
 
     let got: ReceivedItems = h.get("/v1/shares/items", bob.t()).await.unwrap();
@@ -774,6 +793,10 @@ async fn items_shared_on_their_own_reach_only_their_recipient() {
         )
         .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
+    assert!(
+        std::iter::from_fn(|| heard.try_recv().ok()).any(|c| c.account_id == bob.party.account_id),
+        "a withdrawn share reaches its recipient too"
+    );
     let got: ReceivedItems = h.get("/v1/shares/items", bob.t()).await.unwrap();
     assert!(got.items.is_empty());
 }

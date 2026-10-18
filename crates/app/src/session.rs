@@ -70,6 +70,7 @@ mod history;
 pub mod items;
 mod organize;
 pub(crate) mod passkeys;
+pub(crate) mod quick;
 pub(crate) mod recovery;
 pub(crate) mod second_factor;
 pub(crate) mod secret_key;
@@ -300,6 +301,8 @@ pub struct Session {
     link: Option<devices_link::OpenLink>,
     /// Phrase checks of someone's keys under way (`sharing::phrase`).
     phrase_checks: BTreeMap<Id, sharing::phrase::Pending>,
+    /// The quick-access index, until what it was built from changes (`quick`).
+    quick: Option<quick::Cache>,
 }
 
 impl Session {
@@ -524,6 +527,7 @@ impl Session {
             opened_send: None,
             link: None,
             phrase_checks: BTreeMap::new(),
+            quick: None,
         };
         session.load_sharing()?;
         session.remember()?;
@@ -2116,10 +2120,12 @@ fn push_identity_records(
     new_revocations: Vec<Revocation>,
 ) -> Result<bool, String> {
     let isk_pub = identity.profile().isk_pub;
-    // The identity's post-quantum key goes on the profile once (D248); an
-    // identity another app manages keeps signing with Ed25519 alone.
+    // The identity's post-quantum key goes on the profile once (D248), and
+    // only when every device says it keeps the second signature (the
+    // rollout rule, docs/plan/26-desktop-finish.md §10); an identity another
+    // app manages keeps signing with Ed25519 alone.
     if lockdown_vault::identity::check_manager_public(identity).is_ok() {
-        lockdown_vault::pq::publish_key(identity, keystore).map_err(|e| e.to_string())?;
+        lockdown_vault::pq::roll_out(identity, keystore).map_err(|e| e.to_string())?;
     }
     for _ in 0..IDENTITY_ROUNDS {
         let prev = synced.manifest().cloned();

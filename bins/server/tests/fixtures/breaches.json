@@ -1,0 +1,4 @@
+[
+  {"Name": "ExampleShop", "Domain": "shop.example", "BreachDate": "2026-09-01", "DataClasses": ["Email addresses", "Passwords"]},
+  {"Name": "ForumLeak", "Domain": "forum.example", "BreachDate": "2025-03-14", "DataClasses": ["Email addresses", "Usernames"]}
+]

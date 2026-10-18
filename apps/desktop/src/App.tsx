@@ -39,6 +39,12 @@ import { RemindersPrompt } from "@/features/depth/reminders"
 import { BridgesProvider } from "@/features/bridges/bridges-client"
 import { BackupIndicator } from "@/features/bridges/backup-indicator"
 import { tauriBridgesClient } from "@/app/tauri-bridges"
+import { tauriHygieneClient, tauriQuickClient, tauriScanClient } from "@/app/tauri-finish"
+import { listen } from "@tauri-apps/api/event"
+import { HygieneClientProvider } from "@/features/hygiene/hygiene-client"
+import { useSecretWipe } from "@/features/hygiene/secret-wipe"
+import { QuickClientProvider } from "@/features/quick/quick-client"
+import { ScanClientProvider } from "@/features/scan/scan-client"
 
 /**
  * Locked is the default state. `status` is set when the core opened the
@@ -68,6 +74,23 @@ function Root() {
     }
   }, [])
   useLockWatch(onLockState)
+  // Typed secrets go when the window hides or stays out of focus (docs/plan/26-desktop-finish.md §7).
+  useSecretWipe(
+    useCallback((n: number) => {
+      toast(n === 1 ? "Lockdown cleared a password you were typing while the window was away." : `Lockdown cleared ${n} passwords you were typing while the window was away.`)
+    }, []),
+  )
+  // An item opened from the quick-access window.
+  useEffect(() => {
+    const off = listen<string | null>("lockdown://open-item", (e) => {
+      if (!e.payload) return
+      setNav({ area: "vault", view: "all" })
+      setSelected(e.payload)
+    })
+    return () => {
+      void off.then((f) => f())
+    }
+  }, [])
 
   const reload = useCallback(() => {
     client
@@ -212,7 +235,13 @@ export default function App() {
               <LiveClientProvider value={tauriLiveClient}>
                 <DepthClientProvider value={tauriDepthClient}>
                   <BridgesProvider value={tauriBridgesClient}>
-                    <Root />
+                    <QuickClientProvider value={tauriQuickClient}>
+                      <ScanClientProvider value={tauriScanClient}>
+                        <HygieneClientProvider value={tauriHygieneClient}>
+                          <Root />
+                        </HygieneClientProvider>
+                      </ScanClientProvider>
+                    </QuickClientProvider>
                   </BridgesProvider>
                 </DepthClientProvider>
               </LiveClientProvider>

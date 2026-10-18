@@ -17,17 +17,17 @@ use lockdown_sync::account_security::EmergencyItems;
 use lockdown_sync::wire::ErrorCode;
 use lockdown_vault::Id;
 use lockdown_vault::sharing::{EmergencyGrant, ShareEnvelope, SharePurpose};
-use rusqlite::{Connection, params};
 use serde_bytes::ByteBuf;
 
 use crate::AppState;
 use crate::api::{ApiError, ApiResult, Cbor, Session, device_key};
-use crate::storage::{Result, SqliteStorage, StorageError};
+use crate::db::{Conn, DbError, params};
+use crate::storage::{Result, SqlStorage};
 
 /// The most crown jewels one grant carries.
 pub const MAX_ITEMS: usize = 500;
 
-pub(crate) fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
+pub(crate) fn create_tables(conn: &Conn<'_>) -> std::result::Result<(), DbError> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS emergency_items (
              grant_id TEXT NOT NULL,
@@ -38,38 +38,28 @@ pub(crate) fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
     )
 }
 
-fn backend(e: rusqlite::Error) -> StorageError {
-    StorageError::Backend(e.to_string())
-}
-
-impl SqliteStorage {
+impl SqlStorage {
     pub(crate) fn put_emergency_items(&self, grant: Id, items: &[(Id, Vec<u8>)]) -> Result<()> {
-        let mut conn = self.lock();
-        let tx = conn.transaction().map_err(backend)?;
+        let tx = self.begin()?;
         tx.execute(
             "DELETE FROM emergency_items WHERE grant_id = ?1",
             params![grant.to_string()],
-        )
-        .map_err(backend)?;
+        )?;
         for (item, body) in items {
             tx.execute(
                 "INSERT INTO emergency_items (grant_id, item_id, body) VALUES (?1, ?2, ?3)",
                 params![grant.to_string(), item.to_string(), body],
-            )
-            .map_err(backend)?;
+            )?;
         }
-        tx.commit().map_err(backend)
+        Ok(tx.commit()?)
     }
 
     pub(crate) fn emergency_items(&self, grant: Id) -> Result<Vec<Vec<u8>>> {
-        let conn = self.lock();
-        let mut stmt = conn
-            .prepare("SELECT body FROM emergency_items WHERE grant_id = ?1 ORDER BY item_id")
-            .map_err(backend)?;
-        let rows = stmt
-            .query_map(params![grant.to_string()], |r| r.get::<_, Vec<u8>>(0))
-            .map_err(backend)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(backend)
+        Ok(self.conn().query_map(
+            "SELECT body FROM emergency_items WHERE grant_id = ?1 ORDER BY item_id",
+            params![grant.to_string()],
+            |r| r.get(0),
+        )?)
     }
 }
 

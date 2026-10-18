@@ -11,9 +11,12 @@ pub mod browser;
 pub mod clipboard;
 pub mod codes;
 pub mod depth;
+pub mod hygiene;
 pub mod items;
 pub mod live;
 pub mod organization;
+pub mod quick;
+pub mod scan;
 pub mod security;
 pub mod security_depth;
 pub mod sharing;
@@ -78,10 +81,25 @@ mod shell {
     }
 
     pub fn run() {
+        // No core file of a process that holds keys (docs/plan/26-desktop-finish.md §7).
+        App::harden_process();
         tauri::Builder::default()
             .plugin(tauri_plugin_opener::init())
             .plugin(tauri_plugin_clipboard_manager::init())
             .plugin(tauri_plugin_dialog::init())
+            .plugin(super::quick::commands::plugin())
+            // The camera for scanning, in the main window only; every other
+            // device a page asks for is refused (docs/plan/26-desktop-finish.md §3).
+            .on_permission_request(|webview, kind| {
+                use tauri::webview::{PermissionKind, PermissionResponse};
+                match kind {
+                    PermissionKind::Camera if super::hygiene::allows_camera(webview.label()) => {
+                        PermissionResponse::Allow
+                    }
+                    _ => PermissionResponse::Deny,
+                }
+            })
+            .plugin(tauri_plugin_notification::init())
             .setup(|app| {
                 if cfg!(debug_assertions) {
                     // Nothing logged here ever names a value; the app's
@@ -108,13 +126,31 @@ mod shell {
                 let live = super::live::commands::start(app.handle(), &core);
                 app.manage(live);
                 // The browser extension's endpoint (docs/plan/16-browser-extension.md).
-                super::browser_commands::start(app.handle(), core, data);
+                super::browser_commands::start(app.handle(), core.clone(), data);
+                // Quick access from anywhere, and reveals kept out of captures
+                // (docs/plan/26-desktop-finish.md §2, §6).
+                app.manage(super::hygiene::CaptureCount::default());
+                super::quick::commands::start(app.handle(), &core);
+                // WebKitGTK keeps getUserMedia off until the host turns it on;
+                // the permission handler above still answers each request.
+                #[cfg(target_os = "linux")]
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.with_webview(|wv| {
+                        use webkit2gtk::{SettingsExt, WebViewExt};
+                        if let Some(settings) = WebViewExt::settings(&wv.inner()) {
+                            settings.set_enable_media_stream(true);
+                        }
+                    });
+                }
                 Ok(())
             })
             // Losing the window to the dock counts as hidden (the core's
             // hidden-window timer decides when that becomes a lock).
             .on_window_event(|window, event| {
+                // The main window only: the quick-access window hides on
+                // every blur, which is not the app going out of view.
                 if let tauri::WindowEvent::Focused(focused) = event
+                    && window.label() == "main"
                     && let Some(core) = window.try_state::<App>()
                 {
                     let _ = core.set_hidden(!focused && !window.is_visible().unwrap_or(true));
