@@ -10,6 +10,7 @@ pub mod browser;
 pub mod clipboard;
 pub mod codes;
 pub mod items;
+pub mod live;
 pub mod organization;
 pub mod security;
 pub mod sharing;
@@ -100,6 +101,9 @@ mod shell {
                 app.manage(core.clone());
                 app.manage(super::clipboard::ClipboardGuard::default());
                 app.manage(super::transfer::Picked::default());
+                // The server's live channel (docs/plan/20-self-host-server.md §5).
+                let live = super::live::commands::start(app.handle(), &core);
+                app.manage(live);
                 // The browser extension's endpoint (docs/plan/16-browser-extension.md).
                 super::browser_commands::start(app.handle(), core, data);
                 Ok(())

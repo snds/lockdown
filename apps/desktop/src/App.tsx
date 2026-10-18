@@ -29,6 +29,7 @@ import { LockedWash } from "@/features/unlock/locked-wash"
 import { UnlockScreen } from "@/features/unlock/unlock-screen"
 import { countViews } from "@/features/vault/list-model"
 import { VaultView } from "@/features/vault/vault-view"
+import { useLive } from "@/features/sessions/use-live"
 
 /**
  * Locked is the default state. `status` is set when the core opened the
@@ -90,6 +91,14 @@ function Root() {
     toast(text, { action: { label: "Show", onClick: show } })
   }, [])
   useExpiryReminder(client, status !== null, remind, showExpiring)
+  // The server's live channel (docs/plan/20-self-host-server.md §5): a
+  // change from another device was synced in the core; redraw.
+  useLive((n) => {
+    if (!status) return
+    if (n.kind === "synced") client.status().then(setStatus).catch(() => {})
+    else if (n.kind === "session_ended") toast.error("This device's session was ended from another of your devices. Log in again on Status to keep syncing.")
+    else if (n.kind === "sync_failed") toast.error(`A change from another device didn't sync: ${n.message}`)
+  })
 
   if (!status) {
     // Locked: the shell's shape stays, washed, with nothing readable in it;

@@ -856,5 +856,8 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         crate::passkey_commands::passkey_restore,
         crate::passkey_commands::browser_passkey_pending,
         crate::passkey_commands::browser_passkey_answer,
+        crate::live::commands::session_list,
+        crate::live::commands::session_end,
+        crate::live::commands::session_end_others,
     ]
 }

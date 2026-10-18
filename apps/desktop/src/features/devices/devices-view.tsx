@@ -30,6 +30,7 @@ import { PaneHeader } from "@/components/master-detail"
 import { describeError, useClient } from "@/core/client"
 import type { DeviceInfo, Status } from "@/core/types"
 import { dateLocal, shortId } from "@/lib/format"
+import { SessionsSection } from "@/features/sessions/sessions-section"
 
 interface DevicesViewProps {
   status: Status
@@ -117,6 +118,7 @@ export function DevicesView({ status, onChanged, onNotice }: DevicesViewProps) {
           </Item>
         ))}
       </ItemGroup>
+      {status.account && <SessionsSection onNotice={onNotice} />}
       <Dialog open={revoking !== null} onOpenChange={(o) => !o && setRevoking(null)}>
         <DialogContent>
           <DialogHeader>
