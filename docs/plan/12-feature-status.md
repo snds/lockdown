@@ -1,12 +1,12 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `dcf9cc1`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `51ec3b3`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
-**Done** means it works end to end in today's surfaces (core, desktop, CLI, server) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
+**Done** means it works end to end in today's surfaces (core, desktop, CLI, server, browser extension, web vault) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **43** | **44** | **25** | **10** |
+| **All 122 v1 features** | **46** | **42** | **24** | **10** |
 | [Vault & item types](#vault--item-types) | 5 | 7 | 0 | 0 |
 | [Organization & search](#organization--search) | 6 | 1 | 0 | 0 |
 | [Autofill (browser)](#autofill-browser) | 7 | 1 | 1 | 0 |
@@ -14,46 +14,46 @@ _Generated from `feature-status.json` (as of `dcf9cc1`) by `render-feature-statu
 | [Passkeys & WebAuthn](#passkeys--webauthn) | 4 | 1 | 3 | 0 |
 | [Two-factor & authenticator](#two-factor--authenticator) | 2 | 2 | 0 | 0 |
 | [Vendor login bridges](#vendor-login-bridges) | 1 | 4 | 2 | 0 |
-| [Sharing & collaboration](#sharing--collaboration) | 4 | 2 | 0 | 0 |
+| [Sharing & collaboration](#sharing--collaboration) | 6 | 0 | 0 | 0 |
 | [Family & emergency/recovery](#family--emergencyrecovery) | 1 | 3 | 1 | 0 |
 | [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 4 | 4 | 0 | 0 |
 | [Privacy](#privacy) | 0 | 1 | 1 | 0 |
 | [Import/export & portability](#importexport--portability) | 3 | 3 | 2 | 0 |
 | [Self-hosting & deployment](#self-hosting--deployment) | 0 | 2 | 1 | 1 |
 | [Security architecture & crypto](#security-architecture--crypto) | 4 | 9 | 4 | 0 |
-| [Platforms & apps](#platforms--apps) | 2 | 3 | 3 | 1 |
+| [Platforms & apps](#platforms--apps) | 3 | 3 | 2 | 1 |
 | [Trust & transparency](#trust--transparency) | 0 | 1 | 1 | 8 |
 
 13 rows are deferred by D122 (OS-level integration and the native mobile apps); they stay on the list, marked.
 
 ## Where things stand
 
-No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is no web vault yet. The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and its web half once the web vault exists. OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.
+No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, a web vault the server serves (the same core on wasm32-wasip1 in a worker, doc 17), and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and the web vault refuses some features in words for now (doc 17 §10). OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.
 
 ## Vault & item types
 
-- [x] **Logins**: Done · core, desktop, cli, extension. Nothing for desktop and the extension; the web vault and mobile.
-- [x] **Secure notes**: Done · core, desktop. Nothing for desktop; mobile and web views later.
-- [x] **Item expiry reminders**: Done · core, desktop. Renewal kinds for domains and certificates; the signed-date check.
-- [x] **Trash with recovery**: Done · core, desktop. Trash in the CLI.
-- [x] **Item archive**: Done · core, desktop. Nothing for desktop.
-- [ ] **Payment cards**: Partial · core, desktop. The card fill itself (extension or OS provider) with the second deliberate action and the optional CVC re-prompt.
-- [ ] **Identities and addresses**: Partial · core, desktop. Typed subtypes (person, address, business, vehicle, passport) and a separate contacts list that is never filled; plus the form fill itself.
-- [ ] **Typed item templates**: Partial · core, desktop. Reach 25+ types (passport and licence are a Document type choice today) and add user-defined templates.
-- [ ] **Custom fields**: Partial · core, desktop. Add the TOTP and linked field kinds.
+- [x] **Logins**: Done · core, desktop, cli, extension, web. Nothing for desktop and the extension; the web vault and mobile.
+- [x] **Secure notes**: Done · core, desktop, web. Nothing for desktop; mobile and web views later.
+- [x] **Item expiry reminders**: Done · core, desktop, web. Renewal kinds for domains and certificates; the signed-date check.
+- [x] **Trash with recovery**: Done · core, desktop, web. Trash in the CLI.
+- [x] **Item archive**: Done · core, desktop, web. Nothing for desktop.
+- [ ] **Payment cards**: Partial · core, desktop, web. The card fill itself (extension or OS provider) with the second deliberate action and the optional CVC re-prompt.
+- [ ] **Identities and addresses**: Partial · core, desktop, web. Typed subtypes (person, address, business, vehicle, passport) and a separate contacts list that is never filled; plus the form fill itself.
+- [ ] **Typed item templates**: Partial · core, desktop, web. Reach 25+ types (passport and licence are a Document type choice today) and add user-defined templates.
+- [ ] **Custom fields**: Partial · core, desktop, web. Add the TOTP and linked field kinds.
 - [ ] **File attachments**: Partial · core, desktop, cli, server. Streaming for large files (whole files up to 100 MB today), object storage and the 5 GB quota on the server.
-- [ ] **Password and passphrase generator**: Partial · core, desktop. Word passphrases, per-site rule profiles, length and class options in the UI, and statistical randomness tests in CI.
-- [ ] **Wi-Fi network items**: Partial · core, desktop. The self-hiding guest QR card, the printable card, and export through CXF's own Wi-Fi type (it rides in the Lockdown extension today).
+- [ ] **Password and passphrase generator**: Partial · core, desktop, web. Word passphrases, per-site rule profiles, length and class options in the UI, and statistical randomness tests in CI.
+- [ ] **Wi-Fi network items**: Partial · core, desktop, web. The self-hiding guest QR card, the printable card, and export through CXF's own Wi-Fi type (it rides in the Lockdown extension today).
 
 ## Organization & search
 
-- [x] **Folders**: Done · core, desktop. Drag and drop; folders from imports.
-- [x] **Tags**: Done · core, desktop. Nothing for desktop; the extension and web vault views.
-- [x] **Multiple vaults**: Done · core, desktop. Several vaults in the CLI; a free-tier limit once plans exist.
-- [x] **Smart categories**: Done · core, desktop. Nothing for the desktop; Signal-hidden passkeys join Needs attention once the Signal API exists.
-- [x] **Duplicate finder**: Done · core, desktop. Run it on its own after an import; a side-by-side compare.
-- [x] **Favorites and recency ranking**: Done · core, desktop. Fill counts from the browser extension.
-- [ ] **Global quick-access palette**: Partial · desktop. The system-wide hotkey outside the window, fill and show-code actions, and a shared Rust search index (search runs over summaries in TypeScript).
+- [x] **Folders**: Done · core, desktop, web. Drag and drop; folders from imports.
+- [x] **Tags**: Done · core, desktop, web. Nothing for desktop; the extension and web vault views.
+- [x] **Multiple vaults**: Done · core, desktop, web. Several vaults in the CLI; a free-tier limit once plans exist.
+- [x] **Smart categories**: Done · core, desktop, web. Nothing for the desktop; Signal-hidden passkeys join Needs attention once the Signal API exists.
+- [x] **Duplicate finder**: Done · core, desktop, web. Run it on its own after an import; a side-by-side compare.
+- [x] **Favorites and recency ranking**: Done · core, desktop, web. Fill counts from the browser extension.
+- [ ] **Global quick-access palette**: Partial · desktop, web. The system-wide hotkey outside the window, fill and show-code actions, and a shared Rust search index (search runs over summaries in TypeScript).
 
 ## Autofill (browser)
 
@@ -89,18 +89,18 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is
 
 ## Two-factor & authenticator
 
-- [x] **Built-in TOTP codes**: Done · core, desktop, cli. Nothing in code for desktop; keeping it on the free tier is a pricing rule.
+- [x] **Built-in TOTP codes**: Done · core, desktop, cli, web. Nothing in code for desktop; keeping it on the free tier is a pricing rule.
 - [x] **TOTP autofill**: Done · core, extension. A Firefox test run.
 - [ ] **Authenticator importers**: Partial · core, desktop, cli. Google Authenticator transfer batches and Aegis (incl. encrypted), 2FAS, Ente, Proton and Bitwarden files; only single otpauth:// and steam:// links import today.
-- [ ] **Code display aids**: Partial · core, desktop. Clock-skew correction against server time and search focus on launch (haptics are a phone item).
+- [ ] **Code display aids**: Partial · core, desktop, web. Clock-skew correction against server time and search focus on launch (haptics are a phone item).
 
 ## Vendor login bridges
 
-- [x] **Steam Guard codes**: Done · core, desktop, cli. Nothing in code for desktop; no UI test exercises the Steam variant specifically.
+- [x] **Steam Guard codes**: Done · core, desktop, cli, web. Nothing in code for desktop; no UI test exercises the Steam variant specifically.
 - [ ] **Steam maFile import**: Partial · core. File parsers for SDA (incl. passkey-encrypted), WinAuth and Steam v2 JSON, with identity_secret put in the high-risk class.
 - [ ] **TV and console activation by scan** _(under review)_: Partial · core, desktop. The scanner, the activation-page allow-list, opening the real page with the code and autofill, and the core producing approval requests (the sheet is a seam).
 - [ ] **Anti-phishing approval gate** _(under review)_: Partial · core, desktop. Wire the gate into real device-code, Steam QR and passkey QR flows; nothing calls it yet.
-- [ ] **Large-type display**: Partial · desktop. Large type for any password (Logins lack it), and the hotel and rental mode that logs the TV sign-in and reminds you to sign out.
+- [ ] **Large-type display**: Partial · desktop, web. Large type for any password (Logins lack it), and the hotel and rental mode that logs the TV sign-in and reminds you to sign out.
 - [ ] **Federated sign-in map**: Not started · nowhere yet. Everything: capturing provider buttons and redirects, the blast-radius view and recovery warnings.
 - [ ] **Service 2FA setup guides**: Not started · nowhere yet. Everything: setup cards from 2fa.directory and the passkeys directory with attribution.
 
@@ -109,9 +109,9 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is
 - [x] **Shared vaults**: Done · core, desktop, server. Sharing in the CLI and the web vault.
 - [x] **Granular share permissions**: Done · core, desktop, server, extension. Groups of people as members.
 - [x] **Single-item sharing**: Done · core, desktop, server. Sharing from the extension and the web vault.
+- [x] **Share links for non-users**: Done · core, desktop, server, web. Item and file links made from the web vault (the desktop makes them; any browser opens them).
+- [x] **Request a secret**: Done · core, desktop, server, web. Keeping an answer as a note from the web vault.
 - [x] **Fill-only sharing**: Done · core, desktop, extension. Nothing for desktop and the extension; the web vault.
-- [ ] **Share links for non-users**: Partial · core, desktop, server. Opening a link in a plain browser (the server page is a no-script notice; the web vault slice will open it).
-- [ ] **Request a secret**: Partial · core, desktop, server. Answering a request in a plain browser for someone without Lockdown, like share links.
 
 ## Family & emergency/recovery
 
@@ -134,7 +134,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is
 
 ## Privacy
 
-- [ ] **Clipboard and screenshot hygiene**: Partial · desktop. Keep copies out of Windows clipboard history and cloud clipboard, and block screen capture on reveal screens.
+- [ ] **Clipboard and screenshot hygiene**: Partial · desktop, web. Keep copies out of Windows clipboard history and cloud clipboard, and block screen capture on reveal screens.
 - [ ] **Third-party alias services**: Not started · nowhere yet. Everything: alias generation through the six services' API keys.
 
 ## Import/export & portability
@@ -150,26 +150,26 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is
 
 ## Self-hosting & deployment
 
-- [ ] **Official self-hosting**: Partial · server. Packaging, operator docs and support, and the server features later slices need (sharing, push); it is axum plus rusqlite, not sqlx.
+- [ ] **Official self-hosting**: Partial · server, web. Packaging, operator docs and support, and the server features later slices need (sharing, push); it is axum plus rusqlite, not sqlx.
 - [ ] **Lightweight single container**: Partial · server. A published container image, Postgres, S3-compatible attachment storage, and the memory measurement.
 - [ ] **Self-hosted live sync**: Not started · nowhere yet. Everything: WebSocket live sync and a push relay for mobile.
 - [ ] **Same code as the cloud**: Not code yet · nowhere yet. Needs a cloud, a feature-flag release process and advisory IDs; nothing to build until a hosted service exists.
 
 ## Security architecture & crypto
 
-- [x] **End-to-end encryption**: Done · core, server, desktop, cli. Decide whether item kinds and field names (visible per D48) must be hidden too; then the external audit.
-- [x] **Password-authenticated login (PAKE)**: Done · core, server, desktop, cli. Nothing in code; it goes into the external audit.
+- [x] **End-to-end encryption**: Done · core, server, desktop, cli, web. Decide whether item kinds and field names (visible per D48) must be hidden too; then the external audit.
+- [x] **Password-authenticated login (PAKE)**: Done · core, server, desktop, cli, web. Nothing in code; it goes into the external audit.
 - [x] **Bound authenticated encryption**: Done · core. Nothing in code; it goes into the external audit.
-- [x] **Rollback and deletion protection**: Done · core, server, cli, desktop. Nothing for v1 beyond the audit.
-- [ ] **Secret Key**: Partial · core, desktop, cli, server. QR transfer of the Secret Key to a new device (it is typed from the kit today) and the opt-out warning path.
+- [x] **Rollback and deletion protection**: Done · core, server, cli, desktop, web. Nothing for v1 beyond the audit.
+- [ ] **Secret Key**: Partial · core, desktop, cli, server, web. QR transfer of the Secret Key to a new device (it is typed from the kit today) and the opt-out warning path.
 - [ ] **Strong key derivation**: Partial · core. Per-device calibration above the floor and renegotiation on a stronger device (every device uses the desktop floor, D49).
 - [ ] **Malicious-server resistance**: Partial · core, server. The Tamarin or ProVerif model of login, sharing and recovery, and the academic review (not code); sharing's defences (signed envelopes, membership chain, KT-checked keys) are built.
-- [ ] **Authenticated public keys**: Partial · core, desktop, server. Passphrase-verified invites, scanning the QR fingerprint (the payload exists), and log mirrors.
+- [ ] **Authenticated public keys**: Partial · core, desktop, server, web. Passphrase-verified invites, scanning the QR fingerprint (the payload exists), and log mirrors.
 - [ ] **Post-quantum key wrapping**: Partial · core. Wrapping vault, sharing, organisation and recovery keys to hybrid recipients, and ML-DSA signatures.
 - [ ] **New-device approval with code match**: Partial · core, desktop. Approving a new device from an existing one over an authenticated channel (a device joins with the password and kit today).
-- [ ] **Memory hygiene**: Partial · core, desktop. Locked memory pages kept out of swap; the webview still holds typed and revealed strings briefly (D91).
+- [ ] **Memory hygiene**: Partial · core, desktop, web. Locked memory pages kept out of swap; the webview still holds typed and revealed strings briefly (D91).
 - [ ] **Verified local connections**: Partial · desktop, extension. Code-signature checks on macOS and Windows and the Windows named-pipe transport; on Linux and macOS the native host and the desktop check each other by path and SHA-256 today.
-- [ ] **High-risk item class**: Partial · core, desktop. The legacy-release rule. Crown jewels stay out of exports and backups unless opted in per item (D121), and items move into and out of the class.
+- [ ] **High-risk item class**: Partial · core, desktop, web. The legacy-release rule. Crown jewels stay out of exports and backups unless opted in per item (D121), and items move into and out of the class.
 - [ ] **Post-quantum transport**: Not started · nowhere yet. Everything: hybrid X25519MLKEM768 TLS on the client and the self-host server.
 - [ ] **Hardware-backed biometric unlock**: Not started · nowhere yet. Everything: key slots in the Secure Enclave, StrongBox or TPM that reset when biometrics change.
 - [ ] **Security-key 2FA on the account**: Not started · nowhere yet. Everything: FIDO2 keys and passkeys as account second factors.
@@ -177,6 +177,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is
 
 ## Platforms & apps
 
+- [x] **Web vault**: Done · core, web, server. Import, export, backups, attachments, the security center, the recovery kit, passkeys and sharing in the web vault (each refused in words today); offline use; Firefox and Safari test runs; code splitting (the module is about 10 MB).
 - [x] **Offline access**: Done · core, desktop, cli. Nothing for desktop and CLI beyond a background offline queue; the extension and mobile clients need it when they exist.
 - [x] **Non-Electron desktop**: Done · desktop. Nothing; native targets come with the OS-provider features.
 - [ ] **Windows app**: Partial · desktop. A Windows build and test run in CI, MSIX packaging, the passkey plugin and auto-type.
@@ -184,7 +185,6 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is
 - [ ] **Linux app**: Partial · desktop. Flatpak, deb and rpm packaging, the SSH agent and TPM-sealed unlock.
 - [ ] **iPhone and iPad app** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: the SwiftUI app and the UniFFI bindings.
 - [ ] **Android app** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: the Jetpack Compose app and F-Droid build.
-- [ ] **Web vault**: Not started · nowhere yet. Everything: a web vault on the wasm core.
 - [ ] **Usable free tier**: Not code yet · nowhere yet. Needs the plan and pricing decision and its enforcement on the server.
 
 ## Trust & transparency
