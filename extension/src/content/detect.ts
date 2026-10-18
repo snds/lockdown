@@ -177,3 +177,23 @@ export function capture(form: ParentNode): { username: string; password: string 
   const user = usernameFor(passwords[0])
   return { username: user?.value.trim() ?? "", password: chosen.value }
 }
+
+/** A field for a new password, a sign-up's or a change's: marked
+ *  `new-password`; or, unmarked, either of exactly two password fields, or
+ *  any but the first of three or more (the first being the current one). */
+export function isNewPassword(el: HTMLInputElement): boolean {
+  if (el.type !== "password" || !usable(el)) return false
+  const a = auto(el)
+  if (a === "new-password") return true
+  if (a === "current-password" || a === "one-time-code") return false
+  const pw = inputsIn(scope(el)).filter((i) => i.type === "password")
+  const at = pw.indexOf(el)
+  return pw.length === 2 || (pw.length >= 3 && at > 0)
+}
+
+/** The new-password fields that go with `el` (it, and the field that
+ *  repeats it), in page order. */
+export function newPasswordFields(el: HTMLInputElement): HTMLInputElement[] {
+  const all = inputsIn(scope(el)).filter((i) => i === el || isNewPassword(i))
+  return all.includes(el) ? all : [el, ...all]
+}

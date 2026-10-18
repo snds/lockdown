@@ -8,9 +8,14 @@
 //! takes the `Reveal` gate on a crown jewel, is refused for a fill-only
 //! item and counts as a use (D151).
 
-use lockdown_crypto::generator::Recipe;
+use lockdown_crypto::generator::{PasswordRule, Recipe, SiteRule};
+use lockdown_matcher::{MatchDecision, Origin};
+use lockdown_vault::{ItemKind, ItemState};
+use zeroize::Zeroizing;
 
-use crate::session::depth::site_rule_of;
+use crate::browser::{best_decision, matcher_data, saved_urls, text};
+use crate::session::Session;
+use crate::session::depth::{RULE_FIELD, site_rule_of};
 use crate::types::{
     AwayReminder, GeneratorPreview, LinkTargetView, SiteRuleView, StorageView, UserTemplateInput,
     UserTemplateView,
@@ -27,6 +32,35 @@ pub fn strength_word(bits: f64) -> &'static str {
     } else {
         "strong"
     }
+}
+
+/// The rules saved on the logins exactly for `page`, when they agree on
+/// one (several logins with different rules leave the site's own).
+fn saved_rule_for(session: &Session, page: &str) -> AppResult<Option<String>> {
+    let current = Origin::parse(page).map_err(|e| AppError::refused(e.to_string()))?;
+    let data = matcher_data()?;
+    let mut rules = std::collections::BTreeSet::new();
+    for vault in session.vaults() {
+        for item in vault.items() {
+            if item.kind != ItemKind::Login || item.state != ItemState::Live {
+                continue;
+            }
+            let fields = vault
+                .open_item(item.item_id)
+                .map_err(|e| AppError::refused(e.to_string()))?;
+            let Some(rule) = text(&fields, RULE_FIELD) else {
+                continue;
+            };
+            if best_decision(&saved_urls(&fields), &current, &data).0 == MatchDecision::Exact {
+                rules.insert(rule);
+            }
+        }
+    }
+    Ok(if rules.len() == 1 {
+        rules.pop_first()
+    } else {
+        None
+    })
 }
 
 impl App {
@@ -106,6 +140,37 @@ impl App {
     /// The rules a site publishes for new passwords, if it does.
     pub fn site_rule(&self, url: &str) -> Option<SiteRuleView> {
         site_rule_of(None, Some(url)).map(|(_, v)| v)
+    }
+
+    /// What a strong password suggested in the browser for `page` follows
+    /// (D236): the rules saved on the one login that is exactly for this
+    /// page, else the rules the site publishes, else Lockdown's own strong
+    /// recipe. Names the rules only; nothing is made.
+    pub fn password_suggestion(&self, page: &str) -> AppResult<GeneratorPreview> {
+        let page = page.to_string();
+        let recipe = Recipe::from(PasswordRule::STRONG);
+        let rule =
+            self.call(move |core| saved_rule_for(core.session()?, &page).map(|r| (r, page)))?;
+        self.generator_preview(&recipe, Some(&rule.1), rule.0.as_deref())
+    }
+
+    /// A strong password for a new-password field on `page`, under the
+    /// rules [`App::password_suggestion`] names. It is new, not read from
+    /// the vault, so no gate applies; it reaches the vault only when the
+    /// person saves the sign-up (`save_login`).
+    pub fn suggest_password(&self, page: &str) -> AppResult<(Zeroizing<String>, GeneratorPreview)> {
+        let preview = self.password_suggestion(page)?;
+        let recipe = Recipe::from(PasswordRule::STRONG);
+        let value = match preview
+            .site
+            .as_ref()
+            .and_then(|s| SiteRule::parse(&s.rule).ok())
+        {
+            Some(rule) => recipe.generate_for(&rule),
+            None => recipe.generate(),
+        }
+        .map_err(|e| AppError::refused(e.to_string()))?;
+        Ok((value, preview))
     }
 
     // --- the Wi-Fi guest card (D236) -------------------------------------------
@@ -751,6 +816,61 @@ mod tests {
         assert!(pw.expose().iter().all(u8::is_ascii_digit));
         assert!(app.site_rule("https://unlisted.example").is_none());
         assert_eq!(strength_word(125.0), "strong");
+    }
+
+    #[test]
+    fn a_suggested_password_follows_the_saved_rules_then_the_sites_own() {
+        let (_dir, app) = fresh();
+        let plain = app
+            .suggest_password("https://unlisted.example/join")
+            .unwrap();
+        assert!(plain.1.site.is_none() && plain.1.strength == "strong");
+        assert_eq!(plain.0.chars().count(), 20);
+        let (flowers, view) = app
+            .suggest_password("https://www.1800flowers.com/signup")
+            .unwrap();
+        assert_eq!(view.site.as_ref().unwrap().source, "published");
+        assert!(flowers.chars().any(|c| c.is_ascii_digit()));
+        assert_eq!(
+            app.password_suggestion("https://www.1800flowers.com/signup")
+                .unwrap(),
+            view,
+            "the menu names what a pick then makes"
+        );
+        // A login exactly for the page that keeps its own rules wins.
+        app.add_item(
+            "login",
+            Some("PIN site"),
+            false,
+            vec![
+                FieldChange::text("url.0", "https://pin.example"),
+                FieldChange::text("pw.rule", "minlength: 6; maxlength: 6; required: digit;"),
+            ],
+        )
+        .unwrap();
+        let (pin, view) = app.suggest_password("https://pin.example/change").unwrap();
+        assert_eq!(view.site.unwrap().source, "saved");
+        assert!(pin.len() == 6 && pin.bytes().all(|b| b.is_ascii_digit()));
+        // Two logins with different rules leave the choice to the site.
+        app.add_item(
+            "login",
+            Some("PIN site, again"),
+            false,
+            vec![
+                FieldChange::text("url.0", "https://pin.example"),
+                FieldChange::text("pw.rule", "minlength: 8; maxlength: 8; required: digit;"),
+            ],
+        )
+        .unwrap();
+        assert!(
+            app.password_suggestion("https://pin.example/")
+                .unwrap()
+                .site
+                .is_none()
+        );
+        assert!(app.suggest_password("not a page").is_err());
+        app.lock().unwrap();
+        assert!(app.suggest_password("https://pin.example/").is_err());
     }
 
     #[test]

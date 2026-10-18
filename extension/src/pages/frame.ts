@@ -125,6 +125,18 @@ async function pick(data: MenuData, itemId: string, what: PickWhat, field: strin
   message(data.host, answer?.refuse ?? answer?.error ?? "Lockdown didn't fill.", "stop")
 }
 
+/** A strong password for a new-password field, made in the app on this
+ *  pick (never before) and written into the field by the content script. */
+async function suggestPick(data: MenuData) {
+  if (visible === false) {
+    message(data.host, "Something on this page covers Lockdown's menu, so Lockdown won't fill.", "stop")
+    return
+  }
+  const answer = await send<PickAnswer & { error?: string }>({ t: "menu_suggest", frame_visible: visible })
+  if (answer?.done) return
+  message(data.host, answer?.refuse ?? answer?.error ?? "Lockdown didn't fill.", "stop")
+}
+
 function row(title: string, sub: string, onPick: (e: MouseEvent) => void, badge?: string): HTMLElement {
   const b = el("button", "item")
   const t = el("span", "title", title || "Untitled")
@@ -147,6 +159,15 @@ function renderMenu(data: MenuData) {
   }
   const list: HTMLElement[] = []
   const what = data.kind
+  // A sign-up's or a change's password field: a strong password first.
+  if (data.suggest) {
+    const s = data.suggest
+    list.push(
+      row("Use a strong password", s.site ? `Follows ${s.site.host}'s password rules` : `Made by Lockdown · ${Math.round(s.bits)} bits`, (e) => {
+        if (deliberate(e)) void suggestPick(data)
+      }),
+    )
+  }
   // A page asking for a passkey (conditional mediation): its passkeys first.
   for (const p of (data.passkeys ?? []) as PasskeyOption[]) {
     list.push(

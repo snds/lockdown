@@ -5,7 +5,7 @@
 
 import type { ToBackground, ToContent, Measured, MenuKind, PickWhat } from "../shared/messages"
 import { extensionOrigin } from "../shared/messages"
-import type { FillAnswer, LinkState, LoginCandidate, MenuData, PageMatches, PickAnswer, SaveOffer, WalletEntry } from "../shared/protocol"
+import type { FillAnswer, LinkState, LoginCandidate, MenuData, PageMatches, PasswordSuggestion, PickAnswer, SaveOffer, WalletEntry } from "../shared/protocol"
 import { DesktopError, Link } from "./link"
 import * as matcher from "./matcher"
 import { Passkeys } from "./passkeys"
@@ -26,6 +26,8 @@ interface Menu {
   offered: Map<string, LoginCandidate | WalletEntry>
   /** The passkeys it offered, as `item:credential`. */
   passkeys: Set<string>
+  /** The field takes a new password, so the menu may suggest one. */
+  newPassword: boolean
 }
 
 const menus = new Map<string, Menu>()
@@ -112,6 +114,9 @@ async function menuData(m: Menu): Promise<MenuData> {
     base.note = words(e)
     base.link = await linkState()
   }
+  // A sign-up's or a change's password field: the strong password Lockdown
+  // would make for it, named by the rules it follows; made only on a pick.
+  if (kind === "login" && m.newPassword) base.suggest = await link.call<PasswordSuggestion>("password_rule", { frame: m.frameUrl }).catch(() => null)
   m.offered = new Map<string, LoginCandidate | WalletEntry>([...base.logins.map((c) => [c.item_id, c] as const), ...base.wallet.map((w) => [w.item_id, w] as const)])
   m.passkeys = new Set(base.passkeys.map((p) => `${p.item_id}:${p.credential_id}`))
   return base
@@ -161,12 +166,28 @@ async function pick(m: Menu, itemId: string, what: PickWhat, field: string | nul
   return { refuse: answer.reason }
 }
 
+/** A strong password for a new-password field, picked in the menu: the
+ *  field and the menu measured as for a fill, then made in the app under
+ *  the site's rules and written into the field and its repeat. */
+async function suggest(m: Menu, frameVisible: boolean | null): Promise<PickAnswer> {
+  if (frameVisible === false) return { refuse: "Something on the page covers Lockdown's menu, so Lockdown won't fill." }
+  const measured = await sendToFrame<Measured>(m, { t: "measure", nonce: nonceOf(m) })
+  if (!measured?.ok) return { refuse: "The field isn't on the page any more." }
+  if (!measured.visible) return { refuse: "The field is hidden or covered, so Lockdown won't fill it." }
+  if (frameVisible === null && measured.menu_visible === false)
+    return { refuse: "Something on the page covers Lockdown's menu, so Lockdown won't fill." }
+  const made = await link.call<{ value: string }>("suggest", { frame: m.frameUrl })
+  const filled = await sendToFrame<{ filled: number }>(m, { t: "apply_new", nonce: nonceOf(m), value: made.value })
+  made.value = ""
+  return filled?.filled ? { done: true } : { refuse: "The page changed before Lockdown could fill it." }
+}
+
 function nonceOf(m: Menu): string {
   for (const [n, x] of menus) if (x === m) return n
   return ""
 }
 
-function register(nonce: string, kind: MenuKind, sender: chrome.runtime.MessageSender) {
+function register(nonce: string, kind: MenuKind, sender: chrome.runtime.MessageSender, newPassword = false) {
   if (!NONCE.test(nonce) || !sender.tab?.id || sender.frameId === undefined || !sender.url) throw new Error("bad registration")
   const tabId = sender.tab.id
   const mine = [...menus.entries()].filter(([, m]) => m.tabId === tabId)
@@ -174,7 +195,7 @@ function register(nonce: string, kind: MenuKind, sender: chrome.runtime.MessageS
     mine.sort((a, b) => a[1].created - b[1].created)
     menus.delete(mine[0][0])
   }
-  menus.set(nonce, { tabId, frameId: sender.frameId, frameUrl: sender.url, kind, created: Date.now(), offered: new Map(), passkeys: new Set() })
+  menus.set(nonce, { tabId, frameId: sender.frameId, frameUrl: sender.url, kind, created: Date.now(), offered: new Map(), passkeys: new Set(), newPassword: kind === "login" && newPassword })
 }
 
 async function offerSave(username: string, password: string, sender: chrome.runtime.MessageSender): Promise<SaveOffer | { error: string }> {
@@ -226,7 +247,7 @@ async function route(msg: ToBackground, sender: chrome.runtime.MessageSender): P
     // --- the content script -------------------------------------------------
     case "register":
       if (!isContentScript(sender)) throw new Error("refused")
-      register(msg.nonce, msg.kind, sender)
+      register(msg.nonce, msg.kind, sender, msg.new_password === true)
       return { ok: true }
     case "unregister": {
       if (!isContentScript(sender)) throw new Error("refused")
@@ -252,6 +273,18 @@ async function route(msg: ToBackground, sender: chrome.runtime.MessageSender): P
       if (m.kind === "prompt") throw new Error("refused")
       try {
         const answer = await pick(m, msg.item_id, msg.what, msg.field ?? null, msg.confirmed === true, msg.frame_visible)
+        if (answer.done) void sendToFrame(m, { t: "close", nonce: msg.nonce }).catch(() => undefined)
+        return answer
+      } catch (e) {
+        return { refuse: words(e) }
+      }
+    }
+    case "menu_suggest": {
+      if (!isExtensionPage(sender, "frame.html")) throw new Error("refused")
+      const m = menuFor(msg.nonce, sender)
+      if (!m.newPassword) return { refuse: "This field doesn't take a new password." }
+      try {
+        const answer = await suggest(m, msg.frame_visible)
         if (answer.done) void sendToFrame(m, { t: "close", nonce: msg.nonce }).catch(() => undefined)
         return answer
       } catch (e) {
