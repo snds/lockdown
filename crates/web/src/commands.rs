@@ -191,7 +191,8 @@ fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult<Reply> {
         "requests" => json(web.app().requests()?),
         "request_open" => json(web.app().open_answer(&req::<String>(args, "requestId")?)?),
         "request_delete" => {
-            web.app().delete_request(&req::<String>(args, "requestId")?)?;
+            web.app()
+                .delete_request(&req::<String>(args, "requestId")?)?;
             done()
         }
         "opened_value" => {
@@ -283,7 +284,9 @@ fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult<Reply> {
                     web.app()
                         .add_item_in(&vault, &kind, title.as_deref(), crown, changes)?
                 }
-                None => web.app().add_item(&kind, title.as_deref(), crown, changes)?,
+                None => web
+                    .app()
+                    .add_item(&kind, title.as_deref(), crown, changes)?,
             };
             json(id)
         }
@@ -335,7 +338,8 @@ fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult<Reply> {
         "create_vault" => json(web.app().create_vault(&req::<String>(args, "name")?)?),
         "rename_vault" => {
             let vault: String = req(args, "vaultId")?;
-            web.app().rename_vault(&vault, &req::<String>(args, "name")?)?;
+            web.app()
+                .rename_vault(&vault, &req::<String>(args, "name")?)?;
             done()
         }
         "set_trash_days" => {
@@ -393,7 +397,10 @@ fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult<Reply> {
         }
         "set_crown_jewel" => {
             let id: String = req(args, "id")?;
-            json(web.app().set_crown_jewel(&id, req(args, "on")?, gate(args)?)?)
+            json(
+                web.app()
+                    .set_crown_jewel(&id, req(args, "on")?, gate(args)?)?,
+            )
         }
         "purge" => {
             web.app().purge(&req::<String>(args, "id")?, gate(args)?)?;
@@ -418,7 +425,10 @@ fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult<Reply> {
         }
         "restore_version" => {
             let id: String = req(args, "id")?;
-            json(web.app().restore_version(&id, req(args, "n")?, gate(args)?)?)
+            json(
+                web.app()
+                    .restore_version(&id, req(args, "n")?, gate(args)?)?,
+            )
         }
         "note_use" => {
             web.app().note_use(&req::<String>(args, "id")?)?;

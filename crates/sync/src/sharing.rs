@@ -586,8 +586,7 @@ impl HttpTransport {
     }
 
     fn delete(&self, path: &str, token: Option<&str>) -> Result<()> {
-        self.call_raw(Method::Delete, path, token, None)
-            .map(|_| ())
+        self.call_raw(Method::Delete, path, token, None).map(|_| ())
     }
 
     /// `GET /v1/directory?login=L`.

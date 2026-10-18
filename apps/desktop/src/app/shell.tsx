@@ -45,7 +45,7 @@ const VIEWS: Array<[ListView, IconName]> = [
   ["deleted", "delete"],
 ]
 
-export const SCREENS: ReadonlyArray<ShellScreen> = [
+const SCREENS: ReadonlyArray<ShellScreen> = [
   ["security", "security", "Security"],
   ["sharing", "group", "Sharing"],
   ["devices", "devices", "Devices"],

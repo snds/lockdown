@@ -28,7 +28,7 @@
 //!   WebAssembly build takes the identity crate's WASM Argon2id floor for
 //!   its kit, which the server and every desktop refuse as below theirs;
 //!   so the web vault signs in to accounts the desktop app or the CLI made
-//!   and never creates one (docs/plan/17-web-vault.md, D17x).
+//!   and never creates one (docs/plan/17-web-vault.md, D176).
 //! - **Sign out forgets everything** the tab holds. The device record
 //!   stays in the identity, where another device can revoke it; its key
 //!   is gone, so it can never sign again.
@@ -41,13 +41,11 @@ use ecosystem_identity::keystore::DeviceKeystore;
 use ecosystem_identity::{ExportKey, FileKeystore};
 use lockdown_app::secrets::{self, SecretStore};
 use lockdown_app::{App, AppError, AppResult, LockPolicy, Paths, Status};
-use lockdown_store::{HeadMemory, RememberedHead, ServerView, TransparencyMemory};
 use lockdown_crypto::aead::{self, Sealed};
-use lockdown_crypto::auth::{
-    AuthRounds, DeviceProof, LoginClient, Session, device_pop_message,
-};
+use lockdown_crypto::auth::{AuthRounds, DeviceProof, LoginClient, Session, device_pop_message};
 use lockdown_crypto::identity::SymmetricKey;
 use lockdown_crypto::{Error as CryptoError, Key32};
+use lockdown_store::{HeadMemory, RememberedHead, ServerView, TransparencyMemory};
 use lockdown_sync::HttpTransport;
 use lockdown_vault::{Id, SignedTreeHead};
 use serde::{Deserialize, Serialize};
@@ -130,12 +128,18 @@ struct MemorySecrets(Mutex<BTreeMap<String, Zeroizing<String>>>);
 #[cfg_attr(not(target_os = "wasi"), allow(dead_code))]
 impl SecretStore for MemorySecrets {
     fn get(&self, key: &str) -> Result<Option<String>, String> {
-        let held = self.0.lock().map_err(|_| "the token store failed".to_string())?;
+        let held = self
+            .0
+            .lock()
+            .map_err(|_| "the token store failed".to_string())?;
         Ok(held.get(key).map(|v| v.as_str().to_string()))
     }
 
     fn set(&self, key: &str, value: &str) -> Result<(), String> {
-        let mut held = self.0.lock().map_err(|_| "the token store failed".to_string())?;
+        let mut held = self
+            .0
+            .lock()
+            .map_err(|_| "the token store failed".to_string())?;
         held.insert(key.to_string(), Zeroizing::new(value.to_string()));
         Ok(())
     }
@@ -242,9 +246,7 @@ fn sign_in_round(
 ) -> AppResult<(ExportKey, Session, SealedDevice)> {
     let mut rounds = HttpTransport::new(server).map_err(|e| refused(e.to_string()))?;
     let (client, request) = LoginClient::start(password).map_err(login_error)?;
-    let started = rounds
-        .login_start(login, &request)
-        .map_err(login_error)?;
+    let started = rounds.login_start(login, &request).map_err(login_error)?;
     let finished = client
         .finish(password, &started.response)
         .map_err(login_error)?;
@@ -544,7 +546,9 @@ impl WebVault {
     fn start_empty(&mut self, keep_pending_key: bool) -> AppResult<()> {
         let _ = self.app.lock();
         let pending = if keep_pending_key && self.account.is_none() {
-            std::fs::read(self.paths.keystore()).ok().map(Zeroizing::new)
+            std::fs::read(self.paths.keystore())
+                .ok()
+                .map(Zeroizing::new)
         } else {
             None
         };
@@ -570,7 +574,7 @@ impl WebVault {
     }
 
     /// What this tab remembers that a later visit to the same account in
-    /// this browser should hold the server to (D17x): the server's pinned
+    /// this browser should hold the server to (D181): the server's pinned
     /// log key and newest verified tree head, and each vault's newest
     /// accepted head. Hashes, sizes and public keys only: no key, no value,
     /// no title. Canonical CBOR, for the worker to keep in IndexedDB.
@@ -580,7 +584,10 @@ impl WebVault {
             return Ok(None);
         };
         if let Ok(vaults) = self.app.vaults() {
-            let mut ids: Vec<Id> = vaults.iter().filter_map(|v| Id::parse(&v.id).ok()).collect();
+            let mut ids: Vec<Id> = vaults
+                .iter()
+                .filter_map(|v| Id::parse(&v.id).ok())
+                .collect();
             ids.sort();
             self.known_vaults = ids;
         }
@@ -592,8 +599,7 @@ impl WebVault {
                 log_key: v.log_key,
                 sth: v.sth.clone(),
             });
-        let memory =
-            HeadMemory::open(&paths.memory_file()).map_err(|e| refused(e.to_string()))?;
+        let memory = HeadMemory::open(&paths.memory_file()).map_err(|e| refused(e.to_string()))?;
         let vaults = self
             .known_vaults
             .iter()

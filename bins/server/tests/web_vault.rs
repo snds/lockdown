@@ -38,13 +38,22 @@ fn header_of<'a>(res: &'a axum::response::Response, name: &str) -> &'a str {
 fn assert_locked_down(res: &axum::response::Response) {
     let csp = header_of(res, "content-security-policy");
     assert!(csp.contains("default-src 'none'"), "{csp}");
-    assert!(csp.contains("script-src 'self' 'wasm-unsafe-eval'"), "{csp}");
+    assert!(
+        csp.contains("script-src 'self' 'wasm-unsafe-eval'"),
+        "{csp}"
+    );
     assert!(csp.contains("connect-src 'self'"), "{csp}");
     assert!(csp.contains("frame-ancestors 'none'"), "{csp}");
     assert!(!csp.contains("unsafe-inline"), "{csp}");
     assert_eq!(header_of(res, "cross-origin-opener-policy"), "same-origin");
-    assert_eq!(header_of(res, "cross-origin-embedder-policy"), "require-corp");
-    assert_eq!(header_of(res, "cross-origin-resource-policy"), "same-origin");
+    assert_eq!(
+        header_of(res, "cross-origin-embedder-policy"),
+        "require-corp"
+    );
+    assert_eq!(
+        header_of(res, "cross-origin-resource-policy"),
+        "same-origin"
+    );
     assert_eq!(header_of(res, "x-frame-options"), "DENY");
     assert_eq!(header_of(res, "x-content-type-options"), "nosniff");
     assert_eq!(header_of(res, "referrer-policy"), "no-referrer");
@@ -54,7 +63,11 @@ fn assert_locked_down(res: &axum::response::Response) {
 async fn the_page_its_assets_and_the_module_come_with_the_headers() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("assets")).unwrap();
-    std::fs::write(dir.path().join("index.html"), "<!doctype html><title>Lockdown</title>").unwrap();
+    std::fs::write(
+        dir.path().join("index.html"),
+        "<!doctype html><title>Lockdown</title>",
+    )
+    .unwrap();
     std::fs::write(dir.path().join("assets/index-abc.js"), "export {}").unwrap();
     std::fs::write(dir.path().join("assets/core-abc.wasm"), b"\0asm").unwrap();
     let router = router(Some(dir.path().to_path_buf()));
@@ -74,7 +87,10 @@ async fn the_page_its_assets_and_the_module_come_with_the_headers() {
     let res = get(&router, "/vault/assets/index-abc.js").await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_locked_down(&res);
-    assert_eq!(header_of(&res, "content-type"), "text/javascript; charset=utf-8");
+    assert_eq!(
+        header_of(&res, "content-type"),
+        "text/javascript; charset=utf-8"
+    );
     assert!(header_of(&res, "cache-control").contains("immutable"));
 
     let res = get(&router, "/vault/assets/core-abc.wasm").await;
@@ -112,7 +128,11 @@ async fn a_server_without_a_web_vault_says_so() {
 #[tokio::test]
 async fn share_and_request_links_go_on_to_the_web_vault_page() {
     let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("index.html"), "<!doctype html><title>Lockdown</title>").unwrap();
+    std::fs::write(
+        dir.path().join("index.html"),
+        "<!doctype html><title>Lockdown</title>",
+    )
+    .unwrap();
     let id = "0f6c3a52-7d2e-4f0e-9c1b-2d7f5e8a9b10";
     let with = router(Some(dir.path().to_path_buf()));
     for kind in ["s", "r"] {

@@ -472,12 +472,7 @@ impl Transport for HttpTransport {
         push: &IdentityPush,
     ) -> Result<std::result::Result<HeadAccepted, HeadRefused>> {
         let body = wire::encode(push).map_err(|e| TransportError::Decode(e.to_string()))?;
-        let (status, bytes) = self.send(
-            Method::Put,
-            "/v1/identity",
-            Some(token),
-            Some(body),
-        )?;
+        let (status, bytes) = self.send(Method::Put, "/v1/identity", Some(token), Some(body))?;
         if (200..300).contains(&status) {
             return Ok(Ok(
                 wire::decode(&bytes).map_err(|e| TransportError::Decode(e.to_string()))?

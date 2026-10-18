@@ -114,7 +114,7 @@ function SignInForm({ session, server, onSignedIn }: Pick<SignInScreenProps, "se
   )
 }
 
-/** Where an account comes from: the app or the command line, never this page (D17x). */
+/** Where an account comes from: the app or the command line, never this page (D176). */
 function NoAccountYet() {
   return (
     <div className="flex flex-col gap-3 text-sm text-muted-foreground">

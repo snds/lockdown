@@ -64,8 +64,8 @@ impl SnapshotStore {
                     inner.put_vault(record)?;
                 }
                 for b in &snap.items {
-                    let item = Item::from_bytes(b)
-                        .map_err(|_| StoreError::Tampered("an item".into()))?;
+                    let item =
+                        Item::from_bytes(b).map_err(|_| StoreError::Tampered("an item".into()))?;
                     inner.put_item(item)?;
                 }
                 for b in &snap.heads {
@@ -103,10 +103,12 @@ impl SnapshotStore {
                 .push(ByteBuf::from(record.to_bytes().map_err(backend)?));
             for item_id in self.inner.list_items(vault_id)? {
                 let item = self.inner.get_item(vault_id, item_id)?;
-                snap.items.push(ByteBuf::from(item.to_bytes().map_err(backend)?));
+                snap.items
+                    .push(ByteBuf::from(item.to_bytes().map_err(backend)?));
             }
             for head in self.inner.heads(vault_id)? {
-                snap.heads.push(ByteBuf::from(head.to_bytes().map_err(backend)?));
+                snap.heads
+                    .push(ByteBuf::from(head.to_bytes().map_err(backend)?));
             }
         }
         for hash in self.inner.list_blobs()? {
@@ -220,7 +222,11 @@ mod tests {
         vault.save(&mut store, &adk).unwrap();
 
         let bytes = std::fs::read(&path).unwrap();
-        for plain in [b"correct horse battery staple".as_slice(), b"accounts.example.com", b"me@example.com"] {
+        for plain in [
+            b"correct horse battery staple".as_slice(),
+            b"accounts.example.com",
+            b"me@example.com",
+        ] {
             assert!(
                 !bytes.windows(plain.len()).any(|w| w == plain),
                 "the file holds no plain field"
@@ -229,9 +235,18 @@ mod tests {
 
         let again = SnapshotStore::open(&path).unwrap();
         assert_eq!(again.list_vaults().unwrap(), vec![vault_id]);
-        assert_eq!(again.get_item(vault_id, id).unwrap(), store.get_item(vault_id, id).unwrap());
-        assert_eq!(again.heads(vault_id).unwrap(), store.heads(vault_id).unwrap());
-        assert_eq!(again.get_vault(vault_id).unwrap(), store.get_vault(vault_id).unwrap());
+        assert_eq!(
+            again.get_item(vault_id, id).unwrap(),
+            store.get_item(vault_id, id).unwrap()
+        );
+        assert_eq!(
+            again.heads(vault_id).unwrap(),
+            store.heads(vault_id).unwrap()
+        );
+        assert_eq!(
+            again.get_vault(vault_id).unwrap(),
+            store.get_vault(vault_id).unwrap()
+        );
     }
 
     #[test]
@@ -239,6 +254,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("vault.store");
         std::fs::write(&path, b"not cbor at all").unwrap();
-        assert!(matches!(SnapshotStore::open(&path), Err(StoreError::Tampered(_))));
+        assert!(matches!(
+            SnapshotStore::open(&path),
+            Err(StoreError::Tampered(_))
+        ));
     }
 }

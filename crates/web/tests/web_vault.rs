@@ -68,7 +68,11 @@ fn register(dir: &std::path::Path, url: &str) -> (lockdown_app::App, String) {
     let app = lockdown_app::App::start(paths, None, lockdown_app::LockPolicy::default());
     app.open_or_create(true).unwrap();
     let registered = app.account_register(url, LOGIN, PASSWORD, None).unwrap();
-    assert!(registered.lines.iter().any(|l| l.contains("registered")), "{:?}", registered.lines);
+    assert!(
+        registered.lines.iter().any(|l| l.contains("registered")),
+        "{:?}",
+        registered.lines
+    );
     app.sync().unwrap();
     let page = String::from_utf8(registered.kit.unwrap().expose().to_vec()).unwrap();
     let secret_key = page
@@ -137,7 +141,12 @@ fn two_tabs_sign_in_with_the_secret_key_and_share_one_vault_with_the_desktop() {
     let state = ok(&mut first, "web_state", json!({}));
     assert_eq!(state["signed_in"], true);
     assert_eq!(state["locked"], false);
-    let netflix = add_login(&mut first, "Netflix", "https://netflix.com", "hunter2hunter2");
+    let netflix = add_login(
+        &mut first,
+        "Netflix",
+        "https://netflix.com",
+        "hunter2hunter2",
+    );
     ok(&mut first, "sync", json!({}));
 
     // A second tab is a new device: the password alone is not enough.
@@ -147,7 +156,11 @@ fn two_tabs_sign_in_with_the_secret_key_and_share_one_vault_with_the_desktop() {
         "web_sign_in",
         json!({ "server": url, "login": LOGIN, "password": PASSWORD }),
     );
-    assert!(refused.message.contains("Secret Key"), "{}", refused.message);
+    assert!(
+        refused.message.contains("Secret Key"),
+        "{}",
+        refused.message
+    );
     assert_eq!(ok(&mut second, "web_state", json!({}))["signed_in"], false);
     let wrong = err(
         &mut second,
@@ -169,7 +182,11 @@ fn two_tabs_sign_in_with_the_secret_key_and_share_one_vault_with_the_desktop() {
     // device, which the next sign-in enrols: no stranger in the log.
     sign_in(&mut second, &url, &secret_key, None);
     assert_eq!(titles(&mut second), vec!["Netflix"]);
-    let pw = bytes(&mut second, "reveal", json!({ "id": netflix, "fieldId": "pw" }));
+    let pw = bytes(
+        &mut second,
+        "reveal",
+        json!({ "id": netflix, "fieldId": "pw" }),
+    );
     assert_eq!(pw, b"hunter2hunter2");
 
     // An edit in the second tab reaches the first through the server.
@@ -191,14 +208,23 @@ fn two_tabs_sign_in_with_the_secret_key_and_share_one_vault_with_the_desktop() {
     ok(&mut first, "sync", json!({}));
     assert_eq!(titles(&mut first), vec!["Netflix (family)"]);
     assert_eq!(
-        bytes(&mut first, "reveal_to_use", json!({ "id": netflix, "fieldId": "pw" })),
+        bytes(
+            &mut first,
+            "reveal_to_use",
+            json!({ "id": netflix, "fieldId": "pw" })
+        ),
         b"a new one entirely"
     );
 
     // The desktop sees the tabs' work too, and both tabs are devices of
     // the one identity beside it.
     desktop.sync().unwrap();
-    let titles_there: Vec<String> = desktop.list().unwrap().into_iter().map(|r| r.title).collect();
+    let titles_there: Vec<String> = desktop
+        .list()
+        .unwrap()
+        .into_iter()
+        .map(|r| r.title)
+        .collect();
     assert_eq!(titles_there, vec!["Netflix (family)"]);
     let devices = ok(&mut first, "device_list", json!({}));
     assert_eq!(devices.as_array().unwrap().len(), 3, "{devices}");
@@ -219,11 +245,18 @@ fn lock_wipes_the_device_key_and_unlock_is_a_fresh_sign_in() {
     ok(&mut web, "lock", json!({}));
     assert!(!key_file.exists(), "the key file is gone while locked");
     let state = ok(&mut web, "web_state", json!({}));
-    assert_eq!((state["signed_in"].clone(), state["locked"].clone()), (json!(true), json!(true)));
+    assert_eq!(
+        (state["signed_in"].clone(), state["locked"].clone()),
+        (json!(true), json!(true))
+    );
     let locked = err(&mut web, "list", json!({}));
     assert_eq!(locked.code, lockdown_app::ErrorCode::Locked);
 
-    let wrong = err(&mut web, "web_unlock", json!({ "password": "not it at all" }));
+    let wrong = err(
+        &mut web,
+        "web_unlock",
+        json!({ "password": "not it at all" }),
+    );
     assert!(wrong.message.contains("didn't match"), "{}", wrong.message);
     assert!(!key_file.exists(), "a failed unlock leaves no key behind");
 
@@ -310,14 +343,22 @@ fn what_one_visit_carries_holds_the_next_to_the_same_log_and_heads() {
     let (_desktop, secret_key) = register(dir.path(), &url);
     let mut first = tab(dir.path(), "first");
     sign_in(&mut first, &url, &secret_key, None);
-    add_login(&mut first, "Mail", "https://mail.example", "mail-password-1");
+    add_login(
+        &mut first,
+        "Mail",
+        "https://mail.example",
+        "mail-password-1",
+    );
     ok(&mut first, "sync", json!({}));
 
     let mut visit = tab(dir.path(), "visit");
     sign_in(&mut visit, &url, &secret_key, None);
     let carried = bytes(&mut visit, "web_carried", json!({}));
     let text = String::from_utf8_lossy(&carried);
-    assert!(!text.contains("Mail") && !text.contains("mail-password"), "{text}");
+    assert!(
+        !text.contains("Mail") && !text.contains("mail-password"),
+        "{text}"
+    );
     ok(&mut visit, "web_sign_out", json!({}));
 
     // The next visit in the same browser starts from what was carried and
@@ -370,8 +411,16 @@ fn an_unknown_command_and_a_missing_argument_are_refused_in_words() {
     let dir = tempfile::tempdir().unwrap();
     let mut web = tab(dir.path(), "tab");
     let e = err(&mut web, "export_save", json!({}));
-    assert!(e.message.contains("no command 'export_save'"), "{}", e.message);
-    let e = err(&mut web, "web_sign_in", json!({ "server": "http://127.0.0.1:9" }));
+    assert!(
+        e.message.contains("no command 'export_save'"),
+        "{}",
+        e.message
+    );
+    let e = err(
+        &mut web,
+        "web_sign_in",
+        json!({ "server": "http://127.0.0.1:9" }),
+    );
     assert!(e.message.contains("'login' is missing"), "{}", e.message);
 }
 
@@ -389,11 +438,17 @@ fn a_share_link_opens_and_a_request_is_answered_with_no_account() {
             "Wi-Fi at the cabin",
             b"pine-needles-42".to_vec(),
             Some(b"a link password".to_vec()),
-            lockdown_app::sharing::SendOptions { days: 3, max_views: Some(2) },
+            lockdown_app::sharing::SendOptions {
+                days: 3,
+                max_views: Some(2),
+            },
         )
         .unwrap();
     let link = String::from_utf8(link.expose().to_vec()).unwrap();
-    assert!(link.starts_with(&format!("{url}/s/")) && link.contains('#'), "{link}");
+    assert!(
+        link.starts_with(&format!("{url}/s/")) && link.contains('#'),
+        "{link}"
+    );
 
     // Someone with no account opens it in the web vault's page.
     let mut stranger = page(dir.path(), "stranger", &url);
@@ -410,24 +465,45 @@ fn a_share_link_opens_and_a_request_is_answered_with_no_account() {
     assert_eq!(view["kind"], "text");
     assert_eq!(view["title"], "Wi-Fi at the cabin");
     assert!(!view.to_string().contains("pine-needles"), "{view}");
-    assert_eq!(bytes(&mut stranger, "link_value", json!({ "index": 0 })), b"pine-needles-42");
+    assert_eq!(
+        bytes(&mut stranger, "link_value", json!({ "index": 0 })),
+        b"pine-needles-42"
+    );
     ok(&mut stranger, "link_close", json!({}));
-    assert!(err(&mut stranger, "link_value", json!({ "index": 0 })).message.contains("no link"));
+    assert!(
+        err(&mut stranger, "link_value", json!({ "index": 0 }))
+            .message
+            .contains("no link")
+    );
     // The opens are counted: one left after this one.
-    assert_eq!(ok(&mut stranger, "link_meta", json!({ "link": link }))["views_left"], 1);
+    assert_eq!(
+        ok(&mut stranger, "link_meta", json!({ "link": link }))["views_left"],
+        1
+    );
 
     // A link for another server is refused before anything is fetched.
     let elsewhere = link.replace(&url, "https://elsewhere.example");
     let e = err(&mut stranger, "link_open", json!({ "link": elsewhere }));
-    assert!(e.message.contains("belongs to https://elsewhere.example"), "{}", e.message);
+    assert!(
+        e.message.contains("belongs to https://elsewhere.example"),
+        "{}",
+        e.message
+    );
 
     // A request link a signed-in tab made, answered by the stranger and
     // read back in the tab.
     let mut asker = page(dir.path(), "asker", &url);
     sign_in(&mut asker, &url, &secret_key, None);
-    let request = bytes(&mut asker, "request_create", json!({ "label": "The door code", "days": 7 }));
+    let request = bytes(
+        &mut asker,
+        "request_create",
+        json!({ "label": "The door code", "days": 7 }),
+    );
     let request = String::from_utf8(request).unwrap();
-    assert_eq!(ok(&mut stranger, "request_label", json!({ "link": request })), json!("The door code"));
+    assert_eq!(
+        ok(&mut stranger, "request_label", json!({ "link": request })),
+        json!("The door code")
+    );
     ok(
         &mut stranger,
         "request_answer",
@@ -438,20 +514,41 @@ fn a_share_link_opens_and_a_request_is_answered_with_no_account() {
         "request_answer",
         json!({ "link": request, "title": "Front door", "secret": b"1357".as_slice() }),
     );
-    assert!(again.message.contains("already answered"), "{}", again.message);
+    assert!(
+        again.message.contains("already answered"),
+        "{}",
+        again.message
+    );
     let asked = ok(&mut asker, "requests", json!({}));
     let request_id = asked[0]["request_id"].as_str().unwrap().to_string();
     assert!(asked[0]["answered_at"].is_i64(), "{asked}");
-    let answered = ok(&mut asker, "request_open", json!({ "requestId": request_id }));
+    let answered = ok(
+        &mut asker,
+        "request_open",
+        json!({ "requestId": request_id }),
+    );
     assert_eq!(answered["title"], "Front door");
-    assert_eq!(bytes(&mut asker, "opened_value", json!({ "index": 0 })), b"2468");
+    assert_eq!(
+        bytes(&mut asker, "opened_value", json!({ "index": 0 })),
+        b"2468"
+    );
 
     // A text link made in the tab opens for the stranger too.
-    let made = bytes(&mut asker, "send_text", json!({ "title": "Gate", "text": b"0042".as_slice(), "days": 1, "maxViews": 1 }));
+    let made = bytes(
+        &mut asker,
+        "send_text",
+        json!({ "title": "Gate", "text": b"0042".as_slice(), "days": 1, "maxViews": 1 }),
+    );
     let made = String::from_utf8(made).unwrap();
-    assert_eq!(ok(&mut asker, "sends", json!({})).as_array().unwrap().len(), 2);
+    assert_eq!(
+        ok(&mut asker, "sends", json!({})).as_array().unwrap().len(),
+        2
+    );
     ok(&mut stranger, "link_open", json!({ "link": made }));
-    assert_eq!(bytes(&mut stranger, "link_value", json!({ "index": 0 })), b"0042");
+    assert_eq!(
+        bytes(&mut stranger, "link_value", json!({ "index": 0 })),
+        b"0042"
+    );
     let gone = err(&mut stranger, "link_open", json!({ "link": made }));
     assert_eq!(gone.code, lockdown_app::ErrorCode::Refused);
     drop(desktop);

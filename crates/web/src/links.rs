@@ -93,7 +93,8 @@ pub fn open_link(
                 params: p.params,
                 verifier: Hash32::ZERO,
             };
-            let (proof, pk) = send_access(send_id, pw, &full).map_err(|e| refused(e.to_string()))?;
+            let (proof, pk) =
+                send_access(send_id, pw, &full).map_err(|e| refused(e.to_string()))?;
             (Some(ByteBuf::from(proof.to_vec())), Some(pk))
         }
         (None, _) => (None, None),

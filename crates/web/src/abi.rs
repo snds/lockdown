@@ -127,9 +127,10 @@ pub unsafe extern "C" fn ld_call(ptr: *const u8, len: usize) -> u64 {
             ));
         };
         match call(vault, &cmd, args) {
-            Ok(Reply::Json(value)) => {
-                answer(0, &serde_json::to_vec(&value).unwrap_or_else(|_| b"null".to_vec()))
-            }
+            Ok(Reply::Json(value)) => answer(
+                0,
+                &serde_json::to_vec(&value).unwrap_or_else(|_| b"null".to_vec()),
+            ),
             Ok(Reply::Bytes(bytes)) => answer(1, &bytes),
             Err(e) => error_answer(&e),
         }
@@ -147,7 +148,11 @@ fn send(req: &HttpRequest<'_>) -> Result<(u16, Vec<u8>), String> {
     let meta = serde_json::to_vec(&meta).map_err(|e| e.to_string())?;
     let body = req.body.unwrap_or(&[]);
     let mut frame = Vec::with_capacity(4 + meta.len() + body.len());
-    frame.extend_from_slice(&u32::try_from(meta.len()).map_err(|e| e.to_string())?.to_le_bytes());
+    frame.extend_from_slice(
+        &u32::try_from(meta.len())
+            .map_err(|e| e.to_string())?
+            .to_le_bytes(),
+    );
     frame.extend_from_slice(&meta);
     frame.extend_from_slice(body);
     // SAFETY: `frame` is alive and `frame.len()` bytes long for the call.

@@ -254,7 +254,15 @@ mod tests {
     fn only_a_link_and_an_id_open_the_page() {
         assert!(link_path("s/0f6c3a52-7d2e-4f0e-9c1b-2d7f5e8a9b10"));
         assert!(link_path("r/0f6c3a52-7d2e-4f0e-9c1b-2d7f5e8a9b10"));
-        for bad in ["s/", "s", "x/abc", "s/../index.html", "s/abc/def", "r/<script>", "assets/s/abc"] {
+        for bad in [
+            "s/",
+            "s",
+            "x/abc",
+            "s/../index.html",
+            "s/abc/def",
+            "r/<script>",
+            "assets/s/abc",
+        ] {
             assert!(!link_path(bad), "{bad}");
         }
     }
