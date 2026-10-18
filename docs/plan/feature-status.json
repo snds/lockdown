@@ -1,5 +1,5 @@
 {
- "as_of": "307d003",
+ "as_of": "137195c",
  "source": "docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)",
  "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, a web vault the server serves (the same core on wasm32-wasip1 in a worker, doc 17), and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Lockdown's clients and server speak TLS 1.3 with the hybrid X25519MLKEM768 group first (crates/tls, doc 20); plain HTTP is refused away from loopback. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and the web vault refuses some features in words for now (doc 17 §10). OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.",
  "non_v1_built": [
@@ -1206,14 +1206,12 @@
    "name": "Recovery kit",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
-    "desktop",
-    "cli",
-    "server"
+    "desktop"
    ],
-   "left": "Make the \"test it now\" step forced at signup; today it is an optional drill with a reminder.",
+   "left": "The web vault (it can't run the kit test).",
    "evidence": [
     "bins/cli/tests/kit_and_secret_key.rs:121 an_old_slot_is_upgraded_when_the_kit_is_made_and_the_password_alone_no_longer_enrols",
     "apps/desktop/src/features/status/once-page.test.tsx:22 (printable kit)",
@@ -1228,13 +1226,12 @@
    "name": "Recovery drill",
    "target": "novel",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
-    "desktop",
-    "cli"
+    "desktop"
    ],
-   "left": "The yearly prompt, a last-success date, and checks of heirs' keys and legacy settings.",
+   "left": "The web vault.",
    "evidence": [
     "crates/app/src/session.rs:1119 (a passing drill is recorded)",
     "apps/desktop/src/features/recovery/recovery-view.tsx:49 (Recovery drill)"
@@ -1248,9 +1245,12 @@
    "name": "Password reminder for biometric users",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: a periodic account-password prompt (default 14 days) once biometric unlock exists.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Nothing for desktop; never shown in the web vault by design.",
    "evidence": [
     "D83 (desktop unlock is the device keystore, no local master password)"
    ],
@@ -1694,15 +1694,14 @@
    "name": "Secret Key",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
-    "cli",
-    "server",
-    "web"
+    "web",
+    "server"
    ],
-   "left": "QR transfer of the Secret Key to a new device (it is typed from the kit today) and the opt-out warning path.",
+   "left": "Camera scanning on phones (mobile, deferred); the QR or typed code moves it today.",
    "evidence": [
     "D70 (Secret Key mixed into the account unlock key)",
     "bins/cli/tests/kit_and_secret_key.rs:121 an_old_slot_is_upgraded_when_the_kit_is_made_and_the_password_alone_no_longer_enrols"
@@ -1739,11 +1738,14 @@
    "name": "Strong key derivation",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
-    "core"
+    "core",
+    "desktop",
+    "web",
+    "server"
    ],
-   "left": "Per-device calibration above the floor and renegotiation on a stronger device (every device uses the desktop floor, D49).",
+   "left": "Nothing for desktop and web; mobile calibration.",
    "evidence": [
     "crates/crypto/src/kdf.rs:42 floors_are_the_identity_crates (64 MiB, t=3, p=4)",
     "crates/crypto/src/auth.rs:888 the_ksf_is_argon2id_at_the_floor_and_deterministic",
@@ -1785,7 +1787,7 @@
     "server",
     "web"
    ],
-   "left": "Passphrase-verified invites, scanning the QR fingerprint (the payload exists), and log mirrors.",
+   "left": "Log mirrors, and a contacts screen in the web vault to scan a QR into; phrase-verified checks are built.",
    "evidence": [
     "crates/sync/src/kt.rs:798 a_swapped_device_key_an_unknown_device_and_hidden_changes_are_caught",
     "bins/cli/tests/transparency.rs:243 a_forked_log_is_caught_by_the_citation_in_the_vault_head",
@@ -1865,9 +1867,11 @@
    "review": false,
    "status": "partial",
    "surfaces": [
-    "core"
+    "core",
+    "desktop",
+    "web"
    ],
-   "left": "Wrapping vault, sharing, organisation and recovery keys to hybrid recipients, and ML-DSA signatures.",
+   "left": "ML-DSA on device signatures, vault heads and the key-transparency log (they stay Ed25519); new wraps go to hybrid keys and identity manifests carry ML-DSA-65. Every device needs this release before any publishes its post-quantum key.",
    "evidence": [
     "crates/crypto/src/kem.rs:35 x_wing_round_trip",
     "D23, D30 (X-Wing peer wraps in the identity crate)",
@@ -1898,9 +1902,14 @@
    "name": "Security-key 2FA on the account",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: FIDO2 keys and passkeys as account second factors.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop",
+    "web",
+    "server"
+   ],
+   "left": "An in-window FIDO2 prompt on the desktop (it uses the system browser today; the OS API is OS-level, deferred).",
    "evidence": [
     "bins/server/src/lib.rs:228 (no WebAuthn second-factor routes)"
    ],
@@ -1913,12 +1922,14 @@
    "name": "New-device approval with code match",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web",
+    "server"
    ],
-   "left": "Approving a new device from an existing one over an authenticated channel (a device joins with the password and kit today).",
+   "left": "Nothing for desktop and web; mobile.",
    "evidence": [
     "crates/approval/src/lib.rs:225 number_matching_and_rate_limit",
     "apps/desktop/src/features/approvals/approval-sheet.test.tsx:23 (enrolment sheet with digits to match)",
@@ -1973,13 +1984,13 @@
    "name": "High-risk item class",
    "target": "novel",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
     "web"
    ],
-   "left": "The legacy-release rule. Crown jewels stay out of exports and backups unless opted in per item (D121), and items move into and out of the class.",
+   "left": "Nothing for desktop and web.",
    "evidence": [
     "crates/vault/src/crown_jewel.rs:12 CROWN_JEWEL_RULES",
     "crates/vault/src/vault.rs:1602 crown_jewel_items_need_the_crown_jewel_key",
@@ -1994,9 +2005,13 @@
    "name": "Per-item exposure tiers",
    "target": "beat",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: the three per-item tiers and the approval default for high-risk items.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop",
+    "web"
+   ],
+   "left": "Nothing for desktop and web; mobile.",
    "evidence": [
     "docs/plan/10-desktop-shell.md:196 (RiskTierBadge is a seam; the vault model has no tier)"
    ],

@@ -14,7 +14,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**257 decisions, twenty-one build slices, no release yet (2026-10-18).** Of the 122 features committed to v1, 65 are done, 29 are partial, 18 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
+**272 decisions, twenty-two build slices, no release yet (2026-10-18).** Of the 122 features committed to v1, 74 are done, 23 are partial, 15 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
 
 | Slice | What it delivered |
 |---|---|
@@ -40,6 +40,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 | **19 · Self-host server** ✅ | Hybrid post-quantum TLS (X25519MLKEM768) between Lockdown's apps and server, TLS on the server with reload, a hardened container smoke-tested in CI, a live-sync channel, a session list that ends tokens at once, encrypted server backups, an operator guide ([doc](docs/plan/20-self-host-server.md), [guide](docs/self-host.md), D215–D229) |
 | **20 · Vault depth** ✅ | Templates as data (30 built in, your own templates), identity variants and a never-filled contacts list, code and linked fields, word passphrases and site password rules, a self-hiding Wi-Fi guest card, large type and hotel mode, a CVC re-prompt, streamed attachments with a server quota ([doc](docs/plan/21-vault-depth.md), D230–D244) |
 | **21 · Bridges, imports, monitoring** ✅ | Authenticator imports (Google Authenticator batches, Aegis, 2FAS, Ente, Proton, Bitwarden) and Steam Guard files, 2FA set-up cards, a map of sign-in-with accounts, six alias services, per-site fill fixes, guided incident flows, a clock check for codes, exports to age recipients, a last-backup line and an emergency sheet ([doc](docs/plan/23-bridges.md), D260–D274) |
+| **22 · Security depth** ✅ | Per-item exposure tiers, approving a new device from an existing one through a blind server relay, the Secret Key handed over sealed, security keys as a second factor, post-quantum wraps and ML-DSA-65 on identity manifests, per-device stretching, the kit test, a yearly drill, password reminders, phrase-verified key checks ([doc](docs/plan/22-security-depth.md), D245–D259) |
 | **Next** | Browser extension (fill, save, passkeys), mobile apps, sharing and family, breach monitoring, packaged and signed releases |
 
 | Real (with tests) | Skeleton (types, traits, one real rule each) |

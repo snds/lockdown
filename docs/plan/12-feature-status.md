@@ -1,12 +1,12 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `307d003`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `137195c`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
 **Done** means it works end to end in today's surfaces (core, desktop, CLI, server, browser extension, web vault) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **65** | **29** | **18** | **10** |
+| **All 122 v1 features** | **74** | **23** | **15** | **10** |
 | [Vault & item types](#vault--item-types) | 12 | 0 | 0 | 0 |
 | [Organization & search](#organization--search) | 6 | 1 | 0 | 0 |
 | [Autofill (browser)](#autofill-browser) | 8 | 1 | 0 | 0 |
@@ -15,12 +15,12 @@ _Generated from `feature-status.json` (as of `307d003`) by `render-feature-statu
 | [Two-factor & authenticator](#two-factor--authenticator) | 3 | 1 | 0 | 0 |
 | [Vendor login bridges](#vendor-login-bridges) | 5 | 2 | 0 | 0 |
 | [Sharing & collaboration](#sharing--collaboration) | 6 | 0 | 0 | 0 |
-| [Family & emergency/recovery](#family--emergencyrecovery) | 1 | 3 | 1 | 0 |
+| [Family & emergency/recovery](#family--emergencyrecovery) | 4 | 1 | 0 | 0 |
 | [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 6 | 2 | 0 | 0 |
 | [Privacy](#privacy) | 1 | 1 | 0 | 0 |
 | [Import/export & portability](#importexport--portability) | 5 | 1 | 2 | 0 |
 | [Self-hosting & deployment](#self-hosting--deployment) | 0 | 3 | 0 | 1 |
-| [Security architecture & crypto](#security-architecture--crypto) | 5 | 9 | 3 | 0 |
+| [Security architecture & crypto](#security-architecture--crypto) | 11 | 5 | 1 | 0 |
 | [Platforms & apps](#platforms--apps) | 3 | 3 | 2 | 1 |
 | [Trust & transparency](#trust--transparency) | 0 | 1 | 1 | 8 |
 
@@ -116,10 +116,10 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 ## Family & emergency/recovery
 
 - [x] **Emergency access**: Done · core, desktop, server. Reminders to the owner during the wait by email or OS notification.
+- [x] **Recovery kit**: Done · core, desktop. The web vault (it can't run the kit test).
+- [x] **Recovery drill**: Done · core, desktop. The web vault.
+- [x] **Password reminder for biometric users**: Done · core, desktop. Nothing for desktop; never shown in the web vault by design.
 - [ ] **Family plan**: Partial · core, desktop, server. Plan and billing logic, which waits on the pricing decision; the household vault and organizer are built.
-- [ ] **Recovery kit**: Partial · core, desktop, cli, server. Make the "test it now" step forced at signup; today it is an optional drill with a reminder.
-- [ ] **Recovery drill**: Partial · core, desktop, cli. The yearly prompt, a last-success date, and checks of heirs' keys and legacy settings.
-- [ ] **Password reminder for biometric users**: Not started · nowhere yet. Everything: a periodic account-password prompt (default 14 days) once biometric unlock exists.
 
 ## Security monitoring & phishing defense
 
@@ -158,22 +158,22 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 ## Security architecture & crypto
 
 - [x] **End-to-end encryption**: Done · core, server, desktop, cli, web. Decide whether item kinds and field names (visible per D48) must be hidden too; then the external audit.
+- [x] **Secret Key**: Done · core, desktop, web, server. Camera scanning on phones (mobile, deferred); the QR or typed code moves it today.
 - [x] **Password-authenticated login (PAKE)**: Done · core, server, desktop, cli, web. Nothing in code; it goes into the external audit.
+- [x] **Strong key derivation**: Done · core, desktop, web, server. Nothing for desktop and web; mobile calibration.
 - [x] **Bound authenticated encryption**: Done · core. Nothing in code; it goes into the external audit.
 - [x] **Rollback and deletion protection**: Done · core, server, cli, desktop, web. Nothing for v1 beyond the audit.
 - [x] **Post-quantum transport**: Done · core, desktop, cli, server. The web vault's transport is the browser's own TLS; an external audit of the hybrid group code (audit item, D215).
-- [ ] **Secret Key**: Partial · core, desktop, cli, server, web. QR transfer of the Secret Key to a new device (it is typed from the kit today) and the opt-out warning path.
-- [ ] **Strong key derivation**: Partial · core. Per-device calibration above the floor and renegotiation on a stronger device (every device uses the desktop floor, D49).
+- [x] **Security-key 2FA on the account**: Done · core, desktop, web, server. An in-window FIDO2 prompt on the desktop (it uses the system browser today; the OS API is OS-level, deferred).
+- [x] **New-device approval with code match**: Done · core, desktop, web, server. Nothing for desktop and web; mobile.
+- [x] **High-risk item class**: Done · core, desktop, web. Nothing for desktop and web.
+- [x] **Per-item exposure tiers**: Done · core, desktop, web. Nothing for desktop and web; mobile.
 - [ ] **Malicious-server resistance**: Partial · core, server. The Tamarin or ProVerif model of login, sharing and recovery, and the academic review (not code); sharing's defences (signed envelopes, membership chain, KT-checked keys) are built.
-- [ ] **Authenticated public keys**: Partial · core, desktop, server, web. Passphrase-verified invites, scanning the QR fingerprint (the payload exists), and log mirrors.
-- [ ] **Post-quantum key wrapping**: Partial · core. Wrapping vault, sharing, organisation and recovery keys to hybrid recipients, and ML-DSA signatures.
-- [ ] **New-device approval with code match**: Partial · core, desktop. Approving a new device from an existing one over an authenticated channel (a device joins with the password and kit today).
+- [ ] **Authenticated public keys**: Partial · core, desktop, server, web. Log mirrors, and a contacts screen in the web vault to scan a QR into; phrase-verified checks are built.
+- [ ] **Post-quantum key wrapping**: Partial · core, desktop, web. ML-DSA on device signatures, vault heads and the key-transparency log (they stay Ed25519); new wraps go to hybrid keys and identity manifests carry ML-DSA-65. Every device needs this release before any publishes its post-quantum key.
 - [ ] **Memory hygiene**: Partial · core, desktop, web. Locked memory pages kept out of swap; the webview still holds typed and revealed strings briefly (D91).
 - [ ] **Verified local connections**: Partial · desktop, extension. Code-signature checks on macOS and Windows and the Windows named-pipe transport; on Linux and macOS the native host and the desktop check each other by path and SHA-256 today.
-- [ ] **High-risk item class**: Partial · core, desktop, web. The legacy-release rule. Crown jewels stay out of exports and backups unless opted in per item (D121), and items move into and out of the class.
 - [ ] **Hardware-backed biometric unlock**: Not started · nowhere yet. Everything: key slots in the Secure Enclave, StrongBox or TPM that reset when biometrics change.
-- [ ] **Security-key 2FA on the account**: Not started · nowhere yet. Everything: FIDO2 keys and passkeys as account second factors.
-- [ ] **Per-item exposure tiers**: Not started · nowhere yet. Everything: the three per-item tiers and the approval default for high-risk items.
 
 ## Platforms & apps
 
