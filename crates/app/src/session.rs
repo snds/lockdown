@@ -63,11 +63,16 @@ mod backup;
 pub(crate) mod bridges;
 mod codes;
 pub(crate) mod depth;
+pub(crate) mod devices_link;
 mod duplicates;
+pub(crate) mod exposure;
 mod history;
 pub mod items;
 mod organize;
 pub(crate) mod passkeys;
+pub(crate) mod recovery;
+pub(crate) mod second_factor;
+pub(crate) mod secret_key;
 pub(crate) mod security;
 pub(crate) mod sharing;
 pub(crate) mod transfer;
@@ -291,6 +296,10 @@ pub struct Session {
     received: Vec<Vault>,
     /// The share link or answer opened last, until the next or the lock.
     opened_send: Option<lockdown_vault::send::SendPayload>,
+    /// A link this device opened to approve a new one (`devices_link`).
+    link: Option<devices_link::OpenLink>,
+    /// Phrase checks of someone's keys under way (`sharing::phrase`).
+    phrase_checks: BTreeMap<Id, sharing::phrase::Pending>,
 }
 
 impl Session {
@@ -513,6 +522,8 @@ impl Session {
             rosters: BTreeMap::new(),
             received: Vec::new(),
             opened_send: None,
+            link: None,
+            phrase_checks: BTreeMap::new(),
         };
         session.load_sharing()?;
         session.remember()?;
@@ -706,6 +717,11 @@ impl Session {
             {
                 continue;
             }
+            // A crown jewel an emergency release didn't hand over stays
+            // its owner's alone: not listed (`legacy`).
+            if !vault.can_open(item.item_id) {
+                continue;
+            }
             let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
             let latest = item.latest().map_err(|e| e.to_string())?;
             let title = text_of(&fields, "title").unwrap_or_default();
@@ -890,7 +906,8 @@ impl Session {
             "no account on this device, so there is no password to check".to_string()
         })?;
         let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
-        let mut auth = OpaqueAccountAuth::new(transport, cfg.login.as_str(), self.device_binding());
+        let mut auth = OpaqueAccountAuth::new(transport, cfg.login.as_str(), self.device_binding())
+            .at_least(self.account_ksf_floor());
         match auth.sign_in(password) {
             Ok(_) => Ok(true),
             Err(lockdown_crypto::Error::LoginFailed) => Ok(false),
@@ -1066,6 +1083,7 @@ impl Session {
         self.memory
             .remember_identity(self.identity.head())
             .map_err(|e| e.to_string())?;
+        self.keep_secret_key(&sk)?;
         let (_export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
         sync_identity_records(
             auth.rounds(),
@@ -1114,7 +1132,8 @@ impl Session {
     ) -> Result<Vec<String>, String> {
         let secret_key = secret_key.filter(|s| !s.trim().is_empty());
         let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
-        let mut auth = OpaqueAccountAuth::new(transport, login, self.device_binding());
+        let mut auth = OpaqueAccountAuth::new(transport, login, self.device_binding())
+            .at_least(self.account_ksf_floor());
         let (export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
         if session.profile_id != self.identity.profile().profile_id {
             return Err(format!(
@@ -1132,6 +1151,12 @@ impl Session {
             &mut self.memory,
         )?;
         let mut lines = vec![format!("logged in as {login} at {server}")];
+        if let Some(text) = secret_key {
+            let sk = secret_key_bytes(self.identity.profile().profile_id, text)?;
+            if secret_key::opens_account_slot(&self.identity, &export_key, Some(&sk)) {
+                self.keep_secret_key(&sk)?;
+            }
+        }
         if slot_opens_without_secret_key(&self.identity, &export_key) {
             match (self.identity.profile().recovery, secret_key) {
                 (RecoveryState::None, _) => lines.push(
@@ -1145,6 +1170,7 @@ impl Session {
                 (_, Some(text)) => {
                     let sk = secret_key_bytes(self.identity.profile().profile_id, text)?;
                     self.upgrade_account_slot(export_key, password, &sk)?;
+                    self.keep_secret_key(&sk)?;
                     sync_identity_records(
                         auth.rounds(),
                         &session.token,
@@ -1263,6 +1289,7 @@ impl Session {
             }
             None => None,
         };
+        self.raise_profile_kdf()?;
         let kit = self
             .identity
             .create_recovery_kit()
@@ -1278,6 +1305,7 @@ impl Session {
         if let Some((auth, session, export_key)) = auth.take() {
             let password = password.expect("checked above");
             self.upgrade_account_slot(export_key, password, kit.secret_key().expose())?;
+            self.keep_secret_key(kit.secret_key().expose())?;
             sync_identity_records(
                 auth.rounds(),
                 &session.token,
@@ -1291,6 +1319,7 @@ impl Session {
                     .into(),
             );
         } else {
+            secret_key::forget(&self.paths.data);
             notes.push(
                 "no account on this device yet; registering one will ask for this Secret Key"
                     .into(),
@@ -1375,6 +1404,7 @@ impl Session {
                             .into(),
                     );
                 }
+                self.keep_secret_key(kit.secret_key().expose())?;
                 lines.push("Secret Key: opens the account slot with the password".into());
             }
             _ => lines.push(
@@ -1389,6 +1419,9 @@ impl Session {
             self.memory
                 .remember_identity(self.identity.head())
                 .map_err(|e| e.to_string())?;
+            // The date of this drill and, with the code in hand, the kit's
+            // stretching raised to what this device can afford (`recovery`).
+            lines.extend(self.after_drill(&kit)?);
             if let Some(cfg) = &self.sync {
                 let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
                 let token = cfg.session_token()?.to_string();
@@ -1750,33 +1783,10 @@ impl Session {
 /// Logs in on a device with no identity: pulls the identity's record set,
 /// opens the root key through the account slot with the kit's Secret Key
 /// (04-security §3) and enrols this device, then publishes the record set
-/// that lists it. The vault arrives with the first open.
-pub fn enrol_from_account(
-    paths: &Paths,
-    server: &str,
-    login: &str,
-    password: &str,
-    secret_key: Option<&str>,
-) -> Result<Vec<String>, String> {
-    check_root_empty(paths)?;
-    let keystore = Rc::new(
-        FileKeystore::open_or_create(&paths.data.join(KEYSTORE_FILE)).map_err(|e| e.to_string())?,
-    );
-    let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
-    let mut auth = OpaqueAccountAuth::new(transport, login, binding_of(&keystore));
-    let (export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
-    enrol_signed_in(
-        paths,
-        auth.rounds(),
-        &keystore,
-        login,
-        export_key,
-        session,
-        secret_key,
-    )
-}
-
-/// [`enrol_from_account`] after a sign-in the shell ran itself with this
+/// that lists it. The vault arrives with the first open. The sign-in itself
+/// is `second_factor::sign_in_new_device`'s, which waits for a security key
+/// when the account has one.
+/// Enrolment after a sign-in the shell ran itself with this
 /// device's keystore (the web vault, which must see the export key to seal
 /// its device key, docs/plan/17-web-vault.md): no second password round.
 pub fn enrol_from_sign_in(
@@ -1854,6 +1864,18 @@ fn enrol_signed_in(
     memory
         .remember_identity(identity.head())
         .map_err(|e| e.to_string())?;
+    // It opened the account slot, so it is the account's Secret Key.
+    match &sk {
+        Some(sk) => secret_key::keep(
+            &paths.data,
+            keystore.as_ref(),
+            verified.profile.profile_id,
+            sk,
+        )?,
+        None => {
+            secret_key::keep_opted_out(&paths.data, keystore.as_ref(), verified.profile.profile_id)?
+        }
+    }
     sync_identity_records(
         transport,
         &session.token,
@@ -1880,29 +1902,29 @@ fn enrol_signed_in(
     )])
 }
 
-/// On a device with no identity (01-identity §8 row 3): logs in with the
-/// password (for the session only), pulls the identity's record set,
-/// rebuilds the root key from the kit, enrols this device and publishes
-/// the records that list it. A wrong kit changes nothing and tells the
-/// server nothing: the only round trip is the login.
-pub fn recover(
+/// On a device with no identity (01-identity §8 row 3), after the sign-in
+/// (the password, for the session only; the second factor's wait may sit
+/// between, `second_factor`): pulls the identity's record set, rebuilds the
+/// root key from the kit, enrols this device and publishes the records that
+/// list it. A wrong kit changes nothing and tells the server nothing.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn recover_signed_in(
     paths: &Paths,
-    server: &str,
+    transport: &HttpTransport,
+    keystore: &Rc<FileKeystore>,
     login: &str,
-    password: &str,
+    export_key: ExportKey,
+    session: lockdown_crypto::auth::Session,
     secret_key: &str,
     recovery_code: &str,
 ) -> Result<Vec<String>, String> {
-    check_root_empty(paths)?;
-    let keystore = Rc::new(
-        FileKeystore::open_or_create(&paths.data.join(KEYSTORE_FILE)).map_err(|e| e.to_string())?,
-    );
-    let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
-    let mut auth = OpaqueAccountAuth::new(transport, login, binding_of(&keystore));
-    let (_export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
+    let server = transport.base().to_string();
+    if session.token.is_empty() {
+        return Err("this sign-in still waits for a security key".into());
+    }
     let mut synced = SyncedIdentity::open(&paths.data.join(IDENTITY_SYNC_FILE), None)
         .map_err(|e| e.to_string())?;
-    pull_identity(auth.rounds(), &session.token, &mut synced, None).map_err(|e| e.to_string())?;
+    pull_identity(transport, &session.token, &mut synced, None).map_err(|e| e.to_string())?;
     let verified = synced
         .verified()
         .cloned()
@@ -1932,8 +1954,16 @@ pub fn recover(
     memory
         .remember_identity(identity.head())
         .map_err(|e| e.to_string())?;
+    if secret_key::opens_account_slot(&identity, &export_key, Some(kit.secret_key().expose())) {
+        secret_key::keep(
+            &paths.data,
+            keystore.as_ref(),
+            identity.profile().profile_id,
+            kit.secret_key().expose(),
+        )?;
+    }
     sync_identity_records(
-        auth.rounds(),
+        transport,
         &session.token,
         &mut identity,
         keystore.as_ref(),
@@ -1942,7 +1972,7 @@ pub fn recover(
     )?;
     let cfg = SyncConfig {
         v: SYNC_V,
-        server: auth.rounds().base().to_string(),
+        server: transport.base().to_string(),
         login: login.to_string(),
         profile_id: session.profile_id,
         token: session.token,
@@ -2086,6 +2116,11 @@ fn push_identity_records(
     new_revocations: Vec<Revocation>,
 ) -> Result<bool, String> {
     let isk_pub = identity.profile().isk_pub;
+    // The identity's post-quantum key goes on the profile once (D248); an
+    // identity another app manages keeps signing with Ed25519 alone.
+    if lockdown_vault::identity::check_manager_public(identity).is_ok() {
+        lockdown_vault::pq::publish_key(identity, keystore).map_err(|e| e.to_string())?;
+    }
     for _ in 0..IDENTITY_ROUNDS {
         let prev = synced.manifest().cloned();
         let mut revocations: Vec<Revocation> = prev
@@ -2105,7 +2140,16 @@ fn push_identity_records(
             return Ok(false);
         }
         let isk = identity_signing_key(identity, keystore).map_err(|e| e.to_string())?;
-        set.sign(&isk).map_err(|e| e.to_string())?;
+        if lockdown_vault::pq::published_key(identity.profile())
+            .map_err(|e| e.to_string())?
+            .is_some()
+        {
+            let pq = lockdown_vault::pq::identity_pq_key(identity, keystore)
+                .map_err(|e| e.to_string())?;
+            set.sign_hybrid(&isk, &pq).map_err(|e| e.to_string())?;
+        } else {
+            set.sign(&isk).map_err(|e| e.to_string())?;
+        }
         drop(isk);
         match push_identity(transport, token, &set, synced, Some(&isk_pub))
             .map_err(|e| e.to_string())?

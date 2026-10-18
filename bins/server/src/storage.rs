@@ -322,6 +322,10 @@ pub trait Storage: Send + Sync {
     fn sharing(&self) -> Option<&dyn crate::sharing::SharingStore> {
         None
     }
+    /// Security keys and the password stretching (`crate::second_factor`).
+    fn account_security(&self) -> Option<&dyn crate::second_factor::AccountSecurityStore> {
+        None
+    }
 }
 
 /// The SQLite backend.
@@ -543,6 +547,8 @@ impl SqliteStorage {
         crate::alerts::create_tables(&conn).map_err(backend)?;
         crate::sessions::create_tables(&conn).map_err(backend)?;
         crate::sharing::create_tables(&conn).map_err(backend)?;
+        crate::second_factor::create_tables(&conn).map_err(backend)?;
+        crate::legacy::create_tables(&conn).map_err(backend)?;
         Ok(Self {
             path,
             conn: Mutex::new(conn),
@@ -1570,6 +1576,10 @@ impl Storage for SqliteStorage {
     }
 
     fn sharing(&self) -> Option<&dyn crate::sharing::SharingStore> {
+        Some(self)
+    }
+
+    fn account_security(&self) -> Option<&dyn crate::second_factor::AccountSecurityStore> {
         Some(self)
     }
 }

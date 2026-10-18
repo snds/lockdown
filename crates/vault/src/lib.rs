@@ -28,6 +28,10 @@
 //! - [`crown_jewel`] — the crown-jewel rules and default classification
 //! - [`template`] — every kind's fields as data: control, required, crown jewel, fill rule, generator; variants
 //! - [`user_template`] — the templates a person makes, kept as hidden items
+//! - [`exposure`] — per-item exposure tiers: app only, ask each time, fill freely
+//! - [`device_link`] — approving a new device from an enrolled one, through the server's relay
+//! - [`handover`] — the record changes a device approval needs, and Lockdown's profile fields
+//! - [`pq`] — every new wrap to another key is post-quantum hybrid
 //! - [`compose`] — a shell's add or edit checked against the template, with an explicit keep for secrets
 //! - [`manifest`] — the signed, hash-chained manifest head and chain check
 //! - [`organization`] — folders, tags and favourites; the vault's name and folder tree in a hidden item
@@ -45,14 +49,19 @@ pub mod attachment;
 pub mod compose;
 pub mod contact;
 pub mod crown_jewel;
+pub mod device_link;
 pub mod error;
+pub mod exposure;
 pub mod field;
+pub mod handover;
 pub mod identity;
 pub mod identity_set;
 pub mod item;
 pub mod keys;
 pub mod manifest;
 pub mod organization;
+pub mod phrase_check;
+pub mod pq;
 pub mod send;
 pub mod sharing;
 pub mod signer;
@@ -104,6 +113,7 @@ pub use template::{
 pub use transparency::{LogEntry, LogLeaf, SignedTreeHead, SthRef, TreeHead};
 pub use user_template::{UserField, UserTemplate, user_template_of};
 pub use vault::{
-    AttachmentInfo, EXPORT_OPT_IN, ImportSpec, NewAttachment, PreparedAttachment, Unlock, Vault,
-    VaultContext, export_opted_in, is_reserved_field, member_record,
+    AttachmentInfo, EXPORT_OPT_IN, ImportSpec, LEGACY_OPT_IN, NewAttachment, PreparedAttachment,
+    Unlock, Vault, VaultContext, export_opted_in, is_reserved_field, legacy_opted_in,
+    member_record,
 };

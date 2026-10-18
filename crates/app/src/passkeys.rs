@@ -584,9 +584,11 @@ impl Core {
             .session()?
             .passkeys_for(rp_id)
             .map_err(AppError::refused)?;
+        let session = self.session()?;
+        let kept_to_app = |id: lockdown_vault::Id| session.kept_to_app(id).unwrap_or(true);
         Ok(all
             .into_iter()
-            .filter(|f| !f.crown_jewel && f.passkey.hidden.is_none())
+            .filter(|f| !f.crown_jewel && f.passkey.hidden.is_none() && !kept_to_app(f.item_id))
             .filter(|f| allow.is_empty() || allow.iter().any(|a| a.0 == f.passkey.credential_id))
             .collect())
     }
@@ -634,8 +636,20 @@ impl Core {
             FillVerdict::Confirm(r) => return Ok(Outcome::Confirm(r)),
             FillVerdict::Refuse(r) => return refused(RefusalName::NotAllowed, r),
         }
+        // Ask each time (`protection`): the sign-in needs the check, whatever
+        // the site asked for.
+        let asks = self
+            .session()?
+            .exposure_tier(chosen.item_id)
+            .map_err(AppError::refused)?
+            == lockdown_vault::exposure::Exposure::Ask;
+        let wanted = if asks {
+            UserVerification::Required
+        } else {
+            req.user_verification
+        };
         let user_verified = match self.passkey_uv(
-            req.user_verification,
+            wanted,
             &format!("sign in to {rp_id} with your passkey"),
             verified,
         )? {

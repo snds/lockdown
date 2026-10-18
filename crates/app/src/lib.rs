@@ -23,10 +23,15 @@ pub mod approval;
 pub mod bridges;
 pub mod browser;
 pub mod depth;
+pub mod devices;
+pub mod key_check;
 pub mod live;
 pub mod lock;
 pub mod passkeys;
+pub mod protection;
+pub mod qr;
 pub mod recency;
+pub mod reminders;
 mod revealed;
 pub mod secrets;
 pub mod security;
@@ -170,6 +175,8 @@ struct Core {
     /// Password fills this core made lately, for the passkey upgrade rule
     /// (`passkeys`); dropped on lock.
     recent_fills: Vec<passkeys::RecentFill>,
+    /// Joins and sign-ins waiting for a security key (`devices`).
+    depth: devices::Depth,
     /// The bridges slice's state: the clock check, the extension's
     /// sign-in observations (docs/plan/23-bridges.md).
     bridges: bridges::BridgesState,
@@ -199,6 +206,7 @@ impl Core {
             approver: None,
             security: security::SecurityState::default(),
             recent_fills: Vec::new(),
+            depth: devices::Depth::default(),
             bridges: bridges::BridgesState::default(),
         }
     }
@@ -233,15 +241,20 @@ impl Core {
                 let Some(password) = gate.password.as_deref() else {
                     return Err(AppError::approval_needed(Route::Password, reason));
                 };
+                let paths = self.paths.clone();
                 let session = self.session()?;
                 let approver =
                     PasswordApprover::new(zeroize::Zeroizing::new(password.to_string()), |p| {
                         session.check_password(p)
                     });
                 match approver.confirm(kind, reason) {
-                    Ok(true) => Ok(Approval {
-                        method: approver.method().into(),
-                    }),
+                    Ok(true) => {
+                        // A typed password counts for the reminder (`reminders`).
+                        reminders::note_password(&paths);
+                        Ok(Approval {
+                            method: approver.method().into(),
+                        })
+                    }
                     Ok(false) => Err(AppError::refused("the password didn't match")),
                     Err(e) => Err(AppError::refused(e)),
                 }
@@ -315,6 +328,15 @@ impl Core {
             // The card asks before its security code is used (D238).
             self.approve(kind, "use this card's security code", gate)?;
         }
+        // Ask each time (`protection`): every value out of a non-crown item asks.
+        self.exposure_gate(
+            id,
+            match kind {
+                ApprovalKind::Reveal => "show this value",
+                _ => "use this value",
+            },
+            gate,
+        )?;
         let revealed = self
             .session()?
             .reveal(id, field_id)
@@ -395,6 +417,7 @@ impl Core {
         {
             self.approve(ApprovalKind::Use, "copy this protected code", gate)?;
         }
+        self.exposure_gate(id, "use this code", gate)?;
         let now = self
             .bridges
             .code_time(session::now_secs(), self.settings.code_clock_correction);
@@ -423,6 +446,7 @@ impl Core {
         {
             self.approve(ApprovalKind::Use, "move this protected code on", gate)?;
         }
+        self.exposure_gate(id, "move this code on", gate)?;
         self.session()?
             .advance_code(id, field_id)
             .map_err(AppError::refused)
@@ -469,6 +493,7 @@ impl Core {
         // the vault: every key type zeroes itself on drop.
         self.session = None;
         self.recent_fills.clear();
+        self.depth.forget();
         self.security_forget();
         self.bridges.forget();
         self.last_reason = Some(reason);
@@ -1031,22 +1056,25 @@ impl App {
             secret_key.map(str::to_string),
         );
         let password = zeroize::Zeroizing::new(password.to_string());
+        if !self.probe()?.identity_present {
+            // A new device: the account may want a security key (`devices`).
+            return self.enrol_new_device(&server, &login, &password, secret_key.as_deref());
+        }
         self.call(move |core| {
-            let probe = core.paths.probe()?;
-            if !probe.identity_present {
-                return session::enrol_from_account(
-                    &core.paths,
-                    &server,
-                    &login,
-                    &password,
-                    secret_key.as_deref(),
-                )
-                .map_err(AppError::refused);
-            }
             core.clock.touch(Instant::now());
-            core.session()?
+            let mut lines = core
+                .session()?
                 .account_login(&server, &login, &password, secret_key.as_deref())
-                .map_err(AppError::refused)
+                .map_err(AppError::refused)?;
+            reminders::note_password(&core.paths);
+            // A stronger device raises the account's stretching (D49's
+            // renegotiation, `client-kdf`); a failure leaves the login as is.
+            match core.session()?.strengthen_account(&password) {
+                Ok(Some(line)) => lines.push(line),
+                Ok(None) => {}
+                Err(e) => lines.push(format!("the password stretching wasn't raised: {e}")),
+            }
+            Ok(lines)
         })
     }
 
@@ -1102,21 +1130,8 @@ impl App {
         secret_key: &str,
         recovery_code: &str,
     ) -> AppResult<Vec<String>> {
-        let (server, login) = (server.to_string(), login.to_string());
-        let password = zeroize::Zeroizing::new(password.to_string());
-        let secret_key = zeroize::Zeroizing::new(secret_key.to_string());
-        let recovery_code = zeroize::Zeroizing::new(recovery_code.to_string());
-        self.call(move |core| {
-            session::recover(
-                &core.paths,
-                &server,
-                &login,
-                &password,
-                &secret_key,
-                &recovery_code,
-            )
-            .map_err(AppError::refused)
-        })
+        // The same wait for a security key as an enrolment (`devices`).
+        self.recover_new_device(server, login, password, secret_key, recovery_code)
     }
 
     /// Key transparency, then pull, merge, push, head, then key

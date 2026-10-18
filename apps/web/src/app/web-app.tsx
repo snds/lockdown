@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 
 import { Spinner, Toaster, TooltipProvider } from "@unicron/ui"
 import { toast } from "sonner"
@@ -21,10 +21,12 @@ import { QuickPalette } from "@/features/palette/quick-palette"
 import { LockedWash } from "@/features/unlock/locked-wash"
 import { countViews } from "@/features/vault/list-model"
 import { VaultView } from "@/features/vault/vault-view"
+import { DepthClientProvider } from "@/features/depth/depth-client"
 
 import type { WebClipboard } from "../core/clipboard"
 import type { Link } from "../core/link"
 import type { WebSession, WebState } from "../core/web-client"
+import { webDepthClient } from "../core/web-depth-client"
 import { LinksView } from "../features/links-view"
 import { Frame, SignInScreen } from "../features/sign-in-screen"
 import { WebSettingsView } from "../features/web-settings-view"
@@ -222,7 +224,7 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
               <Spinner />
             </Frame>
           ) : (
-            <SignInScreen session={session} server={server} onSignedIn={opened} />
+            <SignInScreen session={session} server={server} onSignedIn={opened} credentials={navigator.credentials} />
           )}
         </div>
       </div>
@@ -279,11 +281,28 @@ export function WebApp(props: WebRootProps) {
       <SettingsProvider>
         <TemplatesProvider>
           <GateProvider>
-            <WebRoot {...props} />
+            <WebDepth link={props.link}>
+              <WebRoot {...props} />
+            </WebDepth>
           </GateProvider>
         </TemplatesProvider>
       </SettingsProvider>
       <Toaster position="bottom-center" />
     </TooltipProvider>
   )
+}
+
+/** Opens the server's own page in a new tab: this tab's vault lives in its memory. */
+function openTab(url: string) {
+  if (new URL(url, window.location.origin).origin === window.location.origin) window.open(url, "_blank", "noopener")
+}
+
+/**
+ * Security depth over the worker (docs/plan/22-security-depth.md). The
+ * recovery reminders stay on the desktop: every unlock here is the
+ * password, and the kit is tested where it was made.
+ */
+function WebDepth({ link, children }: { link: Link; children: ReactNode }) {
+  const depth = useMemo(() => webDepthClient(link, openTab), [link])
+  return <DepthClientProvider value={depth}>{children}</DepthClientProvider>
 }

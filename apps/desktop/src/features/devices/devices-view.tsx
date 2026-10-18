@@ -31,6 +31,8 @@ import { describeError, useClient } from "@/core/client"
 import type { DeviceInfo, Status } from "@/core/types"
 import { dateLocal, shortId } from "@/lib/format"
 import { SessionsSection } from "@/features/sessions/sessions-section"
+import { AddDevice } from "@/features/depth/add-device"
+import { SecurityKeysSection } from "@/features/depth/security-keys"
 
 interface DevicesViewProps {
   status: Status
@@ -80,6 +82,11 @@ export function DevicesView({ status, onChanged, onNotice }: DevicesViewProps) {
           {error}
         </p>
       )}
+      {status.account && (
+        <div>
+          <AddDevice onNotice={onNotice} onChanged={() => void load().then(onChanged)} />
+        </div>
+      )}
       {!devices && !error && <Spinner />}
       {devices && live.length <= 1 && (
         <Empty>
@@ -89,8 +96,8 @@ export function DevicesView({ status, onChanged, onNotice }: DevicesViewProps) {
             </EmptyMedia>
             <EmptyTitle>Only this device</EmptyTitle>
             <EmptyDescription>
-              Add a second device in your first week: open Lockdown there and join with your login name, password and Secret Key. A second device is
-              what gets you back in when this one is lost.
+              Add a second device in your first week: choose “Add a device” here and join from the new one, or join there with your login name,
+              password and Secret Key. A second device is what gets you back in when this one is lost.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -119,6 +126,7 @@ export function DevicesView({ status, onChanged, onNotice }: DevicesViewProps) {
         ))}
       </ItemGroup>
       {status.account && <SessionsSection onNotice={onNotice} />}
+      {status.account && <SecurityKeysSection onNotice={onNotice} />}
       <Dialog open={revoking !== null} onOpenChange={(o) => !o && setRevoking(null)}>
         <DialogContent>
           <DialogHeader>

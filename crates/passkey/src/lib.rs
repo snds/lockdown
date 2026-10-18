@@ -10,6 +10,8 @@
 //! - [`client_data`]: `clientDataJSON` in the spec's own serialisation
 //!   (§5.8.1.1), built here from the browser-reported origin, so a page
 //!   cannot put another origin into it.
+//! - [`verify`]: the relying party's checks, for security keys and
+//!   passkeys as a second factor on the Lockdown account itself.
 //! - [`make_credential`] / [`get_assertion`]: the authenticator data, the
 //!   `none` attestation object and the assertion signature.
 //!
@@ -26,6 +28,7 @@ pub mod client_data;
 pub mod encode;
 pub mod key;
 pub mod rp;
+pub mod verify;
 
 use ring::digest::{SHA256, digest};
 use serde::Serialize;

@@ -97,6 +97,10 @@ sha1 = { version = "0.11", default-features = false }
 sha2 = { version = "0.11", default-features = false }
 ed25519-dalek = { version = "3.0", default-features = false, features = ["fast", "zeroize"] }
 x-wing = { version = "0.1", default-features = false, features = ["zeroize", "getrandom"] }
+# ML-DSA-65 (FIPS 204) beside Ed25519 on the identity's own signatures
+# (04-security §2 "ML-DSA slot"; docs/plan/22-security-depth.md §6). Same
+# RustCrypto generation as `ml-kem` 0.3 (module-lattice, shake).
+ml-dsa = { version = "0.1.1", default-features = false, features = ["alloc", "zeroize"] }
 blake3 = "1.8"
 # The passkey authenticator's P-256 ECDSA and Ed25519 (crates/passkey): the
 # same `ring` rustls already links on its `ring` provider.

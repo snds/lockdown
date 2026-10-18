@@ -47,7 +47,9 @@ mod restore;
 pub use restore::{EXPORT_OPT_IN, ImportSpec, NewAttachment, export_opted_in, is_reserved_field};
 mod carry;
 pub use carry::{CarriedAttachment, CarriedItem, CarriedVersion};
+mod legacy;
 mod share;
+pub use legacy::{LEGACY_OPT_IN, legacy_opted_in};
 pub use share::member_record;
 
 /// Who and where a vault belongs to: the ids that go into every piece of
@@ -116,6 +118,9 @@ pub struct Vault {
     /// Earlier Vault Key generations of a shared vault, kept while an item
     /// key may still be wrapped under one (`share`).
     old_vault_keys: Vec<(Id, VaultKey)>,
+    /// Item Keys of crown jewels an emergency release handed this persona
+    /// (the owner opted each in; `legacy`), held in memory only.
+    released_items: BTreeMap<Id, ItemKey>,
 }
 
 /// A file sealed by [`Vault::seal_stream`], not yet on its item.
@@ -197,6 +202,7 @@ impl Vault {
             pending_blobs: Vec::new(),
             cited_sth: None,
             old_vault_keys: Vec::new(),
+            released_items: BTreeMap::new(),
         };
         vault.commit_head()?;
         Ok(vault)
@@ -312,6 +318,7 @@ impl Vault {
             pending_blobs: Vec::new(),
             cited_sth: None,
             old_vault_keys: Vec::new(),
+            released_items: BTreeMap::new(),
         };
         vault.members = vault.members()?;
         Ok(vault)
@@ -1415,13 +1422,14 @@ impl Vault {
                 place.wrapped_by.id = env.wrapped_by.id;
                 unwrap_key(env, self.vault_key_named(env.wrapped_by.id)?, &place)
             }
-            ItemClass::CrownJewel => {
-                let cjk = self
-                    .crown_jewel_key
-                    .as_ref()
-                    .ok_or(Error::NoCrownJewelKey)?;
-                unwrap_key(env, cjk, &place)
-            }
+            ItemClass::CrownJewel => match self.crown_jewel_key.as_ref() {
+                Some(cjk) => unwrap_key(env, cjk, &place),
+                None => self
+                    .released_items
+                    .get(&item.item_id)
+                    .map(|k| ItemKey::from_bytes(*k.expose()))
+                    .ok_or(Error::NoCrownJewelKey),
+            },
         }
     }
 

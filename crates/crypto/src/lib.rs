@@ -17,6 +17,7 @@
 //! - [`sign`] — Ed25519 signing and verification
 //! - [`kem`] — X-Wing encapsulate and decapsulate
 //! - [`hash`] — BLAKE3 hashing, keyed hashing, and key derivation
+//! - [`pq_sign`] — ML-DSA-65 beside Ed25519 (the identity's post-quantum signature)
 //! - [`merkle`] — the RFC 6962-style tree and proofs behind the key-transparency log
 //! - [`rand`] — random bytes from the operating system
 //! - [`generator`] — the password generator: uniform draws from that source under a rule
@@ -32,6 +33,7 @@ pub mod hash;
 pub mod kdf;
 pub mod kem;
 pub mod merkle;
+pub mod pq_sign;
 pub mod rand;
 pub mod secret;
 pub mod sign;

@@ -80,12 +80,60 @@ pub const ACCOUNT_KSF: Argon2Params = if cfg!(feature = "insecure-test-kdf") {
     FLOOR_DESKTOP
 };
 
-/// Argon2id at [`ACCOUNT_KSF`] as OPAQUE's key-stretching function. The
+/// The most an account's stretching may cost, whatever a server announces
+/// (D249): a gibibyte of memory, sixteen passes, sixteen lanes, the same
+/// ceiling a password-sealed export reads under (D139). A server that names
+/// more is refused before anything is computed, so it cannot pin a device.
+pub const KSF_CEILING: Argon2Params = Argon2Params {
+    m_cost_kib: 1024 * 1024,
+    t_cost: 16,
+    p_cost: 16,
+};
+
+/// Whether `params` may stretch an account password on this build: at or
+/// above [`ACCOUNT_KSF`] in every parameter, and within [`KSF_CEILING`].
+pub fn ksf_acceptable(params: &Argon2Params) -> bool {
+    params.meets(&ACCOUNT_KSF)
+        && params.m_cost_kib <= KSF_CEILING.m_cost_kib
+        && params.t_cost <= KSF_CEILING.t_cost
+        && params.p_cost <= KSF_CEILING.p_cost
+}
+
+/// Argon2id as OPAQUE's key-stretching function, at [`ACCOUNT_KSF`] by
+/// default or at an account's raised parameters (`client-kdf`, D249). The
 /// input is the OPRF output (already high-entropy and bound to the
 /// server's OPRF key), so the salt carries nothing and is fixed, as the
 /// `opaque-ke` crate's own Argon2 binding does.
-#[derive(Default, Debug, Clone, Copy)]
-pub struct AccountKsf;
+#[derive(Debug, Clone, Copy)]
+pub struct AccountKsf {
+    params: Argon2Params,
+}
+
+impl Default for AccountKsf {
+    fn default() -> Self {
+        Self {
+            params: ACCOUNT_KSF,
+        }
+    }
+}
+
+impl AccountKsf {
+    /// The stretching at `params`; refused below [`ACCOUNT_KSF`] or above
+    /// [`KSF_CEILING`].
+    pub fn at(params: Argon2Params) -> Result<Self> {
+        if !ksf_acceptable(&params) {
+            return Err(Error::Invalid(format!(
+                "an account's password stretching must be between {ACCOUNT_KSF} and {KSF_CEILING}; {params} isn't"
+            )));
+        }
+        Ok(Self { params })
+    }
+
+    /// The parameters in force.
+    pub fn params(&self) -> Argon2Params {
+        self.params
+    }
+}
 
 const KSF_SALT: [u8; 16] = [0; 16];
 
@@ -95,9 +143,9 @@ impl Ksf for AccountKsf {
         input: GenericArray<u8, L>,
     ) -> std::result::Result<GenericArray<u8, L>, InternalError> {
         let params = argon2::Params::new(
-            ACCOUNT_KSF.m_cost_kib,
-            ACCOUNT_KSF.t_cost,
-            ACCOUNT_KSF.p_cost,
+            self.params.m_cost_kib,
+            self.params.t_cost,
+            self.params.p_cost,
             Some(L::USIZE),
         )
         .map_err(|_| InternalError::KsfError)?;
@@ -213,6 +261,17 @@ impl RegistrationClient {
     /// (about as sensitive as a password hash: send it only over TLS) and
     /// the export key.
     pub fn finish(self, password: &str, response: &[u8]) -> Result<(Vec<u8>, ExportKey)> {
+        self.finish_stretched(password, response, &AccountKsf::default())
+    }
+
+    /// [`Self::finish`] with the stretching at `ksf`: the parameters the
+    /// account's password file will be made under (a renegotiation, D249).
+    pub fn finish_stretched(
+        self,
+        password: &str,
+        response: &[u8],
+        ksf: &AccountKsf,
+    ) -> Result<(Vec<u8>, ExportKey)> {
         let mut rng = rng()?;
         let response = RegistrationResponse::<Suite>::deserialize(response).map_err(protocol)?;
         let finished = self
@@ -221,7 +280,7 @@ impl RegistrationClient {
                 &mut rng,
                 password.as_bytes(),
                 response,
-                ClientRegistrationFinishParameters::default(),
+                ClientRegistrationFinishParameters::new(Default::default(), Some(ksf)),
             )
             .map_err(protocol)?;
         Ok((
@@ -289,6 +348,18 @@ impl LoginClient {
     /// login (the server answers with a decoy) or a swapped password file
     /// all end here as [`Error::LoginFailed`], before anything is sent.
     pub fn finish(self, password: &str, response: &[u8]) -> Result<LoginFinished> {
+        self.finish_stretched(password, response, &AccountKsf::default())
+    }
+
+    /// [`Self::finish`] with the stretching at `ksf`, the parameters the
+    /// account's password file was made under (announced by the server and
+    /// checked with [`ksf_acceptable`] first).
+    pub fn finish_stretched(
+        self,
+        password: &str,
+        response: &[u8],
+        ksf: &AccountKsf,
+    ) -> Result<LoginFinished> {
         let mut rng = rng()?;
         let response = CredentialResponse::<Suite>::deserialize(response).map_err(protocol)?;
         let finished = self
@@ -297,7 +368,7 @@ impl LoginClient {
                 &mut rng,
                 password.as_bytes(),
                 response,
-                ClientLoginFinishParameters::default(),
+                ClientLoginFinishParameters::new(None, Default::default(), Some(ksf)),
             )
             .map_err(protocol)?;
         let mut session = finished.session_key;
@@ -502,17 +573,55 @@ pub struct LoginStarted {
     pub login_id: Id,
     /// The OPAQUE credential response.
     pub response: Vec<u8>,
+    /// The stretching the account's password file was made under, when the
+    /// server announced one (absent: [`ACCOUNT_KSF`], the suite's default).
+    pub ksf: Option<Argon2Params>,
+}
+
+/// The stretching to finish `started` under: what the server announced
+/// (the suite's default when it named none), refused when outside
+/// [`ksf_acceptable`] or weaker in any parameter than `at_least`, the
+/// stretching this device used for the account before.
+pub fn ksf_for(started: &LoginStarted, at_least: Option<&Argon2Params>) -> Result<AccountKsf> {
+    let params = started.ksf.unwrap_or(ACCOUNT_KSF);
+    if let Some(floor) = at_least
+        && !params.meets(floor)
+    {
+        return Err(Error::Invalid(format!(
+            "the server asked for weaker password stretching ({params}) than this device used for the account before ({floor}); nothing was sent"
+        )));
+    }
+    AccountKsf::at(params)
 }
 
 /// What a finished login leaves the client with besides the export key.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Session {
-    /// The bearer token for the authenticated endpoints.
+    /// The bearer token for the authenticated endpoints. Empty while
+    /// [`Session::second_factor`] is set: the password checked out, and the
+    /// account wants a security key before it hands out a session.
     pub token: String,
     /// When the token stops working (seconds since the Unix epoch).
     pub expires_at: i64,
     /// The profile the account was registered for.
     pub profile_id: Id,
+    /// The account's second factor, when this sign-in needs one
+    /// (`account-security-keys`, D250).
+    pub second_factor: Option<SecondFactorNeeded>,
+}
+
+/// A sign-in that passed the password and waits for a security key or a
+/// passkey (WebAuthn) before the server issues the session.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct SecondFactorNeeded {
+    /// The server's id for the waiting sign-in.
+    pub pending_id: Id,
+    /// The secret only this device holds, to collect the session once the
+    /// key was used (in this window or in the system browser).
+    pub poll_key: Vec<u8>,
+    /// What the browser's WebAuthn `get` needs, as the server wrote it
+    /// (CBOR; `lockdown_sync::account_security::SecondFactorRequest`).
+    pub request: Vec<u8>,
 }
 
 /// The four round trips, over whatever carries them. `lockdown-sync`
@@ -567,6 +676,11 @@ pub struct OpaqueAccountAuth<R: AuthRounds> {
     login: String,
     device: DeviceBinding,
     session: Option<Session>,
+    /// The weakest stretching this device will sign in under for this
+    /// account: what it used last (parameters only rise, D249).
+    at_least: Option<Argon2Params>,
+    /// What the last sign-in stretched under.
+    last_ksf: Option<Argon2Params>,
 }
 
 impl<R: AuthRounds> fmt::Debug for OpaqueAccountAuth<R> {
@@ -587,7 +701,22 @@ impl<R: AuthRounds> OpaqueAccountAuth<R> {
             login: login.into(),
             device,
             session: None,
+            at_least: None,
+            last_ksf: None,
         }
+    }
+
+    /// Refuses to sign in under weaker stretching than `params`: what this
+    /// device used for the account before (a server that announces less is
+    /// refused before anything is computed).
+    pub fn at_least(mut self, params: Option<Argon2Params>) -> Self {
+        self.at_least = params;
+        self
+    }
+
+    /// The stretching the last successful sign-in used.
+    pub fn last_ksf(&self) -> Option<Argon2Params> {
+        self.last_ksf
     }
 
     /// The login name.
@@ -630,7 +759,9 @@ impl<R: AuthRounds> OpaqueAccountAuth<R> {
     pub fn sign_in(&mut self, password: &str) -> Result<(ExportKey, Session)> {
         let (client, request) = LoginClient::start(password)?;
         let started = self.rounds.login_start(&self.login, &request)?;
-        let finished = client.finish(password, &started.response)?;
+        let ksf = ksf_for(&started, self.at_least.as_ref())?;
+        let finished = client.finish_stretched(password, &started.response, &ksf)?;
+        self.last_ksf = Some(ksf.params());
         let pop = (self.device.sign)(&device_pop_message(&self.login, &started.login_id))?;
         let proof = DeviceProof {
             device_id: self.device.device_id,
@@ -729,7 +860,11 @@ mod tests {
                 .login_response(login.as_bytes(), file, request)?;
             let login_id = Id::new();
             self.pending.insert(login_id, (login.to_string(), state));
-            Ok(LoginStarted { login_id, response })
+            Ok(LoginStarted {
+                login_id,
+                response,
+                ksf: None,
+            })
         }
 
         fn login_finish(
@@ -752,6 +887,7 @@ mod tests {
                 token: format!("token-for-{login}"),
                 expires_at: i64::MAX,
                 profile_id: *profile_id,
+                second_factor: None,
             })
         }
     }
@@ -844,6 +980,55 @@ mod tests {
     }
 
     #[test]
+    fn raised_stretching_is_announced_used_and_never_lowered() {
+        let server = OpaqueServer::generate().unwrap();
+        let login = b"me@example.com";
+        let raised = Argon2Params {
+            t_cost: ACCOUNT_KSF.t_cost + 2,
+            ..ACCOUNT_KSF
+        };
+        let ksf = AccountKsf::at(raised).unwrap();
+        let (client, request) = RegistrationClient::start("a long password").unwrap();
+        let response = server.registration_response(login, &request).unwrap();
+        let (upload, at_registration) = client
+            .finish_stretched("a long password", &response, &ksf)
+            .unwrap();
+        let file = OpaqueServer::password_file(&upload).unwrap();
+
+        let login_with = |params: Option<Argon2Params>, at_least: Option<&Argon2Params>| {
+            let (client, request) = LoginClient::start("a long password").unwrap();
+            let (response, _) = server.login_response(login, Some(&file), &request).unwrap();
+            let started = LoginStarted {
+                login_id: Id::new(),
+                response,
+                ksf: params,
+            };
+            let ksf = ksf_for(&started, at_least)?;
+            client.finish_stretched("a long password", &started.response, &ksf)
+        };
+        // The file was made under the raised set: only that set opens it.
+        let finished = login_with(Some(raised), None).unwrap();
+        assert_eq!(finished.export_key.expose(), at_registration.expose());
+        assert!(matches!(login_with(None, None), Err(Error::LoginFailed)));
+        // A server announcing less than this device used before is refused
+        // before anything is stretched.
+        let lowered = login_with(None, Some(&raised)).unwrap_err().to_string();
+        assert!(lowered.contains("weaker password stretching"), "{lowered}");
+        // Below the floor or past the ceiling: refused by name.
+        let below = Argon2Params {
+            m_cost_kib: 8,
+            ..ACCOUNT_KSF
+        };
+        assert!(AccountKsf::at(below).is_err());
+        let huge = Argon2Params {
+            m_cost_kib: KSF_CEILING.m_cost_kib + 1,
+            ..ACCOUNT_KSF
+        };
+        assert!(AccountKsf::at(huge).is_err());
+        assert!(!ksf_acceptable(&huge) && ksf_acceptable(&ACCOUNT_KSF));
+    }
+
+    #[test]
     fn states_and_setup_round_trip_through_bytes() {
         let server = OpaqueServer::generate().unwrap();
         let server = OpaqueServer::from_bytes(server.to_bytes().expose()).unwrap();
@@ -887,8 +1072,8 @@ mod tests {
     #[test]
     fn the_ksf_is_argon2id_at_the_floor_and_deterministic() {
         let input = GenericArray::<u8, opaque_ke::generic_array::typenum::U64>::default();
-        let a = AccountKsf.hash(input).unwrap();
-        let b = AccountKsf.hash(input).unwrap();
+        let a = AccountKsf::default().hash(input).unwrap();
+        let b = AccountKsf::default().hash(input).unwrap();
         assert_eq!(a, b);
         assert_ne!(a.as_slice(), &[0u8; 64][..]);
         assert_eq!(ACCOUNT_KSF, FLOOR_TEST, "tests run at the test floor");

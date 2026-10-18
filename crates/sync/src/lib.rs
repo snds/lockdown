@@ -18,12 +18,15 @@
 //!   (with [`DeviceExpectations`], what a device holding an identity
 //!   knows), and the citation check between devices (04-security §6)
 //!
+//! - [`account_security`] — device approval's relay, phrase checks, raised
+//!   password stretching, security keys as a second factor
 //! - [`sharing`] — the sharing half of the protocol: the directory and its
 //!   check against the log, membership, item shares, share and request
 //!   links, emergency access
 //!
 //! The offline queue is not built yet.
 
+pub mod account_security;
 pub mod engine;
 pub mod identity;
 pub mod kt;

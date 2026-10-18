@@ -341,6 +341,13 @@ impl App {
                 if item.kind != ItemKind::Login || item.state != ItemState::Live {
                     continue;
                 }
+                // Kept to the app (`protection`): the browser never hears of it.
+                if session
+                    .kept_to_app(item.item_id)
+                    .map_err(AppError::refused)?
+                {
+                    continue;
+                }
                 let fields = vault
                     .open_item(item.item_id)
                     .map_err(|e| AppError::refused(e.to_string()))?;
@@ -418,7 +425,7 @@ impl App {
                     ItemKind::Identity => "identity",
                     _ => continue,
                 };
-                if item.state != ItemState::Live {
+                if item.state != ItemState::Live || s.kept_to_app(item.item_id)? {
                     continue;
                 }
                 let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
@@ -577,6 +584,9 @@ fn decide_fill(
     let frame = parse_page(&facts.frame)?;
     let data = matcher_data()?;
     let id = parse_item_id(item_id)?;
+    if let Err(e) = core.refuse_app_only(item_id) {
+        return Ok(Err(FillOutcome::Refuse(e.message)));
+    }
     let session = core.session()?;
     let vault = session.holding(id).map_err(AppError::refused)?;
     let item = vault

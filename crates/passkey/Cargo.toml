@@ -17,6 +17,7 @@ data-encoding.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 zeroize.workspace = true
+# The relying party's half (verify.rs) reads attestation objects and COSE keys.
+ciborium.workspace = true
 
 [dev-dependencies]
-ciborium.workspace = true

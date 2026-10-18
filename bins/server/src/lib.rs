@@ -25,6 +25,12 @@
 //! - [`sharing`] / [`sharing_api`] — shared vaults and their members, items
 //!   shared on their own, share links, request links, emergency access
 //! - [`web_vault`] — the built web vault at `/vault/`, with its headers
+//! - [`relay`] — where two devices meet to approve a new one, and two
+//!   people to check each other's keys with a phrase
+//! - [`legacy`] — crown jewels an owner opted in to emergency access, held back
+//!   with the grant
+//! - [`second_factor`] — security keys on the account, and the account's
+//!   password stretching (docs/plan/22-security-depth.md)
 //!
 //! The key-transparency log (`storage::kt_log`, served under `/v1/kt/`) is
 //! appended inside the same transactions that accept identity manifests,
@@ -37,8 +43,11 @@ pub mod backup;
 pub mod breach_monitor;
 pub mod client_addr;
 pub mod keys;
+pub mod legacy;
 pub mod live;
 pub mod ratelimit;
+pub mod relay;
+pub mod second_factor;
 pub mod sessions;
 pub mod sharing;
 pub mod sharing_api;
@@ -217,6 +226,8 @@ pub struct AppState {
     pub clock: Box<dyn Fn() -> i64 + Send + Sync>,
     /// The live channel's fan-out.
     pub live: Arc<live::Notifier>,
+    /// Device links, phrase checks and sign-ins waiting for a key (`relay`).
+    pub relays: relay::Relays,
 }
 
 impl std::fmt::Debug for AppState {
@@ -241,6 +252,7 @@ impl AppState {
             pending: Mutex::new(HashMap::new()),
             clock: Box::new(|| lockdown_vault::Timestamp::now().0),
             live: Arc::new(live::Notifier::new()),
+            relays: relay::Relays::default(),
         }
     }
 
@@ -369,6 +381,70 @@ pub fn app(state: Arc<AppState>) -> Router {
         )
         .route("/v1/events", get(live::events))
         .route("/v1/account/storage", get(api::account_storage))
+        .route("/v1/links", post(relay::link_open))
+        .route("/v1/links/join", post(relay::link_join))
+        .route("/v1/links/{link}/frames", post(relay::link_frames))
+        .route("/v1/links/{link}/poll", post(relay::link_poll))
+        .route(
+            "/v1/links/{link}/joiner/frames",
+            post(relay::link_joiner_frames),
+        )
+        .route(
+            "/v1/links/{link}/joiner/poll",
+            post(relay::link_joiner_poll),
+        )
+        .route("/v1/links/{link}/device", post(relay::link_device))
+        .route("/v1/links/{link}/close", post(relay::link_close))
+        .route(
+            "/v1/verifications",
+            get(relay::verify_list).post(relay::verify_open),
+        )
+        .route(
+            "/v1/verifications/{verify}/frames",
+            post(relay::verify_frames),
+        )
+        .route("/v1/verifications/{verify}/poll", post(relay::verify_poll))
+        .route(
+            "/v1/account/password/start",
+            post(second_factor::password_start),
+        )
+        .route(
+            "/v1/account/password/finish",
+            post(second_factor::password_finish),
+        )
+        .route("/v1/account/security-keys", get(second_factor::list))
+        .route(
+            "/v1/account/security-keys/start",
+            post(second_factor::start),
+        )
+        .route(
+            "/v1/account/security-keys/request",
+            post(second_factor::key_request),
+        )
+        .route(
+            "/v1/account/security-keys/finish",
+            post(second_factor::finish),
+        )
+        .route(
+            "/v1/account/security-keys/{id}/remove",
+            post(second_factor::remove),
+        )
+        .route(
+            "/v1/account/login/second-factor",
+            post(second_factor::answer),
+        )
+        .route(
+            "/v1/account/login/second-factor/request",
+            post(second_factor::request),
+        )
+        .route(
+            "/v1/account/login/second-factor/poll",
+            post(second_factor::poll),
+        )
+        .route(
+            "/v1/emergency/{grant}/items",
+            get(legacy::get_items).post(legacy::put_items),
+        )
         .route(
             "/v1/account/monitored",
             get(api::monitored).put(api::set_monitored),

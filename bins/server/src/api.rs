@@ -606,6 +606,7 @@ pub async fn login_start(
             &body.request,
         )
         .map_err(|_| ApiError::bad_request("the login request didn't decode"))?;
+    let ksf = crate::second_factor::announced_ksf(&state, account.as_ref());
     let login_id = Id::new();
     let now = Instant::now();
     let mut pending = state
@@ -622,7 +623,11 @@ pub async fn login_start(
             started: now,
         },
     );
-    Ok(Cbor(LoginStartReply { login_id, response }))
+    Ok(Cbor(LoginStartReply {
+        login_id,
+        response,
+        ksf,
+    }))
 }
 
 /// `POST /v1/account/login/finish`.
@@ -670,17 +675,50 @@ pub async fn login_finish(
             "the device didn't prove it holds its key",
         )
     })?;
+    // An account with security keys wants one from a device it has never
+    // seen (docs/plan/22-security-depth.md §4); a known device's key is the
+    // second factor there.
+    if crate::second_factor::required(&state, account.account_id, body.device.device_id)? {
+        return Ok(Cbor(crate::second_factor::begin(
+            &state,
+            &headers,
+            account,
+            body.device.device_id,
+            body.device.device_pub,
+            &peer,
+            user_agent,
+        )?));
+    }
+    Ok(Cbor(issue_session(
+        &state,
+        &account,
+        body.device.device_id,
+        &body.device.device_pub,
+        &peer,
+        user_agent,
+    )?))
+}
+
+/// The end of a sign-in: the device is bound to the account (with a
+/// new-device alert to the others when it is new), a session token is
+/// issued and its row opened.
+pub(crate) fn issue_session(
+    state: &AppState,
+    account: &crate::storage::Account,
+    device_id: Id,
+    device_pub: &[u8; 32],
+    peer: &Peer,
+    user_agent: Option<String>,
+) -> ApiResult<LoginFinishReply> {
     // A device the account has never seen, while it already has another:
     // the other devices hear about it (account alerts).
     let new_device = state
         .storage
-        .device_pub(account.account_id, body.device.device_id)?
+        .device_pub(account.account_id, device_id)?
         .is_none();
-    state.storage.register_device(
-        account.account_id,
-        body.device.device_id,
-        &body.device.device_pub,
-    )?;
+    state
+        .storage
+        .register_device(account.account_id, device_id, device_pub)?;
     if new_device
         && let Some(alerts) = state.storage.alerts()
         && alerts.device_count(account.account_id)? > 1
@@ -689,7 +727,7 @@ pub async fn login_finish(
             account.account_id,
             lockdown_sync::wire::AlertKind::NewDevice,
             state.now(),
-            Some(body.device.device_id),
+            Some(device_id),
             None,
         )?;
         state.live.notify(crate::live::Change::account(
@@ -700,13 +738,13 @@ pub async fn login_finish(
     let ttl = i64::try_from(state.config.session_ttl.as_secs()).unwrap_or(i64::MAX);
     let (token, claims) = state
         .tokens
-        .issue_claims(account.account_id, body.device.device_id, state.now(), ttl)
+        .issue_claims(account.account_id, device_id, state.now(), ttl)
         .map_err(|e| ApiError::internal(e.to_string()))?;
     if let Some(store) = state.storage.sessions() {
         store.open_session(&crate::sessions::SessionRow {
             id: claims.nonce,
             account_id: account.account_id,
-            device_id: body.device.device_id,
+            device_id,
             created_at: claims.iat,
             last_seen: claims.iat,
             expires_at: claims.exp,
@@ -720,11 +758,12 @@ pub async fn login_finish(
             lockdown_sync::wire::LiveKind::Sessions,
         ));
     }
-    Ok(Cbor(LoginFinishReply {
+    Ok(LoginFinishReply {
         token,
         expires_at: claims.exp,
         profile_id: account.profile_id,
-    }))
+        second_factor: None,
+    })
 }
 
 /// `GET /v1/identity?since=N`: the identity manifests after `N` and the

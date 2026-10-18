@@ -16,6 +16,8 @@ export interface ContactView {
   verified: boolean
   devices: number
   log_index: number
+  /** Their identity signs with a post-quantum key beside Ed25519, pinned here. */
+  post_quantum?: boolean
 }
 
 export interface MemberView {

@@ -41,6 +41,7 @@ pub mod commands;
 pub mod fields;
 pub mod host;
 pub mod links;
+pub mod security;
 
 pub use commands::{Reply, call};
 pub use host::{WebPaths, WebState, WebVault};

@@ -37,6 +37,8 @@ zxcvbn = { workspace = true, features = ["custom_wasm_env"] }
 [dev-dependencies]
 tempfile.workspace = true
 lockdown-server.workspace = true
+# The security-depth suite's software authenticator.
+lockdown-passkey.workspace = true
 # The forged-memory test rewrites what one visit carries to the next.
 ciborium.workspace = true
 # Test speed only: the lowered Argon2id floor for the identity and the

@@ -284,7 +284,7 @@ pub fn identity_signing_key(
 /// for the caller's rollback memory. The store must be exactly where
 /// `identity` last saw it: another app writing in between is refused
 /// rather than overwritten.
-fn write_identity_store(
+pub(crate) fn write_identity_store(
     identity: &mut Identity,
     keystore: &dyn DeviceKeystore,
     edit: impl FnOnce(&mut Contents, &SigningKey) -> Result<bool>,
@@ -311,7 +311,13 @@ fn write_identity_store(
 
 /// Whether this app may change the identity's records: Lockdown manages
 /// it, or no app does (01-identity §2, §7).
-fn check_manager(identity: &Identity) -> Result<()> {
+/// Whether Lockdown may change this identity's profile and devices: refused
+/// when another app manages it.
+pub fn check_manager_public(identity: &Identity) -> Result<()> {
+    check_manager(identity)
+}
+
+pub(crate) fn check_manager(identity: &Identity) -> Result<()> {
     match identity.profile().manager.as_deref() {
         Some(m) if m != APP => Err(Error::Invalid(format!(
             "this identity is managed by {m}; only it may change devices"

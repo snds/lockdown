@@ -33,6 +33,9 @@ import { VaultView } from "@/features/vault/vault-view"
 import { useLive } from "@/features/sessions/use-live"
 import { LiveClientProvider } from "@/features/sessions/live-client"
 import { tauriLiveClient } from "@/app/tauri-live"
+import { tauriDepthClient } from "@/app/tauri-depth"
+import { DepthClientProvider } from "@/features/depth/depth-client"
+import { RemindersPrompt } from "@/features/depth/reminders"
 import { BridgesProvider } from "@/features/bridges/bridges-client"
 import { BackupIndicator } from "@/features/bridges/backup-indicator"
 import { tauriBridgesClient } from "@/app/tauri-bridges"
@@ -193,6 +196,7 @@ function Root() {
       />
       <PairingDialog onNotice={notice} />
       <PasskeyApprovalDialog onNotice={notice} />
+      <RemindersPrompt onNotice={notice} onChanged={refreshStatus} />
       </VaultsProvider>
     </LockedProvider>
   )
@@ -206,9 +210,11 @@ export default function App() {
           <TemplatesProvider>
             <GateProvider>
               <LiveClientProvider value={tauriLiveClient}>
-                <BridgesProvider value={tauriBridgesClient}>
-                  <Root />
-                </BridgesProvider>
+                <DepthClientProvider value={tauriDepthClient}>
+                  <BridgesProvider value={tauriBridgesClient}>
+                    <Root />
+                  </BridgesProvider>
+                </DepthClientProvider>
               </LiveClientProvider>
             </GateProvider>
           </TemplatesProvider>

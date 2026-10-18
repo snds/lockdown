@@ -99,7 +99,7 @@ async function handle(req: Request) {
       await keepCarried(c, signedInLogin(c))
     }
     const reply = c.call(req.cmd, args)
-    if (req.cmd === "web_sign_in" || req.cmd === "sync") {
+    if (["web_sign_in", "web_sign_in_answer", "web_sign_in_continue", "web_join_finish", "sync"].includes(req.cmd)) {
       await keepCarried(c, signedInLogin(c))
     }
     if (reply.kind === "bytes") post({ id: req.id, ok: true, kind: "bytes", value: reply.value }, [reply.value.buffer])

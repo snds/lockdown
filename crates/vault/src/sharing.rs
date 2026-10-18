@@ -686,6 +686,7 @@ impl ShareEnvelope {
         by_device: Id,
         signer: &dyn Signer,
     ) -> Result<Self> {
+        crate::pq::require_hybrid(to_kem, "the person this goes to")?;
         let wrap = wrap_to_peer(
             key.expose(),
             to_kem,
