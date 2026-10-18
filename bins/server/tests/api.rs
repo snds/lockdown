@@ -246,6 +246,7 @@ impl LocalVault {
             sth: None,
             sig: Vec::new(),
             checkpoint: None,
+            pq_sig: None,
         };
         head.sign(&self.device.key()).unwrap();
         head
@@ -1293,4 +1294,131 @@ async fn a_server_without_a_quota_says_so() {
         Some(lockdown_server::DEFAULT_ATTACHMENT_QUOTA)
     );
     assert_eq!(lockdown_server::DEFAULT_ATTACHMENT_QUOTA, 5_000_000_000);
+}
+
+/// `PUT /v1/vaults/{vault}/heads`, answering the status and the error code.
+async fn put_head_status(
+    h: &Harness,
+    token: &str,
+    head: &ManifestHead,
+) -> (StatusCode, Option<ErrorCode>) {
+    let (status, bytes) = h
+        .call(
+            "PUT",
+            &format!("/v1/vaults/{}/heads", head.vault_id),
+            Some(token),
+            head.to_bytes().unwrap(),
+        )
+        .await;
+    let code = (status != StatusCode::OK).then(|| wire::decode::<ErrorBody>(&bytes).unwrap().code);
+    (status, code)
+}
+
+#[tokio::test]
+async fn a_heads_post_quantum_signature_must_check_out_under_the_accounts_published_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let keystore = FileKeystore::open_or_create(&dir.path().join("k.cbor")).unwrap();
+    let mut identity =
+        Identity::create(&dir.path().join("root"), "lockdown", "laptop", &keystore).unwrap();
+    let h = harness(Config::default());
+    h.register(
+        "me@example.com",
+        "correct horse battery staple",
+        identity.profile().profile_id,
+    )
+    .await;
+    let local = LocalVault::new(Device::new());
+    let token = h
+        .login(
+            "me@example.com",
+            "correct horse battery staple",
+            &local.device,
+        )
+        .await
+        .unwrap()
+        .token;
+    let (status, _) = h
+        .call(
+            "PUT",
+            &format!("/v1/vaults/{}", local.id()),
+            Some(&token),
+            local.record(),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let pq = lockdown_vault::pq::identity_pq_key(&identity, &keystore).unwrap();
+    let mut head = local.head(1, Hash32::ZERO, &[]);
+    head.sign_post_quantum(&pq).unwrap();
+
+    // The account publishes no post-quantum key yet: a head claiming one
+    // can't be right.
+    assert_eq!(
+        put_head_status(&h, &token, &head).await,
+        (StatusCode::FORBIDDEN, Some(ErrorCode::BadSignature))
+    );
+
+    // The identity publishes its key and pushes its records, signed with both.
+    lockdown_vault::pq::publish_key(&mut identity, &keystore).unwrap();
+    let isk = identity_signing_key(&identity, &keystore).unwrap();
+    let record = device_record(&identity, &local.device, "laptop", &isk);
+    let mut set = set_with(
+        &identity,
+        std::slice::from_ref(&record),
+        None,
+        Vec::new(),
+        &isk,
+    );
+    set.sign_hybrid(&isk, &pq).unwrap();
+    let paths: Vec<&str> = set.records.keys().map(String::as_str).collect();
+    put_identity(&h, &token, &set, &paths).await.unwrap();
+
+    // The ML-DSA signature bent (Ed25519 good): refused.
+    let mut bent = head.clone();
+    bent.pq_sig.as_mut().unwrap()[0] ^= 1;
+    assert_eq!(
+        put_head_status(&h, &token, &bent).await,
+        (StatusCode::FORBIDDEN, Some(ErrorCode::BadSignature))
+    );
+    // Under another identity's key: refused.
+    let mut foreign = head.clone();
+    foreign
+        .sign_post_quantum(&lockdown_crypto::pq_sign::PqSigningKey::from_seed([3; 32]))
+        .unwrap();
+    assert_eq!(
+        put_head_status(&h, &token, &foreign).await,
+        (StatusCode::FORBIDDEN, Some(ErrorCode::BadSignature))
+    );
+    // The Ed25519 signature bent (ML-DSA good): refused.
+    let mut bent = head.clone();
+    bent.sig[0] ^= 1;
+    assert_eq!(
+        put_head_status(&h, &token, &bent).await,
+        (StatusCode::FORBIDDEN, Some(ErrorCode::BadSignature))
+    );
+    // Both good: accepted, and served back with the signature on it.
+    assert_eq!(
+        put_head_status(&h, &token, &head).await,
+        (StatusCode::OK, None)
+    );
+    let (status, bytes) = h
+        .call(
+            "GET",
+            &format!("/v1/vaults/{}/heads?since=0", local.id()),
+            Some(&token),
+            Vec::new(),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let since: HeadsSince = wire::decode(&bytes).unwrap();
+    let served = ManifestHead::from_bytes(&since.heads[0]).unwrap();
+    assert_eq!(served.pq_sig, head.pq_sig);
+
+    // The log's tree head carries both signatures and both keys.
+    let (status, bytes) = h.call("GET", "/v1/kt/sth", None, Vec::new()).await;
+    assert_eq!(status, StatusCode::OK);
+    let sth: lockdown_sync::kt::SthWire = wire::decode(&bytes).unwrap();
+    let ed = lockdown_crypto::VerifyingKey::from_bytes(&sth.log_key).unwrap();
+    let ml =
+        lockdown_crypto::pq_sign::PqVerifyingKey::from_bytes(&sth.pq_log_key.unwrap()).unwrap();
+    sth.sth.verify_hybrid(&ed, Some(&ml)).unwrap();
 }

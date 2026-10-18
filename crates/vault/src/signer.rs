@@ -11,7 +11,9 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
+use ecosystem_identity::Identity;
 use ecosystem_identity::keystore::DeviceKeystore;
+use lockdown_crypto::pq_sign::PqSigningKey;
 use lockdown_crypto::{SigningKey, VerifyingKey};
 
 use crate::Result;
@@ -22,6 +24,13 @@ pub trait Signer {
     fn sign(&self, message: &[u8]) -> Result<[u8; 64]>;
     /// The public half, which the device's identity record carries.
     fn verifying_key(&self) -> Result<VerifyingKey>;
+    /// The identity's ML-DSA-65 key (`crate::pq::identity_pq_key`), for a
+    /// signer that is this device's keystore and so holds its wrap of the
+    /// root key; `None` for a bare key, which holds none.
+    fn identity_pq_key(&self, identity: &Identity) -> Result<Option<PqSigningKey>> {
+        let _ = identity;
+        Ok(None)
+    }
 }
 
 impl Signer for SigningKey {
@@ -42,6 +51,10 @@ impl<K: DeviceKeystore + ?Sized> Signer for Rc<K> {
     fn verifying_key(&self) -> Result<VerifyingKey> {
         Ok(VerifyingKey::from_bytes(&self.device_pub())?)
     }
+
+    fn identity_pq_key(&self, identity: &Identity) -> Result<Option<PqSigningKey>> {
+        crate::pq::identity_pq_key(identity, self.as_ref()).map(Some)
+    }
 }
 
 impl<K: DeviceKeystore + ?Sized> Signer for Arc<K> {
@@ -51,6 +64,10 @@ impl<K: DeviceKeystore + ?Sized> Signer for Arc<K> {
 
     fn verifying_key(&self) -> Result<VerifyingKey> {
         Ok(VerifyingKey::from_bytes(&self.device_pub())?)
+    }
+
+    fn identity_pq_key(&self, identity: &Identity) -> Result<Option<PqSigningKey>> {
+        crate::pq::identity_pq_key(identity, self.as_ref()).map(Some)
     }
 }
 

@@ -275,7 +275,7 @@ impl Session {
                 .link_push(link.link_id, LinkSide::Opener(&token), frame)
                 .map_err(|e| e.to_string())?;
         }
-        self.refresh_trust();
+        self.refresh_trust()?;
         link.state = "approved";
         let name = granted.device.name.clone();
         let sk_line = match sk {

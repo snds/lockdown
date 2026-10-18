@@ -33,6 +33,7 @@
 use ecosystem_identity::Identity;
 use lockdown_crypto::VerifyingKey;
 use lockdown_crypto::merkle;
+use lockdown_crypto::pq_sign::PqVerifyingKey;
 use lockdown_store::{ServerView, SyncedIdentity};
 use lockdown_vault::transparency::{LogEntry, LogLeaf, SignedTreeHead, SthRef};
 use lockdown_vault::{Hash32, Id, Timestamp, Vault};
@@ -51,6 +52,13 @@ pub struct SthWire {
     /// first sight; a change is refused.
     #[serde(with = "serde_bytes")]
     pub log_key: [u8; 32],
+    /// The server's post-quantum log key (ML-DSA-65 public, 1952 bytes),
+    /// when it has one: pinned by the client the first time it is offered,
+    /// and from then on required with the tree head's second signature;
+    /// a change or a drop is refused (docs/plan/28-pq-signatures.md).
+    /// Additive (D62).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_log_key: Option<serde_bytes::ByteBuf>,
 }
 
 /// `GET /v1/kt/inclusion?index=I&size=N`: the path for leaf `I` in the
@@ -223,7 +231,34 @@ impl<'a> KtSession<'a> {
         };
         let key = VerifyingKey::from_bytes(&log_key)
             .map_err(|_| refuse("the server's log key isn't an Ed25519 public key".into()))?;
-        wire.sth.verify(&key)?;
+        // The post-quantum log key: pinned the first time the server offers
+        // one, then never dropped or changed.
+        let pq_log_key = match (
+            remembered.and_then(|r| r.pq_log_key.as_ref()),
+            wire.pq_log_key,
+        ) {
+            (Some(pinned), Some(offered)) if *pinned != offered => {
+                return Err(refuse(
+                    "the server's post-quantum log key changed since this device pinned it; refusing to trust the new one"
+                        .into(),
+                ));
+            }
+            (Some(_), None) => {
+                return Err(refuse(
+                    "the server dropped the post-quantum log key this device pinned; refusing its tree head"
+                        .into(),
+                ));
+            }
+            (_, offered) => offered,
+        };
+        let pq_key = pq_log_key
+            .as_ref()
+            .map(|b| PqVerifyingKey::from_bytes(b))
+            .transpose()
+            .map_err(|_| {
+                refuse("the server's post-quantum log key isn't an ML-DSA-65 public key".into())
+            })?;
+        wire.sth.verify_hybrid(&key, pq_key.as_ref())?;
         let mut view = ServerView {
             log_key,
             sth: wire.sth,
@@ -231,6 +266,7 @@ impl<'a> KtSession<'a> {
             identity_logged: None,
             own_device_logged: false,
             checked_at: Some(Timestamp::now().0),
+            pq_log_key,
         };
         if let Some(r) = remembered {
             view.audited = r.audited;
@@ -495,6 +531,21 @@ mod tests {
         leaves: RefCell<Vec<Vec<u8>>>,
         /// The account the fake says the session stands for.
         account: RefCell<Id>,
+        /// The post-quantum log key, once the fake server has one.
+        pq: RefCell<Option<lockdown_crypto::pq_sign::PqSigningKey>>,
+        /// How the fake misbehaves with its tree heads.
+        bend: RefCell<Bend>,
+    }
+
+    /// Ways a server can bend a hybrid tree head.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Bend {
+        Honest,
+        Classical,
+        PostQuantum,
+        DropSignature,
+        DropKey,
+        SwapKey,
     }
 
     impl FakeLog {
@@ -503,6 +554,8 @@ mod tests {
                 key: SigningKey::generate().unwrap(),
                 leaves: RefCell::new(Vec::new()),
                 account: RefCell::new(Id::new()),
+                pq: RefCell::new(None),
+                bend: RefCell::new(Bend::Honest),
             }
         }
 
@@ -581,9 +634,39 @@ mod tests {
         }
         fn kt_sth(&self) -> TResult<SthWire> {
             let size = self.leaves.borrow().len();
+            let pq = self.pq.borrow();
+            let Some(pq) = pq.as_ref() else {
+                return Ok(SthWire {
+                    sth: SignedTreeHead::sign(self.head(size), &self.key).unwrap(),
+                    log_key: self.key.verifying_key().to_bytes(),
+                    pq_log_key: None,
+                });
+            };
+            let mut sth = SignedTreeHead::sign_hybrid(self.head(size), &self.key, pq).unwrap();
+            let mut pq_log_key = Some(serde_bytes::ByteBuf::from(
+                pq.verifying_key().as_bytes().to_vec(),
+            ));
+            match *self.bend.borrow() {
+                Bend::Honest => {}
+                Bend::Classical => sth.sig[0] ^= 1,
+                Bend::PostQuantum => sth.pq_sig.as_mut().unwrap()[0] ^= 1,
+                Bend::DropSignature => sth.pq_sig = None,
+                Bend::DropKey => {
+                    sth.pq_sig = None;
+                    pq_log_key = None;
+                }
+                Bend::SwapKey => {
+                    let other = lockdown_crypto::pq_sign::PqSigningKey::from_seed([66; 32]);
+                    sth = SignedTreeHead::sign_hybrid(self.head(size), &self.key, &other).unwrap();
+                    pq_log_key = Some(serde_bytes::ByteBuf::from(
+                        other.verifying_key().as_bytes().to_vec(),
+                    ));
+                }
+            }
             Ok(SthWire {
-                sth: SignedTreeHead::sign(self.head(size), &self.key).unwrap(),
+                sth,
                 log_key: self.key.verifying_key().to_bytes(),
+                pq_log_key,
             })
         }
         fn kt_inclusion(&self, index: u64, size: u64) -> TResult<InclusionProofWire> {
@@ -895,6 +978,44 @@ mod tests {
         let mut session = KtSession::begin(&log, "t", None).unwrap();
         let msg = message(session.audit(&known));
         assert!(msg.contains("another account"), "{msg}");
+    }
+
+    #[test]
+    fn a_post_quantum_log_key_is_pinned_once_and_each_signature_is_checked() {
+        let (log, _account, _known, _vault) = honest();
+        // A server from before: Ed25519 alone, nothing pinned.
+        let classical = KtSession::begin(&log, "t", None).unwrap().view;
+        assert!(classical.pq_log_key.is_none());
+        // It gains a post-quantum log key: pinned on first sight, signature checked.
+        *log.pq.borrow_mut() = Some(lockdown_crypto::pq_sign::PqSigningKey::from_seed([65; 32]));
+        let pinned = KtSession::begin(&log, "t", Some(&classical)).unwrap().view;
+        assert_eq!(
+            pinned.pq_log_key.as_ref().map(|k| k.len()),
+            Some(lockdown_crypto::pq_sign::PUBLIC_KEY_LEN)
+        );
+        assert!(pinned.sth.pq_sig.is_some());
+        KtSession::begin(&log, "t", Some(&pinned)).unwrap();
+        for (bend, words) in [
+            (
+                Bend::Classical,
+                "signature didn't check out under the server's log key",
+            ),
+            (Bend::PostQuantum, "post-quantum signature didn't check out"),
+            (Bend::DropSignature, "no post-quantum signature"),
+            (Bend::DropKey, "dropped the post-quantum log key"),
+            (Bend::SwapKey, "post-quantum log key changed"),
+        ] {
+            *log.bend.borrow_mut() = bend;
+            let msg = message(KtSession::begin(&log, "t", Some(&pinned)));
+            assert!(msg.contains(words), "{msg}");
+        }
+        // On first contact, a bent signature is refused as well.
+        for bend in [Bend::Classical, Bend::PostQuantum, Bend::DropSignature] {
+            *log.bend.borrow_mut() = bend;
+            assert!(KtSession::begin(&log, "t", None).is_err());
+        }
+        *log.bend.borrow_mut() = Bend::Honest;
+        KtSession::begin(&log, "t", Some(&pinned)).unwrap();
     }
 
     #[test]

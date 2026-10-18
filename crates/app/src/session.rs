@@ -498,6 +498,14 @@ impl Session {
                 .map_err(|e| e.to_string())?,
             );
         }
+        // Each vault is held to the post-quantum signatures from the first
+        // head this device saw the server confirm with one (doc 28).
+        for o in &mut all {
+            let since = memory.pq_since(o.vault.context().vault_id);
+            o.vault
+                .require_post_quantum_from(since)
+                .map_err(|e| e.to_string())?;
+        }
         organize::order_vaults(&mut all);
         let opened = all.remove(0);
         let recency = crate::recency::Recency::open(
@@ -576,11 +584,21 @@ impl Session {
     /// Has every open vault trust the devices the identity's signed records
     /// list now (a device enrolled since unlock, learned in this sync's
     /// record pull), and refuse what revoked ones sign past their boundary.
-    fn refresh_trust(&mut self) {
+    ///
+    /// The post-quantum head setting follows too (doc 28): the key the
+    /// profile publishes now, and whether every device reads them yet.
+    fn refresh_trust(&mut self) -> Result<(), String> {
         let mut keys = self.synced.device_keys();
         for (id, key) in device_keys(&self.identity) {
             keys.entry(id).or_insert(key);
         }
+        let signer: Box<dyn lockdown_vault::Signer> = Box::new(self.keystore.clone());
+        let pq = lockdown_vault::identity::vault_pq(
+            &self.identity,
+            signer.as_ref(),
+            keys.keys().copied(),
+        )
+        .map_err(|e| e.to_string())?;
         let mut vaults: Vec<&mut Vault> = std::iter::once(&mut self.opened.vault)
             .chain(self.more.iter_mut().map(|o| &mut o.vault))
             .collect();
@@ -591,7 +609,11 @@ impl Session {
             for (id, after) in self.synced.revoked_after(vault.context().vault_id) {
                 vault.revoke_device(id, after);
             }
+            vault
+                .set_post_quantum(pq.clone())
+                .map_err(|e| e.to_string())?;
         }
+        Ok(())
     }
 
     /// The persona's first vault (where new items go by default).
@@ -1592,7 +1614,7 @@ impl Session {
             &mut self.synced,
             &mut self.memory,
         )?;
-        self.refresh_trust();
+        self.refresh_trust()?;
         let remembered = self.transparency.view(&server).cloned();
         let mut kt =
             KtSession::begin(&transport, &token, remembered.as_ref()).map_err(|e| e.to_string())?;
@@ -1674,6 +1696,17 @@ impl Session {
             } else {
                 self.memory
                     .remember_vault(vault_id, remembered)
+                    .map_err(|e| e.to_string())?;
+            }
+            // The first post-quantum head the server confirmed: from there
+            // on every head by this identity's devices must carry one, even
+            // if a server later strips them all (doc 28).
+            if let Some(since) = open.vault.post_quantum_since(one.head_seq) {
+                self.memory
+                    .remember_pq_since(vault_id, since)
+                    .map_err(|e| e.to_string())?;
+                open.vault
+                    .require_post_quantum_from(self.memory.pq_since(vault_id))
                     .map_err(|e| e.to_string())?;
             }
             if idx == 0 {

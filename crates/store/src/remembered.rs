@@ -38,6 +38,12 @@ struct MemoryFile {
     identity: Option<Head>,
     #[serde(default)]
     vaults: BTreeMap<Id, RememberedHead>,
+    /// Per vault, the `seq` of the first head with a post-quantum
+    /// signature the server confirmed to this device: from there on every
+    /// head by the identity's devices must carry one
+    /// (docs/plan/28-pq-signatures.md). Additive; absent before.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pq_since: BTreeMap<Id, u64>,
 }
 
 /// The device's memory of accepted heads, backed by one file.
@@ -120,6 +126,23 @@ impl HeadMemory {
     /// provisional one did. Every other caller uses [`Self::remember_vault`].
     pub fn replace_vault(&mut self, vault_id: Id, head: RememberedHead) -> StoreResult<()> {
         self.file.vaults.insert(vault_id, head);
+        self.write()
+    }
+
+    /// The `seq` from which this vault's heads must carry a post-quantum
+    /// signature, if this device saw one confirmed.
+    pub fn pq_since(&self, vault_id: Id) -> Option<u64> {
+        self.file.pq_since.get(&vault_id).copied()
+    }
+
+    /// Records the first confirmed post-quantum head of a vault and writes
+    /// the file. Only ever moves down (an earlier first head), never up or
+    /// away: the requirement once seen stays.
+    pub fn remember_pq_since(&mut self, vault_id: Id, seq: u64) -> StoreResult<()> {
+        if self.pq_since(vault_id).is_some_and(|seen| seen <= seq) {
+            return Ok(());
+        }
+        self.file.pq_since.insert(vault_id, seq);
         self.write()
     }
 
@@ -246,5 +269,22 @@ mod tests {
             let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
             assert_eq!(mode, 0o600);
         }
+    }
+
+    #[test]
+    fn the_first_post_quantum_head_is_remembered_and_never_forgotten() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("remembered.cbor");
+        let (vault, other) = (Id::new(), Id::new());
+        let mut memory = HeadMemory::open(&path).unwrap();
+        assert_eq!(memory.pq_since(vault), None);
+        memory.remember_pq_since(vault, 7).unwrap();
+        memory.remember_pq_since(vault, 9).unwrap();
+        assert_eq!(memory.pq_since(vault), Some(7), "never moves up");
+        memory.remember_pq_since(vault, 4).unwrap();
+        drop(memory);
+        let memory = HeadMemory::open(&path).unwrap();
+        assert_eq!(memory.pq_since(vault), Some(4));
+        assert_eq!(memory.pq_since(other), None);
     }
 }

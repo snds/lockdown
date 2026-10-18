@@ -376,6 +376,11 @@ impl App {
             )
             .map_err(|e| e.to_string())?
         };
+        let mut opened = opened;
+        opened
+            .vault
+            .require_post_quantum_from(memory.pq_since(opened.vault.context().vault_id))
+            .map_err(|e| e.to_string())?;
         let mut app = Self {
             paths,
             keystore,
@@ -1657,6 +1662,17 @@ impl App {
         } else {
             self.remember()?;
         }
+        // The first post-quantum head the server confirmed: from there on
+        // every head must carry one (docs/plan/28-pq-signatures.md).
+        if let Some(since) = self.opened.vault.post_quantum_since(report.head_seq) {
+            self.memory
+                .remember_pq_since(vault_id, since)
+                .map_err(|e| e.to_string())?;
+            self.opened
+                .vault
+                .require_post_quantum_from(self.memory.pq_since(vault_id))
+                .map_err(|e| e.to_string())?;
+        }
         if let Some(cfg) = &self.sync {
             cfg.save(&self.paths.sync_file())?;
         }
@@ -1781,11 +1797,20 @@ impl App {
         drop(kt);
         let vault = self.vault();
         let head = vault.head().map_err(|e| e.to_string())?;
+        // Post-quantum parts ride only once every device reads them (the
+        // rollout rule): an older build re-encoding them would break its
+        // own check of the device signature.
+        let post_quantum =
+            lockdown_vault::pq::heads_ready(&self.identity).map_err(|e| e.to_string())?;
+        let mut sth = view.sth.clone();
+        if !post_quantum {
+            sth.pq_sig = None;
+        }
         let mut cp = Checkpoint {
             v: CHECKPOINT_V,
             server: server.clone(),
             log_key: view.log_key,
-            sth: view.sth.clone(),
+            sth,
             identity_head: self
                 .synced
                 .manifest()
@@ -1797,10 +1822,17 @@ impl App {
             )],
             exported_at: lockdown_vault::Timestamp::now().0,
             device_id: self.identity.device_id(),
+            pq_log_key: view.pq_log_key.clone().filter(|_| post_quantum),
             sig: Vec::new(),
+            pq_sig: None,
         };
         let signer: Box<dyn lockdown_vault::Signer> = Box::new(self.keystore.clone());
         cp.sign(signer.as_ref()).map_err(|e| e.to_string())?;
+        if post_quantum {
+            let pq = lockdown_vault::pq::identity_pq_key(&self.identity, self.keystore.as_ref())
+                .map_err(|e| e.to_string())?;
+            cp.sign_post_quantum(&pq).map_err(|e| e.to_string())?;
+        }
         self.transparency
             .remember(&server, view)
             .map_err(|e| e.to_string())?;
@@ -1838,9 +1870,23 @@ impl App {
                     .into(),
             );
         }
+        if cp.pq_log_key.is_some() && cp.pq_log_key != kt.view.pq_log_key {
+            return Err(
+                "the checkpoint names a different post-quantum log key from the one this device pinned; one of the two devices was shown another server"
+                    .into(),
+            );
+        }
         let key =
             lockdown_crypto::VerifyingKey::from_bytes(&cp.log_key).map_err(|e| e.to_string())?;
-        cp.sth.verify(&key).map_err(|e| e.to_string())?;
+        let pq_log_key = cp
+            .pq_log_key
+            .as_ref()
+            .map(|k| lockdown_crypto::pq_sign::PqVerifyingKey::from_bytes(k))
+            .transpose()
+            .map_err(|e| e.to_string())?;
+        cp.sth
+            .verify_hybrid(&key, pq_log_key.as_ref())
+            .map_err(|e| e.to_string())?;
         lines.push(format!(
             "tree head       {} entries, root {}: signed by the server's log key",
             cp.sth.size,
@@ -1861,8 +1907,11 @@ impl App {
                     cp.device_id
                 )
             })?;
-        cp.verify(
+        let identity_pq = lockdown_vault::pq::published_key(self.identity.profile())
+            .map_err(|e| e.to_string())?;
+        cp.verify_hybrid(
             &lockdown_crypto::VerifyingKey::from_bytes(&device_key).map_err(|e| e.to_string())?,
+            identity_pq.as_ref(),
         )
         .map_err(|e| e.to_string())?;
         let name = self
@@ -2090,6 +2139,12 @@ fn push_identity_records(
     new_revocations: Vec<Revocation>,
 ) -> Result<bool, String> {
     let isk_pub = identity.profile().isk_pub;
+    // The post-quantum rollout, as the app runs it (D248, D318; doc 28):
+    // this device says what it reads, and the key goes on the profile once
+    // every device does.
+    if lockdown_vault::identity::check_manager_public(identity).is_ok() {
+        lockdown_vault::pq::roll_out(identity, keystore).map_err(|e| e.to_string())?;
+    }
     for _ in 0..IDENTITY_ROUNDS {
         let prev = synced.manifest().cloned();
         let mut revocations: Vec<Revocation> = prev
@@ -2109,7 +2164,16 @@ fn push_identity_records(
             return Ok(false);
         }
         let isk = identity_signing_key(identity, keystore).map_err(|e| e.to_string())?;
-        set.sign(&isk).map_err(|e| e.to_string())?;
+        if lockdown_vault::pq::published_key(identity.profile())
+            .map_err(|e| e.to_string())?
+            .is_some()
+        {
+            let pq = lockdown_vault::pq::identity_pq_key(identity, keystore)
+                .map_err(|e| e.to_string())?;
+            set.sign_hybrid(&isk, &pq).map_err(|e| e.to_string())?;
+        } else {
+            set.sign(&isk).map_err(|e| e.to_string())?;
+        }
         drop(isk);
         match push_identity(transport, token, &set, synced, Some(&isk_pub))
             .map_err(|e| e.to_string())?

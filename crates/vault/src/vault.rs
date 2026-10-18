@@ -121,6 +121,11 @@ pub struct Vault {
     /// Item Keys of crown jewels an emergency release handed this persona
     /// (the owner opted each in; `legacy`), held in memory only.
     released_items: BTreeMap<Id, ItemKey>,
+    /// The identity's post-quantum head key and this device's signing
+    /// half (`crate::pq`); `None` until the profile publishes one.
+    pq: Option<crate::pq::HeadPq>,
+    /// The `seq` this device remembers the first post-quantum head at.
+    pq_since: Option<u64>,
 }
 
 /// A file sealed by [`Vault::seal_stream`], not yet on its item.
@@ -203,6 +208,8 @@ impl Vault {
             cited_sth: None,
             old_vault_keys: Vec::new(),
             released_items: BTreeMap::new(),
+            pq: None,
+            pq_since: None,
         };
         vault.commit_head()?;
         Ok(vault)
@@ -319,6 +326,8 @@ impl Vault {
             cited_sth: None,
             old_vault_keys: Vec::new(),
             released_items: BTreeMap::new(),
+            pq: None,
+            pq_since: None,
         };
         vault.members = vault.members()?;
         Ok(vault)
@@ -465,6 +474,7 @@ impl Vault {
         let key = self.verifying_key();
         let device = self.device_id;
         check_revocations(&self.heads, |id| self.revoked_after(id))?;
+        self.check_post_quantum(&self.heads)?;
         verify_chain(
             &self.heads,
             |signer| {
@@ -1073,8 +1083,15 @@ impl Vault {
         chain.extend(remote.iter().cloned());
         verify_chain(&chain, |id| self.key_for(id), 0)?;
         check_revocations(&remote, |id| self.revoked_after(id))?;
-        self.heads.retain(|h| h.seq <= keep_through);
-        self.heads.extend(remote);
+        let mut next: Vec<ManifestHead> = self
+            .heads
+            .iter()
+            .filter(|h| h.seq <= keep_through)
+            .cloned()
+            .collect();
+        next.extend(remote);
+        self.check_post_quantum(&next)?;
+        self.heads = next;
         self.members = self.members()?;
         Ok(())
     }
@@ -1089,6 +1106,70 @@ impl Vault {
     /// The citation heads carry now.
     pub fn cited_sth(&self) -> Option<SthRef> {
         self.cited_sth
+    }
+
+    /// Sets the identity's post-quantum head key and this device's signing
+    /// half (`crate::pq::head_pq`), and checks the chain held now under
+    /// them. `None` (the profile publishes no key yet) leaves heads
+    /// Ed25519 only. Refused, with nothing changed, when the chain breaks
+    /// a post-quantum rule.
+    pub fn set_post_quantum(&mut self, pq: Option<crate::pq::HeadPq>) -> Result<()> {
+        let before = std::mem::replace(&mut self.pq, pq);
+        if let Err(e) = self.check_post_quantum(&self.heads) {
+            self.pq = before;
+            return Err(e);
+        }
+        Ok(())
+    }
+
+    /// The post-quantum setting, when there is one.
+    pub fn post_quantum(&self) -> Option<&crate::pq::HeadPq> {
+        self.pq.as_ref()
+    }
+
+    /// Holds the chain to post-quantum signatures from `since` on: the
+    /// `seq` this device remembers seeing the first one at (`None` for
+    /// none). Refused, with nothing changed, when a head at or after it by
+    /// one of the identity's devices lacks one.
+    pub fn require_post_quantum_from(&mut self, since: Option<u64>) -> Result<()> {
+        let before = std::mem::replace(&mut self.pq_since, since);
+        if let Err(e) = self.check_post_quantum(&self.heads) {
+            self.pq_since = before;
+            return Err(e);
+        }
+        Ok(())
+    }
+
+    /// The `seq` of the first head at or before `through` that carries a
+    /// verified post-quantum signature by one of the identity's devices:
+    /// what a device remembers once the server confirmed that far.
+    pub fn post_quantum_since(&self, through: u64) -> Option<u64> {
+        let pq = self.pq.as_ref()?;
+        self.heads
+            .iter()
+            .filter(|h| h.seq <= through && pq.own.contains(&h.signer))
+            .find(|h| h.verify_post_quantum(&pq.key).is_ok())
+            .map(|h| h.seq)
+    }
+
+    /// Whether the next head this device commits carries a post-quantum
+    /// signature: it holds the key and either every device reads them or
+    /// the chain already carries one.
+    pub fn signs_post_quantum(&self) -> bool {
+        let Some(pq) = &self.pq else {
+            return false;
+        };
+        pq.signer.is_some() && (pq.ready || self.heads.iter().any(|h| h.pq_sig.is_some()))
+    }
+
+    fn check_post_quantum(&self, heads: &[ManifestHead]) -> Result<Option<u64>> {
+        let own = |id: Id| self.pq.as_ref().is_some_and(|pq| pq.own.contains(&id));
+        crate::pq::check_heads(
+            heads,
+            self.pq.as_ref().map(|pq| &pq.key),
+            &own,
+            self.pq_since,
+        )
     }
 
     /// Drops every head after `seq`: the provisional heads this device
@@ -1548,8 +1629,14 @@ impl Vault {
             sth: self.cited_sth,
             sig: Vec::new(),
             checkpoint: None,
+            pq_sig: None,
         };
         head.sign(self.signer.as_ref())?;
+        if self.signs_post_quantum()
+            && let Some(key) = self.pq.as_ref().and_then(|pq| pq.signer.as_ref())
+        {
+            head.sign_post_quantum(key)?;
+        }
         self.heads.push(head);
         Ok(())
     }
@@ -2123,5 +2210,155 @@ mod tests {
         };
         let back: VaultKey = unwrap_key(&env, &adk, &place).unwrap();
         assert_eq!(back.expose(), vault.vault_key.expose());
+    }
+
+    fn pq_setting(vault: &Vault, seed: u8, ready: bool) -> crate::pq::HeadPq {
+        let key = lockdown_crypto::pq_sign::PqSigningKey::from_seed([seed; 32]);
+        crate::pq::HeadPq {
+            key: key.verifying_key(),
+            signer: Some(std::sync::Arc::new(key)),
+            ready,
+            own: BTreeSet::from([vault.device_id]),
+        }
+    }
+
+    fn note(vault: &mut Vault, text: &str) -> Id {
+        vault
+            .create_item(
+                ItemKind::Note,
+                ItemClass::Standard,
+                vec![PlainField::text("body", "note", text)],
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn heads_carry_ml_dsa_beside_ed25519_once_every_device_reads_them() {
+        let mut vault = sample_vault();
+        // The key is published but a device lags: Ed25519 only.
+        vault
+            .set_post_quantum(Some(pq_setting(&vault, 9, false)))
+            .unwrap();
+        note(&mut vault, "one");
+        assert!(!vault.signs_post_quantum());
+        assert!(vault.head().unwrap().pq_sig.is_none());
+        // Every device reads them: the next head carries both.
+        vault
+            .set_post_quantum(Some(pq_setting(&vault, 9, true)))
+            .unwrap();
+        assert!(vault.signs_post_quantum());
+        note(&mut vault, "two");
+        let head = vault.head().unwrap().clone();
+        assert_eq!(
+            head.pq_sig.as_ref().unwrap().len(),
+            lockdown_crypto::pq_sign::SIGNATURE_LEN
+        );
+        // A device that hasn't seen the rollout finish keeps a chain that
+        // already carries one post-quantum.
+        vault
+            .set_post_quantum(Some(pq_setting(&vault, 9, false)))
+            .unwrap();
+        assert!(vault.signs_post_quantum());
+        note(&mut vault, "three");
+        assert!(vault.head().unwrap().pq_sig.is_some());
+        vault.verify(0).unwrap();
+        assert_eq!(vault.post_quantum_since(vault.seq()), Some(3));
+        assert_eq!(vault.post_quantum_since(2), None);
+
+        // A build that doesn't know the field drops it: same hash, and the
+        // Ed25519 chain still verifies, so an older client keeps working.
+        let mut older: Vec<ManifestHead> = vault.heads.clone();
+        for h in &mut older {
+            h.pq_sig = None;
+        }
+        for (a, b) in older.iter().zip(&vault.heads) {
+            assert_eq!(a.hash().unwrap(), b.hash().unwrap());
+            assert_eq!(a.signable().unwrap(), b.signable().unwrap());
+        }
+        let key = vault.verifying_key();
+        verify_chain(&older, |_| Some(key.clone()), 0).unwrap();
+    }
+
+    #[test]
+    fn each_head_signature_is_checked_on_its_own_and_stripping_is_refused() {
+        let mut vault = sample_vault();
+        vault
+            .set_post_quantum(Some(pq_setting(&vault, 9, true)))
+            .unwrap();
+        note(&mut vault, "one");
+        note(&mut vault, "two");
+        note(&mut vault, "three");
+        assert_eq!(vault.seq(), 4);
+        let key = vault.verifying_key();
+        let pq = vault.post_quantum().unwrap().key.clone();
+        let me = vault.device_id;
+        let own = |id: Id| id == me;
+        let good = vault.heads.clone();
+        crate::pq::check_heads(&good, Some(&pq), &own, None).unwrap();
+
+        // The Ed25519 signature bent, ML-DSA untouched: refused.
+        let mut bent = good.clone();
+        bent[2].sig[0] ^= 1;
+        assert!(verify_chain(&bent, |_| Some(key.clone()), 0).is_err());
+        assert!(vault.rebase(1, bent[1..].to_vec()).is_err());
+
+        // The ML-DSA signature bent, Ed25519 untouched: refused.
+        let mut bent = good.clone();
+        bent[2].pq_sig.as_mut().unwrap()[0] ^= 1;
+        verify_chain(&bent, |_| Some(key.clone()), 0).unwrap();
+        let err = crate::pq::check_heads(&bent, Some(&pq), &own, None).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("post-quantum signature didn't check out"),
+            "{err}"
+        );
+        let err = vault.rebase(1, bent[1..].to_vec()).unwrap_err();
+        assert!(err.to_string().contains("post-quantum"), "{err}");
+        assert_eq!(vault.heads, good, "a refused rebase changes nothing");
+
+        // Signed under another identity's post-quantum key: refused.
+        let other = lockdown_crypto::pq_sign::PqSigningKey::from_seed([1; 32]).verifying_key();
+        assert!(crate::pq::check_heads(&good, Some(&other), &own, None).is_err());
+
+        // A later head stripped of it: refused, ahead of any memory.
+        let mut stripped = good.clone();
+        stripped[3].pq_sig = None;
+        let err = crate::pq::check_heads(&stripped, Some(&pq), &own, None).unwrap_err();
+        assert!(err.to_string().contains("lost its post-quantum"), "{err}");
+        assert!(vault.rebase(1, stripped[1..].to_vec()).is_err());
+
+        // Every head stripped: a fresh device can't tell, but one that
+        // remembers the first post-quantum head at seq 2 refuses.
+        let mut bare = good.clone();
+        for h in &mut bare {
+            h.pq_sig = None;
+        }
+        assert_eq!(
+            crate::pq::check_heads(&bare, Some(&pq), &own, None).unwrap(),
+            None
+        );
+        assert!(crate::pq::check_heads(&bare, Some(&pq), &own, Some(2)).is_err());
+        vault.require_post_quantum_from(Some(2)).unwrap();
+        assert!(vault.rebase(1, bare[1..].to_vec()).is_err());
+        // A memory that names a head without one is refused too, and the
+        // memory held before stays.
+        assert!(vault.require_post_quantum_from(Some(1)).is_err());
+        vault.verify(0).unwrap();
+
+        // Memory without a key now (the profile lost it): refused.
+        assert!(crate::pq::check_heads(&good, None, &own, Some(2)).is_err());
+
+        // A head by someone else's device (a shared vault) stays Ed25519.
+        let stranger = |_| false;
+        crate::pq::check_heads(&bare, Some(&pq), &stranger, Some(2)).unwrap();
+
+        // Setting a key the chain doesn't verify under is refused and
+        // leaves the vault as it was.
+        assert!(
+            vault
+                .set_post_quantum(Some(pq_setting(&vault, 1, true)))
+                .is_err()
+        );
+        assert_eq!(vault.post_quantum().unwrap().key, pq);
     }
 }

@@ -34,6 +34,7 @@
 
 use lockdown_crypto::cbor::to_canonical;
 use lockdown_crypto::merkle;
+use lockdown_crypto::pq_sign::{PqSigningKey, PqVerifyingKey};
 use lockdown_crypto::{SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
@@ -48,6 +49,11 @@ pub const STH_DOMAIN: &[u8] = b"lockdown-kt-sth-v1\0";
 /// The domain-separation prefix under a checkpoint signature (a device's
 /// own, over an exported [`Checkpoint`]).
 pub const CHECKPOINT_DOMAIN: &[u8] = b"lockdown-kt-checkpoint-v1\0";
+
+/// The ML-DSA context string of a tree head's post-quantum signature.
+const STH_PQ_CONTEXT: &[u8] = b"lockdown kt tree head";
+/// The ML-DSA context string of a checkpoint's post-quantum signature.
+const CHECKPOINT_PQ_CONTEXT: &[u8] = b"lockdown kt checkpoint";
 
 /// What one log entry records.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -175,6 +181,12 @@ pub struct SignedTreeHead {
     /// canonical [`TreeHead`].
     #[serde(with = "serde_bytes")]
     pub sig: Vec<u8>,
+    /// ML-DSA-65 by the server's post-quantum log key over the same bytes
+    /// (docs/plan/28-pq-signatures.md). Absent from a server that has no
+    /// such key; additive (D62): a build that doesn't know it drops it and
+    /// checks Ed25519 alone, as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_sig: Option<serde_bytes::ByteBuf>,
 }
 
 impl SignedTreeHead {
@@ -209,6 +221,52 @@ impl SignedTreeHead {
             root: head.root,
             time: head.time,
             sig,
+            pq_sig: None,
+        })
+    }
+
+    /// Signs `head` with both of the server's log keys: Ed25519 as before
+    /// and ML-DSA-65 beside it, over the same bytes.
+    pub fn sign_hybrid(
+        head: TreeHead,
+        log_key: &SigningKey,
+        pq_log_key: &PqSigningKey,
+    ) -> Result<Self> {
+        let mut sth = Self::sign(head, log_key)?;
+        let sig = pq_log_key.sign(&Self::signable(&head)?, STH_PQ_CONTEXT)?;
+        sth.pq_sig = Some(serde_bytes::ByteBuf::from(sig));
+        Ok(sth)
+    }
+
+    /// Checks both signatures: Ed25519 under `log_key`, and, when this
+    /// device pinned the server's post-quantum log key, ML-DSA-65 under
+    /// it, which must then be there. Either failing is a failure.
+    pub fn verify_hybrid(
+        &self,
+        log_key: &VerifyingKey,
+        pq_log_key: Option<&PqVerifyingKey>,
+    ) -> Result<()> {
+        self.verify(log_key)?;
+        let Some(pq) = pq_log_key else {
+            return Ok(());
+        };
+        let sig = self.pq_sig.as_ref().ok_or_else(|| {
+            Error::Transparency(
+                "the signed tree head has no post-quantum signature, but this device pinned the server's post-quantum log key"
+                    .into(),
+            )
+        })?;
+        pq.verify(
+            &Self::signable(&self.tree_head())?,
+            STH_PQ_CONTEXT,
+            sig,
+            "signed tree head",
+        )
+        .map_err(|_| {
+            Error::Transparency(
+                "the signed tree head's post-quantum signature didn't check out under the server's post-quantum log key"
+                    .into(),
+            )
         })
     }
 
@@ -262,10 +320,21 @@ pub struct Checkpoint {
     pub exported_at: i64,
     /// The device that exported it.
     pub device_id: Id,
+    /// The server's post-quantum log key, as pinned by this device; absent
+    /// while it pinned none. Under both signatures.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_log_key: Option<serde_bytes::ByteBuf>,
     /// Ed25519 by that device over [`CHECKPOINT_DOMAIN`] and the canonical
-    /// checkpoint with `sig` empty.
+    /// checkpoint with `sig` empty and no `pq_sig`.
     #[serde(with = "serde_bytes")]
     pub sig: Vec<u8>,
+    /// ML-DSA-65 by the identity's post-quantum key over the same bytes,
+    /// once every device of the identity reads it (the rollout rule;
+    /// docs/plan/28-pq-signatures.md). A checkpoint with it carries the
+    /// post-quantum parts of the tree head and the log key too; one
+    /// without it carries none, so an older build reads it whole.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_sig: Option<serde_bytes::ByteBuf>,
 }
 
 /// The checkpoint format version.
@@ -275,6 +344,7 @@ impl Checkpoint {
     fn signable(&self) -> Result<Vec<u8>> {
         let mut copy = self.clone();
         copy.sig.clear();
+        copy.pq_sig = None;
         let mut bytes = CHECKPOINT_DOMAIN.to_vec();
         bytes.extend_from_slice(&to_canonical(&copy)?);
         Ok(bytes)
@@ -293,6 +363,45 @@ impl Checkpoint {
             .map_err(|_| {
                 Error::Transparency("the checkpoint's device signature didn't check out".into())
             })
+    }
+
+    /// Adds the ML-DSA-65 signature by the identity's post-quantum key,
+    /// after [`Self::sign`].
+    pub fn sign_post_quantum(&mut self, key: &PqSigningKey) -> Result<()> {
+        let sig = key.sign(&self.signable()?, CHECKPOINT_PQ_CONTEXT)?;
+        self.pq_sig = Some(serde_bytes::ByteBuf::from(sig));
+        Ok(())
+    }
+
+    /// Checks both signatures: the device's Ed25519 one, and, when the
+    /// identity publishes a post-quantum key (`identity_key`), the ML-DSA-65
+    /// one under it. A checkpoint without the second is accepted only
+    /// when it carries no post-quantum part at all (one exported before
+    /// every device read them); one that has some must be signed.
+    pub fn verify_hybrid(
+        &self,
+        device_key: &VerifyingKey,
+        identity_key: Option<&PqVerifyingKey>,
+    ) -> Result<()> {
+        self.verify(device_key)?;
+        let carries_pq = self.pq_log_key.is_some() || self.sth.pq_sig.is_some();
+        match (&self.pq_sig, identity_key) {
+            (None, _) if !carries_pq => Ok(()),
+            (None, _) => Err(Error::Transparency(
+                "the checkpoint carries post-quantum parts but no post-quantum signature".into(),
+            )),
+            (Some(_), None) => Err(Error::Transparency(
+                "the checkpoint is signed with a post-quantum key this identity doesn't publish"
+                    .into(),
+            )),
+            (Some(sig), Some(key)) => key
+                .verify(&self.signable()?, CHECKPOINT_PQ_CONTEXT, sig, "checkpoint")
+                .map_err(|_| {
+                    Error::Transparency(
+                        "the checkpoint's post-quantum signature didn't check out".into(),
+                    )
+                }),
+        }
     }
 
     /// BLAKE3 of the signed checkpoint: the one line two people compare.
@@ -388,7 +497,9 @@ mod tests {
             vault_heads: vec![(Id::new(), 5, Hash32([4; 32]))],
             exported_at: 1,
             device_id: Id::new(),
+            pq_log_key: None,
             sig: Vec::new(),
+            pq_sig: None,
         };
         cp.sign(&device).unwrap();
         cp.verify(&device.verifying_key()).unwrap();
@@ -399,5 +510,114 @@ mod tests {
         bent.vault_heads[0].1 = 6;
         assert!(bent.verify(&device.verifying_key()).is_err());
         assert_ne!(bent.fingerprint().unwrap(), cp.fingerprint().unwrap());
+    }
+
+    #[test]
+    fn a_hybrid_tree_head_needs_both_signatures_once_the_post_quantum_key_is_pinned() {
+        let log = SigningKey::generate().unwrap();
+        let pq = PqSigningKey::from_seed([5; 32]);
+        let head = TreeHead {
+            size: 7,
+            root: Hash32([7; 32]),
+            time: 1_800_000_000,
+        };
+        let sth = SignedTreeHead::sign_hybrid(head, &log, &pq).unwrap();
+        let (ed, ml) = (log.verifying_key(), pq.verifying_key());
+        sth.verify_hybrid(&ed, Some(&ml)).unwrap();
+        // An older build: Ed25519 alone, and the field dropped on re-encode
+        // changes nothing it checks.
+        sth.verify(&ed).unwrap();
+        let mut older = sth.clone();
+        older.pq_sig = None;
+        older.verify(&ed).unwrap();
+        assert_eq!(older.as_ref(), sth.as_ref());
+
+        // The Ed25519 signature bent: refused even with ML-DSA good.
+        let mut bent = sth.clone();
+        bent.sig[0] ^= 1;
+        assert!(bent.verify_hybrid(&ed, Some(&ml)).is_err());
+        // The ML-DSA signature bent: refused even with Ed25519 good.
+        let mut bent = sth.clone();
+        bent.pq_sig.as_mut().unwrap()[0] ^= 1;
+        let msg = bent.verify_hybrid(&ed, Some(&ml)).unwrap_err().to_string();
+        assert!(
+            msg.contains("post-quantum signature didn't check out"),
+            "{msg}"
+        );
+        // Dropped once the key is pinned: refused.
+        let msg = older.verify_hybrid(&ed, Some(&ml)).unwrap_err().to_string();
+        assert!(msg.contains("no post-quantum signature"), "{msg}");
+        // Another post-quantum key: refused.
+        let other = PqSigningKey::from_seed([6; 32]).verifying_key();
+        assert!(sth.verify_hybrid(&ed, Some(&other)).is_err());
+        // A signature for another use (an identity manifest's context) doesn't pass.
+        let mut reused = sth.clone();
+        reused.pq_sig = Some(serde_bytes::ByteBuf::from(
+            pq.sign(
+                &SignedTreeHead::signable(&head).unwrap(),
+                b"lockdown identity manifest",
+            )
+            .unwrap(),
+        ));
+        assert!(reused.verify_hybrid(&ed, Some(&ml)).is_err());
+        let back: SignedTreeHead =
+            lockdown_crypto::cbor::from_slice(&to_canonical(&sth).unwrap()).unwrap();
+        assert_eq!(back, sth);
+    }
+
+    #[test]
+    fn a_post_quantum_checkpoint_needs_both_signatures() {
+        let device = SigningKey::generate().unwrap();
+        let identity = PqSigningKey::from_seed([3; 32]);
+        let log = SigningKey::generate().unwrap();
+        let pq_log = PqSigningKey::from_seed([4; 32]);
+        let head = TreeHead {
+            size: 1,
+            root: Hash32([2; 32]),
+            time: 1,
+        };
+        let mut cp = Checkpoint {
+            v: CHECKPOINT_V,
+            server: "https://example.invalid".into(),
+            log_key: log.verifying_key().to_bytes(),
+            sth: SignedTreeHead::sign_hybrid(head, &log, &pq_log).unwrap(),
+            identity_head: Some((2, Hash32([3; 32]))),
+            vault_heads: vec![(Id::new(), 5, Hash32([4; 32]))],
+            exported_at: 1,
+            device_id: Id::new(),
+            pq_log_key: Some(serde_bytes::ByteBuf::from(
+                pq_log.verifying_key().as_bytes().to_vec(),
+            )),
+            sig: Vec::new(),
+            pq_sig: None,
+        };
+        cp.sign(&device).unwrap();
+        let ed = device.verifying_key();
+        let ml = identity.verifying_key();
+        // Post-quantum parts with no post-quantum signature: refused.
+        assert!(cp.verify_hybrid(&ed, Some(&ml)).is_err());
+        cp.sign_post_quantum(&identity).unwrap();
+        cp.verify_hybrid(&ed, Some(&ml)).unwrap();
+        let mut bent = cp.clone();
+        bent.sig[1] ^= 1;
+        assert!(bent.verify_hybrid(&ed, Some(&ml)).is_err(), "Ed25519 bent");
+        let mut bent = cp.clone();
+        bent.pq_sig.as_mut().unwrap()[1] ^= 1;
+        assert!(bent.verify_hybrid(&ed, Some(&ml)).is_err(), "ML-DSA bent");
+        let mut bent = cp.clone();
+        bent.pq_log_key.as_mut().unwrap()[0] ^= 1;
+        assert!(
+            bent.verify_hybrid(&ed, Some(&ml)).is_err(),
+            "log key swapped"
+        );
+        // A post-quantum signature the identity doesn't publish a key for.
+        assert!(cp.verify_hybrid(&ed, None).is_err());
+        // Before the rollout: no post-quantum part anywhere, Ed25519 alone.
+        let mut classical = cp.clone();
+        classical.pq_log_key = None;
+        classical.sth.pq_sig = None;
+        classical.pq_sig = None;
+        classical.sign(&device).unwrap();
+        classical.verify_hybrid(&ed, Some(&ml)).unwrap();
     }
 }

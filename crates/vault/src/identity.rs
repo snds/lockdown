@@ -646,12 +646,14 @@ pub fn open_or_create_vault(
         app_data_key_id: keys.app_data_key_id,
         crown_jewel_key_id: keys.crown_jewel_key_id,
     };
-    let vault = Vault::create(
+    let pq = vault_pq(identity, signer.as_ref(), device_keys(identity).into_keys())?;
+    let mut vault = Vault::create(
         ctx,
         identity.device_id(),
         signer,
         Some(keys.crown_jewel_key.clone()),
     )?;
+    vault.set_post_quantum(pq)?;
     let mut opened = OpenVault {
         vault,
         keys,
@@ -659,6 +661,20 @@ pub fn open_or_create_vault(
     };
     opened.save(store)?;
     Ok(opened)
+}
+
+/// The post-quantum head setting for a vault of `identity` opened with
+/// `signer` (`crate::pq::head_pq`): nothing derived while the profile
+/// publishes no key.
+pub fn vault_pq(
+    identity: &Identity,
+    signer: &dyn Signer,
+    own: impl IntoIterator<Item = Id>,
+) -> Result<Option<crate::pq::HeadPq>> {
+    if crate::pq::published_key(identity.profile())?.is_none() {
+        return Ok(None);
+    }
+    crate::pq::head_pq(identity, signer.identity_pq_key(identity)?, own)
 }
 
 /// Opens one vault from `store` through the identity: the record names the
@@ -715,6 +731,7 @@ pub fn open_vault_trusting(
     }
     let known = |id: Id| devices.get(&id).cloned();
     let revoked = |id: Id| trust.revoked_after.get(&id).copied();
+    let pq = vault_pq(identity, signer.as_ref(), devices.keys().copied())?;
     let mut vault = Vault::load(
         store,
         vault_id,
@@ -734,6 +751,7 @@ pub fn open_vault_trusting(
     for (id, after) in &trust.revoked_after {
         vault.revoke_device(*id, *after);
     }
+    vault.set_post_quantum(pq)?;
     Ok(OpenVault {
         vault,
         keys,
