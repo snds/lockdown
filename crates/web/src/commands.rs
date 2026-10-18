@@ -435,6 +435,13 @@ fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult<Reply> {
             done()
         }
         "expiry_reminders" => json(web.app().expiry_reminders()?),
-        other => Err(refused(format!("the web vault has no command '{other}'"))),
+        other => depth::dispatch(web, other, args),
     }
+}
+
+/// The table's tail: what docs/plan/22-security-depth.md adds.
+mod depth;
+
+fn unknown(other: &str) -> AppResult<Reply> {
+    Err(refused(format!("the web vault has no command '{other}'")))
 }

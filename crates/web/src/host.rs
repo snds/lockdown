@@ -42,7 +42,9 @@ use ecosystem_identity::{ExportKey, FileKeystore};
 use lockdown_app::secrets::{self, SecretStore};
 use lockdown_app::{App, AppError, AppResult, LockPolicy, Paths, Status};
 use lockdown_crypto::aead::{self, Sealed};
-use lockdown_crypto::auth::{AuthRounds, DeviceProof, LoginClient, Session, device_pop_message};
+use lockdown_crypto::auth::{
+    AuthRounds, DeviceProof, LoginClient, Session, device_pop_message, ksf_for,
+};
 use lockdown_crypto::identity::SymmetricKey;
 use lockdown_crypto::{Error as CryptoError, Key32};
 use lockdown_store::{HeadMemory, RememberedHead, ServerView, TransparencyMemory};
@@ -107,14 +109,14 @@ pub struct WebState {
 
 /// The account this tab signed in to.
 #[derive(Clone, Debug)]
-struct Account {
-    server: String,
-    login: String,
+pub(crate) struct Account {
+    pub(crate) server: String,
+    pub(crate) login: String,
 }
 
 /// This device's key file, sealed under the export key's sub-key.
 #[derive(Clone, Debug)]
-struct SealedDevice {
+pub(crate) struct SealedDevice {
     device_id: Id,
     sealed: Sealed,
 }
@@ -165,6 +167,8 @@ pub struct WebVault {
     /// What the last share link opened here holds, until the next one or
     /// the tab's sign-out.
     opened_link: Option<lockdown_vault::send::SendPayload>,
+    /// A sign-in waiting for a security key (`security`).
+    pub(crate) waiting: Option<crate::security::Waiting>,
 }
 
 impl std::fmt::Debug for WebVault {
@@ -190,7 +194,7 @@ fn login_error(e: CryptoError) -> AppError {
     }
 }
 
-fn trimmed(server: &str) -> String {
+pub(crate) fn trimmed(server: &str) -> String {
     server.trim().trim_end_matches('/').to_string()
 }
 
@@ -237,7 +241,7 @@ fn remove_dir(path: &Path) -> AppResult<()> {
 /// is first opened from its seal (unlock); without, the file is made when
 /// missing (sign-in). Either way the file is sealed afresh
 /// under this sign-in's export key before the device proves itself.
-fn sign_in_round(
+pub(crate) fn sign_in_round(
     paths: &WebPaths,
     server: &str,
     login: &str,
@@ -247,8 +251,11 @@ fn sign_in_round(
     let mut rounds = HttpTransport::new(server).map_err(|e| refused(e.to_string()))?;
     let (client, request) = LoginClient::start(password).map_err(login_error)?;
     let started = rounds.login_start(login, &request).map_err(login_error)?;
+    // The stretching the account's password file was made under, as the
+    // server announces it (raised by a stronger device, D249).
+    let ksf = ksf_for(&started, None).map_err(login_error)?;
     let finished = client
-        .finish(password, &started.response)
+        .finish_stretched(password, &started.response, &ksf)
         .map_err(login_error)?;
     let path = paths.keystore();
     if let Some(s) = sealed {
@@ -313,6 +320,7 @@ impl WebVault {
             known_vaults: Vec::new(),
             origin: None,
             opened_link: None,
+            waiting: None,
         }
     }
 
@@ -320,6 +328,11 @@ impl WebVault {
     pub fn serving(mut self, origin: &str) -> Self {
         self.origin = Some(trimmed(origin));
         self
+    }
+
+    /// The page's origin, when the worker named it.
+    pub(crate) fn serving_origin(&self) -> Option<&str> {
+        self.origin.as_deref()
     }
 
     fn origin(&self) -> AppResult<&str> {
@@ -423,7 +436,8 @@ impl WebVault {
             self.adopt_carried(&server, bytes)?;
         }
         let opened = self.sign_in_inner(&server, login, password, secret_key);
-        if opened.is_err() {
+        // A sign-in waiting for a security key keeps its pending key.
+        if opened.is_err() && self.waiting.is_none() {
             let _ = self.start_empty(true);
         }
         opened
@@ -438,8 +452,37 @@ impl WebVault {
     ) -> AppResult<Status> {
         let (export_key, session, sealed) =
             sign_in_round(&self.paths, server, login, password, None)?;
+        if let Some(needed) = session.second_factor.clone() {
+            return Err(self.wait_for_key(server, login, export_key, sealed, needed, secret_key));
+        }
+        self.finish_sign_in(server, login, export_key, session, sealed, secret_key)
+    }
+
+    /// Enrols this tab from a finished sign-in and opens the vault.
+    pub(crate) fn finish_sign_in(
+        &mut self,
+        server: &str,
+        login: &str,
+        export_key: ExportKey,
+        session: Session,
+        sealed: SealedDevice,
+        secret_key: Option<&str>,
+    ) -> AppResult<Status> {
         self.app
             .account_login_signed_in(server, login, export_key, session, secret_key)?;
+        self.opened(server, login, sealed)
+    }
+
+    /// The vault opened under a sign-in: this tab now holds the account.
+    pub(crate) fn opened(
+        &mut self,
+        server: &str,
+        login: &str,
+        sealed: SealedDevice,
+    ) -> AppResult<Status> {
+        // Every unlock here is the account password, so the password
+        // reminder never applies (D252).
+        self.app.set_unlock_asks_password(true)?;
         let status = self.app.open_or_create(true)?;
         self.account = Some(Account {
             server: server.to_string(),
@@ -543,7 +586,8 @@ impl WebVault {
     /// stand in the account's log as a device the identity never listed,
     /// which every other device rightly reports as a stranger (D78).
     /// Signing out drops it with everything else.
-    fn start_empty(&mut self, keep_pending_key: bool) -> AppResult<()> {
+    pub(crate) fn start_empty(&mut self, keep_pending_key: bool) -> AppResult<()> {
+        self.waiting = None;
         let _ = self.app.lock();
         let pending = if keep_pending_key && self.account.is_none() {
             std::fs::read(self.paths.keystore())
