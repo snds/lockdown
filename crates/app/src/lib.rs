@@ -21,6 +21,7 @@
 
 pub mod approval;
 pub mod browser;
+pub mod devices;
 pub mod live;
 pub mod lock;
 pub mod passkeys;
@@ -167,6 +168,8 @@ struct Core {
     /// Password fills this core made lately, for the passkey upgrade rule
     /// (`passkeys`); dropped on lock.
     recent_fills: Vec<passkeys::RecentFill>,
+    /// Joins and sign-ins waiting for a security key (`devices`).
+    depth: devices::Depth,
 }
 
 impl Core {
@@ -193,6 +196,7 @@ impl Core {
             approver: None,
             security: security::SecurityState::default(),
             recent_fills: Vec::new(),
+            depth: devices::Depth::default(),
         }
     }
 
@@ -427,6 +431,7 @@ impl Core {
         // the vault: every key type zeroes itself on drop.
         self.session = None;
         self.recent_fills.clear();
+        self.depth.forget();
         self.security_forget();
         self.last_reason = Some(reason);
     }
@@ -980,18 +985,11 @@ impl App {
             secret_key.map(str::to_string),
         );
         let password = zeroize::Zeroizing::new(password.to_string());
+        if !self.probe()?.identity_present {
+            // A new device: the account may want a security key (`devices`).
+            return self.enrol_new_device(&server, &login, &password, secret_key.as_deref());
+        }
         self.call(move |core| {
-            let probe = core.paths.probe()?;
-            if !probe.identity_present {
-                return session::enrol_from_account(
-                    &core.paths,
-                    &server,
-                    &login,
-                    &password,
-                    secret_key.as_deref(),
-                )
-                .map_err(AppError::refused);
-            }
             core.clock.touch(Instant::now());
             core.session()?
                 .account_login(&server, &login, &password, secret_key.as_deref())
@@ -1051,21 +1049,8 @@ impl App {
         secret_key: &str,
         recovery_code: &str,
     ) -> AppResult<Vec<String>> {
-        let (server, login) = (server.to_string(), login.to_string());
-        let password = zeroize::Zeroizing::new(password.to_string());
-        let secret_key = zeroize::Zeroizing::new(secret_key.to_string());
-        let recovery_code = zeroize::Zeroizing::new(recovery_code.to_string());
-        self.call(move |core| {
-            session::recover(
-                &core.paths,
-                &server,
-                &login,
-                &password,
-                &secret_key,
-                &recovery_code,
-            )
-            .map_err(AppError::refused)
-        })
+        // The same wait for a security key as an enrolment (`devices`).
+        self.recover_new_device(server, login, password, secret_key, recovery_code)
     }
 
     /// Key transparency, then pull, merge, push, head, then key

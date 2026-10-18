@@ -15,6 +15,7 @@
 //! lockdown-server backup keygen | create --out FILE | verify --in FILE
 //!                        | restore --in FILE --data DIR
 //! lockdown-server healthcheck [--url URL]
+//! lockdown-server security-keys list|clear --login NAME [--data DIR]
 //! ```
 //!
 //! Every flag has an environment variable (`LOCKDOWN_LISTEN`,
@@ -79,6 +80,34 @@ enum Command {
         /// Set when the server serves TLS itself.
         #[arg(long, env = "LOCKDOWN_TLS_CERT", value_name = "PEM")]
         tls_cert: Option<PathBuf>,
+    },
+    /// The account's security keys, for the operator: the way back in for
+    /// someone who lost every key and every signed-in device.
+    #[command(subcommand)]
+    SecurityKeys(SecurityKeysCommand),
+}
+
+#[derive(Subcommand, Debug)]
+enum SecurityKeysCommand {
+    /// Lists an account's security keys.
+    List {
+        /// Where the database is.
+        #[arg(long, env = "LOCKDOWN_DATA", value_name = "DIR")]
+        data: Option<PathBuf>,
+        /// The account's login name.
+        #[arg(long)]
+        login: String,
+    },
+    /// Removes every security key from an account, so its next sign-in on
+    /// a new device needs only the password (and, for the vault, the
+    /// Secret Key or the recovery kit, which the server never had).
+    Clear {
+        /// Where the database is.
+        #[arg(long, env = "LOCKDOWN_DATA", value_name = "DIR")]
+        data: Option<PathBuf>,
+        /// The account's login name.
+        #[arg(long)]
+        login: String,
     },
 }
 
@@ -493,6 +522,34 @@ fn healthcheck(url: Option<String>, listen: &str, tls: bool) -> Result<(), Strin
     }
 }
 
+fn run_security_keys(command: SecurityKeysCommand) -> Result<(), String> {
+    use lockdown_server::storage::Storage;
+    let (data, login, clear) = match command {
+        SecurityKeysCommand::List { data, login } => (data, login, false),
+        SecurityKeysCommand::Clear { data, login } => (data, login, true),
+    };
+    let data = data_dir(data)?;
+    let storage = open_storage(&data, None)?;
+    let account = storage
+        .account_by_login(login.trim())
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("no account named {login} on this server"))?;
+    let store = storage
+        .account_security()
+        .ok_or("this store keeps no security keys")?;
+    if clear {
+        let n = store
+            .clear_keys(account.account_id)
+            .map_err(|e| e.to_string())?;
+        println!("removed {n} security key(s) from {login}");
+    } else {
+        for key in store.keys(account.account_id).map_err(|e| e.to_string())? {
+            println!("{}  {}  added {}", key.alg, key.name, key.created_at);
+        }
+    }
+    Ok(())
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
@@ -502,6 +559,7 @@ fn main() -> ExitCode {
             listen,
             tls_cert,
         }) => healthcheck(url, &listen, tls_cert.is_some()),
+        Some(Command::SecurityKeys(c)) => run_security_keys(c),
         None => serve(cli.serve),
     };
     match result {

@@ -35,6 +35,9 @@
 //! | `POST /v1/account/sessions/end-others` | | [`SessionsEnded`] | yes |
 //! | `GET /v1/events` | | `text/event-stream` of [`LiveEvent`] (JSON) | yes |
 //!
+//! Device approval, security keys, password stretching and phrase checks
+//! are in [`crate::account_security`] (docs/plan/22-security-depth.md).
+//!
 //! The live channel (`/v1/events`) is server-sent events: `event: lockdown`
 //! with a JSON [`LiveEvent`] as its data, and a comment line every 20 s to
 //! keep the connection open. An event says only *that* something changed,
@@ -197,6 +200,12 @@ pub struct LoginStartReply {
     /// The OPAQUE credential response (a decoy for an unknown login).
     #[serde(with = "serde_bytes")]
     pub response: Vec<u8>,
+    /// The stretching the account's password file was made under, when a
+    /// device raised it (`client-kdf`, D246); absent, the suite's default.
+    /// An unknown login gets the default too, so this says nothing about
+    /// whether the login exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ksf: Option<lockdown_crypto::Argon2Params>,
 }
 
 /// The device's proof at login, as sent.
@@ -227,12 +236,17 @@ pub struct LoginFinish {
 /// A session.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct LoginFinishReply {
-    /// The bearer token.
+    /// The bearer token; empty while `second_factor` is set.
     pub token: String,
     /// When it stops working (seconds since the Unix epoch).
     pub expires_at: i64,
     /// The profile the account was registered for.
     pub profile_id: Id,
+    /// The password checked out but the account wants a security key from
+    /// a device it hasn't seen (`account-security-keys`, D249): the session
+    /// comes from `/v1/account/login/second-factor/poll` once a key answered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub second_factor: Option<crate::account_security::SecondFactorPending>,
 }
 
 // --- the identity's record set ----------------------------------------------

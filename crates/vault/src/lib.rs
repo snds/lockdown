@@ -27,6 +27,10 @@
 //! - [`item`] — the item envelope, kinds, classes, states, versions
 //! - [`crown_jewel`] — the crown-jewel rules and default classification
 //! - [`template`] — every kind's fields as data: control, required, crown jewel, fill rule, generator
+//! - [`exposure`] — per-item exposure tiers: app only, ask each time, fill freely
+//! - [`device_link`] — approving a new device from an enrolled one, through the server's relay
+//! - [`handover`] — the record changes a device approval needs, and Lockdown's profile fields
+//! - [`pq`] — every new wrap to another key is post-quantum hybrid
 //! - [`compose`] — a shell's add or edit checked against the template, with an explicit keep for secrets
 //! - [`manifest`] — the signed, hash-chained manifest head and chain check
 //! - [`organization`] — folders, tags and favourites; the vault's name and folder tree in a hidden item
@@ -44,14 +48,18 @@ pub mod attachment;
 pub mod compose;
 pub mod contact;
 pub mod crown_jewel;
+pub mod device_link;
 pub mod error;
+pub mod exposure;
 pub mod field;
+pub mod handover;
 pub mod identity;
 pub mod identity_set;
 pub mod item;
 pub mod keys;
 pub mod manifest;
 pub mod organization;
+pub mod pq;
 pub mod send;
 pub mod sharing;
 pub mod signer;

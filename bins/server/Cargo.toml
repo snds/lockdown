@@ -19,6 +19,8 @@ path = "src/main.rs"
 lockdown-crypto.workspace = true
 lockdown-vault.workspace = true
 lockdown-sync.workspace = true
+# Security keys on the account: the relying party's checks (second_factor.rs).
+lockdown-passkey.workspace = true
 axum.workspace = true
 tokio = { workspace = true, features = ["sync", "signal", "time"] }
 rusqlite.workspace = true

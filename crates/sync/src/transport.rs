@@ -488,6 +488,7 @@ impl AuthRounds for HttpTransport {
         Ok(LoginStarted {
             login_id: reply.login_id,
             response: reply.response,
+            ksf: reply.ksf,
         })
     }
 
@@ -513,11 +514,7 @@ impl AuthRounds for HttpTransport {
                 }),
             )
             .map_err(auth_error)?;
-        Ok(Session {
-            token: reply.token,
-            expires_at: reply.expires_at,
-            profile_id: reply.profile_id,
-        })
+        Ok(crate::account_security::session_of(reply))
     }
 }
 

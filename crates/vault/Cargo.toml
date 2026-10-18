@@ -16,6 +16,9 @@ zeroize.workspace = true
 thiserror.workspace = true
 # Share and request links carry their secret in the URL fragment as base64url.
 data-encoding.workspace = true
+# Lockdown's own fields on the identity's signed profile (`handover`) are
+# CBOR values, as the identity crate keeps unknown fields.
+ciborium.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
