@@ -122,7 +122,7 @@ cargo run -p lockdown-server -- --data /tmp/lockdown-server --web-vault apps/web
 
 CI: the `web` job in `.github/workflows/ci.yml` runs all of it.
 
-Counts: Rust 407 → 424 (`cargo test --workspace`), desktop UI 129 → 130, web UI 0 → 24, web end to end 0 → 2.
+Counts: Rust 407 → 424 (`cargo test --workspace`), desktop UI 130 → 131, web UI 0 → 24, web end to end 0 → 2.
 
 ## 10. Gaps
 
