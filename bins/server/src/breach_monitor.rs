@@ -12,8 +12,10 @@
 //! What leaves the server: the account's login name, when it is an email
 //! address, to the configured feed, which is how such feeds work (there
 //! is no public k-anonymity lookup for addresses). Nothing from any vault
-//! is involved; the server has none of it to send. Aliases are not
-//! monitored yet, because Lockdown has no aliases yet.
+//! is involved; the server has none of it to send. Beside the login, an
+//! account may name addresses to watch (its email aliases, sent by the
+//! person's own devices when they turn alias monitoring on,
+//! docs/plan/23-bridges.md §9); those go to the feed the same way.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -46,7 +48,7 @@ pub fn looks_like_email(login: &str) -> bool {
 /// What one pass did.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ScanReport {
-    /// Accounts whose address was asked about.
+    /// Addresses asked about (each account's login and its watched aliases).
     pub checked: usize,
     /// Alerts recorded.
     pub alerts: usize,
@@ -64,41 +66,63 @@ pub fn scan_once(
 ) -> Result<ScanReport, String> {
     let mut report = ScanReport::default();
     let accounts = store.all_accounts().map_err(|e| e.to_string())?;
-    for (n, account) in accounts.iter().enumerate() {
-        if !looks_like_email(&account.login) {
-            continue;
+    let mut asked = 0usize;
+    for account in &accounts {
+        // The login itself (its breaches remembered by name, as before),
+        // then each watched alias (remembered as `address|name`, so one
+        // breach is reported once per address).
+        let mut addresses: Vec<(String, bool)> = Vec::new();
+        if looks_like_email(&account.login) {
+            addresses.push((account.login.clone(), true));
         }
-        if n > 0 && !pause.is_zero() {
-            std::thread::sleep(pause);
+        for a in store
+            .monitored(account.account_id)
+            .map_err(|e| e.to_string())?
+        {
+            if looks_like_email(&a) && !a.eq_ignore_ascii_case(&account.login) {
+                addresses.push((a, false));
+            }
         }
-        report.checked += 1;
-        let breaches = match feed.breaches_for(&account.login) {
-            Ok(b) => b,
-            Err(_) => {
-                report.failed += 1;
-                continue;
+        for (address, own) in addresses {
+            if asked > 0 && !pause.is_zero() {
+                std::thread::sleep(pause);
             }
-        };
-        for breach in breaches {
-            let seen = store
-                .breach_seen(account.account_id, &breach.name)
-                .map_err(|e| e.to_string())?;
-            if seen {
-                continue;
+            asked += 1;
+            report.checked += 1;
+            let breaches = match feed.breaches_for(&address) {
+                Ok(b) => b,
+                Err(_) => {
+                    report.failed += 1;
+                    continue;
+                }
+            };
+            for mut breach in breaches {
+                breach.address = address.clone();
+                let key = if own {
+                    breach.name.clone()
+                } else {
+                    format!("{address}|{}", breach.name)
+                };
+                let seen = store
+                    .breach_seen(account.account_id, &key)
+                    .map_err(|e| e.to_string())?;
+                if seen {
+                    continue;
+                }
+                store
+                    .record_alert(
+                        account.account_id,
+                        AlertKind::EmailBreach,
+                        now,
+                        None,
+                        Some(&breach),
+                    )
+                    .map_err(|e| e.to_string())?;
+                store
+                    .mark_breach_seen(account.account_id, &key)
+                    .map_err(|e| e.to_string())?;
+                report.alerts += 1;
             }
-            store
-                .record_alert(
-                    account.account_id,
-                    AlertKind::EmailBreach,
-                    now,
-                    None,
-                    Some(&breach),
-                )
-                .map_err(|e| e.to_string())?;
-            store
-                .mark_breach_seen(account.account_id, &breach.name)
-                .map_err(|e| e.to_string())?;
-            report.alerts += 1;
         }
     }
     Ok(report)
@@ -306,6 +330,56 @@ mod tests {
         assert_eq!(alerts.len(), 1);
         assert_eq!(alerts[0].kind, AlertKind::EmailBreach);
         assert_eq!(alerts[0].at, 100);
+    }
+
+    #[test]
+    fn watched_aliases_are_asked_too_and_each_reported_once_per_address() {
+        let s = SqliteStorage::open_in_memory().unwrap();
+        let sean = s
+            .create_account("sean@example.com", Id::new(), b"pf")
+            .unwrap();
+        let device = Id::new();
+        s.register_device(sean.account_id, device, &[1; 32])
+            .unwrap();
+        s.set_monitored(
+            sean.account_id,
+            &[
+                "shop.x1@simplelogin.com".to_string(),
+                "sean@example.com".to_string(),
+                "not an address".to_string(),
+            ],
+        )
+        .unwrap();
+        assert_eq!(s.monitored(sean.account_id).unwrap().len(), 3);
+        let feed = Fake {
+            asked: Mutex::new(Vec::new()),
+        };
+        let r = scan_once(&s, &feed, 100, Duration::ZERO).unwrap();
+        // The login once (not again as a watched address), the alias once,
+        // and the line that isn't an address never.
+        assert_eq!(
+            *feed.asked.lock().unwrap(),
+            vec![
+                "sean@example.com".to_string(),
+                "shop.x1@simplelogin.com".to_string()
+            ]
+        );
+        assert_eq!(r.alerts, 2, "one breach, two addresses, two alerts");
+        let alerts = s.alerts_for(sean.account_id, device, 0).unwrap();
+        let addresses: Vec<&str> = alerts
+            .iter()
+            .map(|a| a.breach.as_ref().unwrap().address.as_str())
+            .collect();
+        assert_eq!(addresses, ["sean@example.com", "shop.x1@simplelogin.com"]);
+        assert_eq!(scan_once(&s, &feed, 200, Duration::ZERO).unwrap().alerts, 0);
+        // An emptied list stops the alias being asked about.
+        s.set_monitored(sean.account_id, &[]).unwrap();
+        feed.asked.lock().unwrap().clear();
+        scan_once(&s, &feed, 300, Duration::ZERO).unwrap();
+        assert_eq!(
+            *feed.asked.lock().unwrap(),
+            vec!["sean@example.com".to_string()]
+        );
     }
 
     #[test]

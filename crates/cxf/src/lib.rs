@@ -21,6 +21,7 @@
 //!
 //! Every parser is size-capped by [`Limits`] and treats the file as hostile.
 
+pub mod age_file;
 pub mod archive;
 pub mod build;
 pub mod convert;

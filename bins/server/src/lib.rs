@@ -358,6 +358,10 @@ pub fn app(state: Arc<AppState>) -> Router {
             post(api::end_other_sessions),
         )
         .route("/v1/events", get(live::events))
+        .route(
+            "/v1/account/monitored",
+            get(api::monitored).put(api::set_monitored),
+        )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             live::notify_writes,

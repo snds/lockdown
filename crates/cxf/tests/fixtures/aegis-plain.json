@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "header": {
+    "slots": null,
+    "params": null
+  },
+  "db": {
+    "version": 3,
+    "entries": [
+      {
+        "type": "totp",
+        "uuid": "0b1c6f7e-0000-4000-8000-000000000001",
+        "name": "sean@example.com",
+        "issuer": "Example",
+        "note": "work account",
+        "favorite": true,
+        "icon": null,
+        "info": {
+          "secret": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+          "algo": "SHA1",
+          "digits": 6,
+          "period": 30
+        },
+        "groups": [
+          "7a9d1b42-0000-4000-8000-0000000000aa"
+        ]
+      },
+      {
+        "type": "hotp",
+        "uuid": "0b1c6f7e-0000-4000-8000-000000000002",
+        "name": "counter",
+        "issuer": "Counter",
+        "note": "",
+        "favorite": false,
+        "info": {
+          "secret": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+          "algo": "SHA256",
+          "digits": 8,
+          "counter": 3
+        },
+        "groups": []
+      },
+      {
+        "type": "steam",
+        "uuid": "0b1c6f7e-0000-4000-8000-000000000003",
+        "name": "gaben",
+        "issuer": "Steam",
+        "note": "",
+        "favorite": false,
+        "info": {
+          "secret": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+          "algo": "SHA1",
+          "digits": 5,
+          "period": 30
+        },
+        "groups": []
+      },
+      {
+        "type": "motp",
+        "uuid": "0b1c6f7e-0000-4000-8000-000000000004",
+        "name": "old",
+        "issuer": "Mobile-OTP",
+        "note": "",
+        "favorite": false,
+        "info": {
+          "secret": "ABCDEF",
+          "algo": "MD5",
+          "digits": 6,
+          "period": 10,
+          "pin": "1234"
+        },
+        "groups": []
+      }
+    ],
+    "groups": [
+      {
+        "uuid": "7a9d1b42-0000-4000-8000-0000000000aa",
+        "name": "Work"
+      }
+    ]
+  }
+}

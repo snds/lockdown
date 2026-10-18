@@ -1390,6 +1390,52 @@ pub async fn dismiss_alert(
     }
 }
 
+// --- monitored addresses (docs/plan/23-bridges.md §9) -------------------------
+
+/// `GET /v1/account/monitored`: the addresses beside the login that the
+/// breach job watches for this account.
+pub async fn monitored(
+    State(state): State<Arc<AppState>>,
+    session: Session,
+) -> ApiResult<Cbor<lockdown_sync::wire::MonitoredAddresses>> {
+    Ok(Cbor(lockdown_sync::wire::MonitoredAddresses {
+        addresses: alert_store(&state)?.monitored(session.account_id)?,
+    }))
+}
+
+/// `PUT /v1/account/monitored`: replaces the list. Each address must look
+/// like one email address; at most `MAX_MONITORED`; kept lowercase and
+/// sorted, duplicates folded.
+pub async fn set_monitored(
+    State(state): State<Arc<AppState>>,
+    session: Session,
+    Cbor(body): Cbor<lockdown_sync::wire::MonitoredAddresses>,
+) -> ApiResult<Cbor<lockdown_sync::wire::MonitoredAddresses>> {
+    if body.addresses.len() > lockdown_sync::wire::MAX_MONITORED {
+        return Err(ApiError::bad_request(format!(
+            "at most {} addresses can be watched",
+            lockdown_sync::wire::MAX_MONITORED
+        )));
+    }
+    let mut addresses: Vec<String> = Vec::with_capacity(body.addresses.len());
+    for a in &body.addresses {
+        let a = a.trim().to_ascii_lowercase();
+        if a.len() > 254 || !crate::breach_monitor::looks_like_email(&a) {
+            return Err(ApiError::bad_request(
+                "one of the addresses isn't an email address",
+            ));
+        }
+        addresses.push(a);
+    }
+    addresses.sort();
+    addresses.dedup();
+    let store = alert_store(&state)?;
+    store.set_monitored(session.account_id, &addresses)?;
+    Ok(Cbor(lockdown_sync::wire::MonitoredAddresses {
+        addresses: store.monitored(session.account_id)?,
+    }))
+}
+
 // --- sessions (docs/plan/20-self-host-server.md §6) --------------------------
 
 fn session_store(state: &AppState) -> ApiResult<&dyn crate::sessions::SessionStore> {

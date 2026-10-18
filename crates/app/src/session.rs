@@ -60,6 +60,7 @@ use crate::types::{
 use crate::views;
 
 mod backup;
+pub(crate) mod bridges;
 mod codes;
 mod duplicates;
 mod history;

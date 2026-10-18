@@ -105,30 +105,35 @@ impl Skew {
 
     /// The offset in plain words, for a shell to show as is.
     pub fn words(&self) -> String {
+        self.describe(true)
+    }
+
+    /// [`Self::words`], saying whether codes are being corrected
+    /// (`applying`: the person's setting is on).
+    pub fn describe(&self, applying: bool) -> String {
         let n = self.offset_secs.unsigned_abs();
-        let unit = |n: u64| {
-            if n >= 120 {
-                format!("{} minutes", n / 60)
-            } else if n == 1 {
-                "1 second".to_string()
-            } else {
-                format!("{n} seconds")
-            }
+        let amount = if n >= 120 {
+            format!("{} minutes", n / 60)
+        } else if n == 1 {
+            "1 second".to_string()
+        } else {
+            format!("{n} seconds")
         };
         let way = if self.offset_secs > 0 {
             "behind"
         } else {
             "ahead of"
         };
-        match self.verdict {
-            SkewVerdict::InStep => "This computer's clock matches your server's.".into(),
-            SkewVerdict::Corrected => format!(
-                "This computer's clock is {} {way} your server's, so codes are worked out from the server's time.",
-                unit(n)
+        match (self.verdict, applying) {
+            (SkewVerdict::InStep, _) => "This computer's clock matches your server's.".into(),
+            (SkewVerdict::Corrected, true) => format!(
+                "This computer's clock is {amount} {way} your server's, so codes are worked out from the server's time."
             ),
-            SkewVerdict::TooFar => format!(
-                "This computer's clock is {} {way} your server's. That's too far to correct safely; set the clock right and codes will work again.",
-                unit(n)
+            (SkewVerdict::Corrected, false) => format!(
+                "This computer's clock is {amount} {way} your server's. Correcting codes is turned off in Settings, so codes may be refused; set the clock right or turn it on."
+            ),
+            (SkewVerdict::TooFar, _) => format!(
+                "This computer's clock is {amount} {way} your server's. That's too far to correct safely; set the clock right and codes will work again."
             ),
         }
     }

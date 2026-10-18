@@ -1,0 +1,15 @@
+{
+  "76561197960287931": {
+    "steamid": "76561197960287931",
+    "shared_secret": "MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=",
+    "identity_secret": "aWRlbnRpdHktYXBw",
+    "revocation_code": "R28793",
+    "account_name": "robin",
+    "serial_number": "1",
+    "uri": "otpauth://totp/Steam:robin?secret=GEZDGNBVGY3TQOJQ&issuer=Steam",
+    "token_gid": "1",
+    "secret_1": "eA==",
+    "server_time": "1760000000",
+    "status": 1
+  }
+}

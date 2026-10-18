@@ -48,6 +48,10 @@ pub struct ImportedItem {
     /// Only from a Lockdown backup: the item's own id, class and state, so
     /// a restore puts it back as it was and a second restore merges.
     pub kept: Option<Kept>,
+    /// The source holds something crown-jewel by default that no
+    /// template field names (a Steam identity secret, 02-model §3), so the
+    /// item lands in the crown-jewel class.
+    pub crown_jewel: bool,
 }
 
 /// What a Lockdown backup keeps about an item beyond its fields.
@@ -91,6 +95,7 @@ impl ImportedItem {
             attachments: Vec::new(),
             history: Vec::new(),
             kept: None,
+            crown_jewel: false,
         }
     }
 }

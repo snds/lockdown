@@ -803,6 +803,11 @@ pub fn read(bytes: &[u8], password: Option<&[u8]>, limits: &Limits) -> Result<Pa
         max_bytes: limits.max_bytes.max(Limits::backup().max_bytes),
         ..*limits
     };
+    if crate::age_file::is_age(bytes) {
+        let password = password.ok_or(CxfError::PasswordNeeded)?;
+        let plain = crate::age_file::open_with(bytes, password, &limits)?;
+        return Ok(Document::parse(&plain, &limits)?.to_items(&limits));
+    }
     let doc = if is_sealed(bytes) {
         let password = password.ok_or(CxfError::PasswordNeeded)?;
         let plain = open(bytes, password, &limits)?;

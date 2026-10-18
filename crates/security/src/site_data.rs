@@ -471,6 +471,26 @@ pub fn origin_of(address: &str) -> Option<String> {
     })
 }
 
+/// Builds the payload from the committed sources: the curated file
+/// (version, providers, recipes, fixes) and the directory snapshot
+/// (sources and guides). The `sign-site-data` example signs what this
+/// returns; the test above checks the committed file is current.
+pub fn payload_from_sources(curated: &str, guides: &str) -> Result<SiteDataPayload, String> {
+    #[derive(Deserialize)]
+    struct Snapshot {
+        sources: Vec<Source>,
+        guides: Vec<GuideEntry>,
+    }
+    let mut payload: SiteDataPayload =
+        serde_json::from_str(curated).map_err(|e| format!("curated.json: {e}"))?;
+    let snapshot: Snapshot =
+        serde_json::from_str(guides).map_err(|e| format!("guides.json: {e}"))?;
+    payload.sources = snapshot.sources;
+    payload.guides = snapshot.guides;
+    payload.check().map_err(|e| e.to_string())?;
+    Ok(payload)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -688,24 +708,4 @@ mod tests {
             Some("http://localhost:8080")
         );
     }
-}
-
-/// Builds the payload from the committed sources: the curated file
-/// (version, providers, recipes, fixes) and the directory snapshot
-/// (sources and guides). The `sign-site-data` example signs what this
-/// returns; the test above checks the committed file is current.
-pub fn payload_from_sources(curated: &str, guides: &str) -> Result<SiteDataPayload, String> {
-    #[derive(Deserialize)]
-    struct Snapshot {
-        sources: Vec<Source>,
-        guides: Vec<GuideEntry>,
-    }
-    let mut payload: SiteDataPayload =
-        serde_json::from_str(curated).map_err(|e| format!("curated.json: {e}"))?;
-    let snapshot: Snapshot =
-        serde_json::from_str(guides).map_err(|e| format!("guides.json: {e}"))?;
-    payload.sources = snapshot.sources;
-    payload.guides = snapshot.guides;
-    payload.check().map_err(|e| e.to_string())?;
-    Ok(payload)
 }
