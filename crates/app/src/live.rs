@@ -213,6 +213,37 @@ impl App {
         LiveHandle { stop, wake }
     }
 
+    /// The server and session token the live channel opens with, when the
+    /// vault is open and the account has a session; `None` otherwise. Not
+    /// activity. For a host that holds the channel itself (the web vault's
+    /// worker, docs/plan/27-web-server-finish.md §2), never for a page.
+    pub fn live_account(&self) -> Option<(String, String)> {
+        self.call(|core| Ok(core.session.as_ref().and_then(|s| s.account_session())))
+            .ok()
+            .flatten()
+            .and_then(Result::ok)
+    }
+
+    /// The sync a live event asks for, run by a host that holds the channel
+    /// itself: like [`App::sync`], with every check, but not activity for
+    /// the idle lock.
+    pub fn live_sync(&self) -> AppResult<crate::SyncOutcome> {
+        self.call(|core| core.session()?.sync().map_err(AppError::refused))
+    }
+
+    /// The server said `token`'s session was ended from another device:
+    /// forget it, so the next call asks for the password. A token that is
+    /// no longer this device's changes nothing.
+    pub fn live_session_ended(&self, token: &str) -> AppResult<()> {
+        let token = token.to_string();
+        self.call(move |core| {
+            if let Some(s) = core.session.as_mut() {
+                s.forget_session_token(&token).map_err(AppError::refused)?;
+            }
+            Ok(())
+        })
+    }
+
     /// The account's live sessions, oldest first, with device names.
     pub fn sessions(&self) -> AppResult<Vec<SessionView>> {
         let (server, token) = self.account_now()?;

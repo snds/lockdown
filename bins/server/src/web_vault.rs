@@ -150,6 +150,7 @@ async fn serve(state: &AppState, rel: &str) -> Response {
     };
     let mut res = Response::new(Body::from(bytes));
     security_headers(res.headers_mut());
+    crate::mirror::widen_csp(state, res.headers_mut());
     let h = res.headers_mut();
     h.insert(header::CONTENT_TYPE, HeaderValue::from_static(ty));
     h.insert(header::CACHE_CONTROL, HeaderValue::from_static(cache));

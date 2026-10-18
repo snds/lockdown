@@ -580,6 +580,31 @@ pub struct MonitoredAddresses {
 /// The most addresses one account may have monitored.
 pub const MAX_MONITORED: usize = 200;
 
+// --- the server's restore drills (docs/plan/27-web-server-finish.md §3) -------
+
+/// `GET /v1/server/restore-drill`: what the server's own scheduled backups
+/// and restore drills (docs/plan/25-self-host-2.md §5) last did, as the
+/// server reports it to any signed-in account. Read from the operator's
+/// log, never made up: no drill on record is `None` throughout.
+#[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub struct RestoreDrill {
+    /// Whether backups and drills run on a schedule on this server.
+    pub scheduled: bool,
+    /// When the newest drill ran (seconds since the Unix epoch).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_run_at: Option<i64>,
+    /// Whether the newest drill passed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_passed: Option<bool>,
+    /// When the newest drill that passed ran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_success_at: Option<i64>,
+    /// Whether that drill also signed a client in to the restored copy and
+    /// read an item back.
+    #[serde(default)]
+    pub client_read_back: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

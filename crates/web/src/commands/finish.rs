@@ -9,7 +9,7 @@
 
 use serde_json::Value;
 
-use super::{Reply, bytes, done, gate, json, opt, req, unknown};
+use super::{Reply, bytes, done, gate, json, opt, req};
 use crate::host::WebVault;
 use lockdown_app::scan::ScanSource;
 use lockdown_app::{AppError, AppResult};
@@ -86,6 +86,6 @@ pub(super) fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult
         // --- hygiene (§6–§7) --------------------------------------------------------
         "memory_report" => json(web.app().memory_report()),
         "capture_protect" => json(false),
-        other => unknown(other),
+        other => super::server::dispatch(web, other, args),
     }
 }

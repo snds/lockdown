@@ -19,6 +19,7 @@ pub mod quick;
 pub mod scan;
 pub mod security;
 pub mod security_depth;
+pub mod server_checks;
 pub mod sharing;
 pub mod transfer;
 

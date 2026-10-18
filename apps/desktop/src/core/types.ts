@@ -1,6 +1,8 @@
 // What crosses from lockdown-app (crates/app/src/types.rs, settings.rs,
 // approval.rs), field for field.
 
+import type { MirrorCheck } from "@/features/server/server-client"
+
 export type ErrorCode = "locked" | "not_set_up" | "refused" | "stopped" | "approval_needed"
 
 export interface AppError {
@@ -219,6 +221,8 @@ export interface TransparencyView {
   root_prefix: string
   audited: number
   checked_at: number | null
+  /** What each log mirror said at the last comparison (docs/plan/27-web-server-finish.md §4). */
+  mirrors?: MirrorCheck[]
 }
 
 export interface AccountStatus {

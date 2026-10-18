@@ -17,6 +17,8 @@ import { useSettings } from "@/app/settings"
 import { PaneHeader } from "@/components/master-detail"
 import { describeError, useClient } from "@/core/client"
 import type { Density, LockState, RevealGesture } from "@/core/types"
+import { ServerChecks } from "@/features/server/server-checks"
+import { toast } from "sonner"
 
 const IDLE_CHOICES: Array<[string, number | null]> = [
   ["1 minute", 60],
@@ -150,6 +152,8 @@ export function WebSettingsView({ server, login, onLock, onSignOut }: WebSetting
           </ToggleGroup>
         </Field>
       </Section>
+
+      <ServerChecks onNotice={(text) => toast(text)} framed={false} />
 
       <Section title="This web vault">
         <p className="text-sm text-muted-foreground">

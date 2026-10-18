@@ -38,6 +38,7 @@ mod revealed;
 pub mod scan;
 pub mod secrets;
 pub mod security;
+pub mod server_checks;
 mod session;
 pub mod settings;
 pub mod sharing;
@@ -737,6 +738,8 @@ impl App {
             // Alias monitoring changes only through its own call, which
             // tells the server (docs/plan/23-bridges.md §9).
             settings.alias_monitoring = core.settings.alias_monitoring;
+            // The log mirrors change only through `set_kt_mirrors`.
+            settings.kt_mirrors = core.settings.kt_mirrors.clone();
             settings
                 .save(&core.paths.settings_file())
                 .map_err(AppError::refused)?;

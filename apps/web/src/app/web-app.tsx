@@ -33,10 +33,24 @@ import { HygieneClientProvider } from "@/features/hygiene/hygiene-client"
 import { useSecretWipe } from "@/features/hygiene/secret-wipe"
 import { QuickClientProvider } from "@/features/quick/quick-client"
 import { ScanClientProvider } from "@/features/scan/scan-client"
+import { LiveClientProvider } from "@/features/sessions/live-client"
+import { useLive } from "@/features/sessions/use-live"
+import { webLiveClient } from "../core/web-live-client"
+import { webServerClient } from "../core/web-server-client"
+import { ServerClientProvider } from "@/features/server/server-client"
 import { LinksView } from "../features/links-view"
 import { Frame, SignInScreen } from "../features/sign-in-screen"
 import { WebSettingsView } from "../features/web-settings-view"
 import { WebUnlockScreen } from "../features/web-unlock-screen"
+
+/** A sync whose mirrors caught a split view says so until dismissed (docs/plan/27-web-server-finish.md §4). */
+function warnOnSplit(lines: readonly string[]) {
+  if (lines.some((l) => l.includes("Split view")))
+    toast.error("This server's public log doesn't match a mirror: it may be showing you a different history from everyone else. See Settings.", {
+      id: "kt-split",
+      duration: Infinity,
+    })
+}
 
 /** The screens the web vault has beside the vault's views. */
 const WEB_SCREENS: ReadonlyArray<ShellScreen> = [
@@ -46,7 +60,8 @@ const WEB_SCREENS: ReadonlyArray<ShellScreen> = [
   ["settings", "settings", "Settings"],
 ]
 
-/** How often an open vault syncs on its own while the tab is in view. */
+/** How often an open vault syncs on its own while the tab is in view and
+ *  the live channel is down (with it up, changes arrive by themselves). */
 const SYNC_MS = 60_000
 
 interface WebRootProps {
@@ -83,6 +98,8 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [palette, setPalette] = useState(false)
   const syncing = useRef(false)
+  // The worker's live channel (docs/plan/27-web-server-finish.md §2) is open.
+  const liveUp = useRef(false)
 
   const refreshWeb = useCallback(() => {
     session
@@ -132,7 +149,10 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
     syncing.current = true
     client
       .sync()
-      .then(list)
+      .then((outcome) => {
+        warnOnSplit(outcome.lines)
+        list()
+      })
       .catch((e) => toast.error(`Not synced: ${describeError(e)}`, { id: "sync" }))
       .finally(() => {
         syncing.current = false
@@ -143,7 +163,7 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
     if (!status) return
     list()
     const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") syncThenList()
+      if (document.visibilityState === "visible" && !liveUp.current) syncThenList()
     }, SYNC_MS)
     return () => window.clearInterval(timer)
   }, [status, list, syncThenList])
@@ -188,6 +208,24 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
         refreshWeb()
       })
       .catch((e) => toast.error(describeError(e)))
+
+  // The live channel: another device's change was synced in the worker
+  // (every check included); redraw. A session ended elsewhere locks the tab.
+  useLive((n) => {
+    if (n.kind === "connected") liveUp.current = true
+    else if (n.kind === "disconnected") liveUp.current = false
+    if (!status) return
+    if (n.kind === "synced") {
+      list()
+      warnOnSplit(n.lines)
+    }
+    else if (n.kind === "sync_failed") toast.error(`A change from another device didn't sync: ${n.message}`, { id: "sync" })
+    else if (n.kind === "session_ended") {
+      liveUp.current = false
+      toast.error("This tab's session was ended from another of your devices. Unlock with your password to sign in again.")
+      lockNow()
+    }
+  })
 
   const notice = useCallback((text: string) => {
     toast(text)
@@ -321,14 +359,20 @@ function WebDepth({ link, children }: { link: Link; children: ReactNode }) {
   const quick = useMemo(() => webQuickClient(link), [link])
   const scan = useMemo(() => webScanClient(link, openActivation), [link])
   const hygiene = useMemo(() => webHygieneClient(link), [link])
+  const live = useMemo(() => webLiveClient(link), [link])
+  const serverChecks = useMemo(() => webServerClient(link), [link])
   return (
+    <LiveClientProvider value={live}>
     <DepthClientProvider value={depth}>
       <QuickClientProvider value={quick}>
         <ScanClientProvider value={scan}>
-          <HygieneClientProvider value={hygiene}>{children}</HygieneClientProvider>
+          <HygieneClientProvider value={hygiene}>
+            <ServerClientProvider value={serverChecks}>{children}</ServerClientProvider>
+          </HygieneClientProvider>
         </ScanClientProvider>
       </QuickClientProvider>
     </DepthClientProvider>
+    </LiveClientProvider>
   )
 }
 

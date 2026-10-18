@@ -46,6 +46,7 @@
 //! (D122); desktop and web devices hear of changes on [`live`].
 
 pub mod admin;
+pub mod admin_passkeys;
 pub mod alerts;
 pub mod api;
 pub mod backup;
@@ -53,12 +54,14 @@ pub mod breach_monitor;
 pub mod breach_range;
 pub mod client_addr;
 pub mod db;
+pub mod drill_account;
 pub mod drills;
 pub mod keys;
 pub mod kit;
 pub mod legacy;
 pub mod live;
 pub mod mail;
+pub mod mirror;
 pub mod pages;
 pub mod ratelimit;
 pub mod relay;
@@ -249,6 +252,9 @@ pub struct AppState {
     /// The operator's admin page: its key's sign-ins and the schedule's
     /// state (`admin`).
     pub admin: admin::AdminState,
+    /// Log mirrors: the one this server runs, and the ones it names
+    /// (`mirror`).
+    pub mirrors: mirror::MirrorState,
 }
 
 impl std::fmt::Debug for AppState {
@@ -276,6 +282,7 @@ impl AppState {
             relays: relay::Relays::default(),
             mail: None,
             admin: admin::AdminState::default(),
+            mirrors: mirror::MirrorState::default(),
         }
     }
 
@@ -479,6 +486,11 @@ pub fn app(state: Arc<AppState>) -> Router {
             "/approve/{pending}",
             get(second_factor::approve_page).post(second_factor::approve_answer),
         )
+        // docs/plan/27-web-server-finish.md: log mirrors, the restore drill
+        // as the clients read it.
+        .route("/v1/kt/mirror", get(mirror::head))
+        .route("/v1/kt/mirrors", get(mirror::named))
+        .route("/v1/server/restore-drill", get(drills::restore_drill))
         .merge(admin::routes())
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
