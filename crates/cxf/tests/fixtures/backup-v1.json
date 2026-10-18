@@ -1,0 +1,317 @@
+{
+  "format": "lockdown-backup",
+  "v": 1,
+  "exported_at": 1760000000,
+  "exporter": "Lockdown 0.1.0",
+  "items": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kind": "login",
+      "class": "standard",
+      "state": "live",
+      "created_at": 1700000000,
+      "modified_at": 1750000000,
+      "fields": [
+        {
+          "id": "title",
+          "kind": "text",
+          "label": "title",
+          "value": {
+            "text": "Example Forum"
+          }
+        },
+        {
+          "id": "user",
+          "kind": "text",
+          "label": "Username",
+          "value": {
+            "text": "ada@example.com"
+          }
+        },
+        {
+          "id": "pw",
+          "kind": "hidden",
+          "label": "Password",
+          "value": {
+            "text": "correct horse battery staple"
+          }
+        },
+        {
+          "id": "code.0",
+          "kind": "totp",
+          "label": "One-time code",
+          "value": {
+            "text": "otpauth://totp/Forum:ada?secret=JBSWY3DPEHPK3PXP&issuer=Forum"
+          }
+        },
+        {
+          "id": "url.0",
+          "kind": "url",
+          "label": "website",
+          "value": {
+            "url": "https://forum.example.com",
+            "matchRule": "base_domain"
+          }
+        },
+        {
+          "id": "passkey.0.key",
+          "kind": "passkey",
+          "label": "private key",
+          "value": {
+            "bytes": "MIGHAgEA"
+          }
+        },
+        {
+          "id": "notes",
+          "kind": "text",
+          "label": "Notes",
+          "value": {
+            "text": "Signed up in 2024."
+          }
+        },
+        {
+          "id": "org.folder",
+          "kind": "text",
+          "label": "Folder",
+          "value": {
+            "text": "00000000-0000-4000-8000-000000000091"
+          }
+        },
+        {
+          "id": "org.tags",
+          "kind": "text",
+          "label": "Tags",
+          "value": {
+            "text": "forums\nsocial"
+          }
+        },
+        {
+          "id": "org.favourite",
+          "kind": "boolean",
+          "label": "Favourite",
+          "value": {
+            "flag": true
+          }
+        }
+      ],
+      "history": [
+        {
+          "n": 1,
+          "edited_at": 1700000000,
+          "fields": [
+            {
+              "id": "title",
+              "kind": "text",
+              "label": "title",
+              "value": {
+                "text": "Example Forum"
+              }
+            },
+            {
+              "id": "user",
+              "kind": "text",
+              "label": "Username",
+              "value": {
+                "text": "ada@example.com"
+              }
+            },
+            {
+              "id": "pw",
+              "kind": "hidden",
+              "label": "Password",
+              "value": {
+                "text": "an older password"
+              }
+            },
+            {
+              "id": "code.0",
+              "kind": "totp",
+              "label": "One-time code",
+              "value": {
+                "text": "otpauth://totp/Forum:ada?secret=JBSWY3DPEHPK3PXP&issuer=Forum"
+              }
+            },
+            {
+              "id": "url.0",
+              "kind": "url",
+              "label": "website",
+              "value": {
+                "url": "https://forum.example.com",
+                "matchRule": "base_domain"
+              }
+            },
+            {
+              "id": "passkey.0.key",
+              "kind": "passkey",
+              "label": "private key",
+              "value": {
+                "bytes": "MIGHAgEA"
+              }
+            },
+            {
+              "id": "notes",
+              "kind": "text",
+              "label": "Notes",
+              "value": {
+                "text": "Signed up in 2024."
+              }
+            },
+            {
+              "id": "org.folder",
+              "kind": "text",
+              "label": "Folder",
+              "value": {
+                "text": "00000000-0000-4000-8000-000000000091"
+              }
+            },
+            {
+              "id": "org.tags",
+              "kind": "text",
+              "label": "Tags",
+              "value": {
+                "text": "forums\nsocial"
+              }
+            },
+            {
+              "id": "org.favourite",
+              "kind": "boolean",
+              "label": "Favourite",
+              "value": {
+                "flag": true
+              }
+            }
+          ]
+        }
+      ],
+      "attachments": [
+        {
+          "name": "receipt.txt",
+          "mime": "text/plain",
+          "size": 19,
+          "blake3": "7f3b3ee6dd191848f103945a48df6183d68e4e6fb3f68e64e24ef1e9ab1d8866",
+          "data": "cmVjZWlwdDogb25lIGtldHRsZQ"
+        }
+      ],
+      "vault": "00000000-0000-4000-8000-000000000090"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "kind": "crypto-wallet",
+      "class": "crown_jewel",
+      "state": "live",
+      "created_at": 1700000000,
+      "modified_at": 1700000100,
+      "fields": [
+        {
+          "id": "title",
+          "kind": "text",
+          "label": "title",
+          "value": {
+            "text": "Cold wallet"
+          }
+        },
+        {
+          "id": "seed",
+          "kind": "hidden",
+          "label": "Recovery phrase",
+          "value": {
+            "text": "abandon ability able about above absent absorb abstract absurd abuse access accident"
+          }
+        },
+        {
+          "id": "lockdown.export",
+          "kind": "boolean",
+          "label": "Included in exports and backups",
+          "value": {
+            "flag": true
+          }
+        }
+      ],
+      "history": [],
+      "attachments": [],
+      "vault": "00000000-0000-4000-8000-000000000090"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "kind": "wi-fi",
+      "class": "standard",
+      "state": "archived",
+      "fields": [
+        {
+          "id": "title",
+          "kind": "text",
+          "label": "title",
+          "value": {
+            "text": "Old flat"
+          }
+        },
+        {
+          "id": "wifi.ssid",
+          "kind": "text",
+          "label": "Network name",
+          "value": {
+            "text": "flat-net"
+          }
+        },
+        {
+          "id": "wifi.hidden",
+          "kind": "boolean",
+          "label": "Hidden network",
+          "value": {
+            "flag": false
+          }
+        }
+      ],
+      "history": [],
+      "attachments": [],
+      "vault": "00000000-0000-4000-8000-000000000090"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "kind": "note",
+      "class": "standard",
+      "state": "trashed",
+      "fields": [
+        {
+          "id": "title",
+          "kind": "text",
+          "label": "title",
+          "value": {
+            "text": "Draft"
+          }
+        },
+        {
+          "id": "body",
+          "kind": "text",
+          "label": "Note",
+          "value": {
+            "text": "In the trash, still kept."
+          }
+        }
+      ],
+      "history": [],
+      "attachments": [],
+      "vault": "00000000-0000-4000-8000-000000000090"
+    }
+  ],
+  "left_out": [
+    {
+      "id": "00000000-0000-4000-8000-000000000005",
+      "title": "Exchange recovery codes",
+      "kind": "document",
+      "reason": "crown-jewel"
+    }
+  ],
+  "vaults": [
+    {
+      "id": "00000000-0000-4000-8000-000000000090",
+      "name": "Personal",
+      "folders": [
+        {
+          "id": "00000000-0000-4000-8000-000000000091",
+          "name": "Online"
+        }
+      ]
+    }
+  ]
+}

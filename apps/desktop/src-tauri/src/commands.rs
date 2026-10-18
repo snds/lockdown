@@ -613,18 +613,6 @@ async fn import_items(
     blocking(&app, move |a| a.import_items(bytes, &format)).await
 }
 
-/// The vault as one file, as raw bytes, behind the `Reveal` gate.
-#[tauri::command]
-async fn export_items(
-    app: State<'_, App>,
-    format: String,
-    gate: Option<GateInput>,
-) -> AppResult<Response> {
-    let gate = gate.unwrap_or_default();
-    let bytes = blocking(&app, move |a| a.export_items(&format, gate)).await?;
-    Ok(Response::new(bytes.into_bytes().to_vec()))
-}
-
 /// Opens an item's site in the default browser. Only http and https: the
 /// webview never gets to launch anything else.
 #[tauri::command]
@@ -778,7 +766,21 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         personas,
         audit,
         import_items,
-        export_items,
+        crate::transfer::commands::import_formats,
+        crate::transfer::commands::import_detect,
+        crate::transfer::commands::import_preview,
+        crate::transfer::commands::import_commit,
+        crate::transfer::commands::import_cancel,
+        crate::transfer::commands::export_preview,
+        crate::transfer::commands::export_choose,
+        crate::transfer::commands::export_save,
+        crate::transfer::commands::set_export_opt_in,
+        crate::transfer::commands::backup_status,
+        crate::transfer::commands::backup_pick_folder,
+        crate::transfer::commands::backup_setup,
+        crate::transfer::commands::backup_now,
+        crate::transfer::commands::backup_off,
+        crate::transfer::commands::backup_restore_preview,
         crate::browser_commands::browser_status,
         crate::browser_commands::browser_pending,
         crate::browser_commands::browser_answer,

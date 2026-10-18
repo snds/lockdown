@@ -12,6 +12,7 @@ pub mod codes;
 pub mod items;
 pub mod organization;
 pub mod security;
+pub mod transfer;
 
 #[cfg(feature = "shell")]
 mod commands;
@@ -72,6 +73,7 @@ mod shell {
         tauri::Builder::default()
             .plugin(tauri_plugin_opener::init())
             .plugin(tauri_plugin_clipboard_manager::init())
+            .plugin(tauri_plugin_dialog::init())
             .setup(|app| {
                 if cfg!(debug_assertions) {
                     // Nothing logged here ever names a value; the app's
@@ -93,6 +95,7 @@ mod shell {
                 }
                 app.manage(core.clone());
                 app.manage(super::clipboard::ClipboardGuard::default());
+                app.manage(super::transfer::Picked::default());
                 // The browser extension's endpoint (docs/plan/16-browser-extension.md).
                 super::browser_commands::start(app.handle(), core, data);
                 Ok(())

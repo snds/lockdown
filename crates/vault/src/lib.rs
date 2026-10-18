@@ -90,4 +90,7 @@ pub use template::{
     common_field, template_for,
 };
 pub use transparency::{LogEntry, LogLeaf, SignedTreeHead, SthRef, TreeHead};
-pub use vault::{AttachmentInfo, Unlock, Vault, VaultContext};
+pub use vault::{
+    AttachmentInfo, EXPORT_OPT_IN, ImportSpec, NewAttachment, Unlock, Vault, VaultContext,
+    export_opted_in, is_reserved_field,
+};

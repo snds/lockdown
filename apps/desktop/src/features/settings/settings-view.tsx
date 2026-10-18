@@ -19,7 +19,9 @@ import { useSettings } from "@/app/settings"
 import { PaneHeader } from "@/components/master-detail"
 import { describeError, useClient } from "@/core/client"
 import type { ApprovalRoute, Density, LockState, RevealGesture, Status } from "@/core/types"
-import { TransferDialog } from "@/features/transfer/transfer-dialog"
+import { BackupsSection } from "@/features/backups/backups-section"
+import { ExportDialog } from "@/features/export/export-dialog"
+import { ImportWizard } from "@/features/import/import-wizard"
 import { BrowsersSection } from "@/features/browsers/browsers-section"
 
 interface SettingsViewProps {
@@ -190,32 +192,36 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
 
       <Section title="Import and export">
         <p className="text-sm text-muted-foreground">
-          Move your data in from another manager (CXF or CSV) or out as one file. Export asks for your account password first; the file holds every
-          secret in plain text, so put it somewhere safe or delete it when done.
+          Bring your data in from another app, or take all of it out as one file. Lockdown shows what a file holds, and what it leaves out, before
+          anything happens.
         </p>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => setTransfer("import")}>
             <Icon name="upload" data-icon="inline-start" />
-            Import
+            Import…
           </Button>
           <Button size="sm" variant="outline" onClick={() => setTransfer("export")}>
             <Icon name="download" data-icon="inline-start" />
-            Export
+            Export…
           </Button>
         </div>
       </Section>
 
+      <Section title="Backups">
+        <BackupsSection onChanged={onChanged} onNotice={onNotice} />
+      </Section>
+
       <BrowsersSection onNotice={onNotice} />
 
-      <TransferDialog
-        kind={transfer}
+      <ImportWizard
+        open={transfer === "import"}
         onClose={() => setTransfer(null)}
         onImported={(report) => {
-          setTransfer(null)
-          onNotice(`${report.imported} ${report.imported === 1 ? "item" : "items"} imported.`)
+          onNotice(`${report.imported} ${report.imported === 1 ? "item" : "items"} brought in.`)
           onChanged()
         }}
       />
+      <ExportDialog open={transfer === "export"} onClose={() => setTransfer(null)} onNotice={onNotice} />
     </div>
   )
 }

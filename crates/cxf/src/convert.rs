@@ -6,8 +6,9 @@
 //! holds. The "never lost in a round trip" list in 02-model §11 is the
 //! target; what this slice guarantees is in the tests.
 
-use lockdown_vault::{FieldKind, FieldValue, ItemKind, PlainField};
+use lockdown_vault::{FieldKind, FieldValue, Id, ItemClass, ItemKind, ItemState, PlainField};
 use serde_json::{Value, json};
+use zeroize::Zeroizing;
 
 use crate::model::{
     Account, Address, BasicAuth, CXF_VERSION, Credential, CredentialScope, CreditCard,
@@ -36,6 +37,80 @@ pub struct ImportedItem {
     pub modified_at: Option<u64>,
     /// Credentials or values that did not map, in words.
     pub report: Vec<String>,
+    /// The folder path in the source (`Work/Servers`), if any.
+    pub folder: Option<String>,
+    /// Archived in the source: out of everyday lists, kept.
+    pub archived: bool,
+    /// Files attached in the source.
+    pub attachments: Vec<ImportedAttachment>,
+    /// Earlier versions in the source, oldest first; `fields` is the newest.
+    pub history: Vec<Vec<PlainField>>,
+    /// Only from a Lockdown backup: the item's own id, class and state, so
+    /// a restore puts it back as it was and a second restore merges.
+    pub kept: Option<Kept>,
+}
+
+/// What a Lockdown backup keeps about an item beyond its fields.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Kept {
+    /// The item's id in the vault it came from.
+    pub item_id: Id,
+    /// Standard or crown jewel.
+    pub class: ItemClass,
+    /// Live, archived or trashed.
+    pub state: ItemState,
+}
+
+/// A file that came with an item.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ImportedAttachment {
+    /// Its name.
+    pub name: String,
+    /// Its media type, from the source or guessed from the name.
+    pub mime: String,
+    /// Its bytes, wiped when dropped.
+    pub bytes: Zeroizing<Vec<u8>>,
+}
+
+impl ImportedItem {
+    /// An item with a title field and nothing else yet.
+    pub fn new(source_id: impl Into<String>, kind: ItemKind, title: impl Into<String>) -> Self {
+        let title = title.into();
+        Self {
+            source_id: source_id.into(),
+            kind,
+            fields: vec![PlainField::text("title", "title", &title)],
+            title,
+            favourite: false,
+            tags: Vec::new(),
+            created_at: None,
+            modified_at: None,
+            report: Vec::new(),
+            folder: None,
+            archived: false,
+            attachments: Vec::new(),
+            history: Vec::new(),
+            kept: None,
+        }
+    }
+}
+
+/// A media type from a file name, for sources that don't say.
+pub fn mime_for(name: &str) -> &'static str {
+    let ext = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    match ext.as_str() {
+        "pdf" => "application/pdf",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "heic" => "image/heic",
+        "txt" | "md" => "text/plain",
+        "json" => "application/json",
+        "zip" => "application/zip",
+        "pem" | "key" | "pub" => "application/x-pem-file",
+        _ => "application/octet-stream",
+    }
 }
 
 fn text(id: &str, label: &str, f: &Option<EditableField>) -> Option<PlainField> {
@@ -66,8 +141,36 @@ fn kind_of(creds: &[Credential]) -> ItemKind {
 pub fn to_items(header: &Header) -> Result<Vec<ImportedItem>> {
     let mut out = Vec::new();
     for account in &header.accounts {
+        // An item's folder: the path of the collection that lists it.
+        let mut folder_of: std::collections::BTreeMap<&str, String> = Default::default();
+        fn walk<'a>(
+            c: &'a crate::model::Collection,
+            path: &str,
+            depth: usize,
+            out: &mut std::collections::BTreeMap<&'a str, String>,
+        ) {
+            if depth > 32 {
+                return;
+            }
+            let here = if path.is_empty() {
+                c.title.clone()
+            } else {
+                format!("{path}/{}", c.title)
+            };
+            for l in &c.items {
+                out.entry(l.item.as_str()).or_insert_with(|| here.clone());
+            }
+            for sub in &c.sub_collections {
+                walk(sub, &here, depth + 1, out);
+            }
+        }
+        for c in &account.collections {
+            walk(c, "", 0, &mut folder_of);
+        }
         for item in &account.items {
-            out.push(to_item(item)?);
+            let mut it = to_item(item)?;
+            it.folder = folder_of.get(item.id.as_str()).cloned();
+            out.push(it);
         }
     }
     Ok(out)
@@ -214,15 +317,13 @@ fn to_item(item: &Item) -> Result<ImportedItem> {
         }
     }
     Ok(ImportedItem {
-        source_id: item.id.clone(),
-        kind,
-        title: item.title.clone(),
         fields,
         favourite: item.favorite.unwrap_or(false),
         tags: item.tags.clone(),
         created_at: item.creation_at,
         modified_at: item.modified_at,
         report,
+        ..ImportedItem::new(item.id.clone(), kind, item.title.clone())
     })
 }
 
@@ -289,8 +390,25 @@ pub fn from_items(
     now: u64,
 ) -> Result<Header> {
     let mut out = Vec::with_capacity(items.len());
+    let mut collections: Vec<crate::model::Collection> = Vec::new();
     for item in items {
         out.push(from_item(item)?);
+        if let Some(path) = item.folder.as_deref().filter(|p| !p.is_empty()) {
+            let link = crate::model::LinkedItem {
+                item: item.source_id.clone(),
+                account: None,
+            };
+            match collections.iter_mut().find(|c| c.title == path) {
+                Some(c) => c.items.push(link),
+                None => collections.push(crate::model::Collection {
+                    id: b64url(format!("folder:{path}").as_bytes()),
+                    title: path.to_string(),
+                    subtitle: None,
+                    items: vec![link],
+                    sub_collections: vec![],
+                }),
+            }
+        }
     }
     Ok(Header {
         version: CXF_VERSION,
@@ -299,6 +417,7 @@ pub fn from_items(
         timestamp: now,
         accounts: vec![Account {
             id: b64url(b"lockdown"),
+            collections,
             items: out,
             ..Account::default()
         }],
@@ -713,9 +832,6 @@ mod tests {
     #[test]
     fn fields_no_credential_holds_ride_in_the_lockdown_extension_both_ways() {
         let wifi = ImportedItem {
-            source_id: b64url(b"wifi-1"),
-            kind: ItemKind::WiFi,
-            title: "Home".into(),
             fields: vec![
                 PlainField::text("title", "title", "Home"),
                 PlainField::text("wifi.ssid", "Network name", "home-net"),
@@ -727,11 +843,7 @@ mod tests {
                     FieldValue::Boolean(true),
                 ),
             ],
-            favourite: false,
-            tags: vec![],
-            created_at: None,
-            modified_at: None,
-            report: vec![],
+            ..ImportedItem::new(b64url(b"wifi-1"), ItemKind::WiFi, "Home")
         };
         let mut login = wifi.clone();
         login.source_id = b64url(b"login-1");

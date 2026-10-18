@@ -3,6 +3,12 @@ import { invoke } from "@tauri-apps/api/core"
 
 import type {
   AppError,
+  BackupStatus,
+  Chosen,
+  ExportDone,
+  ExportPreview,
+  ImportFormatView,
+  ImportPreview,
   ApprovalKind,
   ApprovalRoute,
   ChangeLink,
@@ -117,10 +123,36 @@ export interface Client {
   deviceList(): Promise<DeviceInfo[]>
   deviceRevoke(id: string, gate?: GateInput): Promise<string[]>
   importItems(bytes: number[], format: string): Promise<ImportReport>
-  exportItems(format: string, gate?: GateInput): Promise<Uint8Array>
   openSite(url: string): Promise<void>
   /** Opens the OS date and time settings; `false` where this platform has no way in (Linux). */
   openClockSettings(): Promise<boolean>
+  // --- import, export and backups (docs/plan/14-import-export.md) ---
+  /** The formats the import wizard lists. */
+  importFormats(): Promise<ImportFormatView[]>
+  /** The format a file looks like, from its first bytes and its name; `null` when unsure. */
+  importDetect(bytes: number[], fileName: string): Promise<string | null>
+  /** Parses a file in the core (hostile until proven otherwise) and says what it holds; nothing is kept. */
+  importPreview(input: { bytes: number[]; format: string; fileName: string; password?: number[]; vault?: string | null }): Promise<ImportPreview>
+  /** Keeps the previewed import. */
+  importCommit(token: number): Promise<ImportReport>
+  importCancel(): Promise<void>
+  /** What an export in `format` would carry and leave out. */
+  exportPreview(format: string, vault?: string | null): Promise<ExportPreview>
+  /** The OS's save dialog; the place stays in the shell under the returned number. */
+  exportChoose(format: string, sealed: boolean): Promise<Chosen | null>
+  /** The core writes the export to the chosen place, after the `Reveal` gate (D101). */
+  exportSave(input: { target: number; format: string; password?: number[]; plainConfirmed: boolean; vault?: string | null }, gate?: GateInput): Promise<ExportDone>
+  /** A crown jewel's "include in exports and backups" (D121); on goes through the `Reveal` gate. */
+  setExportOptIn(id: string, on: boolean, gate?: GateInput): Promise<number>
+  backupStatus(): Promise<BackupStatus>
+  /** The OS's folder picker; the folder stays in the shell under the returned number. */
+  backupPickFolder(): Promise<Chosen | null>
+  /** Turns backups on or changes them, behind the `Reveal` gate; `folder` is a `Chosen.token`, or `null` for the folder in use. */
+  backupSetup(input: { folder: number | null; password?: number[]; intervalHours: number; keepLast: number }, gate?: GateInput): Promise<BackupStatus>
+  backupNow(): Promise<BackupStatus>
+  backupOff(forget: boolean): Promise<BackupStatus>
+  /** Opens one of the folder's backups for the import preview (the key kept here, or `password`). */
+  backupRestorePreview(name: string, password?: number[]): Promise<ImportPreview>
 
   // --- organization (docs/plan/15-organization.md) ---------------------------
   /** Every vault of the persona, the first one first, with its folders. */
@@ -242,9 +274,23 @@ export const tauriClient: Client = {
   deviceList: () => call("device_list"),
   deviceRevoke: (id, gate) => call("device_revoke", { id, gate }),
   importItems: (bytes, format) => call("import_items", { bytes, format }),
-  exportItems: (format, gate) => callBytes("export_items", { format, gate }),
   openSite: (url) => call("open_site", { url }),
   openClockSettings: () => call("open_clock_settings"),
+  importFormats: () => call("import_formats"),
+  importDetect: (bytes, fileName) => call("import_detect", { bytes, fileName }),
+  importPreview: (input) => call("import_preview", input),
+  importCommit: (token) => call("import_commit", { token }),
+  importCancel: () => call("import_cancel"),
+  exportPreview: (format, vault) => call("export_preview", { format, vault: vault ?? null }),
+  exportChoose: (format, sealed) => call("export_choose", { format, sealed }),
+  exportSave: (input, gate) => call("export_save", { ...input, gate }),
+  setExportOptIn: (id, on, gate) => call("set_export_opt_in", { id, on, gate }),
+  backupStatus: () => call("backup_status"),
+  backupPickFolder: () => call("backup_pick_folder"),
+  backupSetup: (input, gate) => call("backup_setup", { ...input, gate }),
+  backupNow: () => call("backup_now"),
+  backupOff: (forget) => call("backup_off", { forget }),
+  backupRestorePreview: (name, password) => call("backup_restore_preview", { name, password }),
   vaults: () => call("vaults"),
   createVault: (name) => call("create_vault", { name }),
   renameVault: (vaultId, name) => call("rename_vault", { vaultId, name }),

@@ -34,6 +34,26 @@ impl Table {
 /// escapes) within `limits`. A trailing newline is fine; a lone `\r` is a
 /// newline too.
 pub fn parse(bytes: &[u8], limits: &Limits) -> Result<Table> {
+    let mut iter = rows(bytes, limits)?.into_iter();
+    let headers: Vec<String> = iter
+        .next()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|h| h.trim().to_ascii_lowercase())
+        .collect();
+    let width = headers.len();
+    let rows = iter
+        .map(|mut r| {
+            r.resize(width, String::new());
+            r
+        })
+        .collect();
+    Ok(Table { headers, rows })
+}
+
+/// Every row as read, the first one included and nothing padded: for
+/// files with no header row (Keeper's CSV).
+pub fn rows(bytes: &[u8], limits: &Limits) -> Result<Vec<Vec<String>>> {
     limits.check_size(bytes)?;
     let text = String::from_utf8_lossy(bytes);
     let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
@@ -118,21 +138,7 @@ pub fn parse(bytes: &[u8], limits: &Limits) -> Result<Table> {
             limit: limits.max_items,
         });
     }
-    let mut iter = rows.into_iter();
-    let headers: Vec<String> = iter
-        .next()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|h| h.trim().to_ascii_lowercase())
-        .collect();
-    let width = headers.len();
-    let rows = iter
-        .map(|mut r| {
-            r.resize(width, String::new());
-            r
-        })
-        .collect();
-    Ok(Table { headers, rows })
+    Ok(rows)
 }
 
 /// Quotes a cell for output and defuses spreadsheet formula injection: a
@@ -230,15 +236,13 @@ pub fn import_logins(table: &Table) -> Vec<ImportedItem> {
                 fields.push(PlainField::text("notes", "notes", &nt));
             }
             ImportedItem {
-                source_id: b64url(format!("csv:{}", n + 1).as_bytes()),
-                kind: ItemKind::Login,
-                title: name,
                 fields,
-                favourite: false,
-                tags: vec![],
-                created_at: None,
-                modified_at: None,
                 report,
+                ..ImportedItem::new(
+                    b64url(format!("csv:{}", n + 1).as_bytes()),
+                    ItemKind::Login,
+                    name,
+                )
             }
         })
         .collect()

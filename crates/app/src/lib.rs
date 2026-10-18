@@ -29,6 +29,7 @@ pub mod security;
 mod session;
 pub mod settings;
 pub mod strength;
+mod transfer;
 pub mod types;
 pub mod views;
 
@@ -42,7 +43,7 @@ pub use revealed::Revealed;
 pub use security::{Dismissal, Finding, SecurityReport};
 pub use session::items::field_kind_named;
 pub use session::{Paths, device_name};
-pub use settings::{Density, RevealGesture, Settings};
+pub use settings::{BackupSettings, Density, RevealGesture, Settings};
 pub use types::*;
 
 use lock::LockClock;
@@ -438,7 +439,10 @@ impl App {
                             core.enforce();
                             job(&mut core);
                         }
-                        Err(RecvTimeoutError::Timeout) => core.enforce(),
+                        Err(RecvTimeoutError::Timeout) => {
+                            core.enforce();
+                            core.backup_tick();
+                        }
                         Err(RecvTimeoutError::Disconnected) => break,
                     }
                 }
@@ -554,7 +558,9 @@ impl App {
     /// timers from now on. Needs no open vault.
     pub fn set_settings(&self, settings: Settings) -> AppResult<Settings> {
         self.call(move |core| {
-            let settings = settings.clamped();
+            let mut settings = settings.clamped();
+            // Backups change only through the backup calls (behind the gate).
+            settings.backup = core.settings.backup.clone();
             settings
                 .save(&core.paths.settings_file())
                 .map_err(AppError::refused)?;
@@ -1620,13 +1626,17 @@ mod tests {
         .unwrap();
         let phrase =
             "abandon ability able about above absent absorb abstract absurd abuse access accident";
-        app.add_item(
-            "crypto-wallet",
-            Some("Cold wallet"),
-            false,
-            vec![FieldChange::secret("seed", phrase.as_bytes())],
-        )
-        .unwrap();
+        let wallet = app
+            .add_item(
+                "crypto-wallet",
+                Some("Cold wallet"),
+                false,
+                vec![FieldChange::secret("seed", phrase.as_bytes())],
+            )
+            .unwrap();
+        // A crown jewel leaves only once the person opted it in (D121).
+        app.set_export_opt_in(&wallet, true, confirmed.clone())
+            .unwrap();
         let file = app.export_items("cxf", confirmed.clone()).unwrap();
 
         let (_other, again) = fresh();

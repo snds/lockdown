@@ -1,0 +1,3 @@
+type,account_name,account_holder,cc_number,code,expiration_month,expiration_year,routing_number,account_number,country,issuing_bank
+payment_card,Travel card,Ada Lovelace,4111111111111111,123,09,2029,,,GB,Example Bank
+bank,Savings,Ada Lovelace,,,,,000000,12345678,GB,Example Bank

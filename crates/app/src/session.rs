@@ -59,13 +59,14 @@ use crate::types::{
 };
 use crate::views;
 
+mod backup;
 mod codes;
 mod duplicates;
 mod history;
 pub mod items;
 mod organize;
 pub(crate) mod security;
-mod transfer;
+pub(crate) mod transfer;
 
 const KEYSTORE_FILE: &str = "device-key.cbor";
 const STORE_FILE: &str = "vault.sqlite";
@@ -257,6 +258,8 @@ pub struct Session {
     sync: Option<SyncConfig>,
     /// The persona's first vault: where new items go unless another is named.
     opened: OpenVault,
+    /// A parsed import waiting for the person's yes (dropped on lock).
+    transfer: transfer::Pending,
     /// The persona's other vaults, oldest first (`organize`).
     more: Vec<OpenVault>,
     /// What this device used, and when (never synced).
@@ -471,6 +474,7 @@ impl Session {
             transparency,
             sync,
             opened,
+            transfer: transfer::Pending::default(),
             more: all,
             recency,
         };
@@ -833,6 +837,7 @@ impl Session {
             version: latest.n,
             edited_at: latest.edited_at.0,
             crown_jewel: item.class == ItemClass::CrownJewel,
+            export_opt_in: lockdown_vault::export_opted_in(&fields),
             fields: shown_fields(&fields, reveal),
             place: self.place_of(vault, item_id, &fields)?,
         })

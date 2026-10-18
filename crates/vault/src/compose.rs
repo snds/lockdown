@@ -1350,6 +1350,40 @@ mod tests {
     }
 
     #[test]
+    fn an_edit_keeps_the_apps_own_fields_without_naming_them() {
+        let existing = vec![
+            PlainField::text("title", "title", "Cold"),
+            PlainField::hidden("seed", "Recovery phrase", "abandon ability"),
+            PlainField::new(
+                crate::EXPORT_OPT_IN,
+                FieldKind::Boolean,
+                "Included in exports and backups",
+                FieldValue::Boolean(true),
+            ),
+        ];
+        let fields = compose_edit(
+            ItemKind::CryptoWallet,
+            &existing,
+            Some("Cold wallet"),
+            vec![FieldChange::keep("seed")],
+        )
+        .unwrap();
+        assert!(crate::export_opted_in(&fields), "kept, unnamed");
+        assert!(ids(&fields).contains(&crate::EXPORT_OPT_IN));
+        let err = compose_edit(
+            ItemKind::CryptoWallet,
+            &existing,
+            None,
+            vec![
+                FieldChange::keep("seed"),
+                FieldChange::new(crate::EXPORT_OPT_IN, Change::Set(FieldInput::Flag(false))),
+            ],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("kept by Lockdown"), "{err}");
+    }
+
+    #[test]
     fn lockdowns_own_fields_ride_along_and_cannot_be_named() {
         let (_, mut before) = compose_new(
             ItemKind::Login,

@@ -106,6 +106,7 @@ impl Session {
             version: n,
             edited_at: version.edited_at.0,
             crown_jewel: item.class == lockdown_vault::ItemClass::CrownJewel,
+            export_opt_in: lockdown_vault::export_opted_in(&fields),
             fields: shown_fields(&fields, false),
             place: self.place_of(vault, item_id, &fields)?,
         })

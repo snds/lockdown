@@ -118,6 +118,8 @@ export interface ItemDetail {
   version: number
   edited_at: number
   crown_jewel: boolean
+  /** A crown jewel the person opted in to exports and backups (D121); the core always sends it. */
+  export_opt_in?: boolean
   fields: FieldView[]
   /**
    * The bridge tier an item carries, from its signed manifest. Not in the
@@ -171,6 +173,10 @@ export interface PersonaInfo {
 
 export interface ImportReport {
   imported: number
+  /** A backup's items already here that got the backup's copy as a new version. */
+  updated: number
+  /** A backup's items already here exactly as the backup has them. */
+  unchanged: number
   notes: string[]
 }
 
@@ -263,6 +269,15 @@ export interface Settings {
   breach_endpoint?: string | null
   /** Whether "Change password" asks the site for its change-password page first. Default on. */
   change_password_check?: boolean
+  /** Automatic backups; changed only through the backup calls. The core always sends it. */
+  backup?: BackupSettings
+}
+
+export interface BackupSettings {
+  enabled: boolean
+  folder: string | null
+  interval_hours: number
+  keep_last: number
 }
 
 // --- approvals (D101) ------------------------------------------------------------
@@ -493,4 +508,87 @@ export interface ChangeLink {
   url: string
   kind: "well_known" | "site_root"
   checked: boolean
+}
+
+// --- import, export and backups (docs/plan/14-import-export.md) -----------------
+
+/** One format the import wizard offers. */
+export interface ImportFormatView {
+  id: string
+  name: string
+  how: string
+  may_need_password: boolean
+}
+
+export interface KindCount {
+  kind: string
+  name: string
+  count: number
+}
+
+/** What a file holds before anything is kept: counts and words, never a value. */
+export interface ImportPreview {
+  token: number
+  format: string
+  format_name: string
+  total: number
+  by_kind: KindCount[]
+  attachments: number
+  crown_jewels: number
+  new: number
+  updated: number
+  unchanged: number
+  problems: string[]
+  item_notes: string[]
+}
+
+export interface LeftOutView {
+  id: string
+  title: string
+  kind: string
+  reason: string
+}
+
+/** What an export carries and leaves, in counts and words. */
+export interface ExportPreview {
+  format: "lockdown" | "cxf" | "csv" | "kdbx"
+  items: number
+  attachments: number
+  crown_jewels_included: number
+  crown_jewels_left_out: number
+  left_out: LeftOutView[]
+  dropped: string[]
+  encrypted: boolean
+}
+
+export interface ExportDone {
+  path: string
+  bytes: number
+  preview: ExportPreview
+}
+
+/** A place the person chose in the OS's dialog, held by the shell under `token`. */
+export interface Chosen {
+  token: number
+  path: string
+  name: string
+}
+
+export interface BackupFile {
+  name: string
+  bytes: number
+  made_at: number
+}
+
+export interface BackupStatus {
+  enabled: boolean
+  folder: string | null
+  interval_hours: number
+  keep_last: number
+  key_set: boolean
+  last_success_at: number | null
+  last_error: string | null
+  next_due_at: number | null
+  crown_jewels_left_out: number
+  backups: BackupFile[]
 }

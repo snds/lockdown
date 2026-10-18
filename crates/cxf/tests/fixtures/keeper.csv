@@ -1,0 +1,2 @@
+Personal,Example Mail,ada@example.com,mail-pass-1,https://mail.example.com,"Two-step is on.",,Recovery email,backup@example.com,TFC:Keeper,otpauth://totp/Mail:ada?secret=JBSWY3DPEHPK3PXP
+Work\Servers,Staging,admin,st4ging,https://staging.example.com,,Team Shared,Region,eu-west

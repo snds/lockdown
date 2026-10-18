@@ -13,6 +13,7 @@ import { ItemSecurity } from "@/features/security/item-security"
 import { ItemCodeDisplay } from "./code-display"
 import { RiskTierBadge } from "@unicron/ui/security/risk-tier-badge"
 
+import { ExportOptIn } from "@/features/export/export-opt-in"
 import { FilesPanel } from "@/features/organization/files-panel"
 import { MarkdownView } from "@/features/organization/markdown-view"
 import { matchRuleWords } from "@/features/organization/org-model"
@@ -254,6 +255,7 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
       )}
       {!trashed && <ItemSecurity key={`${item.id}:${item.version}`} itemId={item.id} onNotice={onNotice} />}
       {item.crown_jewel ? <ItemCrownJewel title={title}>{body}</ItemCrownJewel> : body}
+      {item.crown_jewel && !trashed && <ExportOptIn item={item} onChanged={setItem} onNotice={onNotice} />}
       <FilesPanel itemId={item.id} files={item.attachments ?? []} editable={!trashed && Boolean(template?.creatable)} onChanged={onChanged} onNotice={onNotice} />
       <Dialog open={purging} onOpenChange={setPurging}>
         <DialogContent>

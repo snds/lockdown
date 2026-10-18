@@ -1,0 +1,383 @@
+{
+  "accounts": [
+    {
+      "attrs": {
+        "accountName": "Ada",
+        "name": "Ada",
+        "avatar": "",
+        "email": "ada@example.com",
+        "uuid": "ACCT0000000000000000000000",
+        "domain": "https://my.1password.example/"
+      },
+      "vaults": [
+        {
+          "attrs": {
+            "uuid": "VAULT00000000000000000000",
+            "desc": "",
+            "avatar": "",
+            "name": "Personal",
+            "type": "P"
+          },
+          "items": [
+            {
+              "uuid": "opx-login-0000000000000001",
+              "favIndex": 1,
+              "createdAt": 1614298956,
+              "updatedAt": 1635346445,
+              "state": "active",
+              "categoryUuid": "001",
+              "details": {
+                "loginFields": [
+                  {
+                    "value": "ada@example.com",
+                    "id": "",
+                    "name": "email",
+                    "fieldType": "E",
+                    "designation": "username"
+                  },
+                  {
+                    "value": "1p-example-pass",
+                    "id": "",
+                    "name": "password",
+                    "fieldType": "P",
+                    "designation": "password"
+                  },
+                  {
+                    "value": "remember",
+                    "id": "",
+                    "name": "remember",
+                    "fieldType": "C",
+                    "designation": ""
+                  }
+                ],
+                "notesPlain": "Shared with nobody.",
+                "sections": [
+                  {
+                    "title": "Security",
+                    "name": "Section_1",
+                    "fields": [
+                      {
+                        "title": "one-time password",
+                        "id": "TOTP_1",
+                        "value": {
+                          "totp": "otpauth://totp/Example:ada?secret=JBSWY3DPEHPK3PXP&issuer=Example"
+                        },
+                        "indexAtSource": 0,
+                        "guarded": false,
+                        "multiline": false,
+                        "dontGenerate": false,
+                        "inputTraits": {
+                          "keyboard": "default",
+                          "correction": "default",
+                          "capitalization": "default"
+                        }
+                      },
+                      {
+                        "title": "PIN",
+                        "id": "pin_1",
+                        "value": {
+                          "concealed": "2468"
+                        },
+                        "indexAtSource": 1,
+                        "guarded": false,
+                        "multiline": false,
+                        "dontGenerate": false,
+                        "inputTraits": {}
+                      },
+                      {
+                        "title": "Recovery email",
+                        "id": "rec_1",
+                        "value": {
+                          "email": {
+                            "email_address": "backup@example.com",
+                            "provider": null
+                          }
+                        },
+                        "indexAtSource": 2,
+                        "guarded": false,
+                        "multiline": false,
+                        "dontGenerate": false,
+                        "inputTraits": {}
+                      },
+                      {
+                        "title": "Signed up",
+                        "id": "date_1",
+                        "value": {
+                          "date": 1609459200
+                        },
+                        "indexAtSource": 3,
+                        "guarded": false,
+                        "multiline": false,
+                        "dontGenerate": false,
+                        "inputTraits": {}
+                      }
+                    ]
+                  }
+                ],
+                "passwordHistory": [
+                  {
+                    "value": "1p-old-2",
+                    "time": 1630000000
+                  },
+                  {
+                    "value": "1p-old-1",
+                    "time": 1620000000
+                  }
+                ]
+              },
+              "overview": {
+                "subtitle": "ada@example.com",
+                "urls": [
+                  {
+                    "label": "",
+                    "url": "https://example.com/login"
+                  },
+                  {
+                    "label": "app",
+                    "url": "https://app.example.com"
+                  }
+                ],
+                "title": "Example",
+                "url": "https://example.com/login",
+                "ps": 70,
+                "pbe": 80.0,
+                "pgrng": false,
+                "tags": [
+                  "personal",
+                  "email"
+                ]
+              }
+            },
+            {
+              "uuid": "opx-card-00000000000000002",
+              "favIndex": 0,
+              "createdAt": 1614298956,
+              "updatedAt": 1614298956,
+              "state": "active",
+              "categoryUuid": "002",
+              "details": {
+                "loginFields": [],
+                "sections": [
+                  {
+                    "title": "",
+                    "name": "",
+                    "fields": [
+                      {
+                        "title": "cardholder name",
+                        "id": "cardholder",
+                        "value": {
+                          "string": "Ada Lovelace"
+                        }
+                      },
+                      {
+                        "title": "type",
+                        "id": "type",
+                        "value": {
+                          "creditCardType": "visa"
+                        }
+                      },
+                      {
+                        "title": "number",
+                        "id": "ccnum",
+                        "value": {
+                          "creditCardNumber": "4111111111111111"
+                        }
+                      },
+                      {
+                        "title": "verification number",
+                        "id": "cvv",
+                        "value": {
+                          "concealed": "123"
+                        }
+                      },
+                      {
+                        "title": "expiry date",
+                        "id": "expiry",
+                        "value": {
+                          "monthYear": 202909
+                        }
+                      },
+                      {
+                        "title": "issuing bank",
+                        "id": "bank",
+                        "value": {
+                          "string": "Example Bank"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "passwordHistory": []
+              },
+              "overview": {
+                "subtitle": "4111 **** 1111",
+                "title": "Visa",
+                "url": "",
+                "tags": []
+              }
+            },
+            {
+              "uuid": "opx-wifi-00000000000000003",
+              "favIndex": 0,
+              "createdAt": 1614298956,
+              "updatedAt": 1614298956,
+              "state": "archived",
+              "categoryUuid": "109",
+              "details": {
+                "loginFields": [],
+                "sections": [
+                  {
+                    "title": "",
+                    "name": "",
+                    "fields": [
+                      {
+                        "title": "network name",
+                        "id": "network_name",
+                        "value": {
+                          "string": "home-net"
+                        }
+                      },
+                      {
+                        "title": "wireless network password",
+                        "id": "wireless_password",
+                        "value": {
+                          "concealed": "k7Hq3mWx9rTa4nPe"
+                        }
+                      },
+                      {
+                        "title": "wireless security",
+                        "id": "wireless_security",
+                        "value": {
+                          "menu": "wpa2p"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "passwordHistory": []
+              },
+              "overview": {
+                "title": "Home Wi-Fi",
+                "url": "",
+                "tags": []
+              }
+            },
+            {
+              "uuid": "opx-doc-000000000000000004",
+              "favIndex": 0,
+              "createdAt": 1614298956,
+              "updatedAt": 1614298956,
+              "state": "active",
+              "categoryUuid": "006",
+              "details": {
+                "loginFields": [],
+                "sections": [],
+                "passwordHistory": [],
+                "documentAttributes": {
+                  "fileName": "lease.pdf",
+                  "documentId": "docid0001",
+                  "decryptedSize": 20
+                }
+              },
+              "overview": {
+                "title": "Lease",
+                "url": "",
+                "tags": []
+              }
+            },
+            {
+              "uuid": "opx-ssh-000000000000000005",
+              "favIndex": 0,
+              "createdAt": 1614298956,
+              "updatedAt": 1614298956,
+              "state": "active",
+              "categoryUuid": "114",
+              "details": {
+                "loginFields": [],
+                "sections": [
+                  {
+                    "title": "",
+                    "name": "",
+                    "fields": [
+                      {
+                        "title": "private key",
+                        "id": "private_key",
+                        "value": {
+                          "sshKey": {
+                            "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\nexampleonly\n-----END OPENSSH PRIVATE KEY-----",
+                            "metadata": {
+                              "publicKey": "ssh-ed25519 AAAAexample",
+                              "fingerprint": "SHA256:example",
+                              "keyType": "ed25519"
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "passwordHistory": []
+              },
+              "overview": {
+                "title": "Laptop key",
+                "url": "",
+                "tags": []
+              }
+            },
+            {
+              "uuid": "opx-trash-00000000000000006",
+              "favIndex": 0,
+              "createdAt": 1614298956,
+              "updatedAt": 1614298956,
+              "state": "trashed",
+              "categoryUuid": "001",
+              "details": {
+                "loginFields": [],
+                "sections": [],
+                "passwordHistory": []
+              },
+              "overview": {
+                "title": "Old",
+                "url": "",
+                "tags": []
+              }
+            },
+            {
+              "uuid": "opx-medical-000000000000007",
+              "favIndex": 0,
+              "createdAt": 1614298956,
+              "updatedAt": 1614298956,
+              "state": "active",
+              "categoryUuid": "113",
+              "details": {
+                "loginFields": [],
+                "notesPlain": "Allergic to nothing.",
+                "sections": [
+                  {
+                    "title": "",
+                    "name": "",
+                    "fields": [
+                      {
+                        "title": "healthcare professional",
+                        "id": "healthcareprofessional",
+                        "value": {
+                          "string": "Dr Example"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "passwordHistory": []
+              },
+              "overview": {
+                "title": "Medical record",
+                "url": "",
+                "tags": []
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

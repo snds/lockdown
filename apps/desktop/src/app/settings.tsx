@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS: Settings = {
   breach_check: true,
   breach_endpoint: null,
   change_password_check: true,
+  backup: { enabled: false, folder: null, interval_hours: 24, keep_last: 10 },
 }
 
 interface SettingsContextValue {
