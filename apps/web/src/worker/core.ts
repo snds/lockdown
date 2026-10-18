@@ -59,6 +59,8 @@ export interface CoreOptions {
   module: WebAssembly.Module
   /** The device's name in the identity's device list. */
   deviceName: string
+  /** The page's origin: the one server links opened here may name. */
+  origin?: string
   send: HttpSend
   log?: (line: string) => void
 }
@@ -79,7 +81,7 @@ export class Core {
     const fs = new MemoryFs()
     const wasi = new Wasi({
       fs,
-      env: { LOCKDOWN_DEVICE_NAME: options.deviceName },
+      env: { LOCKDOWN_DEVICE_NAME: options.deviceName, ...(options.origin ? { LOCKDOWN_ORIGIN: options.origin } : {}) },
       log: options.log ?? ((line) => console.warn(`[core] ${line}`)),
     })
     let core: Core | null = null

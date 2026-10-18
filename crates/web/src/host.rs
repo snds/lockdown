@@ -155,6 +155,12 @@ pub struct WebVault {
     sealed: Option<SealedDevice>,
     /// The persona's vaults as last listed, for [`WebVault::carried`].
     known_vaults: Vec<Id>,
+    /// The page's own origin (`https://host[:port]`), the one server a
+    /// share or request link opened here may name.
+    origin: Option<String>,
+    /// What the last share link opened here holds, until the next one or
+    /// the tab's sign-out.
+    opened_link: Option<lockdown_vault::send::SendPayload>,
 }
 
 impl std::fmt::Debug for WebVault {
@@ -303,7 +309,75 @@ impl WebVault {
             account: None,
             sealed: None,
             known_vaults: Vec::new(),
+            origin: None,
+            opened_link: None,
         }
+    }
+
+    /// The page's origin, which share and request links must name.
+    pub fn serving(mut self, origin: &str) -> Self {
+        self.origin = Some(trimmed(origin));
+        self
+    }
+
+    fn origin(&self) -> AppResult<&str> {
+        self.origin
+            .as_deref()
+            .ok_or_else(|| refused("the web vault doesn't know which server it came from"))
+    }
+
+    /// A share link's metadata (does it need a password, how long it
+    /// lasts, how many opens are left) without opening it.
+    pub fn link_meta(&self, link: &str) -> AppResult<crate::links::LinkMeta> {
+        crate::links::link_meta(link, self.origin()?)
+    }
+
+    /// Opens a share link (one view counted); its values stay here.
+    pub fn link_open(
+        &mut self,
+        link: &str,
+        password: Option<&[u8]>,
+    ) -> AppResult<lockdown_app::sharing::OpenedView> {
+        self.opened_link = None;
+        let (view, payload) = crate::links::open_link(link, password, self.origin()?)?;
+        self.opened_link = Some(payload);
+        Ok(view)
+    }
+
+    /// One value of the opened link, as bytes.
+    pub fn link_value(&self, index: usize) -> AppResult<Zeroizing<Vec<u8>>> {
+        let payload = self
+            .opened_link
+            .as_ref()
+            .ok_or_else(|| refused("no link is open"))?;
+        crate::links::value_of(payload, index)
+    }
+
+    /// The opened link's file, as bytes.
+    pub fn link_file(&self) -> AppResult<Zeroizing<Vec<u8>>> {
+        let payload = self
+            .opened_link
+            .as_ref()
+            .ok_or_else(|| refused("no link is open"))?;
+        crate::links::file_of(payload)
+    }
+
+    /// Forgets the opened link.
+    pub fn link_close(&mut self) {
+        self.opened_link = None;
+    }
+
+    /// What a request link asks for.
+    pub fn request_label(&self, link: &str) -> AppResult<String> {
+        crate::links::check_request_server(link, self.origin()?)?;
+        self.app.request_label(link.as_bytes())
+    }
+
+    /// Answers a request link with `secret`, sealed here to the key the
+    /// link pins; the asker opens it on their device.
+    pub fn request_answer(&self, link: &str, title: &str, secret: Vec<u8>) -> AppResult<()> {
+        crate::links::check_request_server(link, self.origin()?)?;
+        self.app.answer_request(link.as_bytes(), title, secret)
     }
 
     /// The app, for the command table.
@@ -483,6 +557,7 @@ impl WebVault {
             s.sealed.ct.zeroize();
         }
         self.known_vaults.clear();
+        self.opened_link = None;
         remove_dir(&self.paths.root)?;
         remove_dir(&self.paths.data)?;
         if let Some(bytes) = pending {

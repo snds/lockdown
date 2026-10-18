@@ -21,13 +21,17 @@ import { LockedWash } from "@/features/unlock/locked-wash"
 import { countViews } from "@/features/vault/list-model"
 import { VaultView } from "@/features/vault/vault-view"
 
+import type { WebClipboard } from "../core/clipboard"
+import type { Link } from "../core/link"
 import type { WebSession, WebState } from "../core/web-client"
+import { LinksView } from "../features/links-view"
 import { Frame, SignInScreen } from "../features/sign-in-screen"
 import { WebSettingsView } from "../features/web-settings-view"
 import { WebUnlockScreen } from "../features/web-unlock-screen"
 
 /** The screens the web vault has beside the vault's views. */
 const WEB_SCREENS: ReadonlyArray<ShellScreen> = [
+  ["sharing", "link", "Links"],
   ["devices", "devices", "Devices"],
   ["settings", "settings", "Settings"],
 ]
@@ -39,6 +43,9 @@ interface WebRootProps {
   session: WebSession
   /** The server the page came from (its origin). */
   server: string
+  /** The worker, for the screens the desktop's client has no calls for (links). */
+  link: Link
+  clipboard: WebClipboard
 }
 
 /**
@@ -47,7 +54,7 @@ interface WebRootProps {
  * core. Nothing secret is kept in this component: `status` is cleared the
  * moment the core says it locked, whichever timer did it.
  */
-function WebRoot({ session, server }: WebRootProps) {
+function WebRoot({ session, server, link, clipboard }: WebRootProps) {
   const client = useClient()
   const [web, setWeb] = useState<WebState | null>(null)
   const [webError, setWebError] = useState<string | null>(null)
@@ -239,6 +246,7 @@ function WebRoot({ session, server }: WebRootProps) {
             />
           )}
           {nav.area === "codes" && <CodesView rows={rows ?? []} onChanged={syncThenList} />}
+          {nav.area === "sharing" && <LinksView link={link} clipboard={clipboard} />}
           {nav.area === "devices" && <DevicesView status={status} onChanged={syncThenList} onNotice={notice} />}
           {nav.area === "settings" && <WebSettingsView server={server} login={web.login ?? ""} onLock={setLock} onSignOut={signOut} />}
         </AppShell>

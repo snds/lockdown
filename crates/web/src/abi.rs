@@ -74,7 +74,12 @@ pub extern "C" fn ld_init() {
     VAULT.with(|v| {
         let mut v = v.borrow_mut();
         if v.is_none() {
-            *v = Some(WebVault::new(WebPaths::in_worker()));
+            let vault = WebVault::new(WebPaths::in_worker());
+            // The worker passes the page's origin in the WASI environment.
+            *v = Some(match std::env::var("LOCKDOWN_ORIGIN") {
+                Ok(origin) if !origin.is_empty() => vault.serving(&origin),
+                _ => vault,
+            });
         }
     });
 }

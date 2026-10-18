@@ -53,6 +53,7 @@ async function start(): Promise<Core> {
   return Core.start({
     module,
     deviceName: `Lockdown web vault · ${browserName(navigator.userAgent)}`,
+    origin: self.location.origin,
     send: sameOriginSend(self.location.origin),
   })
 }

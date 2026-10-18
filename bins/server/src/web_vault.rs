@@ -169,9 +169,45 @@ pub async fn index(State(state): State<Arc<AppState>>) -> Response {
     serve(&state, "index.html").await
 }
 
-/// `GET /vault/{*path}`: one of the page's files.
+/// `GET /vault/{*path}`: one of the page's files, or the page itself for
+/// a link it opens (`s/{id}`, `r/{id}`).
 pub async fn file(State(state): State<Arc<AppState>>, UrlPath(path): UrlPath<String>) -> Response {
+    if link_path(&path) {
+        return serve(&state, "index.html").await;
+    }
     serve(&state, &path).await
+}
+
+/// Whether `path` (under `/vault/`) is a link the page opens: `s/` or
+/// `r/` and one id-shaped segment.
+fn link_path(path: &str) -> bool {
+    let Some((kind, id)) = path.split_once('/') else {
+        return false;
+    };
+    matches!(kind, "s" | "r") && id_shaped(id)
+}
+
+/// A link id as the server makes them: a UUID's characters only.
+fn id_shaped(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')
+}
+
+/// A share link (`s`) or request link (`r`) opened in a browser, sent on
+/// to the web vault's page for it when this server serves one. The
+/// redirect names no fragment, so the browser keeps the link's own (the
+/// key) and never sends it here (RFC 9110 §10.2.2). `None` when there is
+/// no web vault, or the id isn't one.
+pub fn link_redirect(state: &AppState, kind: &str, id: &str) -> Option<Response> {
+    state.config.web_vault.as_ref()?;
+    if !id_shaped(id) || !matches!(kind, "s" | "r") {
+        return None;
+    }
+    let location = HeaderValue::from_str(&format!("/vault/{kind}/{id}")).ok()?;
+    let mut res = (StatusCode::SEE_OTHER, [(header::LOCATION, location)]).into_response();
+    security_headers(res.headers_mut());
+    res.headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    Some(res)
 }
 
 #[cfg(test)]
@@ -212,6 +248,15 @@ mod tests {
         }
         #[cfg(unix)]
         assert!(resolve(dir.path(), "assets/link.js").is_none());
+    }
+
+    #[test]
+    fn only_a_link_and_an_id_open_the_page() {
+        assert!(link_path("s/0f6c3a52-7d2e-4f0e-9c1b-2d7f5e8a9b10"));
+        assert!(link_path("r/0f6c3a52-7d2e-4f0e-9c1b-2d7f5e8a9b10"));
+        for bad in ["s/", "s", "x/abc", "s/../index.html", "s/abc/def", "r/<script>", "assets/s/abc"] {
+            assert!(!link_path(bad), "{bad}");
+        }
     }
 
     #[test]

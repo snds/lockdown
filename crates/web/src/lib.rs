@@ -29,6 +29,8 @@
 //! - [`commands`] — the command table the page calls, named and shaped as
 //!   the desktop's Tauri commands are, so one client interface serves both
 //! - [`fields`] — the editor's field changes, as the desktop parses them
+//! - [`links`] — share links opened and request links answered in a plain
+//!   browser, with no account (D198)
 //! - [`abi`] — the module's exports and the worker's imports (WASI only)
 
 #![deny(unsafe_op_in_unsafe_fn)]
@@ -38,6 +40,7 @@ pub mod abi;
 pub mod commands;
 pub mod fields;
 pub mod host;
+pub mod links;
 
 pub use commands::{Reply, call};
 pub use host::{WebPaths, WebState, WebVault};

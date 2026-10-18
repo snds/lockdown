@@ -108,3 +108,31 @@ async fn a_server_without_a_web_vault_says_so() {
     let body = res.into_body().collect().await.unwrap().to_bytes();
     assert_eq!(&body[..], b"this server doesn't serve the web vault");
 }
+
+#[tokio::test]
+async fn share_and_request_links_go_on_to_the_web_vault_page() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("index.html"), "<!doctype html><title>Lockdown</title>").unwrap();
+    let id = "0f6c3a52-7d2e-4f0e-9c1b-2d7f5e8a9b10";
+    let with = router(Some(dir.path().to_path_buf()));
+    for kind in ["s", "r"] {
+        let res = get(&with, &format!("/{kind}/{id}")).await;
+        assert_eq!(res.status(), StatusCode::SEE_OTHER, "{kind}");
+        // No fragment in the redirect: the browser keeps the link's own.
+        assert_eq!(header_of(&res, "location"), format!("/vault/{kind}/{id}"));
+        assert_locked_down(&res);
+        let page = get(&with, &format!("/vault/{kind}/{id}")).await;
+        assert_eq!(page.status(), StatusCode::OK);
+        assert_eq!(header_of(&page, "content-type"), "text/html; charset=utf-8");
+        assert_locked_down(&page);
+    }
+    // Not an id: the web vault's page isn't served for it.
+    let res = get(&with, "/vault/s/not%20an%20id").await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    // Without a web vault the server's own no-script notice stays.
+    let without = router(None);
+    let res = get(&without, &format!("/s/{id}")).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(header_of(&res, "content-type").starts_with("text/html"));
+}

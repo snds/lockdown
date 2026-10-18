@@ -147,6 +147,64 @@ fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult<Reply> {
             None => done(),
         },
         "tick" => json(web.tick()),
+
+        // --- links, with no account (docs/plan/18-sharing.md §7) -----------
+        "link_meta" => json(web.link_meta(&req::<String>(args, "link")?)?),
+        "link_open" => {
+            let link = secret_text(args, "link")?;
+            let password = opt::<Vec<u8>>(args, "password")?.map(Zeroizing::new);
+            json(web.link_open(&link, password.as_deref().map(Vec::as_slice))?)
+        }
+        "link_value" => Ok(Reply::Bytes(web.link_value(req(args, "index")?)?)),
+        "link_file" => Ok(Reply::Bytes(web.link_file()?)),
+        "link_close" => {
+            web.link_close();
+            done()
+        }
+        "request_label" => json(web.request_label(&secret_text(args, "link")?)?),
+        // Making links and reading answers, signed in (the account's own).
+        "send_text" => {
+            let title: String = opt(args, "title")?.unwrap_or_default();
+            let text = bytes(args, "text")?;
+            let password = opt::<Vec<u8>>(args, "password")?.map(Zeroizing::new);
+            let days: u32 = opt(args, "days")?.unwrap_or(7);
+            let max_views: Option<u32> = opt(args, "maxViews")?;
+            let link = web.app().send_text(
+                &title,
+                text.to_vec(),
+                password.map(|p| p.to_vec()),
+                lockdown_app::sharing::SendOptions { days, max_views },
+            )?;
+            Ok(Reply::Bytes(Zeroizing::new(link.expose().to_vec())))
+        }
+        "sends" => json(web.app().sends()?),
+        "send_delete" => {
+            web.app().delete_send(&req::<String>(args, "sendId")?)?;
+            done()
+        }
+        "request_create" => {
+            let label: String = req(args, "label")?;
+            let days: u32 = opt(args, "days")?.unwrap_or(7);
+            let link = web.app().create_request(&label, days)?;
+            Ok(Reply::Bytes(Zeroizing::new(link.expose().to_vec())))
+        }
+        "requests" => json(web.app().requests()?),
+        "request_open" => json(web.app().open_answer(&req::<String>(args, "requestId")?)?),
+        "request_delete" => {
+            web.app().delete_request(&req::<String>(args, "requestId")?)?;
+            done()
+        }
+        "opened_value" => {
+            let value = web.app().opened_value(req(args, "index")?)?;
+            Ok(Reply::Bytes(Zeroizing::new(value.expose().to_vec())))
+        }
+        "request_answer" => {
+            let link = secret_text(args, "link")?;
+            let title: String = opt(args, "title")?.unwrap_or_default();
+            let secret = bytes(args, "secret")?;
+            web.request_answer(&link, &title, secret.to_vec())?;
+            done()
+        }
         "lock" => {
             web.lock()?;
             done()

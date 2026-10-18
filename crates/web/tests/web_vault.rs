@@ -32,6 +32,11 @@ fn tab(dir: &std::path::Path, name: &str) -> WebVault {
     })
 }
 
+/// A tab served by `url`, which links must name.
+fn page(dir: &std::path::Path, name: &str, url: &str) -> WebVault {
+    tab(dir, name).serving(url)
+}
+
 fn ok(web: &mut WebVault, cmd: &str, args: Value) -> Value {
     match call(web, cmd, args) {
         Ok(Reply::Json(v)) => v,
@@ -368,4 +373,86 @@ fn an_unknown_command_and_a_missing_argument_are_refused_in_words() {
     assert!(e.message.contains("no command 'export_save'"), "{}", e.message);
     let e = err(&mut web, "web_sign_in", json!({ "server": "http://127.0.0.1:9" }));
     assert!(e.message.contains("'login' is missing"), "{}", e.message);
+}
+
+#[test]
+fn a_share_link_opens_and_a_request_is_answered_with_no_account() {
+    let running = server();
+    let url = running.url();
+    let dir = tempfile::tempdir().unwrap();
+    let (desktop, secret_key) = register(dir.path(), &url);
+    desktop.sync().unwrap();
+
+    // A text link with a password, made on the desktop.
+    let link = desktop
+        .send_text(
+            "Wi-Fi at the cabin",
+            b"pine-needles-42".to_vec(),
+            Some(b"a link password".to_vec()),
+            lockdown_app::sharing::SendOptions { days: 3, max_views: Some(2) },
+        )
+        .unwrap();
+    let link = String::from_utf8(link.expose().to_vec()).unwrap();
+    assert!(link.starts_with(&format!("{url}/s/")) && link.contains('#'), "{link}");
+
+    // Someone with no account opens it in the web vault's page.
+    let mut stranger = page(dir.path(), "stranger", &url);
+    let meta = ok(&mut stranger, "link_meta", json!({ "link": link }));
+    assert_eq!(meta["password"], true);
+    assert_eq!(meta["views_left"], 2);
+    let refused = err(&mut stranger, "link_open", json!({ "link": link }));
+    assert!(refused.message.contains("password"), "{}", refused.message);
+    let view = ok(
+        &mut stranger,
+        "link_open",
+        json!({ "link": link, "password": b"a link password".as_slice() }),
+    );
+    assert_eq!(view["kind"], "text");
+    assert_eq!(view["title"], "Wi-Fi at the cabin");
+    assert!(!view.to_string().contains("pine-needles"), "{view}");
+    assert_eq!(bytes(&mut stranger, "link_value", json!({ "index": 0 })), b"pine-needles-42");
+    ok(&mut stranger, "link_close", json!({}));
+    assert!(err(&mut stranger, "link_value", json!({ "index": 0 })).message.contains("no link"));
+    // The opens are counted: one left after this one.
+    assert_eq!(ok(&mut stranger, "link_meta", json!({ "link": link }))["views_left"], 1);
+
+    // A link for another server is refused before anything is fetched.
+    let elsewhere = link.replace(&url, "https://elsewhere.example");
+    let e = err(&mut stranger, "link_open", json!({ "link": elsewhere }));
+    assert!(e.message.contains("belongs to https://elsewhere.example"), "{}", e.message);
+
+    // A request link a signed-in tab made, answered by the stranger and
+    // read back in the tab.
+    let mut asker = page(dir.path(), "asker", &url);
+    sign_in(&mut asker, &url, &secret_key, None);
+    let request = bytes(&mut asker, "request_create", json!({ "label": "The door code", "days": 7 }));
+    let request = String::from_utf8(request).unwrap();
+    assert_eq!(ok(&mut stranger, "request_label", json!({ "link": request })), json!("The door code"));
+    ok(
+        &mut stranger,
+        "request_answer",
+        json!({ "link": request, "title": "Front door", "secret": b"2468".as_slice() }),
+    );
+    let again = err(
+        &mut stranger,
+        "request_answer",
+        json!({ "link": request, "title": "Front door", "secret": b"1357".as_slice() }),
+    );
+    assert!(again.message.contains("already answered"), "{}", again.message);
+    let asked = ok(&mut asker, "requests", json!({}));
+    let request_id = asked[0]["request_id"].as_str().unwrap().to_string();
+    assert!(asked[0]["answered_at"].is_i64(), "{asked}");
+    let answered = ok(&mut asker, "request_open", json!({ "requestId": request_id }));
+    assert_eq!(answered["title"], "Front door");
+    assert_eq!(bytes(&mut asker, "opened_value", json!({ "index": 0 })), b"2468");
+
+    // A text link made in the tab opens for the stranger too.
+    let made = bytes(&mut asker, "send_text", json!({ "title": "Gate", "text": b"0042".as_slice(), "days": 1, "maxViews": 1 }));
+    let made = String::from_utf8(made).unwrap();
+    assert_eq!(ok(&mut asker, "sends", json!({})).as_array().unwrap().len(), 2);
+    ok(&mut stranger, "link_open", json!({ "link": made }));
+    assert_eq!(bytes(&mut stranger, "link_value", json!({ "index": 0 })), b"0042");
+    let gone = err(&mut stranger, "link_open", json!({ "link": made }));
+    assert_eq!(gone.code, lockdown_app::ErrorCode::Refused);
+    drop(desktop);
 }

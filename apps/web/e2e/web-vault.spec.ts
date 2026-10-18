@@ -23,9 +23,13 @@ const cli = process.env.LOCKDOWN_CLI_BIN ?? path.join(target, "debug", "lockdown
 
 let home = ""
 let secretKey = ""
+/** A second account, for the links test: the server brakes sign-ins per login name (D57). */
+const LINKS_LOGIN = `links-${Date.now()}@example.com`
+let linksSecretKey = ""
 
-function lockdown(args: string[], input?: string): string {
-  const run = spawnSync(cli, ["--root", path.join(home, "identity"), ...args], { input, encoding: "utf8", timeout: 120_000 })
+/** The CLI as one person's computer: `who` names its own identity root and data directory. */
+function lockdown(args: string[], input?: string, who = "first"): string {
+  const run = spawnSync(cli, ["--root", path.join(home, who, "identity"), ...args], { input, encoding: "utf8", timeout: 120_000 })
   if (run.status !== 0) throw new Error(`lockdown ${args.join(" ")}: ${run.stderr || run.error}`)
   return run.stdout
 }
@@ -38,6 +42,10 @@ test.beforeAll(async ({ baseURL }) => {
   expect(secretKey, "the kit page names the Secret Key").toMatch(/^A1-/)
   lockdown(["add", "login", "--site", "https://bank.example.com", "--username", "me", "--title", "Bank from the desktop", "--password-stdin"], "a-bank-password-1\n")
   lockdown(["sync"])
+  lockdown(["init"], undefined, "links")
+  const linksKit = lockdown(["account", "register", "--server", baseURL!, "--login", LINKS_LOGIN, "--password-stdin"], `${PASSWORD}\n`, "links")
+  linksSecretKey = /^Secret Key:\s*(\S+)/m.exec(linksKit)?.[1] ?? ""
+  lockdown(["sync"], undefined, "links")
 })
 
 test.afterAll(() => {
@@ -55,9 +63,9 @@ function watch(page: Page) {
   return { problems, origins }
 }
 
-async function signIn(page: Page, secretKey: string) {
+async function signIn(page: Page, secretKey: string, login = LOGIN) {
   const form = page.getByRole("form", { name: "Sign in" })
-  await form.getByLabel("Login name").fill(LOGIN)
+  await form.getByLabel("Login name").fill(login)
   await form.getByLabel("Account password").fill(PASSWORD)
   await form.getByLabel("Secret Key").fill(secretKey)
   await form.getByRole("button", { name: "Sign in" }).click()
@@ -143,4 +151,79 @@ test("sign in as a new device, find, create, edit, find, lock, unlock and sign o
   expect([...origins]).toEqual([new URL(baseURL!).origin])
   expect(problems).toEqual([])
   await context.close()
+})
+
+test("a share link and a request link work in a browser with no account", async ({ browser, baseURL }) => {
+  const origin = new URL(baseURL!).origin
+  const owner = await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] })
+  const tab = await owner.newPage()
+  const ownerWatch = watch(tab)
+  await tab.goto("/vault/")
+  await signIn(tab, linksSecretKey, LINKS_LOGIN)
+  await expect(tab.getByRole("heading", { name: "All items" })).toBeVisible({ timeout: 90_000 })
+  await sidebar(tab).getByRole("button", { name: "Links" }).click()
+
+  // A text link, with a password, that opens once.
+  const share = tab.getByRole("form", { name: "Share some text" })
+  await share.getByLabel("What it is").fill("Cabin Wi-Fi")
+  await share.getByLabel("The text").fill("pine-needles-42")
+  await share.getByLabel("A password for it").fill("told you on the phone")
+  await share.getByRole("button", { name: "Make the link" }).click()
+  const shareLink = (await tab.getByTestId("new-link").textContent())!.trim()
+  expect(shareLink).toMatch(new RegExp(`^${origin}/s/[0-9a-f-]+#`))
+  await tab.getByRole("button", { name: "Done" }).click()
+
+  // A request link.
+  const ask = tab.getByRole("form", { name: "Ask for a secret" })
+  await ask.getByLabel("What you're asking for").fill("The alarm code")
+  await ask.getByRole("button", { name: "Make the request link" }).click()
+  const requestLink = (await tab.getByTestId("new-link").textContent())!.trim()
+  expect(requestLink).toMatch(new RegExp(`^${origin}/r/[0-9a-f-]+#`))
+  await tab.getByRole("button", { name: "Done" }).click()
+
+  // Someone with no account opens the share link: the server's /s/ page
+  // hands over to the web vault, and the key never leaves the fragment.
+  const stranger = await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] })
+  const page = await stranger.newPage()
+  const { problems, origins } = watch(page)
+  const sent: string[] = []
+  page.on("request", (r) => sent.push(r.url()))
+  await page.goto(shareLink)
+  await expect(page).toHaveURL(/\/vault\/s\/[0-9a-f-]+$/)
+  await expect(page.getByRole("heading", { name: "Someone shared something with you" })).toBeVisible({ timeout: 60_000 })
+  const form = page.getByRole("form", { name: "Open the link" })
+  await form.getByLabel("The link's password").fill("not it")
+  await form.getByRole("button", { name: "Open" }).click()
+  await expect(page.getByRole("alert")).toContainText("password")
+  await form.getByLabel("The link's password").fill("told you on the phone")
+  await form.getByRole("button", { name: "Open" }).click()
+  await expect(page.getByRole("heading", { name: "Cabin Wi-Fi" })).toBeVisible({ timeout: 60_000 })
+  await page.getByRole("button", { name: "Show Text" }).click()
+  await expect(page.getByTestId("value-0")).toHaveText("pine-needles-42")
+  const key = shareLink.split("#")[1]!
+  expect(sent.filter((u) => u.includes(key))).toEqual([])
+
+  // And answers the request.
+  await page.goto(requestLink)
+  await expect(page.getByText("The alarm code")).toBeVisible({ timeout: 60_000 })
+  const answer = page.getByRole("form", { name: "Answer the request" })
+  await answer.getByLabel("What it is").fill("Alarm")
+  await answer.getByLabel("The secret").fill("8642")
+  await answer.getByRole("button", { name: "Send" }).click()
+  await expect(page.getByRole("heading", { name: "Sent" })).toBeVisible({ timeout: 60_000 })
+
+  // The asker reads it in the vault.
+  await sidebar(tab).getByRole("button", { name: "Devices" }).click()
+  await sidebar(tab).getByRole("button", { name: "Links" }).click()
+  await tab.getByRole("button", { name: "Open the answer" }).click()
+  const opened = tab.getByRole("group", { name: "The answer" })
+  await expect(opened).toContainText("Alarm")
+  await opened.getByRole("button", { name: /^Show / }).click()
+  await expect(opened).toContainText("8642")
+
+  expect([...origins]).toEqual([origin])
+  expect(problems).toEqual([])
+  expect(ownerWatch.problems).toEqual([])
+  await stranger.close()
+  await owner.close()
 })
