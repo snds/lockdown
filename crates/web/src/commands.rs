@@ -497,6 +497,8 @@ fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult<Reply> {
 
 /// The table's tail: what docs/plan/22-security-depth.md adds.
 mod depth;
+/// After it: what docs/plan/26-desktop-finish.md adds.
+mod finish;
 
 fn unknown(other: &str) -> AppResult<Reply> {
     Err(refused(format!("the web vault has no command '{other}'")))

@@ -800,7 +800,12 @@ fn the_upgrade_also_follows_a_password_sign_in_lockdown_saw_but_did_not_fill() {
 
     // A sign-in saved from the prompt counts too: a new login, then its upgrade.
     let saved = app
-        .save_login("https://shop.example/login", "buyer", b"new-pw".to_vec(), None)
+        .save_login(
+            "https://shop.example/login",
+            "buyer",
+            b"new-pw".to_vec(),
+            None,
+        )
         .unwrap();
     let mut shop = create_req(None, "buyer", b"buyer");
     shop.conditional = true;

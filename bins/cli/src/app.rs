@@ -696,6 +696,74 @@ impl App {
         Ok(lines)
     }
 
+    /// The live items matching `query`, best first, through the same
+    /// quick-access index the desktop, the web vault and the extension ask
+    /// (`lockdown_vault::search`): title, website host, username and kind
+    /// only, a crown jewel by title and kind; never a secret field.
+    pub fn search_lines(&self, query: &str, limit: usize) -> Result<Vec<String>, String> {
+        use lockdown_vault::search::{Doc, Field, Index};
+        let vault = self.vault();
+        let mut rows = Vec::new();
+        for item in vault.items() {
+            if item.kind.hidden() || item.state != ItemState::Live {
+                continue;
+            }
+            let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
+            let title = text_of(&fields, "title").unwrap_or_default();
+            let jewel = item.class == lockdown_vault::ItemClass::CrownJewel;
+            let site = fields
+                .iter()
+                .find(|f| f.kind == FieldKind::Url)
+                .and_then(|f| match &f.value {
+                    FieldValue::Url { value, .. } => Some(value.clone()),
+                    _ => None,
+                })
+                .filter(|_| !jewel)
+                .unwrap_or_default();
+            let user = text_of(&fields, "user")
+                .filter(|_| !jewel)
+                .unwrap_or_default();
+            rows.push((item.item_id, item.kind, title, site, user));
+        }
+        rows.sort_by(|a, b| {
+            a.2.to_lowercase()
+                .cmp(&b.2.to_lowercase())
+                .then(a.0.cmp(&b.0))
+        });
+        let index = Index::build(rows.into_iter().map(|(id, kind, title, site, user)| {
+            let host = lockdown_matcher::Origin::parse(&site)
+                .map(|o| o.host)
+                .unwrap_or_default();
+            let template = lockdown_vault::template_for(kind);
+            let line = format!(
+                "{id}  {:<8}  {title}  {}",
+                kind.as_str(),
+                if user.is_empty() {
+                    host.clone()
+                } else {
+                    format!("{user} · {host}")
+                }
+            );
+            Doc::new(line, 0)
+                .with(Field::Title, &title)
+                .with(Field::Host, &host)
+                .with(Field::Username, &user)
+                .with(Field::Kind, kind.as_str())
+                .with(Field::Kind, template.name)
+        }));
+        Ok(index
+            .search(query, limit)
+            .into_iter()
+            .map(|h| {
+                if h.exact {
+                    h.key.clone()
+                } else {
+                    format!("{}  (close match)", h.key)
+                }
+            })
+            .collect())
+    }
+
     /// The fields of one item, hidden values masked unless `reveal`.
     pub fn show_lines(&self, id: &str, reveal: bool) -> Result<Vec<String>, String> {
         let item_id = Id::parse(id).map_err(|_| format!("'{id}' isn't an item id"))?;

@@ -11,9 +11,12 @@ pub mod browser;
 pub mod clipboard;
 pub mod codes;
 pub mod depth;
+pub mod hygiene;
 pub mod items;
 pub mod live;
 pub mod organization;
+pub mod quick;
+pub mod scan;
 pub mod security;
 pub mod security_depth;
 pub mod sharing;
@@ -78,10 +81,13 @@ mod shell {
     }
 
     pub fn run() {
+        // No core file of a process that holds keys (docs/plan/26-desktop-finish.md §7).
+        App::harden_process();
         tauri::Builder::default()
             .plugin(tauri_plugin_opener::init())
             .plugin(tauri_plugin_clipboard_manager::init())
             .plugin(tauri_plugin_dialog::init())
+            .plugin(super::quick::commands::plugin())
             .setup(|app| {
                 if cfg!(debug_assertions) {
                     // Nothing logged here ever names a value; the app's
@@ -108,7 +114,11 @@ mod shell {
                 let live = super::live::commands::start(app.handle(), &core);
                 app.manage(live);
                 // The browser extension's endpoint (docs/plan/16-browser-extension.md).
-                super::browser_commands::start(app.handle(), core, data);
+                super::browser_commands::start(app.handle(), core.clone(), data);
+                // Quick access from anywhere, and reveals kept out of captures
+                // (docs/plan/26-desktop-finish.md §2, §6).
+                app.manage(super::hygiene::CaptureCount::default());
+                super::quick::commands::start(app.handle(), &core);
                 Ok(())
             })
             // Losing the window to the dock counts as hidden (the core's

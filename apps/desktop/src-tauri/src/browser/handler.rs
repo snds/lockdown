@@ -180,6 +180,7 @@ pub fn handle(shared: &Shared, conn: &mut Conn, frame: &[u8]) -> Zeroizing<Vec<u
         "basic_auth" => return basic_auth(shared, &head.id, frame),
         "search" => args::<Search>(frame).and_then(|a| search(&shared.app, &a.query, a.limit)),
         "copy" => args::<ItemRef>(frame).and_then(|a| copy(shared, &a.item_id)),
+        "code_show" => args::<ItemRef>(frame).and_then(|a| code_show(shared, &a.item_id)),
         "offer_save" => offer_save(shared, conn, frame),
         "save" => args::<OfferRef>(frame).and_then(|a| save(shared, conn, &a.offer_id)),
         "dismiss" => args::<OfferRef>(frame).map(|a| {
@@ -434,6 +435,37 @@ fn copy(shared: &Shared, item_id: &str) -> Result<Value, Refusal> {
         .copy(value)
         .map_err(|m| Refusal::new("refused", m))?;
     Ok(json!({ "label": target.label, "clears_in_secs": clears_in_secs }))
+}
+
+/// Shows an item's one-time code in the popup (quick access's show-code
+/// action, docs/plan/26-desktop-finish.md §1): the code valid now and how
+/// long it lasts, through the same `Use` gate a copy or a fill of it takes
+/// (a crown jewel's is answered in the app), counted as a use. Never the set-up.
+fn code_show(shared: &Shared, item_id: &str) -> Result<Value, Refusal> {
+    let rows = shared.app.list()?;
+    let row = rows
+        .into_iter()
+        .find(|r| r.id == item_id && r.state == "live")
+        .ok_or_else(|| Refusal::new("not_found", "that item isn't in the vault"))?;
+    let target = row
+        .copy
+        .filter(|c| c.how == "code")
+        .ok_or_else(|| Refusal::new("refused", "this item has no one-time code"))?;
+    let code = shared
+        .app
+        .quick_code(item_id, &target.field_id, GateInput::default())?;
+    let code = Zeroizing::new(
+        std::str::from_utf8(code.expose())
+            .map_err(|_| Refusal::new("refused", "that code isn't text"))?
+            .to_string(),
+    );
+    let seconds_left = shared
+        .app
+        .codes()?
+        .into_iter()
+        .find(|c| c.item_id == item_id && c.field_id == target.field_id)
+        .and_then(|c| c.seconds_left);
+    Ok(json!({ "code": code.as_str(), "seconds_left": seconds_left, "title": row.title }))
 }
 
 fn offer_save(shared: &Shared, conn: &Conn, frame: &[u8]) -> Result<Value, Refusal> {

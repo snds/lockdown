@@ -200,6 +200,16 @@ pub fn decode_qr(width: u32, height: u32, luma: &[u8]) -> Option<String> {
         .find_map(|g| g.decode().ok().map(|(_, text)| text))
 }
 
+/// The prefix of a contact's QR code (D190).
+pub const CONTACT_QR_PREFIX: &str = "lockdown:contact:v1:";
+
+/// A contact's QR code read from a frame (the contacts screen's scan):
+/// its text when the image holds one, else `None`. A contact's code is a
+/// fingerprint, not a secret; `verify_contact` checks it against the pin.
+pub fn contact_qr(width: u32, height: u32, luma: &[u8]) -> Option<String> {
+    decode_qr(width, height, luma).filter(|t| t.starts_with(CONTACT_QR_PREFIX) && t.len() < 512)
+}
+
 impl App {
     /// A camera frame or an image file, as grey pixels: decoded here, then
     /// read as [`App::scan_text`] reads text.

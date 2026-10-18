@@ -94,6 +94,10 @@ pub struct Settings {
     /// breaches (it then holds the list; off by default; changed only
     /// through `alias_monitoring_set`, docs/plan/23-bridges.md §9).
     pub alias_monitoring: bool,
+    /// Whether the system-wide shortcut (Ctrl+Shift+Space, ⌘⇧Space on
+    /// macOS) opens quick access from anywhere while Lockdown runs
+    /// (docs/plan/26-desktop-finish.md §2).
+    pub quick_access_hotkey: bool,
 }
 
 /// Where and how often automatic backups run.
@@ -140,6 +144,7 @@ impl Default for Settings {
             browser_passkeys: true,
             code_clock_correction: true,
             alias_monitoring: false,
+            quick_access_hotkey: true,
         }
     }
 }

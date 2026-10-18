@@ -194,6 +194,7 @@ fn nothing_is_answered_before_pairing_and_a_wrong_proof_stays_unpaired() {
         "fill",
         "search",
         "copy",
+        "code_show",
         "wallet",
         "offer_save",
         "basic_auth",
@@ -257,6 +258,25 @@ fn a_paired_browser_matches_fills_copies_and_saves_through_the_core() {
         host.ok("search", json!({ "query": "nothing-like-it" }))["items"],
         json!([])
     );
+    // The core's ranked index: a typo is forgiven and says so.
+    let typo = host.ok("search", json!({ "query": "exmaple" }));
+    assert_eq!(typo["items"][0]["item_id"], id);
+    assert_eq!(typo["items"][0]["exact"], false);
+    assert_eq!(found["items"][0]["exact"], true);
+    // A login holds no code to show; a code item does, never its set-up.
+    assert_eq!(host.err("code_show", json!({ "item_id": id })), "refused");
+    let code_item = rig
+        .app
+        .add_code(
+            "otpauth://totp/Ex:me?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Ex",
+            Some("Ex code"),
+            None,
+        )
+        .unwrap();
+    let shown = host.ok("code_show", json!({ "item_id": code_item }));
+    assert_eq!(shown["code"].as_str().unwrap().len(), 6);
+    assert!(shown["seconds_left"].as_u64().unwrap() <= 30);
+    assert!(!shown.to_string().contains("GEZDGNBV"));
     let copied = host.ok("copy", json!({ "item_id": id }));
     assert_eq!(copied["clears_in_secs"], 30);
     assert_eq!(*rig.clipboard.copies.lock().unwrap(), vec![8]);

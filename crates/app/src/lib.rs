@@ -24,6 +24,7 @@ pub mod bridges;
 pub mod browser;
 pub mod depth;
 pub mod devices;
+pub mod hygiene;
 pub mod key_check;
 pub mod live;
 pub mod lock;
@@ -50,6 +51,7 @@ use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::{Instant, SystemTime};
 
 pub use approval::{Approval, ApprovalKind, Approver, GateInput, PasswordApprover, Route};
+pub use hygiene::MemoryReport;
 pub use lock::{LockPolicy, LockReason};
 pub use lockdown_crypto::generator::Recipe;
 pub use lockdown_vault::{Change, FieldChange, FieldInput, FieldKind};
