@@ -22,6 +22,7 @@
 pub mod approval;
 pub mod browser;
 pub mod lock;
+pub mod recency;
 mod revealed;
 pub mod secrets;
 pub mod security;
@@ -261,9 +262,39 @@ impl Core {
             };
             self.approve(kind, reason, gate)?;
         }
-        self.session()?
+        let revealed = self
+            .session()?
             .reveal(id, field_id)
-            .map_err(AppError::refused)
+            .map_err(AppError::refused)?;
+        self.note_use(id);
+        Ok(revealed)
+    }
+
+    /// Notes a deliberate use for the ranking; a failure to write the
+    /// device's record never fails the use itself.
+    fn note_use(&mut self, id: &str) {
+        if let (Ok(session), Ok(item)) = (self.session(), lockdown_vault::Id::parse(id)) {
+            let _ = session.note_use(item);
+        }
+    }
+
+    /// The gate for `kind` when the item is a crown jewel; nothing otherwise.
+    fn gate_if_crown(
+        &mut self,
+        id: &str,
+        kind: ApprovalKind,
+        reason: &str,
+        gate: &GateInput,
+    ) -> AppResult<()> {
+        self.clock.touch(Instant::now());
+        if self
+            .session()?
+            .is_crown_jewel(id)
+            .map_err(AppError::refused)?
+        {
+            self.approve(kind, reason, gate)?;
+        }
+        Ok(())
     }
 
     /// One code's value now (or next), through the `Use` gate when the item
@@ -285,9 +316,12 @@ impl Core {
             self.approve(ApprovalKind::Use, "copy this protected code", gate)?;
         }
         let now = session::now_secs().max(0) as u64;
-        self.session()?
+        let code = self
+            .session()?
             .code_now(id, field_id, now, next)
-            .map_err(AppError::refused)
+            .map_err(AppError::refused)?;
+        self.note_use(id);
+        Ok(code)
     }
 
     /// Moves an HOTP code on by one (a new item version), after the `Use`
@@ -943,6 +977,300 @@ impl App {
             core.session()?
                 .device_revoke(&selector)
                 .map_err(AppError::refused)
+        })
+    }
+
+    // --- organization: vaults, folders, tags, favourites, archive, moves ------
+
+    /// Every vault of the open persona, the first one first, with its
+    /// folders (`session::organize`).
+    pub fn vaults(&self) -> AppResult<Vec<VaultView>> {
+        self.with_session(|s| s.vault_views())
+    }
+
+    /// Makes another vault (its own Vault Key) and names it.
+    pub fn create_vault(&self, name: &str) -> AppResult<String> {
+        let name = name.to_string();
+        self.with_session(move |s| s.create_vault(&name).map(|id| id.to_string()))
+    }
+
+    /// Names a vault.
+    pub fn rename_vault(&self, vault_id: &str, name: &str) -> AppResult<()> {
+        let (vault_id, name) = (vault_id.to_string(), name.to_string());
+        self.with_session(move |s| s.rename_vault(&vault_id, &name))
+    }
+
+    /// How many days a vault keeps trashed items before they purge.
+    pub fn set_trash_days(&self, vault_id: &str, days: u32) -> AppResult<()> {
+        let vault_id = vault_id.to_string();
+        self.with_session(move |s| s.set_trash_days(&vault_id, days))
+    }
+
+    /// Adds a folder to a vault; returns its id.
+    pub fn add_folder(
+        &self,
+        vault_id: &str,
+        name: &str,
+        parent: Option<&str>,
+    ) -> AppResult<String> {
+        let (vault_id, name, parent) = (
+            vault_id.to_string(),
+            name.to_string(),
+            parent.map(str::to_string),
+        );
+        self.with_session(move |s| {
+            s.add_folder(&vault_id, &name, parent.as_deref())
+                .map(|id| id.to_string())
+        })
+    }
+
+    /// Renames a folder, or moves it inside another.
+    pub fn change_folder(
+        &self,
+        vault_id: &str,
+        folder: &str,
+        name: &str,
+        parent: Option<&str>,
+    ) -> AppResult<()> {
+        let (vault_id, folder, name, parent) = (
+            vault_id.to_string(),
+            folder.to_string(),
+            name.to_string(),
+            parent.map(str::to_string),
+        );
+        self.with_session(move |s| s.change_folder(&vault_id, &folder, &name, parent.as_deref()))
+    }
+
+    /// Removes a folder; what was in it moves up. Returns how many items moved.
+    pub fn remove_folder(&self, vault_id: &str, folder: &str) -> AppResult<usize> {
+        let (vault_id, folder) = (vault_id.to_string(), folder.to_string());
+        self.with_session(move |s| s.remove_folder(&vault_id, &folder))
+    }
+
+    /// Files, tags or favourites an item; `None` leaves that part alone and
+    /// `folder: Some(None)` takes it out of its folder.
+    pub fn organize(
+        &self,
+        id: &str,
+        folder: Option<Option<String>>,
+        tags: Option<Vec<String>>,
+        favourite: Option<bool>,
+    ) -> AppResult<u64> {
+        let id = id.to_string();
+        self.with_session(move |s| {
+            s.organize(&id, folder.as_ref().map(|f| f.as_deref()), tags, favourite)
+        })
+    }
+
+    /// Renames a tag everywhere (`to: None` takes it off). Returns how many items changed.
+    pub fn rename_tag(&self, from: &str, to: Option<&str>) -> AppResult<usize> {
+        let (from, to) = (from.to_string(), to.map(str::to_string));
+        self.with_session(move |s| s.rename_tag(&from, to.as_deref()))
+    }
+
+    /// Archives an item.
+    pub fn archive(&self, id: &str) -> AppResult<()> {
+        let id = id.to_string();
+        self.with_session(move |s| s.archive(&id))
+    }
+
+    /// Brings an archived item back.
+    pub fn unarchive(&self, id: &str) -> AppResult<()> {
+        let id = id.to_string();
+        self.with_session(move |s| s.unarchive(&id))
+    }
+
+    /// Moves an item to another vault of the persona (sealed again there;
+    /// the old one purged). A crown jewel's move goes through the `Use`
+    /// gate. Returns the item's new id.
+    pub fn move_item(&self, id: &str, vault_id: &str, gate: GateInput) -> AppResult<String> {
+        let (id, vault_id) = (id.to_string(), vault_id.to_string());
+        self.call(move |core| {
+            core.gate_if_crown(&id, ApprovalKind::Use, "move this protected item", &gate)?;
+            core.session()?
+                .move_item(&id, &vault_id)
+                .map(|n| n.to_string())
+                .map_err(AppError::refused)
+        })
+    }
+
+    /// Puts an item into the crown-jewel class, or (through the `Reveal`
+    /// gate: the account password where one exists) takes it out; a kind
+    /// that is always a crown jewel can't leave. Returns the new id.
+    pub fn set_crown_jewel(&self, id: &str, on: bool, gate: GateInput) -> AppResult<String> {
+        let id = id.to_string();
+        self.call(move |core| {
+            core.clock.touch(Instant::now());
+            if !on {
+                core.approve(
+                    ApprovalKind::Reveal,
+                    "take this item out of the crown-jewel class",
+                    &gate,
+                )?;
+            }
+            core.session()?
+                .set_crown_jewel(&id, on)
+                .map(|n| n.to_string())
+                .map_err(AppError::refused)
+        })
+    }
+
+    /// Deletes a trashed item for good now. A crown jewel's goes through
+    /// the `Use` gate.
+    pub fn purge(&self, id: &str, gate: GateInput) -> AppResult<()> {
+        let id = id.to_string();
+        self.call(move |core| {
+            core.gate_if_crown(&id, ApprovalKind::Use, "delete this protected item", &gate)?;
+            core.session()?.purge(&id).map_err(AppError::refused)
+        })
+    }
+
+    /// Purges what the trash's grace period has let go of, now.
+    pub fn sweep_trash(&self) -> AppResult<usize> {
+        self.with_session(|s| s.sweep_trash())
+    }
+
+    /// Settles a conflict by keeping `keep` and trashing `other` (D58, D108).
+    pub fn resolve_conflict(&self, keep: &str, other: &str) -> AppResult<()> {
+        let (keep, other) = (keep.to_string(), other.to_string());
+        self.with_session(move |s| s.resolve_conflict(&keep, &other))
+    }
+
+    /// Items that look like the same thing twice.
+    pub fn duplicates(&self) -> AppResult<Vec<DuplicateGroup>> {
+        self.with_session(|s| s.duplicates())
+    }
+
+    /// Folds duplicate Logins into the one kept, then trashes them. Any
+    /// crown jewel among them goes through the `Use` gate first.
+    pub fn merge_duplicates(
+        &self,
+        keep: &str,
+        others: Vec<String>,
+        gate: GateInput,
+    ) -> AppResult<u64> {
+        let keep = keep.to_string();
+        self.call(move |core| {
+            core.clock.touch(Instant::now());
+            let session = core.session()?;
+            let mut crown = session.is_crown_jewel(&keep).map_err(AppError::refused)?;
+            for o in &others {
+                crown |= session.is_crown_jewel(o).map_err(AppError::refused)?;
+            }
+            if crown {
+                core.approve(ApprovalKind::Use, "merge protected items", &gate)?;
+            }
+            core.session()?
+                .merge_duplicates(&keep, &others)
+                .map_err(AppError::refused)
+        })
+    }
+
+    /// Every version of an item, newest first.
+    pub fn history(&self, id: &str) -> AppResult<Vec<VersionView>> {
+        let id = id.to_string();
+        self.with_session(move |s| s.history(&id))
+    }
+
+    /// An earlier version, masked.
+    pub fn show_version(&self, id: &str, n: u64) -> AppResult<ItemDetail> {
+        let id = id.to_string();
+        self.with_session(move |s| s.show_version(&id, n))
+    }
+
+    /// Copies an earlier version into a new one. A crown jewel's goes
+    /// through the `Use` gate, as an edit does.
+    pub fn restore_version(&self, id: &str, n: u64, gate: GateInput) -> AppResult<u64> {
+        let id = id.to_string();
+        self.call(move |core| {
+            core.gate_if_crown(&id, ApprovalKind::Use, "change this protected item", &gate)?;
+            core.session()?
+                .restore_version(&id, n)
+                .map_err(AppError::refused)
+        })
+    }
+
+    /// Attaches a file. To a crown jewel, through the `Use` gate.
+    pub fn attach(
+        &self,
+        id: &str,
+        name: &str,
+        mime: &str,
+        bytes: Vec<u8>,
+        gate: GateInput,
+    ) -> AppResult<String> {
+        let (id, name, mime) = (id.to_string(), name.to_string(), mime.to_string());
+        let bytes = zeroize::Zeroizing::new(bytes);
+        self.call(move |core| {
+            core.gate_if_crown(&id, ApprovalKind::Use, "change this protected item", &gate)?;
+            core.session()?
+                .attach(&id, &name, &mime, &bytes)
+                .map(|a| a.to_string())
+                .map_err(AppError::refused)
+        })
+    }
+
+    /// An attached file's bytes, for the person to save. A crown jewel's
+    /// go through the `Reveal` gate, like showing one of its secrets.
+    pub fn attachment(&self, id: &str, att_id: &str, gate: GateInput) -> AppResult<Revealed> {
+        let (id, att_id) = (id.to_string(), att_id.to_string());
+        self.call(move |core| {
+            core.gate_if_crown(&id, ApprovalKind::Reveal, "open this protected file", &gate)?;
+            let bytes = core
+                .session()?
+                .attachment_bytes(&id, &att_id)
+                .map_err(AppError::refused)?;
+            core.note_use(&id);
+            Ok(bytes)
+        })
+    }
+
+    /// Takes a file off an item. From a crown jewel, through the `Use` gate.
+    pub fn detach(&self, id: &str, att_id: &str, gate: GateInput) -> AppResult<u64> {
+        let (id, att_id) = (id.to_string(), att_id.to_string());
+        self.call(move |core| {
+            core.gate_if_crown(&id, ApprovalKind::Use, "change this protected item", &gate)?;
+            core.session()?
+                .detach(&id, &att_id)
+                .map_err(AppError::refused)
+        })
+    }
+
+    /// Notes a deliberate use this device made of an item outside the core
+    /// (its site opened in the browser), for the ranking.
+    pub fn note_use(&self, id: &str) -> AppResult<()> {
+        let id = id.to_string();
+        self.with_session(move |s| {
+            let item =
+                lockdown_vault::Id::parse(&id).map_err(|_| format!("'{id}' isn't an item id"))?;
+            s.note_use(item)
+        })
+    }
+
+    /// The items due to lapse within their kind's lead, soonest first.
+    pub fn expiry_reminders(&self) -> AppResult<Vec<ExpiryReminder>> {
+        self.with_session(|s| s.expiry_reminders())
+    }
+
+    /// [`Self::add_item`] into the vault `vault_id`.
+    pub fn add_item_in(
+        &self,
+        vault_id: &str,
+        kind: &str,
+        title: Option<&str>,
+        crown_jewel: bool,
+        changes: Vec<lockdown_vault::FieldChange>,
+    ) -> AppResult<String> {
+        let (vault_id, kind, title) = (
+            vault_id.to_string(),
+            kind.to_string(),
+            title.map(str::to_string),
+        );
+        self.with_session(move |s| {
+            let vault = lockdown_vault::Id::parse(&vault_id)
+                .map_err(|_| format!("'{vault_id}' isn't a vault id"))?;
+            s.add_item_in(vault, &kind, title.as_deref(), crown_jewel, changes)
+                .map(|id| id.to_string())
         })
     }
 }

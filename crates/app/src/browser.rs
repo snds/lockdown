@@ -29,6 +29,7 @@ use lockdown_matcher::{
 use lockdown_vault::{FieldKind, FieldValue, Id, ItemClass, ItemKind, ItemState, PlainField};
 use serde::{Deserialize, Serialize};
 
+use crate::session::Session;
 use crate::{App, AppError, AppResult, ApprovalKind, Core, GateInput, Revealed};
 
 /// The most logins a page's match list carries.
@@ -249,9 +250,9 @@ fn best_decision(
 
 /// Every live login's saved address, crown jewels left out (their sites
 /// are never named, D113), for the security center's lookalike rule.
-fn saved_sites(vault: &lockdown_vault::Vault) -> AppResult<Vec<String>> {
+fn saved_sites(session: &Session) -> AppResult<Vec<String>> {
     let mut out = Vec::new();
-    for item in vault.items() {
+    for (vault, item) in every_item(session) {
         if item.kind != ItemKind::Login
             || item.state != ItemState::Live
             || item.class == ItemClass::CrownJewel
@@ -264,6 +265,16 @@ fn saved_sites(vault: &lockdown_vault::Vault) -> AppResult<Vec<String>> {
         out.extend(saved_urls(&fields).into_iter().map(|(u, _)| u));
     }
     Ok(out)
+}
+
+/// Every item of every vault the persona has open (several may be, D151's
+/// slice), with the vault that holds it.
+fn every_item(
+    session: &Session,
+) -> impl Iterator<Item = (&lockdown_vault::Vault, &lockdown_vault::Item)> {
+    session
+        .vaults()
+        .flat_map(|v| v.items().map(move |i| (v, i)))
 }
 
 fn rule_name(rule: MatchRule) -> &'static str {
@@ -324,10 +335,9 @@ impl App {
             let current = parse_page(&page)?;
             let data = matcher_data()?;
             let session = core.session()?;
-            let vault = session.vault();
             let mut logins = Vec::new();
             let mut lookalike_of = Vec::new();
-            for item in vault.items() {
+            for (vault, item) in every_item(session) {
                 if item.kind != ItemKind::Login || item.state != ItemState::Live {
                     continue;
                 }
@@ -377,7 +387,7 @@ impl App {
             // Beyond your own logins: a page that imitates a well-known site,
             // by the security center's own rule (lockdown_app::security).
             if logins.is_empty() && lookalike_of.is_empty() {
-                let saved = saved_sites(vault)?;
+                let saved = saved_sites(session)?;
                 if let Some(domain) = crate::security::imitated_site(&page, &saved) {
                     lookalike_of.push(domain);
                 }
@@ -401,9 +411,8 @@ impl App {
     /// Every live card and identity, for a checkout or address form's menu.
     pub fn wallet(&self) -> AppResult<Vec<WalletEntry>> {
         self.with_session(|s| {
-            let vault = s.vault();
             let mut out = Vec::new();
-            for item in vault.items() {
+            for (vault, item) in every_item(s) {
                 let kind = match item.kind {
                     ItemKind::Card => "card",
                     ItemKind::Identity => "identity",
@@ -475,8 +484,7 @@ impl App {
             let current = parse_page(&page)?;
             let data = matcher_data()?;
             let session = core.session()?;
-            let vault = session.vault();
-            for item in vault.items() {
+            for (vault, item) in every_item(session) {
                 if item.kind != ItemKind::Login || item.state != ItemState::Live {
                     continue;
                 }
@@ -554,7 +562,7 @@ fn decide_fill(
     let data = matcher_data()?;
     let id = parse_item_id(item_id)?;
     let session = core.session()?;
-    let vault = session.vault();
+    let vault = session.holding(id).map_err(AppError::refused)?;
     let item = vault
         .item(id)
         .map_err(|e| AppError::refused(e.to_string()))?;
@@ -595,7 +603,8 @@ fn decide_fill(
             decision
         }
         FillWhat::Card | FillWhat::Identity => {
-            if let Some(domain) = crate::security::imitated_site(&facts.frame, &saved_sites(vault)?)
+            if let Some(domain) =
+                crate::security::imitated_site(&facts.frame, &saved_sites(session)?)
             {
                 return Ok(Err(FillOutcome::Refuse(format!(
                     "{} looks like {domain} but isn't; Lockdown won't fill here",
@@ -654,7 +663,8 @@ fn read_values(core: &mut Core, item_id: &str, plan: FillPlan) -> AppResult<Vec<
     let id = parse_item_id(item_id)?;
     let fields = core
         .session()?
-        .vault()
+        .holding(id)
+        .map_err(AppError::refused)?
         .open_item(id)
         .map_err(|e| AppError::refused(e.to_string()))?;
     let gate = GateInput::default();
@@ -705,6 +715,9 @@ fn read_values(core: &mut Core, item_id: &str, plan: FillPlan) -> AppResult<Vec<
                 plain(&mut out, role);
             }
             plain(&mut out, "address.country");
+            // A fill is a use (D151); the secret-bearing kinds above note it
+            // through the reveal and code paths, an identity has none.
+            core.note_use(item_id);
         }
     }
     Ok(out)
@@ -1005,6 +1018,50 @@ mod tests {
             app.save_proposal(page, "you", b"second").unwrap(),
             SaveProposal::New { .. }
         ));
+    }
+
+    #[test]
+    fn every_website_of_every_open_vault_is_considered_and_a_fill_counts_as_a_use() {
+        let (_dir, app) = fresh();
+        let work = app.create_vault("Work").unwrap();
+        let id = app
+            .add_item_in(
+                &work,
+                "login",
+                Some("Intranet"),
+                false,
+                vec![
+                    FieldChange::text("url.0", "https://intranet.example.com"),
+                    FieldChange::text("url.1", "https://sso.example.org"),
+                    FieldChange::text("user", "me"),
+                    FieldChange::secret("pw", b"work-pass"),
+                ],
+            )
+            .unwrap();
+        let m = app.page_matches("https://sso.example.org/login").unwrap();
+        assert_eq!(m.logins.len(), 1);
+        assert_eq!(m.logins[0].item_id, id);
+        assert_eq!(
+            m.logins[0].saved.as_deref(),
+            Some("https://sso.example.org")
+        );
+        let page = "https://sso.example.org/login";
+        assert_eq!(
+            values(
+                app.fill(&id, FillWhat::Login, None, facts(page, page))
+                    .unwrap()
+            )[1]
+            .1,
+            "work-pass"
+        );
+        let row = app
+            .list()
+            .unwrap()
+            .into_iter()
+            .find(|r| r.id == id)
+            .unwrap();
+        assert_eq!(row.uses, 1);
+        assert!(row.last_used.is_some());
     }
 
     #[test]

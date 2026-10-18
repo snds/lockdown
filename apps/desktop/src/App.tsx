@@ -11,7 +11,10 @@ import { SettingsProvider } from "@/app/settings"
 import { TemplatesProvider } from "@/app/templates"
 import { AppShell, type Nav } from "@/app/shell"
 import { describeError, useClient } from "@/core/client"
-import type { ItemSummary, LockState, PersonaInfo, Status } from "@/core/types"
+import type { ItemSummary, LockState, PersonaInfo, Status, VaultView as VaultEntry } from "@/core/types"
+import { useExpiryReminder } from "@/features/organization/expiry"
+import { OrganizationNav } from "@/features/organization/organization-nav"
+import { VaultsProvider } from "@/features/organization/vaults-context"
 import { CodesView } from "@/features/codes/codes-view"
 import { DevicesView } from "@/features/devices/devices-view"
 import { QuickPalette } from "@/features/palette/quick-palette"
@@ -42,6 +45,7 @@ function Root() {
   const [personas, setPersonas] = useState<PersonaInfo[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [palette, setPalette] = useState(false)
+  const [vaults, setVaults] = useState<VaultEntry[]>([])
 
   const onLockState = useCallback((state: LockState) => {
     setLock(state)
@@ -62,6 +66,7 @@ function Root() {
       })
       .catch((e) => setRowsError(describeError(e)))
     client.personas().then(setPersonas).catch(() => setPersonas([]))
+    client.vaults().then(setVaults).catch(() => setVaults([]))
   }, [client])
 
   useEffect(() => {
@@ -77,6 +82,12 @@ function Root() {
     toast(text)
   }, [])
   const counts = useMemo(() => countViews(rows ?? []), [rows])
+  const vaultsValue = useMemo(() => ({ vaults, reload }), [vaults, reload])
+  const showExpiring = useCallback(() => setNav({ area: "vault", view: "expiring" }), [])
+  const remind = useCallback((text: string, show: () => void) => {
+    toast(text, { action: { label: "Show", onClick: show } })
+  }, [])
+  useExpiryReminder(client, status !== null, remind, showExpiring)
 
   if (!status) {
     // Locked: the shell's shape stays, washed, with nothing readable in it;
@@ -92,7 +103,15 @@ function Root() {
   }
   return (
     <LockedProvider value={lock?.locked ?? false}>
-      <AppShell nav={nav} personas={personas} counts={counts} onNavigate={setNav} onLock={lockNow}>
+      <VaultsProvider value={vaultsValue}>
+      <AppShell
+        nav={nav}
+        personas={personas}
+        counts={counts}
+        onNavigate={setNav}
+        onLock={lockNow}
+        organization={<OrganizationNav rows={rows ?? []} nav={nav} onNavigate={setNav} />}
+      >
         {nav.area === "vault" && (
           <VaultView
             view={nav.view}
@@ -103,6 +122,7 @@ function Root() {
             selected={selected}
             onSelect={setSelected}
             onPalette={() => setPalette(true)}
+            scope={nav.scope}
           />
         )}
         {nav.area === "codes" && <CodesView rows={rows ?? []} onChanged={reload} />}
@@ -133,6 +153,7 @@ function Root() {
         onNotice={notice}
       />
       <PairingDialog onNotice={notice} />
+      </VaultsProvider>
     </LockedProvider>
   )
 }

@@ -30,7 +30,11 @@ import { useTemplates } from "@/app/templates"
 import { describeError, useClient } from "@/core/client"
 import type { ItemDetail, TemplateView } from "@/core/types"
 
-import { DERIVED_TITLE, buildChanges, customRow, initialRows, isSecretControl, wipeRows, type EditorRow } from "./editor-model"
+import { folderTree } from "@/features/organization/org-model"
+import { TagsEditor } from "@/features/organization/tags-editor"
+import { useVaults } from "@/features/organization/vaults-context"
+
+import { DERIVED_TITLE, buildChanges, customRow, initialRows, isSecretControl, repeatRow, wipeRows, type EditorRow } from "./editor-model"
 import { FieldControl } from "./field-control"
 
 export interface EditorTarget {
@@ -38,6 +42,10 @@ export interface EditorTarget {
   kind: string
   /** The item to change, or `null` to make one. */
   item: ItemDetail | null
+  /** A new item's vault, folder and tags (the list's scope when New item was pressed). */
+  vaultId?: string
+  folder?: string
+  tags?: string[]
 }
 
 interface ItemEditorProps {
@@ -63,7 +71,7 @@ export function ItemEditor({ target, onClose, onSaved }: ItemEditorProps) {
     <Dialog open={target !== null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent size="lg">
         {target && template ? (
-          <EditorForm key={`${target.kind}:${target.item?.id ?? "new"}:${target.item?.version ?? 0}`} template={template} item={target.item} onClose={onClose} onSaved={onSaved} />
+          <EditorForm key={`${target.kind}:${target.item?.id ?? "new"}:${target.item?.version ?? 0}`} template={template} item={target.item} target={target} onClose={onClose} onSaved={onSaved} />
         ) : (
           <>
             <DialogHeader>
@@ -83,8 +91,28 @@ function plainTitle(item: ItemDetail | null): string {
   return item?.fields.find((f) => f.field_id === "title")?.value ?? ""
 }
 
-function EditorForm({ template, item, onClose, onSaved }: { template: TemplateView; item: ItemDetail | null; onClose: () => void; onSaved: ItemEditorProps["onSaved"] }) {
+function EditorForm({
+  template,
+  item,
+  target,
+  onClose,
+  onSaved,
+}: {
+  template: TemplateView
+  item: ItemDetail | null
+  target: EditorTarget
+  onClose: () => void
+  onSaved: ItemEditorProps["onSaved"]
+}) {
   const client = useClient()
+  const { vaults } = useVaults()
+  const [vaultId, setVaultId] = useState(item?.vault_id ?? target.vaultId ?? vaults[0]?.id ?? "")
+  const startOrg = item?.organization ?? { folder: target.folder ?? null, tags: target.tags ?? [], favourite: false }
+  const [folder, setFolder] = useState(startOrg.folder ?? "")
+  const [tags, setTags] = useState(startOrg.tags)
+  const [favourite, setFavourite] = useState(startOrg.favourite)
+  const vault = vaults.find((v) => v.id === vaultId)
+  const repeating = template.fields.filter((t) => t.repeats)
   const gate = useGate()
   const { templates } = useTemplates()
   const editing = item !== null
@@ -128,6 +156,13 @@ function EditorForm({ template, item, onClose, onSaved }: { template: TemplateVi
     setBusy(true)
     setError(null)
     const changes = buildChanges(rows)
+    // Where it is filed rides in the same save, as the core's organization
+    // fields, sent only when it differs from what the item had (nothing, for a new one).
+    const was = item?.organization ?? { folder: null, tags: [], favourite: false }
+    const filed = vault?.folders.some((f) => f.id === folder) ? folder : ""
+    if (filed !== (was.folder ?? "")) changes.push({ field_id: "org.folder", action: "set", text: filed })
+    if (tags.join("\n") !== was.tags.join("\n")) changes.push({ field_id: "org.tags", action: "set", text: tags.join("\n") })
+    if (favourite !== was.favourite) changes.push({ field_id: "org.favourite", action: "set", flag: favourite })
     const generated = changes.some((c) => c.action === "generate")
     try {
       let id: string
@@ -136,7 +171,8 @@ function EditorForm({ template, item, onClose, onSaved }: { template: TemplateVi
         await gate.run((g) => client.editItem({ id: item.id, title: t && t !== plainTitle(item) ? t : undefined, changes }, g))
         id = item.id
       } else {
-        id = await client.addItem({ kind: template.kind, title: title.trim() || undefined, crownJewel: crownJewel || undefined, fields: changes })
+        const input = { kind: template.kind, title: title.trim() || undefined, crownJewel: crownJewel || undefined, fields: changes }
+        id = vaultId && vaults.length > 1 ? await client.addItemIn(vaultId, input) : await client.addItem(input)
       }
       setRows(wipeRows)
       onSaved(id, generated)
@@ -176,12 +212,67 @@ function EditorForm({ template, item, onClose, onSaved }: { template: TemplateVi
                   row={r}
                   onChange={(p) => patch(r.key, p)}
                   context={context}
-                  onDiscard={r.fieldId === null ? () => setRows((rs) => rs.filter((x) => x.key !== r.key)) : undefined}
+                  onDiscard={r.fieldId === null || (!r.exists && r.template?.repeats && r.fieldId !== r.template.field_id) ? () => setRows((rs) => rs.filter((x) => x.key !== r.key)) : undefined}
                 />
               ))}
+              {repeating
+                .filter((t) => t.section === s.name)
+                .map((t) => (
+                  <Button key={t.field_id} type="button" variant="outline" size="sm" onClick={() => setRows((rs) => [...rs, repeatRow(rs, t)])}>
+                    Add another {t.label.toLowerCase()}
+                  </Button>
+                ))}
             </FieldGroup>
           </FieldSet>
         ))}
+        <FieldSet>
+          <FieldLegend variant="label">Organization</FieldLegend>
+          <FieldGroup>
+            {!editing && vaults.length > 1 && (
+              <Field>
+                <FieldLabel htmlFor="editor-vault">Vault</FieldLabel>
+                <NativeSelect
+                  id="editor-vault"
+                  value={vaultId}
+                  onChange={(e) => {
+                    setVaultId(e.target.value)
+                    setFolder("")
+                  }}
+                >
+                  {vaults.map((v) => (
+                    <NativeSelectOption key={v.id} value={v.id}>
+                      {v.name}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+            )}
+            {(vault?.folders.length ?? 0) > 0 && (
+              <Field>
+                <FieldLabel htmlFor="editor-folder">Folder</FieldLabel>
+                <NativeSelect id="editor-folder" value={folder} onChange={(e) => setFolder(e.target.value)}>
+                  <NativeSelectOption value="">No folder</NativeSelectOption>
+                  {folderTree(vault?.folders ?? []).map((f) => (
+                    <NativeSelectOption key={f.id} value={f.id}>
+                      {f.path}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+            )}
+            <Field>
+              <FieldLabel htmlFor="editor-tags">Tags</FieldLabel>
+              <TagsEditor id="editor-tags" tags={tags} onChange={setTags} />
+            </Field>
+            <Field orientation="horizontal">
+              <Switch id="editor-favourite" checked={favourite} onCheckedChange={setFavourite} />
+              <FieldContent>
+                <FieldLabel htmlFor="editor-favourite">Favourite</FieldLabel>
+                <FieldDescription>Listed first in quick access.</FieldDescription>
+              </FieldContent>
+            </Field>
+          </FieldGroup>
+        </FieldSet>
         <FieldSet>
           <FieldLegend variant="label">Add a field of your own</FieldLegend>
           <Field orientation="horizontal">

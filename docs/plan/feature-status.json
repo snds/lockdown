@@ -1,5 +1,5 @@
 {
- "as_of": "a3ca4f8",
+ "as_of": "c817185",
  "source": "docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)",
  "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser extension exists: extension/ holds only the wasm matcher boundary, its JSON schema and a Playwright clickjacking harness. The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI and the self-host server. The CLI still carries its own copy of the flows and handles logins only for item kinds. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 today; the plan leaves the licence open (05-self-host §12 asks Sean between AGPL-3.0 and a source-available licence for the server), so oss-clients and oss-server wait on that call. Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for desktop, CLI and server only; every one still needs its mobile and extension half when those surfaces exist.",
  "non_v1_built": [
@@ -13,7 +13,7 @@
   },
   {
    "id": "version-history",
-   "note": "Data layer built: every edit is a new signed version under its own key and old versions open (crates/vault/src/vault.rs:1240 seal_open_and_history); no history view, restore action or retention rule."
+   "note": "Built: every version shows when, by which device and which fields changed; an earlier version shows masked and Restore saves it as the newest (15-organization). Revealing an old version's secret is not built."
   },
   {
    "id": "seed-safe-mode",
@@ -33,7 +33,7 @@
     "desktop",
     "cli"
    ],
-   "left": "Several websites in the editor (only url.0 is offered), a sign-in-method field (password, passkey, federated, SSO), and passkeys made on the record rather than only imported.",
+   "left": "Passkeys made on the record (they can only be imported today).",
    "evidence": [
     "crates/vault/src/template.rs:263 (LOGIN: username, password, one code, one website)",
     "crates/app/src/session.rs:617 (methods: password / passkey / code on one row)",
@@ -48,12 +48,12 @@
    "name": "Secure notes",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop"
    ],
-   "left": "Render the Markdown (the body is shown as written); the encrypted note item and the notes field on every kind already work.",
+   "left": "Nothing for desktop; mobile and web views later.",
    "evidence": [
     "crates/vault/src/template.rs:445 (NOTE body)",
     "crates/vault/src/template.rs:208 (NOTES on every other kind)",
@@ -150,10 +150,11 @@
    "status": "partial",
    "surfaces": [
     "core",
+    "desktop",
     "cli",
     "server"
    ],
-   "left": "Attachments in lockdown-app and the desktop editor and detail, streaming for large files, blobs on object storage, and the 5 GB quota.",
+   "left": "Streaming for large files (whole files up to 100 MB today), object storage and the 5 GB quota on the server.",
    "evidence": [
     "crates/vault/src/attachment.rs:334 a_five_mib_file_round_trips_in_five_chunks",
     "bins/cli/tests/attachments.rs:130 an_attachment_crosses_two_devices_and_dies_with_its_item",
@@ -208,12 +209,12 @@
    "name": "Item expiry reminders",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop"
    ],
-   "left": "Actual reminders before a date lapses, renewal kinds for domains and certificates, and the client-side signed-date check.",
+   "left": "Renewal kinds for domains and certificates; the signed-date check.",
    "evidence": [
     "crates/app/src/views.rs:66 (expires_at within 30 days puts an item in Expiring)",
     "crates/app/src/session.rs:603 (expiry read from Date fields)",
@@ -228,12 +229,12 @@
    "name": "Trash with recovery",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop"
    ],
-   "left": "The 30-day grace timer that purges on every device, the per-vault setting, holding purges while a conflict is open, and trash in the CLI.",
+   "left": "Trash in the CLI.",
    "evidence": [
     "crates/vault/src/vault.rs:898 trash_item / 911 restore_item",
     "crates/vault/src/vault.rs:1470 trash_then_restore_brings_the_item_back_live_with_its_history",
@@ -248,11 +249,12 @@
    "name": "Item archive",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
-    "core"
+    "core",
+    "desktop"
    ],
-   "left": "An archive and unarchive action in the core and the desktop, and leaving archived items out of search (the state exists but nothing sets it).",
+   "left": "Nothing for desktop.",
    "evidence": [
     "crates/vault/src/item.rs:143 (ItemState::Archived)",
     "crates/vault/src/vault.rs:511 (edits accept Live or Archived items)"
@@ -266,9 +268,12 @@
    "name": "Folders",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: a folder tree in the vault model, the UI, and folder import.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Drag and drop; folders from imports.",
    "evidence": [
     "crates/cxf/src/model.rs:64 (CXF Collection parsed, not mapped)",
     "docs/plan/07-workspace.md:21 (collections/folders mapping not yet)"
@@ -282,9 +287,12 @@
    "name": "Tags",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: an encrypted tag field, nesting, cross-vault views and the UI.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Nothing for desktop; the extension and web vault views.",
    "evidence": [
     "rg for an item tag field in crates/vault/src finds none",
     "crates/vault/src/item.rs:184 (ItemHeader has no tags)"
@@ -298,11 +306,12 @@
    "name": "Multiple vaults",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
-    "core"
+    "core",
+    "desktop"
    ],
-   "left": "Creating a second vault, switching between vaults in the desktop, and per-vault sync and limits.",
+   "left": "Several vaults in the CLI; a free-tier limit once plans exist.",
    "evidence": [
     "crates/vault/src/identity.rs:617 (a persona with several vaults opens the first; open_vault picks by id)",
     "crates/vault/src/store.rs:92 list_vaults",
@@ -356,9 +365,12 @@
    "name": "Duplicate finder",
    "target": "beat",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: detection on URL, username and code secret after import, and the side-by-side merge.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Run it on its own after an import; a side-by-side compare.",
    "evidence": [
     "rg for duplicate or merge detection in crates/ and apps/desktop/src finds none"
    ],
@@ -371,9 +383,12 @@
    "name": "Favorites and recency ranking",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Favorites, last-fill and frequency tracking on the device, and ranking fill suggestions and search by them.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Fill counts from the browser extension.",
    "evidence": [
     "apps/desktop/src/features/vault/list-model.test.tsx:48 (sort by last edit only)",
     "crates/app/src/session/transfer.rs:100 (an import's favourite flag is dropped)"

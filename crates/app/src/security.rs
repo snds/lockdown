@@ -1114,8 +1114,7 @@ impl App {
             }
             let old = core
                 .session()?
-                .vault()
-                .item(
+                .item_anywhere(
                     lockdown_vault::Id::parse(&item_id)
                         .map_err(|_| AppError::refused("that isn't an item id"))?,
                 )
@@ -1137,8 +1136,7 @@ impl App {
             core.clock.touch(std::time::Instant::now());
             let old = core
                 .session()?
-                .vault()
-                .item(
+                .item_anywhere(
                     lockdown_vault::Id::parse(&item_id)
                         .map_err(|_| AppError::refused("that isn't an item id"))?,
                 )

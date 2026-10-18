@@ -46,6 +46,15 @@ impl Session {
         };
         for item in items {
             let mut fields = item.fields;
+            // A favourite and tags the file carries are filed as this
+            // vault's own (folders stay with the import/export slice).
+            let tags = lockdown_vault::organization::normalize_tags(&item.tags).unwrap_or_default();
+            lockdown_vault::Organization {
+                folder: None,
+                tags,
+                favourite: item.favourite,
+            }
+            .apply(&mut fields);
             if !fields.iter().any(|f| f.field_id == "title") {
                 fields.insert(0, PlainField::text("title", "title", &item.title));
             }
@@ -84,21 +93,24 @@ impl Session {
         if !FORMATS.contains(&format) {
             return Err(unknown_format(format));
         }
-        let vault = self.vault();
         let mut items = Vec::new();
-        for item in vault.items() {
-            if item.kind.hidden() || item.state != ItemState::Live {
+        for (vault, item) in self.vaults().flat_map(|v| v.items().map(move |i| (v, i))) {
+            // Archived items are kept in exports (02-model §7).
+            if item.kind.hidden() || !matches!(item.state, ItemState::Live | ItemState::Archived) {
                 continue;
             }
-            let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
+            let mut fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
+            // Favourite and tags travel in the format's own slots, not as fields.
+            let org = lockdown_vault::Organization::of(&fields);
+            fields.retain(|f| !lockdown_vault::is_org_field(&f.field_id));
             let latest = item.latest().map_err(|e| e.to_string())?;
             items.push(ImportedItem {
                 source_id: b64url(item.item_id.to_string().as_bytes()),
                 kind: item.kind,
                 title: text_of(&fields, "title").unwrap_or_default(),
                 fields,
-                favourite: false,
-                tags: Vec::new(),
+                favourite: org.favourite,
+                tags: org.tags,
                 created_at: item.versions.first().map(|v| v.edited_at.0.max(0) as u64),
                 modified_at: Some(latest.edited_at.0.max(0) as u64),
                 report: Vec::new(),

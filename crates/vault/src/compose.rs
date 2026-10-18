@@ -17,6 +17,7 @@ use zeroize::Zeroizing;
 use crate::crown_jewel::CrownJewelDefault;
 use crate::field::{FieldKind, FieldValue, PlainField};
 use crate::item::{ItemClass, ItemKind};
+use crate::organization::{ORG_FOLDER, ORG_TAGS, ensure_org_fields, is_org_field, normalize_tags};
 use crate::template::{CUSTOM_KINDS, Control, FieldTemplate, Template, card_brand, template_for};
 use crate::{Error, Result};
 
@@ -45,7 +46,26 @@ pub enum FieldInput {
     Secret(Zeroizing<Vec<u8>>),
     /// Yes or no.
     Flag(bool),
+    /// A web address with the rule it matches pages by (02-model §10; one
+    /// of [`MATCH_RULES`]). Plain [`FieldInput::Text`] keeps a stored rule
+    /// on an edit and takes [`DEFAULT_MATCH_RULE`] on a new address.
+    Url {
+        /// The address.
+        value: String,
+        /// The rule, as the matcher names it.
+        match_rule: String,
+    },
 }
+
+/// The match rules a web address may carry, as `lockdown_matcher::MatchRule`
+/// names them on the wire.
+pub const MATCH_RULES: &[&str] = &[
+    "exact_host",
+    "base_domain",
+    "equivalent",
+    "starts_with",
+    "never",
+];
 
 /// What to do with one field.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -164,7 +184,24 @@ fn value_of(
     input: FieldInput,
     match_rule: Option<&str>,
 ) -> Result<Option<FieldValue>> {
+    let (input, match_rule) = match input {
+        FieldInput::Url { value, match_rule } => {
+            if control != Control::Url {
+                return Err(invalid(format!("{label} isn't a web address")));
+            }
+            if !MATCH_RULES.contains(&match_rule.as_str()) {
+                return Err(invalid(format!(
+                    "'{match_rule}' isn't a way to match a website; use one of: {}",
+                    MATCH_RULES.join(", ")
+                )));
+            }
+            (FieldInput::Text(value), Some(match_rule))
+        }
+        other => (other, match_rule.map(str::to_string)),
+    };
+    let match_rule = match_rule.as_deref();
     let text = match input {
+        FieldInput::Url { .. } => unreachable!("taken apart above"),
         FieldInput::Flag(b) => {
             return if control == Control::Boolean {
                 Ok(Some(FieldValue::Boolean(b)))
@@ -462,14 +499,17 @@ pub fn compose_new(
             customs.push(change);
             continue;
         };
-        let t = template.field(&field_id).ok_or_else(|| {
+        let t = template.field_or_common(&field_id).ok_or_else(|| {
             invalid(format!(
                 "'{field_id}' isn't a field of a {}; add it as your own field instead",
                 template.name.to_lowercase()
             ))
         })?;
         let value = match change.change {
-            Change::Set(input) => value_of(t.control, Some(t), t.label, input, None)?,
+            Change::Set(input) => org_value(
+                &field_id,
+                value_of(t.control, Some(t), t.label, input, None)?,
+            )?,
             Change::Generate => match t.generator {
                 Some(rule) => Some(generated(rule)?),
                 None => return Err(invalid(format!("{} can't be generated", t.label))),
@@ -483,7 +523,7 @@ pub fn compose_new(
         };
         if let Some(value) = value {
             fields.push(PlainField::new(
-                t.field_id,
+                field_id.as_str(),
                 t.control.storage(),
                 t.label,
                 value,
@@ -499,6 +539,7 @@ pub fn compose_new(
     }
     missing_required(template, &fields)?;
     derive(kind, &mut fields);
+    ensure_org_fields(&mut fields);
     let by_default = template.crown_jewel_default() == CrownJewelDefault::Default
         || fields
             .iter()
@@ -533,6 +574,17 @@ pub fn compose_edit(
             })
             .unwrap_or_default(),
     };
+    // The organization fields are filed by `Vault::organize`, not drawn in
+    // an editor: one the edit doesn't name is kept as it is.
+    let mut changes = changes;
+    for f in existing.iter().filter(|f| is_org_field(&f.field_id)) {
+        if !changes
+            .iter()
+            .any(|c| c.field_id.as_deref() == Some(f.field_id.as_str()))
+        {
+            changes.push(FieldChange::keep(&f.field_id));
+        }
+    }
     for f in existing
         .iter()
         .filter(|f| f.field_id != "title" && !is_reserved(&f.field_id))
@@ -561,7 +613,7 @@ pub fn compose_edit(
             .find(|c| c.field_id.as_deref() == Some(f.field_id.as_str()))
             .expect("checked above")
             .clone();
-        let t = template.field(&f.field_id);
+        let t = template.field_or_common(&f.field_id);
         let label = match (t, change.label.as_deref().map(str::trim)) {
             (None, Some(l)) if !l.is_empty() => l.to_string(),
             _ => f.label.clone(),
@@ -583,7 +635,10 @@ pub fn compose_edit(
                     FieldValue::Url { match_rule, .. } => Some(match_rule.as_str()),
                     _ => None,
                 };
-                match value_of(control, t, &label, input, match_rule)? {
+                match org_value(
+                    &f.field_id,
+                    value_of(control, t, &label, input, match_rule)?,
+                )? {
                     Some(value) => fields.push(PlainField {
                         label,
                         value,
@@ -616,10 +671,13 @@ pub fn compose_edit(
             continue;
         }
         let t = template
-            .field(&field_id)
+            .field_or_common(&field_id)
             .ok_or_else(|| invalid(format!("there is no field '{field_id}' on this item")))?;
         let value = match change.change {
-            Change::Set(input) => value_of(t.control, Some(t), t.label, input, None)?,
+            Change::Set(input) => org_value(
+                &field_id,
+                value_of(t.control, Some(t), t.label, input, None)?,
+            )?,
             Change::Generate => match t.generator {
                 Some(rule) => Some(generated(rule)?),
                 None => return Err(invalid(format!("{} can't be generated", t.label))),
@@ -633,7 +691,7 @@ pub fn compose_edit(
         };
         if let Some(value) = value {
             fields.push(PlainField::new(
-                t.field_id,
+                field_id.as_str(),
                 t.control.storage(),
                 t.label,
                 value,
@@ -649,7 +707,25 @@ pub fn compose_edit(
     }
     missing_required(template, &fields)?;
     derive(kind, &mut fields);
+    ensure_org_fields(&mut fields);
     Ok(ordered(template, title, fields))
+}
+
+/// The stored value of an organization field, checked: tags normalized one
+/// per line (`crate::organization::normalize_tags`), a folder an id. Any
+/// other field passes through.
+fn org_value(field_id: &str, value: Option<FieldValue>) -> Result<Option<FieldValue>> {
+    let text = match &value {
+        Some(FieldValue::Text(t)) if field_id == ORG_TAGS || field_id == ORG_FOLDER => t,
+        _ => return Ok(value),
+    };
+    if field_id == ORG_TAGS {
+        let tags: Vec<&str> = text.lines().collect();
+        let tags = normalize_tags(&tags)?;
+        return Ok((!tags.is_empty()).then(|| FieldValue::Text(tags.join("\n"))));
+    }
+    crate::Id::parse(text.trim()).map_err(|_| invalid("that isn't a folder of this vault"))?;
+    Ok(Some(FieldValue::Text(text.trim().to_string())))
 }
 
 #[cfg(test)]
@@ -668,8 +744,176 @@ mod tests {
             })
     }
 
+    /// The field ids, leaving out the three organization fields every
+    /// composed item carries (tested on their own below).
     fn ids(fields: &[PlainField]) -> Vec<&str> {
-        fields.iter().map(|f| f.field_id.as_str()).collect()
+        fields
+            .iter()
+            .map(|f| f.field_id.as_str())
+            .filter(|id| !is_org_field(id))
+            .collect()
+    }
+
+    #[test]
+    fn a_login_takes_several_websites_each_with_its_match_rule() {
+        let url = |id: &str, value: &str, rule: &str| {
+            FieldChange::new(
+                id,
+                Change::Set(FieldInput::Url {
+                    value: value.into(),
+                    match_rule: rule.into(),
+                }),
+            )
+        };
+        let (_, fields) = compose_new(
+            ItemKind::Login,
+            "Shop",
+            false,
+            vec![
+                url("url.0", "shop.example.com", "base_domain"),
+                FieldChange::text("url.1", "https://checkout.example.net"),
+                url("url.2", "https://old.example.org/login", "never"),
+                FieldChange::text("sign_in_method", "Another account"),
+                FieldChange::text("sign_in_provider", "Google"),
+            ],
+        )
+        .unwrap();
+        let rule = |fields: &[PlainField], id: &str| {
+            fields
+                .iter()
+                .find(|f| f.field_id == id)
+                .map(|f| match &f.value {
+                    FieldValue::Url { value, match_rule } => (value.clone(), match_rule.clone()),
+                    other => panic!("{other:?}"),
+                })
+        };
+        assert_eq!(
+            rule(&fields, "url.0").unwrap(),
+            ("https://shop.example.com".into(), "base_domain".into())
+        );
+        assert_eq!(rule(&fields, "url.1").unwrap().1, DEFAULT_MATCH_RULE);
+        assert_eq!(rule(&fields, "url.2").unwrap().1, "never");
+        assert_eq!(
+            text_of(&fields, "sign_in_method").unwrap(),
+            "Another account"
+        );
+        assert!(
+            compose_new(
+                ItemKind::Login,
+                "x",
+                false,
+                vec![url("url.0", "a.example", "anywhere")]
+            )
+            .is_err(),
+            "an unknown rule is refused"
+        );
+        assert!(
+            compose_new(
+                ItemKind::Login,
+                "x",
+                false,
+                vec![FieldChange::text("sign_in_method", "Telepathy")]
+            )
+            .is_err()
+        );
+        assert!(
+            compose_new(
+                ItemKind::Note,
+                "x",
+                false,
+                vec![url("body", "a.example", "never")]
+            )
+            .is_err(),
+            "only a web address takes a rule"
+        );
+
+        // An edit changes one rule, keeps another's, drops a third and adds a fourth.
+        let edited = compose_edit(
+            ItemKind::Login,
+            &fields,
+            None,
+            vec![
+                url("url.0", "shop.example.com", "exact_host"),
+                FieldChange::text("url.1", "https://checkout.example.net/pay"),
+                FieldChange::new("url.2", Change::Remove),
+                FieldChange::text("url.3", "https://m.example.com"),
+                FieldChange::keep("sign_in_method"),
+                FieldChange::keep("sign_in_provider"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(rule(&edited, "url.0").unwrap().1, "exact_host");
+        assert_eq!(
+            rule(&edited, "url.1").unwrap(),
+            (
+                "https://checkout.example.net/pay".into(),
+                DEFAULT_MATCH_RULE.into()
+            )
+        );
+        assert!(rule(&edited, "url.2").is_none());
+        assert_eq!(rule(&edited, "url.3").unwrap().0, "https://m.example.com");
+    }
+
+    #[test]
+    fn every_composed_item_carries_its_organization_and_an_edit_keeps_it() {
+        let folder = crate::Id::new();
+        let (_, fields) = compose_new(
+            ItemKind::Note,
+            "Plans",
+            false,
+            vec![
+                FieldChange::text("body", "x"),
+                FieldChange::text(ORG_TAGS, "work / clients\nfamily\nFamily"),
+                FieldChange::text(ORG_FOLDER, &folder.to_string()),
+                FieldChange::new(
+                    crate::organization::ORG_FAVOURITE,
+                    Change::Set(FieldInput::Flag(true)),
+                ),
+            ],
+        )
+        .unwrap();
+        let org = crate::Organization::of(&fields);
+        assert_eq!(org.folder, Some(folder));
+        assert_eq!(
+            org.tags,
+            vec!["family".to_string(), "work/clients".to_string()]
+        );
+        assert!(org.favourite);
+        // A bare item gets the three fields too, empty.
+        let (_, bare) = compose_new(ItemKind::Note, "Bare", false, vec![]).unwrap();
+        assert_eq!(bare.iter().filter(|f| is_org_field(&f.field_id)).count(), 3);
+        assert_eq!(
+            crate::Organization::of(&bare),
+            crate::Organization::default()
+        );
+        // An editor that never heard of them leaves them as they were.
+        let edited = compose_edit(
+            ItemKind::Note,
+            &fields,
+            Some("Plans 2"),
+            vec![FieldChange::text("body", "y")],
+        )
+        .unwrap();
+        assert_eq!(crate::Organization::of(&edited), org);
+        // A folder that isn't an id, and a tag with an empty part, are refused.
+        assert!(
+            compose_new(
+                ItemKind::Note,
+                "x",
+                false,
+                vec![FieldChange::text(ORG_FOLDER, "Work")]
+            )
+            .is_err()
+        );
+        assert!(
+            compose_new(
+                ItemKind::Note,
+                "x",
+                false,
+                vec![FieldChange::text(ORG_TAGS, "a//b")]
+            )
+            .is_err()
+        );
     }
 
     #[test]

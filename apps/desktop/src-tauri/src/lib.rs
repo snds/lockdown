@@ -10,6 +10,7 @@ pub mod browser;
 pub mod clipboard;
 pub mod codes;
 pub mod items;
+pub mod organization;
 pub mod security;
 
 #[cfg(feature = "shell")]
