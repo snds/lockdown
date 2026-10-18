@@ -37,7 +37,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [x] **Item expiry reminders**: Done · core, desktop, web. Renewal kinds for domains and certificates; the signed-date check.
 - [x] **Trash with recovery**: Done · core, desktop, web. Trash in the CLI.
 - [x] **Item archive**: Done · core, desktop, web. Nothing for desktop.
-- [ ] **Payment cards**: Partial · core, desktop, web. The card fill itself (extension or OS provider) with the second deliberate action and the optional CVC re-prompt.
+- [ ] **Payment cards**: Partial · core, desktop, extension, web. The optional CVC re-prompt and an OS-provider card fill (deferred); the extension fills cards after the second deliberate action (doc 16).
 - [ ] **Identities and addresses**: Partial · core, desktop, web. Typed subtypes (person, address, business, vehicle, passport) and a separate contacts list that is never filled; plus the form fill itself.
 - [ ] **Typed item templates**: Partial · core, desktop, web. Reach 25+ types (passport and licence are a Document type choice today) and add user-defined templates.
 - [ ] **Custom fields**: Partial · core, desktop, web. Add the TOTP and linked field kinds.

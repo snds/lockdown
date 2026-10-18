@@ -75,9 +75,10 @@
    "surfaces": [
     "core",
     "desktop",
+    "extension",
     "web"
    ],
-   "left": "The card fill itself (extension or OS provider) with the second deliberate action and the optional CVC re-prompt.",
+   "left": "The optional CVC re-prompt and an OS-provider card fill (deferred); the extension fills cards after the second deliberate action (doc 16).",
    "evidence": [
     "crates/vault/src/template.rs:408 (CARD fields, fill: confirm)",
     "crates/vault/src/template.rs:716 card_brand (issuer detection)",
