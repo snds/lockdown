@@ -10,6 +10,10 @@ import type { FillValue, FillWhat } from "./protocol"
 /** What a menu or prompt is for. */
 export type MenuKind = FillWhat | "prompt"
 
+/** What a pick in the menu fills: a login's parts, or a passkey sign-in
+ *  (its credential id rides in `field`). */
+export type PickWhat = FillWhat | "passkey"
+
 export type ToBackground =
   // from a content script
   | { t: "register"; nonce: string; kind: MenuKind }
@@ -18,7 +22,8 @@ export type ToBackground =
   | { t: "top_ready" }
   // from the menu or prompt frame
   | { t: "menu_data"; nonce: string }
-  | { t: "menu_pick"; nonce: string; item_id: string; what: FillWhat; field?: string | null; confirmed: boolean; frame_visible: boolean | null }
+  | { t: "menu_pick"; nonce: string; item_id: string; what: PickWhat; field?: string | null; confirmed: boolean; frame_visible: boolean | null }
+  | { t: "menu_passkey_other"; nonce: string }
   | { t: "menu_close"; nonce: string }
   | { t: "prompt_data"; nonce: string }
   | { t: "prompt_answer"; nonce: string; save: boolean }
@@ -30,6 +35,18 @@ export type ToBackground =
   | { t: "site"; tab_id?: number }
   | { t: "fill_tab"; tab_id: number; item_id: string }
   | { t: "change_password"; origin: string }
+  // from the passkey bridge in a tab's top frame (docs/plan/19-passkeys.md)
+  | { t: "pk_begin"; op: "create" | "get"; mediation: string; request: Record<string, unknown> }
+  | { t: "pk_abort"; rid: string }
+  | { t: "pk_status" }
+  | { t: "pk_signal"; signal: Record<string, unknown> }
+  // from the passkey sheet frame
+  | { t: "pk_sheet"; nonce: string }
+  | { t: "pk_sheet_pick"; nonce: string; item_id: string; credential_id: string; confirmed: boolean; frame_visible: boolean | null }
+  | { t: "pk_sheet_create"; nonce: string; frame_visible: boolean | null }
+  | { t: "pk_sheet_handoff"; nonce: string }
+  | { t: "pk_sheet_cancel"; nonce: string }
+  | { t: "pk_sheet_retry"; nonce: string }
 
 export type ToContent =
   | { t: "measure"; nonce: string }
@@ -39,6 +56,9 @@ export type ToContent =
   | { t: "target_login" }
   | { t: "show_prompt" }
   | { t: "open_menu"; nonce: string }
+  // to the passkey bridge
+  | { t: "pk_done"; rid: string; credential?: unknown; error?: { name: string; message: string }; handoff?: "same" | "modal" }
+  | { t: "pk_measure"; rid: string }
 
 /** What the content script measured for a fill (D67). */
 export interface Measured {

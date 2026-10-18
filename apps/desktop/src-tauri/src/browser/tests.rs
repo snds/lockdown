@@ -108,8 +108,10 @@ fn connect(
         serve(&shared, verifier.as_ref(), ch);
     });
     let mut ch = t.connect(Duration::from_secs(10)).unwrap();
-    ch.send(&serde_json::to_vec(&HostHello::new(caller)).unwrap())
-        .unwrap();
+    // An untrusted peer is refused before its hello is read, and the
+    // channel may already be closed when the hello goes out: the refusal
+    // is still the first frame to read.
+    let _ = ch.send(&serde_json::to_vec(&HostHello::new(caller)).unwrap());
     let first: Value = serde_json::from_slice(&ch.recv(Duration::from_secs(10)).unwrap()).unwrap();
     (Host { ch, next: 0 }, first)
 }
@@ -407,5 +409,156 @@ fn over_the_real_socket_the_host_binary_is_checked_by_process_identity() {
     assert!(
         EndpointFile::read(&data).is_err(),
         "the endpoint file goes with the app"
+    );
+}
+
+/// The passkey ops over the protocol (docs/plan/19-passkeys.md §4): a plan,
+/// the create's two steps, the offer, the get's two steps, a Signal, and
+/// the setting that turns them off. Nothing secret is in any answer.
+#[test]
+fn passkeys_are_made_and_used_over_the_protocol_with_nothing_secret_in_an_answer() {
+    let rig = rig();
+    let login = rig
+        .app
+        .add_login(
+            "https://example.com",
+            "sean",
+            b"pw".to_vec(),
+            Some("Example"),
+        )
+        .unwrap();
+    let mut host = paired(&rig);
+    assert_eq!(host.ok("status", json!({}))["passkeys"], true);
+    let page = |confirmed: bool| json!({ "top": "https://example.com/a", "frame": "https://example.com/a", "visible": true, "user_confirmed": confirmed });
+    let create = json!({
+        "rp_name": "Example", "user_id": "dXNlci0x", "user_name": "sean", "user_display_name": "Sean",
+        "challenge": "Y2hhbGxlbmdl", "algs": [-7], "user_verification": "preferred"
+    });
+    let plan = host.ok(
+        "passkey_plan",
+        json!({ "page": page(false), "request": create }),
+    );
+    assert_eq!(plan["outcome"], "done");
+    assert_eq!(plan["result"]["item_id"], login);
+    let first = host.ok(
+        "passkey_create",
+        json!({ "page": page(false), "request": create }),
+    );
+    assert_eq!(first["outcome"], "confirm");
+    let made = host.ok(
+        "passkey_create",
+        json!({ "page": page(true), "request": create }),
+    );
+    assert_eq!(made["outcome"], "done", "{made}");
+    let made = &made["result"];
+    assert_eq!(made["item_id"], login);
+    assert_eq!(made["public_key_algorithm"], -7);
+    for absent in ["pkcs8", "key", "private_key"] {
+        assert!(made.get(absent).is_none(), "{absent} never crosses");
+    }
+    let cred = made["credential_id"].as_str().unwrap().to_string();
+
+    let get = json!({ "challenge": "Z2V0", "user_verification": "discouraged" });
+    let offered = host.ok(
+        "passkey_options",
+        json!({ "page": page(false), "request": get }),
+    );
+    assert_eq!(offered["result"]["options"][0]["credential_id"], cred);
+    let args = |confirmed: bool| json!({ "page": page(confirmed), "request": get, "item_id": login, "credential_id": cred, "user_name": "sean" });
+    assert_eq!(host.ok("passkey_get", args(false))["outcome"], "confirm");
+    let signed = host.ok("passkey_get", args(true));
+    assert_eq!(signed["outcome"], "done", "{signed}");
+    assert_eq!(signed["result"]["user_handle"], "dXNlci0x");
+    assert!(signed["result"]["signature"].as_str().unwrap().len() > 60);
+
+    // A page from another site gets a SecurityError, by name.
+    let evil = json!({ "page": { "top": "https://evil.test/", "frame": "https://evil.test/" }, "request": { "rp_id": "example.com", "challenge": "eA" } });
+    let r = host.ok("passkey_options", evil);
+    assert_eq!(r["outcome"], "refused");
+    assert_eq!(r["name"], "SecurityError");
+
+    // A Signal hides it.
+    let s = host.ok(
+        "passkey_signal",
+        json!({ "page": "https://example.com/", "signal": { "signal": "unknown_credential", "rp_id": "example.com", "credential_id": cred } }),
+    );
+    assert_eq!(s["result"]["changed"], 1);
+    let offered = host.ok(
+        "passkey_options",
+        json!({ "page": page(false), "request": get }),
+    );
+    assert_eq!(offered["result"]["options"].as_array().unwrap().len(), 0);
+
+    // Turned off in Settings: the extension is told so and steps aside.
+    let mut settings = rig.app.settings().unwrap();
+    settings.browser_passkeys = false;
+    rig.app.set_settings(settings).unwrap();
+    assert_eq!(host.ok("status", json!({}))["passkeys"], false);
+    assert_eq!(
+        host.err(
+            "passkey_options",
+            json!({ "page": page(false), "request": get })
+        ),
+        "passkeys_off"
+    );
+}
+
+#[test]
+fn passkey_ops_need_the_pairing_first() {
+    let rig = rig();
+    let (mut host, _) = connect(
+        Arc::clone(&rig.endpoint.shared),
+        Box::new(AllowAll),
+        chrome(),
+    );
+    for op in [
+        "passkey_options",
+        "passkey_plan",
+        "passkey_create",
+        "passkey_get",
+        "passkey_signal",
+    ] {
+        assert_eq!(host.err(op, json!({})), "not_paired", "{op}");
+    }
+}
+
+#[test]
+fn a_request_waiting_for_the_app_is_answered_through_the_gate() {
+    let rig = rig();
+    let id = rig
+        .endpoint
+        .shared
+        .approvals
+        .put(CLIENT, "Chrome on Linux", "Sign in to example.com as sean")
+        .unwrap();
+    let pending = rig.endpoint.passkey_pending();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].text, "Sign in to example.com as sean");
+    // The gate here is the window's confirm (no account, no platform check):
+    // nothing confirmed yet is refused and the request still waits.
+    assert!(
+        rig.endpoint
+            .passkey_answer(&id, true, GateInput::default())
+            .is_err()
+    );
+    assert_eq!(rig.endpoint.passkey_pending().len(), 1);
+    rig.endpoint
+        .passkey_answer(
+            &id,
+            true,
+            GateInput {
+                password: None,
+                confirmed: true,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        rig.endpoint
+            .shared
+            .approvals
+            .wait(&id, Duration::from_secs(1))
+            .as_deref(),
+        Some("window"),
+        "the method that approved it goes back to the core, which sets UV only for a real check"
     );
 }

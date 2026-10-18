@@ -81,6 +81,8 @@ export interface LinkState {
   locked: boolean
   /** A pairing in progress: the code the desktop gave, to compare. */
   pairing: { code: string } | null
+  /** The app offers Lockdown as the passkey provider in pages. */
+  passkeys: boolean
 }
 
 /** The menu's view of one field, built by the background for the frame. */
@@ -93,10 +95,41 @@ export interface MenuData {
   lookalike_of: string[]
   /** Why there is nothing to offer, in plain words. */
   note: string | null
+  /** Passkeys for a page that asked for one with conditional mediation,
+   *  listed with its logins. */
+  passkeys: PasskeyOption[]
 }
 
 export interface PickAnswer {
   done?: boolean
   confirm?: string
   refuse?: string
+}
+
+/** One passkey a page may be offered (no secret): from `passkey_options`. */
+export interface PasskeyOption {
+  item_id: string
+  credential_id: string
+  title: string
+  user_name: string
+  user_display_name: string
+}
+
+/** Where a new passkey would go: from `passkey_plan`. */
+export interface PasskeyPlan {
+  rp_id: string
+  excluded: boolean
+  item_id: string | null
+  title: string
+  user_name: string
+}
+
+/** What the passkey sheet shows. */
+export interface SheetData {
+  kind: "get" | "create" | "locked"
+  host: string
+  rp_id: string
+  rp_name: string
+  options: PasskeyOption[]
+  plan: PasskeyPlan | null
 }

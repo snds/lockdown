@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture RP</title><link rel="stylesheet" href="style.css"></head>
+<body>
+  <h1>Fixture RP</h1>
+  <form id="login" onsubmit="return false">
+    <label for="user">Email</label>
+    <input id="user" name="username" type="email" autocomplete="username webauthn">
+    <label for="pass">Password</label>
+    <input id="pass" name="password" type="password" autocomplete="current-password">
+  </form>
+  <button id="register" type="button">Create a passkey</button>
+  <button id="signin" type="button">Sign in with a passkey</button>
+  <p id="status">idle</p>
+  <script>
+    // A relying party as a server library is one, in the page so the suite
+    // needs nothing else: it registers a passkey, keeps its public key, and
+    // verifies every sign-in with WebCrypto. Query: ?uv=required|preferred|
+    // discouraged, ?conditional=1 (a conditional get on load), ?cover=1 (the
+    // page covers whatever is added to the top of the document).
+    const params = new URLSearchParams(location.search)
+    const uv = params.get("uv") || "preferred"
+    const rpId = location.hostname
+    const userId = new TextEncoder().encode("user-sean-1")
+    const store = JSON.parse(localStorage.getItem("rp") || "{}")
+    const status = (t) => (document.getElementById("status").textContent = t)
+    window.rp = { store, last: null }
+
+    const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+    const unb64 = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0))
+    const hex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("")
+    const sha256 = async (b) => new Uint8Array(await crypto.subtle.digest("SHA-256", b))
+    const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i])
+
+    // Just enough CBOR for an attestation object and a COSE key.
+    function cbor(bytes) {
+      let i = 0
+      const u = (n) => { let v = 0; for (let k = 0; k < n; k++) v = v * 256 + bytes[i++]; return v }
+      function item() {
+        const b = bytes[i++], major = b >> 5, info = b & 31
+        const len = info < 24 ? info : info === 24 ? u(1) : info === 25 ? u(2) : info === 26 ? u(4) : NaN
+        switch (major) {
+          case 0: return len
+          case 1: return -1 - len
+          case 2: { const v = bytes.slice(i, i + len); i += len; return v }
+          case 3: { const v = new TextDecoder().decode(bytes.slice(i, i + len)); i += len; return v }
+          case 4: return Array.from({ length: len }, item)
+          case 5: { const m = new Map(); for (let k = 0; k < len; k++) { const key = item(); m.set(key, item()) } return m }
+          case 7: return info === 20 ? false : info === 21 ? true : null
+        }
+        throw new Error("bad cbor")
+      }
+      const v = item()
+      return { v, end: i }
+    }
+
+    function parseAuth(auth) {
+      const flags = auth[32]
+      const out = { rpIdHash: auth.slice(0, 32), flags, up: !!(flags & 1), uv: !!(flags & 4), be: !!(flags & 8), bs: !!(flags & 16), at: !!(flags & 64), count: new DataView(auth.buffer, auth.byteOffset + 33, 4).getUint32(0) }
+      if (out.at) {
+        out.aaguid = auth.slice(37, 53)
+        const len = (auth[53] << 8) | auth[54]
+        out.credentialId = auth.slice(55, 55 + len)
+        out.cose = cbor(auth.slice(55 + len)).v
+      }
+      return out
+    }
+
+    // ECDSA DER (SEQUENCE of two INTEGERs) to the raw r||s WebCrypto verifies.
+    function derToRaw(der) {
+      let i = 2
+      const int = () => { i++; const len = der[i++]; let v = der.slice(i, i + len); i += len; while (v.length > 32 && v[0] === 0) v = v.slice(1); const out = new Uint8Array(32); out.set(v, 32 - v.length); return out }
+      const r = int(), s = int()
+      const raw = new Uint8Array(64); raw.set(r); raw.set(s, 32); return raw
+    }
+
+    function checkClient(json, type, challenge) {
+      const cd = JSON.parse(new TextDecoder().decode(json))
+      if (cd.type !== type) throw new Error(`client data type ${cd.type}`)
+      if (cd.origin !== location.origin) throw new Error(`client data origin ${cd.origin}`)
+      if (cd.challenge !== b64(challenge)) throw new Error("challenge differs")
+      if (cd.crossOrigin !== false) throw new Error("crossOrigin")
+      return cd
+    }
+
+    async function register() {
+      status("registering")
+      const challenge = crypto.getRandomValues(new Uint8Array(32))
+      try {
+        const cred = await navigator.credentials.create({ publicKey: {
+          rp: { id: rpId, name: "Fixture RP" },
+          user: { id: userId, name: "sean@example.com", displayName: "Sean" },
+          challenge, pubKeyCredParams: [{ type: "public-key", alg: -8 }, { type: "public-key", alg: -7 }],
+          authenticatorSelection: { residentKey: "required", userVerification: uv },
+          excludeCredentials: (store.ids || []).map((id) => ({ type: "public-key", id: unb64(id) })),
+          extensions: { credProps: true },
+        } })
+        if (!(cred instanceof PublicKeyCredential)) throw new Error("not a PublicKeyCredential")
+        checkClient(cred.response.clientDataJSON, "webauthn.create", challenge)
+        const att = cbor(new Uint8Array(cred.response.attestationObject)).v
+        if (att.get("fmt") !== "none") throw new Error("fmt")
+        const auth = parseAuth(att.get("authData"))
+        if (!same(auth.rpIdHash, await sha256(new TextEncoder().encode(rpId)))) throw new Error("rpIdHash")
+        if (!auth.at || b64(auth.credentialId) !== cred.id || b64(cred.rawId) !== cred.id) throw new Error("credential id")
+        const k = auth.cose
+        let jwk = null
+        if (k.get(3) === -7) {
+          if (k.get(1) !== 2 || k.get(-1) !== 1) throw new Error("not a P-256 key")
+          jwk = { kty: "EC", crv: "P-256", x: b64(k.get(-2)), y: b64(k.get(-3)) }
+          // getPublicKey() is the same key, as SPKI.
+          const spki = await crypto.subtle.importKey("spki", cred.response.getPublicKey(), { name: "ECDSA", namedCurve: "P-256" }, true, ["verify"])
+          const fromSpki = await crypto.subtle.exportKey("jwk", spki)
+          if (fromSpki.x !== jwk.x || fromSpki.y !== jwk.y) throw new Error("getPublicKey differs")
+        }
+        store.ids = [...(store.ids || []), cred.id]
+        if (jwk) store.keys = { ...(store.keys || {}), [cred.id]: jwk }
+        localStorage.setItem("rp", JSON.stringify(store))
+        window.rp.last = { op: "create", id: cred.id, aaguid: hex(auth.aaguid), up: auth.up, uv: auth.uv, be: auth.be, bs: auth.bs, count: auth.count, alg: k.get(3), rk: cred.getClientExtensionResults().credProps?.rk ?? null, attachment: cred.authenticatorAttachment }
+        status("registered")
+      } catch (e) {
+        window.rp.last = { op: "create", error: e.name, message: e.message }
+        status(`error: ${e.name}`)
+      }
+    }
+
+    async function verify(cred, challenge) {
+      checkClient(cred.response.clientDataJSON, "webauthn.get", challenge)
+      const authBytes = new Uint8Array(cred.response.authenticatorData)
+      const auth = parseAuth(authBytes)
+      if (!same(auth.rpIdHash, await sha256(new TextEncoder().encode(rpId)))) throw new Error("rpIdHash")
+      const jwk = (store.keys || {})[cred.id]
+      if (!jwk) throw new Error("unknown credential")
+      const key = await crypto.subtle.importKey("jwk", jwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"])
+      const signed = new Uint8Array([...authBytes, ...(await sha256(cred.response.clientDataJSON))])
+      const ok = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, derToRaw(new Uint8Array(cred.response.signature)), signed)
+      if (!ok) throw new Error("the signature didn't verify")
+      if (!same(new Uint8Array(cred.response.userHandle), userId)) throw new Error("user handle")
+      return { op: "get", id: cred.id, up: auth.up, uv: auth.uv, be: auth.be, bs: auth.bs, count: auth.count }
+    }
+
+    async function signin(conditional) {
+      status(conditional ? "waiting for a passkey" : "signing in")
+      const challenge = crypto.getRandomValues(new Uint8Array(32))
+      try {
+        const cred = await navigator.credentials.get({ mediation: conditional ? "conditional" : "optional", publicKey: { rpId, challenge, userVerification: uv } })
+        window.rp.last = await verify(cred, challenge)
+        status("signed in")
+      } catch (e) {
+        window.rp.last = { op: "get", error: e.name, message: e.message }
+        status(`error: ${e.name}`)
+      }
+    }
+
+    document.getElementById("register").addEventListener("click", register)
+    document.getElementById("signin").addEventListener("click", () => signin(false))
+    if (params.get("conditional")) {
+      PublicKeyCredential.isConditionalMediationAvailable().then((yes) => { window.rp.conditional = yes; if (yes) signin(true) })
+    }
+    if (params.get("cover")) {
+      new MutationObserver((records) => {
+        for (const r of records) for (const n of r.addedNodes) {
+          if (n.nodeType !== 1 || n.id === "decoy") continue
+          setTimeout(() => {
+            const rect = n.getBoundingClientRect()
+            const d = document.createElement("div")
+            d.id = "decoy"
+            d.setAttribute("popover", "manual")
+            d.style.cssText = `position:fixed; margin:0; inset:auto; left:${rect.left}px; top:${rect.top}px; width:${rect.width}px; height:${rect.height}px; background:#fff; opacity:0.5; border:0; padding:0;`
+            document.documentElement.append(d)
+            d.showPopover()
+          }, 50)
+        }
+      }).observe(document.documentElement, { childList: true })
+    }
+  </script>
+</body>
+</html>

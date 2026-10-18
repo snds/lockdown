@@ -3,13 +3,15 @@
 // what the page's content script, the extension's own frames and the popup
 // ask, and checks who asked (docs/plan/16-browser-extension.md §5).
 
-import type { ToBackground, ToContent, Measured, MenuKind } from "../shared/messages"
+import type { ToBackground, ToContent, Measured, MenuKind, PickWhat } from "../shared/messages"
 import { extensionOrigin } from "../shared/messages"
-import type { FillAnswer, FillWhat, LinkState, LoginCandidate, MenuData, PageMatches, PickAnswer, SaveOffer, WalletEntry } from "../shared/protocol"
+import type { FillAnswer, LinkState, LoginCandidate, MenuData, PageMatches, PickAnswer, SaveOffer, WalletEntry } from "../shared/protocol"
 import { DesktopError, Link } from "./link"
 import * as matcher from "./matcher"
+import { Passkeys } from "./passkeys"
 
 const link = new Link()
+const passkeys = new Passkeys(link)
 
 /** One open menu or prompt, registered by the content script that owns the
  *  field. The frame the extension shows inside the page may act only for a
@@ -22,6 +24,8 @@ interface Menu {
   created: number
   /** What the menu offered, so a pick is checked against it. */
   offered: Map<string, LoginCandidate | WalletEntry>
+  /** The passkeys it offered, as `item:credential`. */
+  passkeys: Set<string>
 }
 
 const menus = new Map<string, Menu>()
@@ -88,13 +92,16 @@ async function menuData(m: Menu): Promise<MenuData> {
     }
   })()
   const kind = m.kind === "prompt" ? "login" : m.kind
-  const base: MenuData = { kind, link: await linkState(), host, logins: [], wallet: [], lookalike_of: [], note: null }
+  const base: MenuData = { kind, link: await linkState(), host, logins: [], wallet: [], lookalike_of: [], note: null, passkeys: [] }
   try {
     if (kind === "login" || kind === "code") {
       const pm = await matchesFor(m.frameUrl)
       base.lookalike_of = pm.lookalike_of
       base.logins = kind === "code" ? pm.logins.filter((c) => c.code_field) : pm.logins.filter((c) => c.password)
-      if (base.logins.length === 0 && pm.lookalike_of.length === 0)
+      // A page asking for a passkey with conditional mediation: its
+      // passkeys join its logins in the menu.
+      if (kind === "login") base.passkeys = passkeys.menuOptions(m.tabId, m.frameId)
+      if (base.logins.length === 0 && base.passkeys.length === 0 && pm.lookalike_of.length === 0)
         base.note = kind === "code" ? `No saved login for ${host} has a one-time code.` : `No saved login for ${host}.`
     } else {
       const w = await link.call<{ entries: WalletEntry[] }>("wallet")
@@ -106,12 +113,25 @@ async function menuData(m: Menu): Promise<MenuData> {
     base.link = await linkState()
   }
   m.offered = new Map<string, LoginCandidate | WalletEntry>([...base.logins.map((c) => [c.item_id, c] as const), ...base.wallet.map((w) => [w.item_id, w] as const)])
+  m.passkeys = new Set(base.passkeys.map((p) => `${p.item_id}:${p.credential_id}`))
   return base
 }
 
+/** A passkey sign-in picked in the menu (conditional mediation): the
+ *  field and the menu measured as for a fill, then the passkey's own path. */
+async function pickPasskey(m: Menu, itemId: string, credentialId: string, confirmed: boolean, frameVisible: boolean | null): Promise<PickAnswer> {
+  if (!m.passkeys.has(`${itemId}:${credentialId}`)) return { refuse: "That passkey wasn't offered for this field." }
+  const measured = await sendToFrame<Measured>(m, { t: "measure", nonce: nonceOf(m) })
+  if (!measured?.ok) return { refuse: "The field isn't on the page any more." }
+  if (frameVisible === null && measured.menu_visible === false)
+    return { refuse: "Something on the page covers Lockdown's menu, so Lockdown won't sign in." }
+  return passkeys.menuPick(m.tabId, m.frameId, itemId, credentialId, confirmed, measured.visible)
+}
+
 /** One fill, from a pick in the menu, the popup or the shortcut. */
-async function pick(m: Menu, itemId: string, what: FillWhat, field: string | null, confirmed: boolean, frameVisible: boolean | null): Promise<PickAnswer> {
+async function pick(m: Menu, itemId: string, what: PickWhat, field: string | null, confirmed: boolean, frameVisible: boolean | null): Promise<PickAnswer> {
   if (frameVisible === false) return { refuse: "Something on the page covers Lockdown's menu, so Lockdown won't fill." }
+  if (what === "passkey") return pickPasskey(m, itemId, field ?? "", confirmed, frameVisible)
   const offered = m.offered.get(itemId)
   if (!offered) return { refuse: "That item wasn't offered for this field." }
   const measured = await sendToFrame<Measured>(m, { t: "measure", nonce: nonceOf(m) })
@@ -154,7 +174,7 @@ function register(nonce: string, kind: MenuKind, sender: chrome.runtime.MessageS
     mine.sort((a, b) => a[1].created - b[1].created)
     menus.delete(mine[0][0])
   }
-  menus.set(nonce, { tabId, frameId: sender.frameId, frameUrl: sender.url, kind, created: Date.now(), offered: new Map() })
+  menus.set(nonce, { tabId, frameId: sender.frameId, frameUrl: sender.url, kind, created: Date.now(), offered: new Map(), passkeys: new Set() })
 }
 
 async function offerSave(username: string, password: string, sender: chrome.runtime.MessageSender): Promise<SaveOffer | { error: string }> {
@@ -238,6 +258,13 @@ async function route(msg: ToBackground, sender: chrome.runtime.MessageSender): P
         return { refuse: words(e) }
       }
     }
+    case "menu_passkey_other": {
+      if (!isExtensionPage(sender, "frame.html")) throw new Error("refused")
+      const m = menuFor(msg.nonce, sender)
+      passkeys.menuOther(m.tabId)
+      await sendToFrame(m, { t: "close", nonce: msg.nonce }).catch(() => undefined)
+      return { ok: true }
+    }
     case "menu_close": {
       if (!isExtensionPage(sender, "frame.html")) throw new Error("refused")
       const m = menuFor(msg.nonce, sender)
@@ -314,6 +341,43 @@ async function route(msg: ToBackground, sender: chrome.runtime.MessageSender): P
       await chrome.tabs.create({ url: `${origin}/.well-known/change-password` })
       return { ok: true }
     }
+
+    // --- passkeys (docs/plan/19-passkeys.md) --------------------------------
+    case "pk_begin":
+      if (!isContentScript(sender)) throw new Error("refused")
+      if (msg.op !== "create" && msg.op !== "get") throw new Error("refused")
+      return passkeys.begin(sender, msg.op, String(msg.mediation ?? "optional"), msg.request ?? {})
+    case "pk_abort":
+      if (!isContentScript(sender)) throw new Error("refused")
+      passkeys.abort(sender, String(msg.rid ?? ""))
+      return { ok: true }
+    case "pk_status":
+      if (!isContentScript(sender)) throw new Error("refused")
+      return { active: sender.frameId === 0 && (await passkeys.active()) }
+    case "pk_signal":
+      if (!isContentScript(sender)) throw new Error("refused")
+      await passkeys.signal(sender, msg.signal ?? {})
+      return { ok: true }
+    case "pk_sheet":
+      if (!isExtensionPage(sender, "frame.html")) throw new Error("refused")
+      return passkeys.sheet(msg.nonce, sender)
+    case "pk_sheet_pick":
+      if (!isExtensionPage(sender, "frame.html")) throw new Error("refused")
+      return passkeys.sheetPick(msg.nonce, sender, String(msg.item_id), String(msg.credential_id), msg.confirmed === true, msg.frame_visible)
+    case "pk_sheet_create":
+      if (!isExtensionPage(sender, "frame.html")) throw new Error("refused")
+      return passkeys.sheetCreate(msg.nonce, sender, msg.frame_visible)
+    case "pk_sheet_handoff":
+      if (!isExtensionPage(sender, "frame.html")) throw new Error("refused")
+      passkeys.sheetHandoff(msg.nonce, sender)
+      return { ok: true }
+    case "pk_sheet_cancel":
+      if (!isExtensionPage(sender, "frame.html")) throw new Error("refused")
+      passkeys.sheetCancel(msg.nonce, sender)
+      return { ok: true }
+    case "pk_sheet_retry":
+      if (!isExtensionPage(sender, "frame.html")) throw new Error("refused")
+      return passkeys.sheetRetry(msg.nonce, sender)
   }
   throw new Error("unknown message")
 }
@@ -328,6 +392,7 @@ chrome.runtime.onMessage.addListener((msg: ToBackground, sender, sendResponse) =
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   offers.delete(tabId)
+  passkeys.forgetTab(tabId)
   for (const [n, m] of menus) if (m.tabId === tabId) menus.delete(n)
 })
 

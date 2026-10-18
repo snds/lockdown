@@ -39,14 +39,14 @@ export class Desktop {
     this.ready = this.next("ready");
   }
 
-  static start(scratch: string, profile: string): Desktop {
+  static start(scratch: string, profile: string, extra: string[] = []): Desktop {
     const target = targetDir();
     const fixture = join(target, "debug", "examples", "browser-endpoint");
     const host = join(target, "debug", "lockdown-native-host");
     for (const f of [fixture, host]) {
       if (!existsSync(f)) throw new Error(`${f} is missing; run \`pnpm run build:native\` first`);
     }
-    const proc = spawn(fixture, ["--dir", scratch, "--host", host, "--profile", profile], { stdio: ["pipe", "pipe", "pipe"] });
+    const proc = spawn(fixture, ["--dir", scratch, "--host", host, "--profile", profile, ...extra], { stdio: ["pipe", "pipe", "pipe"] });
     return new Desktop(proc);
   }
 

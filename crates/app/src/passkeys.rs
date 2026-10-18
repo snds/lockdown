@@ -28,15 +28,15 @@ use std::time::{Duration, Instant};
 use lockdown_matcher::related_origins::RelatedOriginsDoc;
 use lockdown_matcher::{FillContext, FillKind, FillVerdict, MatchDecision, Origin, fill_check};
 use lockdown_passkey::encode::{b64url, from_b64url};
-use lockdown_passkey::{
-    self as pk, Caller, Ceremony, ClientData, Flags, Refusal, RefusalName, rp_id_for,
-};
+use lockdown_passkey::{self as pk, Caller, Ceremony, ClientData, Flags, RefusalName, rp_id_for};
 use lockdown_vault::{FieldValue, Id, ItemClass, ItemKind, ItemState};
 use serde::{Deserialize, Serialize};
 
 use crate::approval::{self, Route};
 use crate::session::passkeys::{self as store, Found, NewPasskey};
 use crate::{App, AppError, AppResult, ApprovalKind, Core, GateInput};
+
+pub use lockdown_passkey::{Refusal, RefusalName as RefusalKind};
 
 /// How long after a password fill a site may upgrade that login to a
 /// passkey without asking (conditional create).

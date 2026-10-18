@@ -17,6 +17,7 @@
 
 pub mod handler;
 pub mod pairing;
+pub mod passkeys;
 #[cfg(test)]
 mod tests;
 
@@ -128,6 +129,8 @@ pub struct Shared {
     pub copy: Arc<dyn CopySink>,
     pairings: Mutex<Pairings>,
     offers: Mutex<Offers>,
+    /// Passkey requests waiting for the person's approval in the app.
+    approvals: passkeys::Approvals,
 }
 
 impl Shared {
@@ -138,6 +141,7 @@ impl Shared {
             copy,
             pairings: Mutex::new(Pairings::load(data)?),
             offers: Mutex::new(Offers::default()),
+            approvals: passkeys::Approvals::default(),
         })
     }
 

@@ -33,6 +33,8 @@ export function manifestFor(family) {
 const entries = [
   { in: "src/background/index.ts", out: "background.js", format: "esm" },
   { in: "src/content/index.ts", out: "content.js", format: "iife" },
+  { in: "src/content/passkeys.ts", out: "passkeys.js", format: "iife" },
+  { in: "src/main/webauthn.ts", out: "webauthn.js", format: "iife" },
   { in: "src/pages/frame.ts", out: "frame.js", format: "iife" },
   { in: "src/pages/popup.ts", out: "popup.js", format: "iife" },
 ]
