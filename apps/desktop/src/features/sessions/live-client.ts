@@ -1,6 +1,4 @@
 import { createContext, useContext } from "react"
-import { invoke } from "@tauri-apps/api/core"
-import { listen } from "@tauri-apps/api/event"
 
 /** One place the account is signed in (docs/plan/20-self-host-server.md §6). */
 export interface SessionView {
@@ -44,18 +42,18 @@ export interface LiveClient {
   onLive(handler: (notice: LiveNotice) => void): Promise<() => void>
 }
 
-export const tauriLiveClient: LiveClient = {
-  sessionList: () => invoke("session_list"),
-  sessionEnd: (id) => invoke("session_end", { id }),
-  sessionEndOthers: () => invoke("session_end_others"),
-  onLive: async (handler) => listen<LiveNotice>(LIVE_EVENT, (e) => handler(e.payload)),
-}
+/**
+ * No live client by default: a host that has one provides it (the desktop
+ * fills it with Tauri's commands and window events in `app/tauri-live.ts`;
+ * the web vault has none yet). Without one the Signed in section isn't
+ * shown and `useLive` does nothing. Feature code never imports a host's
+ * API directly, so the web vault compiles these views unchanged (D183).
+ */
+const LiveClientContext = createContext<LiveClient | null>(null)
 
-const LiveClientContext = createContext<LiveClient>(tauriLiveClient)
-
-/** The app's live client; tests provide a fake one. */
+/** The host's live client; tests provide a fake one. */
 export const LiveClientProvider = LiveClientContext.Provider
 
-export function useLiveClient(): LiveClient {
+export function useLiveClient(): LiveClient | null {
   return useContext(LiveClientContext)
 }

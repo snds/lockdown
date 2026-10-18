@@ -14,6 +14,7 @@ export function useLive(handler: (notice: LiveNotice) => void) {
     latest.current = handler
   })
   useEffect(() => {
+    if (!live) return
     let stop: (() => void) | null = null
     let gone = false
     try {

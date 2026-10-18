@@ -23,7 +23,7 @@ import { describeError } from "@/core/client"
 import { shortId, whenLocal } from "@/lib/format"
 
 import { clientWords } from "./client-words"
-import { useLiveClient, type SessionView } from "./live-client"
+import { useLiveClient, type LiveClient, type SessionView } from "./live-client"
 import { useLive } from "./use-live"
 
 interface SessionsSectionProps {
@@ -45,6 +45,10 @@ function deviceLabel(s: SessionView): string {
  */
 export function SessionsSection({ onNotice }: SessionsSectionProps) {
   const live = useLiveClient()
+  return live ? <Sessions live={live} onNotice={onNotice} /> : null
+}
+
+function Sessions({ live, onNotice }: SessionsSectionProps & { live: LiveClient }) {
   const [sessions, setSessions] = useState<SessionView[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [ending, setEnding] = useState<Ending | null>(null)

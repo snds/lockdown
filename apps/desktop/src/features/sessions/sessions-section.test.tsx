@@ -102,6 +102,11 @@ describe("the Signed in section", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("log in again")
   })
 
+  it("shows nothing where the host has no live client (the web vault today)", () => {
+    const { container } = render(<SessionsSection onNotice={() => {}} />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
   it("puts the client's name in words and leaves anything else as it came", () => {
     expect(clientWords("lockdown/0.2.0 (windows)")).toBe("Lockdown 0.2.0 on Windows")
     expect(clientWords("lockdown/0.2.0")).toBe("Lockdown 0.2.0")

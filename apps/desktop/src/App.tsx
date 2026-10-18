@@ -30,6 +30,8 @@ import { UnlockScreen } from "@/features/unlock/unlock-screen"
 import { countViews } from "@/features/vault/list-model"
 import { VaultView } from "@/features/vault/vault-view"
 import { useLive } from "@/features/sessions/use-live"
+import { LiveClientProvider } from "@/features/sessions/live-client"
+import { tauriLiveClient } from "@/app/tauri-live"
 
 /**
  * Locked is the default state. `status` is set when the core opened the
@@ -188,7 +190,9 @@ export default function App() {
         <SettingsProvider>
           <TemplatesProvider>
             <GateProvider>
-              <Root />
+              <LiveClientProvider value={tauriLiveClient}>
+                <Root />
+              </LiveClientProvider>
             </GateProvider>
           </TemplatesProvider>
         </SettingsProvider>
