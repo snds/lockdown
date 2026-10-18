@@ -56,6 +56,10 @@ pub enum Control {
     Totp,
     /// Passkey material: made by a provider, shown never, set never.
     Passkey,
+    /// A link to another item's field in the same vault (02-model §5
+    /// `linked`): the value is `<item id>#<field id>`, the field's own
+    /// value is read from there, through that item's gates.
+    Linked,
 }
 
 impl Control {
@@ -71,6 +75,7 @@ impl Control {
             Self::Boolean => FieldKind::Boolean,
             Self::Totp => FieldKind::Totp,
             Self::Passkey => FieldKind::Passkey,
+            Self::Linked => FieldKind::Linked,
         }
     }
 
@@ -99,6 +104,7 @@ impl Control {
             Self::Boolean => "boolean",
             Self::Totp => "totp",
             Self::Passkey => "passkey",
+            Self::Linked => "linked",
         }
     }
 }
@@ -247,11 +253,20 @@ pub fn common_field(field_id: &str) -> Option<&'static FieldTemplate> {
 /// Markdown notes, last on every template but a Note's (02-model §4 "common to every type").
 const NOTES: FieldTemplate = field("notes", "Notes", Control::Multiline).section("Notes");
 
-/// One kind's template.
+/// One template: a kind's own, or one of its variants (D231). A variant
+/// is a template of its own (a Passport, a Vehicle, a Router) on a kind
+/// whose rules it shares (fill, autofill, crown jewel, expiry); an item
+/// made from one keeps the variant's name in [`TEMPLATE_FIELD`], so an
+/// older build still opens it as its kind, with the variant's fields under
+/// "Other fields".
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Template {
     /// The kind.
     pub kind: ItemKind,
+    /// The variant's name (`passport`), or empty for the kind's own.
+    pub variant: &'static str,
+    /// A Material Symbols icon name for lists and menus.
+    pub icon: &'static str,
     /// Its name, singular, in plain words ("Wi-Fi network").
     pub name: &'static str,
     /// One line on what it is for, for the "New item" list.
@@ -269,6 +284,27 @@ pub struct Template {
 }
 
 impl Template {
+    /// The template's id as shells name it: the kind (`identity`), or the
+    /// kind and the variant (`identity/passport`).
+    pub fn id(&self) -> String {
+        if self.variant.is_empty() {
+            self.kind.as_str().to_string()
+        } else {
+            format!("{}/{}", self.kind.as_str(), self.variant)
+        }
+    }
+
+    /// Whether any of its fields is ever put into a page. A Contact's are
+    /// not (the contacts list is never used to fill; 02-model §4 Identity).
+    pub fn fills(&self) -> bool {
+        self.kind.autofill_allowed() && self.fields.iter().any(|f| f.fill != Fill::Never)
+    }
+
+    const fn variant(mut self, variant: &'static str) -> Self {
+        self.variant = variant;
+        self
+    }
+
     /// One field by id.
     pub fn field(&self, field_id: &str) -> Option<&'static FieldTemplate> {
         if let Some(f) = self.fields.iter().find(|f| f.field_id == field_id) {
@@ -310,7 +346,15 @@ pub const CUSTOM_KINDS: &[(FieldKind, &str)] = &[
     (FieldKind::Phone, "Phone"),
     (FieldKind::Date, "Date"),
     (FieldKind::Boolean, "Yes or no"),
+    (FieldKind::Totp, "One-time code"),
+    (FieldKind::Linked, "Link to another item"),
 ];
+
+/// The reserved field that names an item's template variant (D231): its
+/// text is the variant (`passport`), or for an item made from a person's
+/// own template, `user:<template item id>`. Kept by Lockdown, never named
+/// in an edit (`crate::compose::is_reserved`).
+pub const TEMPLATE_FIELD: &str = "lockdown.template";
 
 const STRONG: PasswordRule = PasswordRule::STRONG;
 const READABLE: PasswordRule = PasswordRule::READABLE;
@@ -373,15 +417,7 @@ const WIFI: &[FieldTemplate] = &[
         .generate(READABLE)
         .section("Network"),
     field("wifi.security", "Security", Control::Select)
-        .options(&[
-            "WPA3",
-            "WPA2/WPA3",
-            "WPA2",
-            "WPA",
-            "WEP",
-            "Open",
-            "Enterprise",
-        ])
+        .options(WIFI_SECURITY)
         .section("Network"),
     field("wifi.hidden", "Hidden network", Control::Boolean)
         .section("Network")
@@ -491,6 +527,9 @@ const CARD: &[FieldTemplate] = &[
     field("card.pin", "PIN", Control::Secret).section("Card"),
     field("card.type", "Brand", Control::Text)
         .hint("Left empty, it is worked out from the number."),
+    field("card.reprompt", "Ask before using the security code", Control::Boolean)
+        .section("Card")
+        .hint("Lockdown asks for your fingerprint or password before it shows, copies or fills the security code."),
     NOTES,
 ];
 
@@ -597,6 +636,282 @@ const MEMBERSHIP: &[FieldTemplate] = &[
 
 const CUSTOM: &[FieldTemplate] = &[NOTES];
 
+// --- the variants (D231) ----------------------------------------------------
+
+const ADDRESS: &[FieldTemplate] = &[
+    field("address.street", "Street", Control::Text)
+        .fill(Fill::Fill)
+        .section("Address"),
+    field("address.city", "City", Control::Text)
+        .fill(Fill::Fill)
+        .section("Address"),
+    field("address.territory", "State or region", Control::Text)
+        .fill(Fill::Fill)
+        .section("Address"),
+    field("address.postal_code", "Postal code", Control::Text)
+        .fill(Fill::Fill)
+        .section("Address"),
+    field("address.country", "Country", Control::Text)
+        .fill(Fill::Fill)
+        .section("Address"),
+    field("address.tel", "Phone", Control::Phone)
+        .fill(Fill::Fill)
+        .section("Contact"),
+    NOTES,
+];
+
+const BUSINESS: &[FieldTemplate] = &[
+    field("business.name", "Company name", Control::Text)
+        .required()
+        .fill(Fill::Fill)
+        .section("Business"),
+    field("business.department", "Department", Control::Text).section("Business"),
+    field("business.tax_id", "Tax or VAT number", Control::Text).section("Business"),
+    field("business.registration", "Company number", Control::Text).section("Business"),
+    field("identity.email", "Email", Control::Email)
+        .fill(Fill::Fill)
+        .section("Contact"),
+    field("address.tel", "Phone", Control::Phone)
+        .fill(Fill::Fill)
+        .section("Contact"),
+    field("business.website", "Website", Control::Url).section("Contact"),
+    field("address.street", "Street", Control::Text)
+        .fill(Fill::Fill)
+        .section("Address"),
+    field("address.city", "City", Control::Text)
+        .fill(Fill::Fill)
+        .section("Address"),
+    field("address.territory", "State or region", Control::Text)
+        .fill(Fill::Fill)
+        .section("Address"),
+    field("address.postal_code", "Postal code", Control::Text)
+        .fill(Fill::Fill)
+        .section("Address"),
+    field("address.country", "Country", Control::Text)
+        .fill(Fill::Fill)
+        .section("Address"),
+    NOTES,
+];
+
+const VEHICLE: &[FieldTemplate] = &[
+    field("vehicle.make", "Make", Control::Text).section("Vehicle"),
+    field("vehicle.model", "Model", Control::Text).section("Vehicle"),
+    field("vehicle.year", "Year", Control::Number).section("Vehicle"),
+    field("vehicle.colour", "Colour", Control::Text).section("Vehicle"),
+    field("vehicle.plate", "Number plate", Control::Text).section("Vehicle"),
+    field("vehicle.vin", "VIN", Control::Text)
+        .section("Vehicle")
+        .hint("The 17-character vehicle identification number."),
+    field("expires_at", "Registration expires", Control::Date).section("Registration"),
+    field("vehicle.insurer", "Insurer", Control::Text).section("Insurance"),
+    field("vehicle.policy", "Policy number", Control::Text).section("Insurance"),
+    NOTES,
+];
+
+const SEXES: &[&str] = &["Female", "Male", "X"];
+
+const PASSPORT: &[FieldTemplate] = &[
+    field("passport.number", "Passport number", Control::Secret)
+        .required()
+        .section("Passport"),
+    field("passport.type", "Type", Control::Text)
+        .section("Passport")
+        .hint("The letter on the photo page, usually P."),
+    field("passport.country", "Issuing country", Control::Text).section("Passport"),
+    field("passport.authority", "Issuing authority", Control::Text).section("Passport"),
+    field("passport.issued", "Issued", Control::Date).section("Passport"),
+    field("expires_at", "Expires", Control::Date).section("Passport"),
+    field("name.given", "Given names", Control::Text).section("Holder"),
+    field("name.family", "Surname", Control::Text).section("Holder"),
+    field("passport.nationality", "Nationality", Control::Text).section("Holder"),
+    field("passport.birth_date", "Date of birth", Control::Date).section("Holder"),
+    field("passport.birth_place", "Place of birth", Control::Text).section("Holder"),
+    field("passport.sex", "Sex", Control::Select)
+        .options(SEXES)
+        .section("Holder"),
+    field("passport.national_id", "Personal number", Control::Text).section("Holder"),
+    NOTES,
+];
+
+const DRIVER_LICENCE: &[FieldTemplate] = &[
+    field("dl.number", "Licence number", Control::Secret)
+        .required()
+        .section("Licence"),
+    field("dl.class", "Categories", Control::Text)
+        .section("Licence")
+        .hint("The vehicle classes it covers, like B or C1."),
+    field("dl.country", "Country", Control::Text).section("Licence"),
+    field("dl.territory", "State or region", Control::Text).section("Licence"),
+    field("dl.authority", "Issued by", Control::Text).section("Licence"),
+    field("dl.issued", "Issued", Control::Date).section("Licence"),
+    field("expires_at", "Expires", Control::Date).section("Licence"),
+    field("name.given", "Given names", Control::Text).section("Holder"),
+    field("name.family", "Surname", Control::Text).section("Holder"),
+    field("dl.birth_date", "Date of birth", Control::Date).section("Holder"),
+    NOTES,
+];
+
+const NATIONAL_ID: &[FieldTemplate] = &[
+    field("id.number", "Number", Control::Secret)
+        .required()
+        .section("Identity document"),
+    field("id.country", "Issuing country", Control::Text).section("Identity document"),
+    field("id.authority", "Issued by", Control::Text).section("Identity document"),
+    field("id.issued", "Issued", Control::Date).section("Identity document"),
+    field("expires_at", "Expires", Control::Date).section("Identity document"),
+    field("name.given", "Given names", Control::Text).section("Holder"),
+    field("name.family", "Surname", Control::Text).section("Holder"),
+    field("id.nationality", "Nationality", Control::Text).section("Holder"),
+    field("id.birth_date", "Date of birth", Control::Date).section("Holder"),
+    NOTES,
+];
+
+/// A person in your address book: kept apart from the identities forms
+/// are filled from, and never filled itself (02-model §4 Identity).
+const CONTACT: &[FieldTemplate] = &[
+    field("name.given", "Given name", Control::Text).section("Name"),
+    field("name.family", "Family name", Control::Text).section("Name"),
+    field("contact.company", "Company", Control::Text).section("Name"),
+    field("identity.email", "Email", Control::Email).section("Contact"),
+    field("address.tel", "Phone", Control::Phone).section("Contact"),
+    field("contact.birthday", "Birthday", Control::Date).section("Contact"),
+    field("address.street", "Street", Control::Text).section("Address"),
+    field("address.city", "City", Control::Text).section("Address"),
+    field("address.territory", "State or region", Control::Text).section("Address"),
+    field("address.postal_code", "Postal code", Control::Text).section("Address"),
+    field("address.country", "Country", Control::Text).section("Address"),
+    NOTES,
+];
+
+const BLOOD_TYPES: &[&str] = &["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+
+const MEDICAL_RECORD: &[FieldTemplate] = &[
+    field("med.patient", "Patient", Control::Text).section("Record"),
+    field("med.provider", "Doctor or clinic", Control::Text).section("Record"),
+    field("med.record_number", "Record number", Control::Text).section("Record"),
+    field("med.insurer", "Health insurer", Control::Text).section("Record"),
+    field("med.blood_type", "Blood type", Control::Select)
+        .options(BLOOD_TYPES)
+        .section("Health"),
+    field("med.allergies", "Allergies", Control::Multiline).section("Health"),
+    field("med.medications", "Medications", Control::Multiline).section("Health"),
+    field("med.conditions", "Conditions", Control::Multiline).section("Health"),
+    field("med.emergency_contact", "Emergency contact", Control::Text).section("In an emergency"),
+    field("med.emergency_phone", "Their phone", Control::Phone).section("In an emergency"),
+    NOTES,
+];
+
+const INSURANCE: &[FieldTemplate] = &[
+    field("insurance.type", "Cover", Control::Select)
+        .options(&["Health", "Car", "Home", "Life", "Travel", "Pet", "Other"])
+        .section("Policy"),
+    field("insurance.insurer", "Insurer", Control::Text).section("Policy"),
+    field("insurance.policy_number", "Policy number", Control::Text).section("Policy"),
+    field("insurance.holder", "Policy holder", Control::Text).section("Policy"),
+    field("insurance.start", "Starts", Control::Date).section("Policy"),
+    field("expires_at", "Renews", Control::Date).section("Policy"),
+    field("insurance.premium", "Premium", Control::Text).section("Policy"),
+    field("insurance.phone", "Claims phone", Control::Phone).section("Claims"),
+    field("insurance.url", "Insurer's website", Control::Url).section("Claims"),
+    NOTES,
+];
+
+/// Recovery or backup codes for an account: a crown jewel by default
+/// (02-model §3), from the `recovery_codes` field the classifier knows.
+const RECOVERY_CODES: &[FieldTemplate] = &[
+    field("recovery.account", "For", Control::Text)
+        .section("Recovery")
+        .hint("The account these codes get you back into."),
+    field("recovery_codes", "Recovery codes", Control::SecretMultiline)
+        .required()
+        .crown()
+        .section("Recovery")
+        .hint("One code per line, as the site showed them."),
+    field("recovery.made", "Made", Control::Date).section("Recovery"),
+    NOTES,
+];
+
+const OUTDOOR_LICENCE: &[FieldTemplate] = &[
+    field("outdoor.holder", "Name", Control::Text).section("Licence"),
+    field("outdoor.number", "Licence number", Control::Text).section("Licence"),
+    field("outdoor.activities", "Covers", Control::Text)
+        .section("Licence")
+        .hint("Fishing, hunting, a park pass…"),
+    field("outdoor.authority", "Issued by", Control::Text).section("Licence"),
+    field("outdoor.territory", "Where it's valid", Control::Text).section("Licence"),
+    field("outdoor.issued", "Issued", Control::Date).section("Licence"),
+    field("expires_at", "Expires", Control::Date).section("Licence"),
+    NOTES,
+];
+
+const EMAIL_ACCOUNT: &[FieldTemplate] = &[
+    field("email.address", "Email address", Control::Email)
+        .required()
+        .section("Account"),
+    field("pw", "Password", Control::Secret)
+        .generate(STRONG)
+        .section("Account"),
+    field("email.provider", "Provider", Control::Text).section("Account"),
+    field("email.imap_host", "Incoming server", Control::Text).section("Servers"),
+    field("email.imap_port", "Incoming port", Control::Number).section("Servers"),
+    field("email.smtp_host", "Outgoing server", Control::Text).section("Servers"),
+    field("email.smtp_port", "Outgoing port", Control::Number).section("Servers"),
+    field("email.security", "Connection security", Control::Select)
+        .options(&["SSL/TLS", "STARTTLS", "None"])
+        .section("Servers"),
+    NOTES,
+];
+
+const ROUTER: &[FieldTemplate] = &[
+    field("wifi.ssid", "Network name", Control::Text)
+        .required()
+        .section("Network"),
+    field("wifi.passphrase", "Password", Control::Secret)
+        .generate(READABLE)
+        .section("Network"),
+    field("wifi.security", "Security", Control::Select)
+        .options(WIFI_SECURITY)
+        .section("Network"),
+    field("wifi.hidden", "Hidden network", Control::Boolean).section("Network"),
+    field("router.admin", "Admin page", Control::Url).section("Router"),
+    field("user", "Admin username", Control::Text).section("Router"),
+    field("pw", "Admin password", Control::Secret)
+        .generate(STRONG)
+        .section("Router"),
+    field("router.model", "Model", Control::Text).section("Router"),
+    NOTES,
+];
+
+const PGP_KEY: &[FieldTemplate] = &[
+    field("pgp.private_key", "Private key", Control::SecretMultiline)
+        .required()
+        .section("Private"),
+    field("pgp.passphrase", "Passphrase", Control::Secret)
+        .generate(STRONG)
+        .section("Private"),
+    field("pgp.public_key", "Public key", Control::Multiline).section("Public"),
+    field("pgp.fingerprint", "Fingerprint", Control::Text).section("Public"),
+    field("pgp.user_id", "User ID", Control::Text)
+        .section("Public")
+        .hint("The name and email the key is made out to."),
+    field("pgp.algorithm", "Algorithm", Control::Select)
+        .options(&["Ed25519", "RSA", "ECDSA", "Other"])
+        .section("Public"),
+    field("expires_at", "Expires", Control::Date).section("Public"),
+    NOTES,
+];
+
+/// Wi-Fi's security choices, shared by a network and a router.
+pub const WIFI_SECURITY: &[&str] = &[
+    "WPA3",
+    "WPA2/WPA3",
+    "WPA2",
+    "WPA",
+    "WEP",
+    "Open",
+    "Enterprise",
+];
+
 const fn template(
     kind: ItemKind,
     name: &'static str,
@@ -607,6 +922,8 @@ const fn template(
 ) -> Template {
     Template {
         kind,
+        variant: "",
+        icon: "category",
         name,
         summary,
         creatable: true,
@@ -616,9 +933,17 @@ const fn template(
     }
 }
 
-/// Every kind's template, in the order a "New item" list shows them (the
-/// hub type first, then the order people reach for them).
-pub const TEMPLATES: [Template; 19] = [
+impl Template {
+    const fn icon(mut self, icon: &'static str) -> Self {
+        self.icon = icon;
+        self
+    }
+}
+
+/// Every template, in the order a "New item" list shows them: each kind's
+/// own (the hub type first, then the order people reach for them), its
+/// variants after it, and last the three no one makes by hand.
+pub const TEMPLATES: &[Template] = &[
     template(
         ItemKind::Login,
         "Login",
@@ -626,7 +951,8 @@ pub const TEMPLATES: [Template; 19] = [
         LOGIN,
         Some("pw"),
         Some("user"),
-    ),
+    )
+    .icon("key"),
     template(
         ItemKind::Code,
         "One-time code",
@@ -634,7 +960,8 @@ pub const TEMPLATES: [Template; 19] = [
         CODE,
         Some("code.0"),
         None,
-    ),
+    )
+    .icon("timer"),
     template(
         ItemKind::Card,
         "Payment card",
@@ -642,7 +969,8 @@ pub const TEMPLATES: [Template; 19] = [
         CARD,
         Some("card.number"),
         Some("card.holder"),
-    ),
+    )
+    .icon("credit_card"),
     template(
         ItemKind::Note,
         "Note",
@@ -650,7 +978,8 @@ pub const TEMPLATES: [Template; 19] = [
         NOTE,
         None,
         None,
-    ),
+    )
+    .icon("sticky_note_2"),
     template(
         ItemKind::WiFi,
         "Wi-Fi network",
@@ -658,7 +987,18 @@ pub const TEMPLATES: [Template; 19] = [
         WIFI,
         Some("wifi.passphrase"),
         Some("wifi.ssid"),
-    ),
+    )
+    .icon("wifi"),
+    template(
+        ItemKind::WiFi,
+        "Router",
+        "A network and the router's own admin sign-in",
+        ROUTER,
+        Some("wifi.passphrase"),
+        Some("wifi.ssid"),
+    )
+    .variant("router")
+    .icon("router"),
     template(
         ItemKind::Identity,
         "Identity",
@@ -666,7 +1006,78 @@ pub const TEMPLATES: [Template; 19] = [
         IDENTITY,
         None,
         Some("identity.email"),
-    ),
+    )
+    .icon("badge"),
+    template(
+        ItemKind::Identity,
+        "Address",
+        "A postal address, for forms",
+        ADDRESS,
+        None,
+        Some("address.city"),
+    )
+    .variant("address")
+    .icon("home"),
+    template(
+        ItemKind::Identity,
+        "Business",
+        "A company's name, numbers and address, for forms",
+        BUSINESS,
+        None,
+        Some("business.name"),
+    )
+    .variant("business")
+    .icon("business"),
+    template(
+        ItemKind::Identity,
+        "Passport",
+        "The facts from a passport's photo page",
+        PASSPORT,
+        Some("passport.number"),
+        Some("passport.country"),
+    )
+    .variant("passport")
+    .icon("flight"),
+    template(
+        ItemKind::Identity,
+        "Driver's licence",
+        "A driving licence's number, categories and dates",
+        DRIVER_LICENCE,
+        Some("dl.number"),
+        Some("dl.territory"),
+    )
+    .variant("driver-licence")
+    .icon("id_card"),
+    template(
+        ItemKind::Identity,
+        "National ID",
+        "An ID card, or a social security or national insurance number",
+        NATIONAL_ID,
+        Some("id.number"),
+        Some("id.country"),
+    )
+    .variant("national-id")
+    .icon("fingerprint"),
+    template(
+        ItemKind::Identity,
+        "Vehicle",
+        "A car's plate, VIN, registration and insurance",
+        VEHICLE,
+        None,
+        Some("vehicle.plate"),
+    )
+    .variant("vehicle")
+    .icon("directions_car"),
+    template(
+        ItemKind::Identity,
+        "Contact",
+        "Someone else's details; never used to fill a form",
+        CONTACT,
+        None,
+        Some("identity.email"),
+    )
+    .variant("contact")
+    .icon("contact_page"),
     template(
         ItemKind::Document,
         "Document",
@@ -674,7 +1085,48 @@ pub const TEMPLATES: [Template; 19] = [
         DOCUMENT,
         None,
         Some("doc.type"),
-    ),
+    )
+    .icon("description"),
+    template(
+        ItemKind::Document,
+        "Medical record",
+        "Your doctor, blood type, allergies and medications",
+        MEDICAL_RECORD,
+        None,
+        Some("med.provider"),
+    )
+    .variant("medical-record")
+    .icon("medical_information"),
+    template(
+        ItemKind::Document,
+        "Insurance policy",
+        "A policy's number, cover, renewal date and claims line",
+        INSURANCE,
+        None,
+        Some("insurance.insurer"),
+    )
+    .variant("insurance")
+    .icon("health_and_safety"),
+    template(
+        ItemKind::Document,
+        "Recovery codes",
+        "An account's backup codes, always kept as a crown jewel",
+        RECOVERY_CODES,
+        Some("recovery_codes"),
+        Some("recovery.account"),
+    )
+    .variant("recovery-codes")
+    .icon("lock_reset"),
+    template(
+        ItemKind::Document,
+        "Outdoor licence",
+        "A fishing or hunting licence, or a park pass",
+        OUTDOOR_LICENCE,
+        None,
+        Some("outdoor.activities"),
+    )
+    .variant("outdoor-licence")
+    .icon("forest"),
     template(
         ItemKind::BankAccount,
         "Bank account",
@@ -682,7 +1134,8 @@ pub const TEMPLATES: [Template; 19] = [
         BANK_ACCOUNT,
         Some("bank.account_number"),
         Some("bank.name"),
-    ),
+    )
+    .icon("account_balance"),
     template(
         ItemKind::CryptoWallet,
         "Crypto wallet",
@@ -690,7 +1143,8 @@ pub const TEMPLATES: [Template; 19] = [
         CRYPTO_WALLET,
         None,
         Some("wallet.network"),
-    ),
+    )
+    .icon("account_balance_wallet"),
     template(
         ItemKind::SshKey,
         "SSH key",
@@ -698,7 +1152,18 @@ pub const TEMPLATES: [Template; 19] = [
         SSH_KEY,
         None,
         Some("ssh.key_type"),
-    ),
+    )
+    .icon("terminal"),
+    template(
+        ItemKind::SshKey,
+        "PGP key",
+        "A key for signing and encrypting email and files",
+        PGP_KEY,
+        None,
+        Some("pgp.user_id"),
+    )
+    .variant("pgp")
+    .icon("encrypted"),
     template(
         ItemKind::ApiCredential,
         "API key",
@@ -706,7 +1171,8 @@ pub const TEMPLATES: [Template; 19] = [
         API_CREDENTIAL,
         Some("api.key"),
         Some("api.host"),
-    ),
+    )
+    .icon("api"),
     template(
         ItemKind::Server,
         "Server",
@@ -714,7 +1180,18 @@ pub const TEMPLATES: [Template; 19] = [
         SERVER,
         Some("pw"),
         Some("server.host"),
-    ),
+    )
+    .icon("dns"),
+    template(
+        ItemKind::Server,
+        "Email account",
+        "An address, its password and its mail servers",
+        EMAIL_ACCOUNT,
+        Some("pw"),
+        Some("email.address"),
+    )
+    .variant("email-account")
+    .icon("mail"),
     template(
         ItemKind::Database,
         "Database",
@@ -722,7 +1199,8 @@ pub const TEMPLATES: [Template; 19] = [
         DATABASE,
         Some("pw"),
         Some("db.host"),
-    ),
+    )
+    .icon("database"),
     template(
         ItemKind::SoftwareLicence,
         "Software licence",
@@ -730,7 +1208,8 @@ pub const TEMPLATES: [Template; 19] = [
         SOFTWARE_LICENCE,
         Some("licence.key"),
         Some("licence.publisher"),
-    ),
+    )
+    .icon("license"),
     template(
         ItemKind::Membership,
         "Membership",
@@ -738,7 +1217,8 @@ pub const TEMPLATES: [Template; 19] = [
         MEMBERSHIP,
         None,
         Some("member.organization"),
-    ),
+    )
+    .icon("card_membership"),
     template(
         ItemKind::Custom,
         "Custom item",
@@ -746,7 +1226,8 @@ pub const TEMPLATES: [Template; 19] = [
         CUSTOM,
         None,
         None,
-    ),
+    )
+    .icon("category"),
     Template {
         creatable: false,
         ..template(
@@ -757,6 +1238,7 @@ pub const TEMPLATES: [Template; 19] = [
             None,
             Some("passkey.0.user_name"),
         )
+        .icon("passkey")
     },
     Template {
         creatable: false,
@@ -780,14 +1262,60 @@ pub const TEMPLATES: [Template; 19] = [
             None,
         )
     },
+    Template {
+        creatable: false,
+        ..template(
+            ItemKind::Template,
+            "Template",
+            "A kind of item you made: its name and its fields",
+            &[],
+            None,
+            None,
+        )
+    },
 ];
 
-/// The template for `kind`.
+/// The kind's own template.
 pub fn template_for(kind: ItemKind) -> &'static Template {
     TEMPLATES
         .iter()
-        .find(|t| t.kind == kind)
+        .find(|t| t.kind == kind && t.variant.is_empty())
         .expect("every kind has a template (tested)")
+}
+
+/// One of `kind`'s variants by name; the kind's own for an empty name.
+pub fn template_variant(kind: ItemKind, variant: &str) -> Option<&'static Template> {
+    TEMPLATES
+        .iter()
+        .find(|t| t.kind == kind && t.variant == variant)
+}
+
+/// A template by its id ([`Template::id`]): `identity` or `identity/passport`.
+pub fn template_named(id: &str) -> Option<&'static Template> {
+    let (kind, variant) = id.split_once('/').unwrap_or((id, ""));
+    let kind = ItemKind::ALL.into_iter().find(|k| k.as_str() == kind)?;
+    template_variant(kind, variant)
+}
+
+/// The variant an item's fields name in [`TEMPLATE_FIELD`], if any.
+pub fn variant_of(fields: &[crate::PlainField]) -> Option<&str> {
+    fields
+        .iter()
+        .find(|f| f.field_id == TEMPLATE_FIELD)
+        .and_then(|f| match &f.value {
+            crate::FieldValue::Text(t) => Some(t.as_str()),
+            _ => None,
+        })
+}
+
+/// The template an item of `kind` holding `fields` is drawn from: its
+/// variant where it names one this build knows, else the kind's own (an
+/// item from a newer build, or from a person's own template, shows its
+/// fields under the kind's).
+pub fn template_of(kind: ItemKind, fields: &[crate::PlainField]) -> &'static Template {
+    variant_of(fields)
+        .and_then(|v| template_variant(kind, v))
+        .unwrap_or_else(|| template_for(kind))
 }
 
 /// A card's brand from its number's leading digits, for the `card.type`
@@ -817,16 +1345,38 @@ mod tests {
     #[test]
     fn every_kind_has_one_template_and_ids_are_unique() {
         for kind in ItemKind::ALL {
-            let n = TEMPLATES.iter().filter(|t| t.kind == kind).count();
+            let n = TEMPLATES
+                .iter()
+                .filter(|t| t.kind == kind && t.variant.is_empty())
+                .count();
             assert_eq!(n, 1, "{kind:?}");
-            let t = template_for(kind);
+        }
+        let mut template_ids: Vec<String> = TEMPLATES.iter().map(Template::id).collect();
+        template_ids.sort_unstable();
+        template_ids.dedup();
+        assert_eq!(template_ids.len(), TEMPLATES.len(), "a template id twice");
+        for t in TEMPLATES {
             let mut ids: Vec<&str> = t.fields.iter().map(|f| f.field_id).collect();
             ids.sort_unstable();
             ids.dedup();
-            assert_eq!(ids.len(), t.fields.len(), "{kind:?} repeats a field id");
+            assert_eq!(ids.len(), t.fields.len(), "{} repeats a field id", t.id());
             assert!(!ids.contains(&"title"), "title is common, not templated");
+            assert!(
+                t.variant
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b == b'-'),
+                "{}",
+                t.variant
+            );
+            assert!(
+                !t.icon.is_empty()
+                    && t.icon
+                        .bytes()
+                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+            );
             for f in t.fields {
                 assert!(!f.field_id.starts_with("custom."), "{}", f.field_id);
+                assert!(!f.field_id.starts_with("lockdown."), "{}", f.field_id);
                 assert_eq!(
                     f.control == Control::Select,
                     !f.options.is_empty(),
@@ -841,12 +1391,72 @@ mod tests {
                         f.field_id
                     );
                 }
+                // A field id two templates of one kind share means the
+                // same thing in both (a passport's names are a person's).
+                for other in TEMPLATES.iter().filter(|o| o.kind == t.kind) {
+                    if let Some(o) = other.fields.iter().find(|o| o.field_id == f.field_id) {
+                        assert_eq!(
+                            o.control.storage(),
+                            f.control.storage(),
+                            "{} differs between {} and {}",
+                            f.field_id,
+                            t.id(),
+                            other.id()
+                        );
+                    }
+                }
+            }
+            if !t.variant.is_empty() {
+                assert!(t.creatable, "{}", t.id());
+                assert_eq!(template_named(&t.id()), Some(t));
             }
         }
         assert!(!template_for(ItemKind::Passkey).creatable);
         assert!(!template_for(ItemKind::Consent).creatable);
         assert!(!template_for(ItemKind::VaultInfo).creatable);
-        assert_eq!(TEMPLATES.iter().filter(|t| t.creatable).count(), 16);
+        assert!(!template_for(ItemKind::Template).creatable);
+        // 02-model §4 and the matrix: 25 or more typed templates.
+        let creatable = TEMPLATES.iter().filter(|t| t.creatable).count();
+        assert_eq!(creatable, 30);
+        assert!(creatable - 1 >= 25, "25+ typed, the custom item aside");
+        assert_eq!(
+            template_named("identity"),
+            Some(template_for(ItemKind::Identity))
+        );
+        assert!(template_named("identity/spaceship").is_none());
+        assert!(template_named("spaceship").is_none());
+    }
+
+    #[test]
+    fn an_item_finds_its_variant_and_falls_back_to_its_kind() {
+        use crate::{FieldValue, PlainField};
+        let marker = |v: &str| PlainField::text(TEMPLATE_FIELD, "Template", v);
+        assert_eq!(
+            template_of(ItemKind::Identity, &[marker("passport")]).name,
+            "Passport"
+        );
+        // A variant this build doesn't know, or one of another kind: the kind's own.
+        assert_eq!(
+            template_of(ItemKind::Identity, &[marker("starship")]).variant,
+            ""
+        );
+        assert_eq!(
+            template_of(ItemKind::Document, &[marker("passport")]).variant,
+            ""
+        );
+        assert_eq!(template_of(ItemKind::Identity, &[]).variant, "");
+        let not_text = PlainField::new(
+            TEMPLATE_FIELD,
+            crate::FieldKind::Text,
+            "Template",
+            FieldValue::Boolean(true),
+        );
+        assert_eq!(variant_of(&[not_text]), None);
+        // Contacts are never filled; the other identities are.
+        assert!(!template_named("identity/contact").unwrap().fills());
+        assert!(template_named("identity/address").unwrap().fills());
+        assert!(template_for(ItemKind::Identity).fills());
+        assert!(!template_named("identity/vehicle").unwrap().fills());
     }
 
     #[test]
@@ -877,7 +1487,7 @@ mod tests {
 
     #[test]
     fn the_crown_jewel_data_matches_the_classifier() {
-        for t in &TEMPLATES {
+        for t in TEMPLATES {
             for f in t.fields {
                 let classified = crown_jewel_default(Classify {
                     kind: t.kind,
@@ -900,11 +1510,13 @@ mod tests {
             template_for(ItemKind::Login).crown_jewel_default(),
             CrownJewelDefault::Never
         );
+        let codes = template_named("document/recovery-codes").unwrap();
+        assert!(codes.field("recovery_codes").unwrap().crown_jewel);
     }
 
     #[test]
     fn fill_rules_follow_the_kind_and_the_model() {
-        for t in &TEMPLATES {
+        for t in TEMPLATES {
             for f in t.fields {
                 if !t.kind.autofill_allowed() {
                     assert_eq!(f.fill, Fill::Never, "{:?} {}", t.kind, f.field_id);
@@ -940,7 +1552,7 @@ mod tests {
 
     #[test]
     fn primary_is_a_secret_and_subtitle_is_plain() {
-        for t in &TEMPLATES {
+        for t in TEMPLATES {
             if let Some(p) = t.primary {
                 let f = t
                     .field(p)

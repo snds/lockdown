@@ -11,14 +11,18 @@
 //! out. Secrets arrive as bytes ([`FieldInput::Secret`]) and plain values
 //! as text; a secret sent as text is refused.
 
-use lockdown_crypto::generator::{PasswordRule, generate_password};
+use lockdown_crypto::generator::{PasswordRule, Recipe, SiteRule, generate_password};
 use zeroize::Zeroizing;
 
 use crate::crown_jewel::CrownJewelDefault;
 use crate::field::{FieldKind, FieldValue, PlainField};
 use crate::item::{ItemClass, ItemKind};
 use crate::organization::{ORG_FOLDER, ORG_TAGS, ensure_org_fields, is_org_field, normalize_tags};
-use crate::template::{CUSTOM_KINDS, Control, FieldTemplate, Template, card_brand, template_for};
+use crate::template::{
+    CUSTOM_KINDS, Control, FieldTemplate, TEMPLATE_FIELD, Template, card_brand, template_for,
+    template_of,
+};
+use crate::user_template::{TEMPLATE_FIELD_PREFIX, UserTemplate};
 use crate::{Error, Result};
 
 /// The match rule a new web address gets (the importers' default).
@@ -76,6 +80,10 @@ pub enum Change {
     Set(FieldInput),
     /// Make a new value with the field's generator.
     Generate,
+    /// Make a new value with the person's options (D230), within a site's
+    /// own published rules when it has some: a field the generator applies
+    /// to only, as for [`Change::Generate`].
+    GenerateWith(Recipe, Option<SiteRule>),
     /// Take it off the item (an edit only).
     Remove,
 }
@@ -152,8 +160,22 @@ fn control_for(template: Option<&FieldTemplate>, kind: FieldKind) -> Option<Cont
         FieldKind::Date => Control::Date,
         FieldKind::Boolean => Control::Boolean,
         FieldKind::Totp => Control::Totp,
-        FieldKind::Passkey | FieldKind::Linked | FieldKind::File => return None,
+        FieldKind::Linked => Control::Linked,
+        FieldKind::Passkey | FieldKind::File => return None,
     })
+}
+
+/// Whether `text` is a link to a field (`<item id>#<field id>`), and its
+/// two parts. Whether the item and field exist is the session's to check.
+pub fn parse_link(text: &str) -> Option<(crate::Id, &str)> {
+    let (item, field) = text.trim().split_once('#')?;
+    let item = crate::Id::parse(item).ok()?;
+    let ok = !field.is_empty()
+        && field.len() <= 128
+        && field
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b));
+    ok.then_some((item, field))
 }
 
 fn is_date(text: &str, with_day: bool) -> bool {
@@ -333,6 +355,15 @@ fn value_of(
             }
             FieldValue::Text(t)
         }
+        Control::Linked => {
+            let t = one_line()?;
+            if parse_link(&t).is_none() {
+                return Err(invalid(format!(
+                    "{label} needs an item and one of its fields to point at"
+                )));
+            }
+            FieldValue::Text(t)
+        }
         Control::Boolean => match trimmed {
             "true" | "yes" => FieldValue::Boolean(true),
             "false" | "no" => FieldValue::Boolean(false),
@@ -357,6 +388,14 @@ fn generator_for(template: Option<&FieldTemplate>, kind: FieldKind) -> Option<Pa
 
 fn generated(rule: PasswordRule) -> Result<FieldValue> {
     let pw = generate_password(&rule)?;
+    Ok(FieldValue::Text(pw.as_str().to_string()))
+}
+
+fn generated_with(recipe: &Recipe, site: Option<&SiteRule>) -> Result<FieldValue> {
+    let pw = match site {
+        Some(site) => recipe.generate_for(site)?,
+        None => recipe.generate()?,
+    };
     Ok(FieldValue::Text(pw.as_str().to_string()))
 }
 
@@ -407,6 +446,10 @@ fn custom_field(change: FieldChange, n: usize) -> Result<Option<PlainField>> {
             Some(rule) => Some(generated(rule)?),
             None => return Err(invalid(format!("{label} can't be generated"))),
         },
+        Change::GenerateWith(recipe, site) => match generator_for(None, kind) {
+            Some(_) => Some(generated_with(&recipe, site.as_ref())?),
+            None => return Err(invalid(format!("{label} can't be generated"))),
+        },
         Change::Keep | Change::Remove => {
             return Err(invalid(format!(
                 "{label} is new; there is nothing to keep or remove"
@@ -414,6 +457,37 @@ fn custom_field(change: FieldChange, n: usize) -> Result<Option<PlainField>> {
         }
     };
     Ok(value.map(|value| PlainField::new(format!("custom.{n}"), kind, label, value)))
+}
+
+/// A field a person's template names (`tpl.<key>`), checked by its kind;
+/// on an edit, one the item lacks yet.
+fn template_defined(
+    field_id: &str,
+    label: &str,
+    kind: FieldKind,
+    change: Change,
+) -> Result<Option<PlainField>> {
+    if !CUSTOM_KINDS.iter().any(|(k, _)| *k == kind) {
+        return Err(invalid(format!("{label} can't be that kind of field")));
+    }
+    let control = control_for(None, kind).expect("custom kinds all have a control");
+    let value = match change {
+        Change::Set(input) => value_of(control, None, label, input, None)?,
+        Change::Generate => match generator_for(None, kind) {
+            Some(rule) => Some(generated(rule)?),
+            None => return Err(invalid(format!("{label} can't be generated"))),
+        },
+        Change::GenerateWith(recipe, site) => match generator_for(None, kind) {
+            Some(_) => Some(generated_with(&recipe, site.as_ref())?),
+            None => return Err(invalid(format!("{label} can't be generated"))),
+        },
+        Change::Keep | Change::Remove => {
+            return Err(invalid(format!(
+                "{label} is new; there is nothing to keep or remove"
+            )));
+        }
+    };
+    Ok(value.map(|value| PlainField::new(field_id, kind, label, value)))
 }
 
 fn missing_required(template: &Template, fields: &[PlainField]) -> Result<()> {
@@ -483,7 +557,18 @@ pub fn compose_new(
     crown_jewel: bool,
     changes: Vec<FieldChange>,
 ) -> Result<(ItemClass, Vec<PlainField>)> {
-    let template = template_for(kind);
+    compose_new_from(template_for(kind), title, crown_jewel, changes)
+}
+
+/// [`compose_new`] from one template, a kind's own or a variant (D231):
+/// a variant's item carries its name in [`TEMPLATE_FIELD`].
+pub fn compose_new_from(
+    template: &Template,
+    title: &str,
+    crown_jewel: bool,
+    changes: Vec<FieldChange>,
+) -> Result<(ItemClass, Vec<PlainField>)> {
+    let kind = template.kind;
     if !template.creatable {
         return Err(invalid(format!(
             "a {} isn't made by hand",
@@ -514,6 +599,10 @@ pub fn compose_new(
                 Some(rule) => Some(generated(rule)?),
                 None => return Err(invalid(format!("{} can't be generated", t.label))),
             },
+            Change::GenerateWith(recipe, site) => match t.generator {
+                Some(_) => Some(generated_with(&recipe, site.as_ref())?),
+                None => return Err(invalid(format!("{} can't be generated", t.label))),
+            },
             Change::Keep | Change::Remove => {
                 return Err(invalid(format!(
                     "a new item has nothing to keep or remove ({})",
@@ -540,6 +629,13 @@ pub fn compose_new(
     missing_required(template, &fields)?;
     derive(kind, &mut fields);
     ensure_org_fields(&mut fields);
+    if !template.variant.is_empty() {
+        fields.push(PlainField::text(
+            TEMPLATE_FIELD,
+            "Template",
+            template.variant,
+        ));
+    }
     let by_default = template.crown_jewel_default() == CrownJewelDefault::Default
         || fields
             .iter()
@@ -552,6 +648,57 @@ pub fn compose_new(
     Ok((class, ordered(template, title, fields)))
 }
 
+/// A new Custom item from a person's template `def` (the item `template_id`;
+/// D232): each field the template names is `tpl.<key>` with its label and
+/// kind, checked by that kind; a required one left out is refused; fields
+/// of the item's own come after as `custom.<n>`.
+pub fn compose_new_user(
+    def: &UserTemplate,
+    template_id: crate::Id,
+    title: &str,
+    crown_jewel: bool,
+    changes: Vec<FieldChange>,
+) -> Result<(ItemClass, Vec<PlainField>)> {
+    let def = def.checked()?;
+    let title = check_title(title)?;
+    no_repeats(&changes)?;
+    let mut fields = Vec::new();
+    let mut rest = Vec::new();
+    for change in changes {
+        match change.field_id.as_deref() {
+            Some(id) if id.starts_with(TEMPLATE_FIELD_PREFIX) => {
+                let f = def.field(id).ok_or_else(|| {
+                    invalid(format!("'{id}' isn't a field of the template {}", def.name))
+                })?;
+                if let Some(p) = template_defined(id, &f.label, f.kind, change.change)? {
+                    fields.push(p);
+                }
+            }
+            _ => rest.push(change),
+        }
+    }
+    for f in def.fields.iter().filter(|f| f.required) {
+        let id = UserTemplate::field_id(&f.key);
+        if !fields.iter().any(|p| p.field_id == id) {
+            return Err(invalid(format!("{} is needed", f.label)));
+        }
+    }
+    // In the template's order.
+    fields.sort_by_key(|p| {
+        def.fields
+            .iter()
+            .position(|f| UserTemplate::field_id(&f.key) == p.field_id)
+    });
+    let (class, mut own) = compose_new(ItemKind::Custom, &title, crown_jewel, rest)?;
+    // `own` is the title, the Custom template's fields (notes) and the
+    // item's own fields; the template's go straight after the title.
+    let tail = own.split_off(1);
+    own.extend(fields);
+    own.extend(tail);
+    own.push(UserTemplate::marker(template_id));
+    Ok((class, own))
+}
+
 /// The next version's fields for an item of `kind` that holds `existing`.
 /// `title: None` keeps the title. Every existing field but the title must
 /// be named in `changes` (see the module docs).
@@ -561,7 +708,7 @@ pub fn compose_edit(
     title: Option<&str>,
     changes: Vec<FieldChange>,
 ) -> Result<Vec<PlainField>> {
-    let template = template_for(kind);
+    let template = template_of(kind, existing);
     no_repeats(&changes)?;
     let title = match title {
         Some(t) => check_title(t)?,
@@ -659,6 +806,15 @@ pub fn compose_edit(
                     ..f.clone()
                 });
             }
+            Change::GenerateWith(recipe, site) => {
+                generator_for(t, f.kind)
+                    .ok_or_else(|| invalid(format!("{} can't be generated", f.label)))?;
+                fields.push(PlainField {
+                    label,
+                    value: generated_with(&recipe, site.as_ref())?,
+                    ..f.clone()
+                });
+            }
         }
     }
     // Then what the edit adds: template fields the item lacked, and fields by hand.
@@ -668,6 +824,19 @@ pub fn compose_edit(
             continue;
         };
         if existing.iter().any(|f| f.field_id == field_id) {
+            continue;
+        }
+        // A field a person's template names that this item lacks yet.
+        if field_id.starts_with(TEMPLATE_FIELD_PREFIX) && kind == ItemKind::Custom {
+            let (Some(label), Some(fkind)) = (change.label.as_deref(), change.kind) else {
+                return Err(invalid(format!(
+                    "'{field_id}' needs its template's label and kind"
+                )));
+            };
+            let label = custom_label(Some(label))?;
+            if let Some(p) = template_defined(&field_id, &label, fkind, change.change)? {
+                fields.push(p);
+            }
             continue;
         }
         let t = template
@@ -680,6 +849,10 @@ pub fn compose_edit(
             )?,
             Change::Generate => match t.generator {
                 Some(rule) => Some(generated(rule)?),
+                None => return Err(invalid(format!("{} can't be generated", t.label))),
+            },
+            Change::GenerateWith(recipe, site) => match t.generator {
+                Some(_) => Some(generated_with(&recipe, site.as_ref())?),
                 None => return Err(invalid(format!("{} can't be generated", t.label))),
             },
             Change::Keep | Change::Remove => {
@@ -1437,5 +1610,316 @@ mod tests {
             .is_err()
         );
         assert!(is_reserved("lockdown.security") && !is_reserved("custom.0"));
+    }
+
+    #[test]
+    fn a_variant_is_checked_by_its_own_fields_and_named_on_the_item() {
+        let passport = crate::template::template_named("identity/passport").unwrap();
+        let (class, fields) = compose_new_from(
+            passport,
+            "My passport",
+            false,
+            vec![
+                FieldChange::secret("passport.number", b"X1234567"),
+                FieldChange::text("passport.sex", "X"),
+                FieldChange::text("expires_at", "2034-05-01"),
+                FieldChange::text("name.family", "Sands"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(class, ItemClass::Standard);
+        assert_eq!(
+            text_of(&fields, TEMPLATE_FIELD).as_deref(),
+            Some("passport")
+        );
+        assert_eq!(
+            ids(&fields),
+            vec![
+                "title",
+                "passport.number",
+                "expires_at",
+                "name.family",
+                "passport.sex",
+                TEMPLATE_FIELD
+            ]
+        );
+        // The variant's own rules: its required field, its choices.
+        assert!(compose_new_from(passport, "x", false, vec![]).is_err());
+        assert!(
+            compose_new_from(
+                passport,
+                "x",
+                false,
+                vec![
+                    FieldChange::secret("passport.number", b"1"),
+                    FieldChange::text("passport.sex", "Other")
+                ]
+            )
+            .is_err()
+        );
+        // A field of the kind's own template isn't one of the variant's.
+        assert!(
+            compose_new_from(
+                passport,
+                "x",
+                false,
+                vec![
+                    FieldChange::secret("passport.number", b"1"),
+                    FieldChange::text("address.city", "Leeds")
+                ]
+            )
+            .is_err()
+        );
+        // An edit keeps the marker without naming it and checks by the variant.
+        let after = compose_edit(
+            ItemKind::Identity,
+            &fields,
+            None,
+            vec![
+                FieldChange::keep("passport.number"),
+                FieldChange::keep("expires_at"),
+                FieldChange::keep("name.family"),
+                FieldChange::text("passport.sex", "Female"),
+                FieldChange::text("passport.birth_place", "York"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(text_of(&after, TEMPLATE_FIELD).as_deref(), Some("passport"));
+        assert_eq!(
+            text_of(&after, "passport.birth_place").as_deref(),
+            Some("York")
+        );
+        // The recovery-codes variant is a crown jewel by its field.
+        let codes = crate::template::template_named("document/recovery-codes").unwrap();
+        let (class, _) = compose_new_from(
+            codes,
+            "GitHub recovery",
+            false,
+            vec![FieldChange::secret(
+                "recovery_codes",
+                b"abcd-1234\nefgh-5678",
+            )],
+        )
+        .unwrap();
+        assert_eq!(class, ItemClass::CrownJewel);
+    }
+
+    fn gym() -> UserTemplate {
+        UserTemplate {
+            name: "Gym locker".into(),
+            summary: String::new(),
+            icon: String::new(),
+            fields: vec![
+                crate::user_template::UserField {
+                    key: "locker".into(),
+                    label: "Locker".into(),
+                    kind: FieldKind::Text,
+                    required: true,
+                    hint: String::new(),
+                    section: String::new(),
+                },
+                crate::user_template::UserField {
+                    key: "combo".into(),
+                    label: "Combination".into(),
+                    kind: FieldKind::Hidden,
+                    required: false,
+                    hint: String::new(),
+                    section: String::new(),
+                },
+                crate::user_template::UserField {
+                    key: "joined".into(),
+                    label: "Joined".into(),
+                    kind: FieldKind::Date,
+                    required: false,
+                    hint: String::new(),
+                    section: String::new(),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn an_item_from_a_persons_template_takes_its_fields_and_kinds() {
+        let tid = crate::Id::new();
+        let (class, fields) = compose_new_user(
+            &gym(),
+            tid,
+            "Leisure centre",
+            false,
+            vec![
+                FieldChange::text("tpl.joined", "2025-01-02"),
+                FieldChange::new("tpl.combo", Change::Generate),
+                FieldChange::text("tpl.locker", "41"),
+                FieldChange::custom(
+                    "Opening hours",
+                    FieldKind::Text,
+                    FieldInput::Text("6 to 10".into()),
+                ),
+            ],
+        )
+        .unwrap();
+        assert_eq!(class, ItemClass::Standard);
+        assert_eq!(
+            ids(&fields),
+            vec![
+                "title",
+                "tpl.locker",
+                "tpl.combo",
+                "tpl.joined",
+                "custom.0",
+                TEMPLATE_FIELD
+            ]
+        );
+        let combo = fields.iter().find(|f| f.field_id == "tpl.combo").unwrap();
+        assert_eq!(
+            (combo.kind, combo.label.as_str()),
+            (FieldKind::Hidden, "Combination")
+        );
+        assert_eq!(text_of(&fields, "tpl.combo").unwrap().len(), 20);
+        assert_eq!(
+            text_of(&fields, TEMPLATE_FIELD),
+            Some(format!("user:{tid}"))
+        );
+        // Checked by the template's kinds; required ones needed; unknown refused.
+        for bad in [
+            vec![FieldChange::text("tpl.joined", "soon")],
+            vec![FieldChange::secret("tpl.locker", b"41")],
+            vec![
+                FieldChange::text("tpl.locker", "41"),
+                FieldChange::text("tpl.nope", "x"),
+            ],
+        ] {
+            assert!(compose_new_user(&gym(), tid, "x", false, bad).is_err());
+        }
+        // An edit treats them as fields of the item's own kinds, and may
+        // add one the item lacks with its template's label and kind.
+        let mut keep: Vec<FieldChange> = fields
+            .iter()
+            .filter(|f| f.field_id != "title")
+            .map(|f| FieldChange::keep(&f.field_id))
+            .filter(|c| !is_reserved(c.field_id.as_deref().unwrap()))
+            .collect();
+        keep.retain(|c| c.field_id.as_deref() != Some("tpl.joined"));
+        keep.push(FieldChange::new("tpl.joined", Change::Remove));
+        let after = compose_edit(ItemKind::Custom, &fields, None, keep.clone()).unwrap();
+        assert!(text_of(&after, "tpl.joined").is_none());
+        let mut add = keep;
+        add.retain(|c| c.field_id.as_deref() != Some("tpl.joined"));
+        let add_back = FieldChange {
+            field_id: Some("tpl.joined".into()),
+            label: Some("Joined".into()),
+            kind: Some(FieldKind::Date),
+            change: Change::Set(FieldInput::Text("2025-02-03".into())),
+        };
+        let again = compose_edit(ItemKind::Custom, &after, None, {
+            let mut v: Vec<FieldChange> = add
+                .into_iter()
+                .filter(|c| c.field_id.as_deref() != Some("tpl.joined"))
+                .collect();
+            v.push(add_back);
+            v
+        })
+        .unwrap();
+        assert_eq!(text_of(&again, "tpl.joined").as_deref(), Some("2025-02-03"));
+    }
+
+    #[test]
+    fn a_code_and_a_link_are_fields_of_your_own() {
+        let target = crate::Id::new();
+        let (_, fields) = compose_new(
+            ItemKind::Custom,
+            "Building",
+            false,
+            vec![
+                FieldChange::custom(
+                    "Door code",
+                    FieldKind::Totp,
+                    FieldInput::Secret(Zeroizing::new(
+                        b"otpauth://totp/Door?secret=GEZDGNBVGY3TQOJQ".to_vec(),
+                    )),
+                ),
+                FieldChange::custom(
+                    "Wi-Fi password",
+                    FieldKind::Linked,
+                    FieldInput::Text(format!("{target}#wifi.passphrase")),
+                ),
+            ],
+        )
+        .unwrap();
+        let code = fields.iter().find(|f| f.field_id == "custom.0").unwrap();
+        assert_eq!(code.kind, FieldKind::Totp);
+        let link = fields.iter().find(|f| f.field_id == "custom.1").unwrap();
+        assert_eq!(link.kind, FieldKind::Linked);
+        assert_eq!(
+            parse_link(&text_of(&fields, "custom.1").unwrap()),
+            Some((target, "wifi.passphrase"))
+        );
+        // A code arrives as bytes only, and as a link the codes crate reads.
+        for bad in [
+            FieldChange::custom(
+                "Code",
+                FieldKind::Totp,
+                FieldInput::Text("otpauth://x".into()),
+            ),
+            FieldChange::custom(
+                "Code",
+                FieldKind::Totp,
+                FieldInput::Secret(Zeroizing::new(b"not a link".to_vec())),
+            ),
+            FieldChange::custom(
+                "Link",
+                FieldKind::Linked,
+                FieldInput::Text("nowhere".into()),
+            ),
+            FieldChange::custom(
+                "Link",
+                FieldKind::Linked,
+                FieldInput::Text(format!("{target}#bad field")),
+            ),
+        ] {
+            assert!(compose_new(ItemKind::Custom, "x", false, vec![bad]).is_err());
+        }
+        assert!(parse_link("not-an-id#pw").is_none());
+        assert!(parse_link(&format!("{target}#")).is_none());
+    }
+
+    #[test]
+    fn generate_with_options_and_a_sites_rule() {
+        let words = Change::GenerateWith(lockdown_crypto::generator::Recipe::words(4), None);
+        let (_, fields) = compose_new(
+            ItemKind::Login,
+            "x",
+            false,
+            vec![FieldChange::new("pw", words.clone())],
+        )
+        .unwrap();
+        assert_eq!(
+            text_of(&fields, "pw").unwrap().split('-').count() >= 4,
+            true
+        );
+        let site = SiteRule::parse("minlength: 6; maxlength: 6; required: digit;").unwrap();
+        let (_, fields) = compose_new(
+            ItemKind::Login,
+            "x",
+            false,
+            vec![FieldChange::new(
+                "pw",
+                Change::GenerateWith(PasswordRule::STRONG.into(), Some(site)),
+            )],
+        )
+        .unwrap();
+        let pw = text_of(&fields, "pw").unwrap();
+        assert_eq!(pw.len(), 6);
+        assert!(pw.bytes().all(|b| b.is_ascii_digit()));
+        // Only where the generator applies.
+        assert!(
+            compose_new(
+                ItemKind::Login,
+                "x",
+                false,
+                vec![FieldChange::new("user", words)]
+            )
+            .is_err()
+        );
     }
 }

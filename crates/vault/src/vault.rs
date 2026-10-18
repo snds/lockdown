@@ -526,6 +526,78 @@ impl Vault {
         self.create_item(kind, class, fields)
     }
 
+    /// [`Self::add_item`] from one template, a kind's own or a variant (D231).
+    pub fn add_item_from(
+        &mut self,
+        template: &crate::Template,
+        title: &str,
+        crown_jewel: bool,
+        changes: Vec<FieldChange>,
+    ) -> Result<Id> {
+        let (class, fields) =
+            crate::compose::compose_new_from(template, title, crown_jewel, changes)?;
+        self.create_item(template.kind, class, fields)
+    }
+
+    /// Makes a Custom item from the person's template held in this vault
+    /// as the item `template_id` (D232).
+    pub fn add_item_from_user(
+        &mut self,
+        template_id: Id,
+        title: &str,
+        crown_jewel: bool,
+        changes: Vec<FieldChange>,
+    ) -> Result<Id> {
+        let def = self.user_template(template_id)?;
+        let (class, fields) =
+            crate::compose::compose_new_user(&def, template_id, title, crown_jewel, changes)?;
+        self.create_item(ItemKind::Custom, class, fields)
+    }
+
+    /// The person's template held as the live item `template_id`.
+    pub fn user_template(&self, template_id: Id) -> Result<crate::UserTemplate> {
+        let item = self.item(template_id)?;
+        if item.kind != ItemKind::Template || item.state != ItemState::Live {
+            return Err(Error::NotFound(format!("template {template_id}")));
+        }
+        crate::UserTemplate::from_fields(&self.open_item(template_id)?)
+    }
+
+    /// Every live template the person made in this vault, by name.
+    pub fn user_templates(&self) -> Result<Vec<(Id, crate::UserTemplate)>> {
+        let mut out = Vec::new();
+        for item in self
+            .items()
+            .filter(|i| i.kind == ItemKind::Template && i.state == ItemState::Live)
+        {
+            // One that doesn't read (a newer build's) is left out, not fatal.
+            if let Ok(def) = crate::UserTemplate::from_fields(&self.open_item(item.item_id)?) {
+                out.push((item.item_id, def));
+            }
+        }
+        out.sort_by(|a, b| {
+            a.1.name
+                .to_lowercase()
+                .cmp(&b.1.name.to_lowercase())
+                .then(a.0.cmp(&b.0))
+        });
+        Ok(out)
+    }
+
+    /// Saves a person's template: a new template item, or with `id` a new
+    /// version of that one. Items already made from it keep their fields.
+    pub fn save_user_template(&mut self, id: Option<Id>, def: &crate::UserTemplate) -> Result<Id> {
+        let fields = def.to_fields()?;
+        match id {
+            None => self.create_item(ItemKind::Template, ItemClass::Standard, fields),
+            Some(id) => {
+                self.user_template(id)?;
+                self.update_item(id, fields)?;
+                Ok(id)
+            }
+        }
+    }
+
     /// Saves a new version of a live item from an edit that names every
     /// field ([`crate::compose::compose_edit`]); `title: None` keeps it.
     /// Returns the version number.
