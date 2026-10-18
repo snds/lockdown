@@ -8,13 +8,16 @@ The MV3 extension for Chromium (Chrome, Edge, Brave, Chromium) and Firefox, buil
 | `scripts/build.mjs` | esbuild bundles into `dist/chromium/` and `dist/firefox/`, copies `static/` and the wasm, writes each manifest. |
 | `src/background/` | `index.ts` routes and checks every message's sender; `link.ts` is the native port to the app; `pairkey.ts` keeps the pairing key as a non-extractable WebCrypto key; `matcher.ts` loads the wasm and runs `decide` / `fill_check` on every candidate before the app decides again. |
 | `src/content/` | The content script: field detection (`detect.ts`), the visibility rule (`visibility.ts`, the same rule as the harness), writing approved values (`fill.ts`), the menu host in a closed shadow root in the top layer, and save capture (`index.ts`). |
-| `src/pages/` | `frame.ts`: the in-page menu and save prompt (an extension-origin frame, armed only while IntersectionObserver v2 says it is uncovered). `popup.ts`: pairing, the page's logins, search, copy through the app, the lookalike stop, the change-password link. |
+| `src/main/webauthn.ts` | The one script in the page's own world (top frame, `document_start`): wraps `navigator.credentials.create/get` and the Signal API so Lockdown can be the passkey provider, chained onto whatever was there; it carries no authority ([`docs/plan/19-passkeys.md`](../docs/plan/19-passkeys.md) §3). |
+| `src/content/passkeys.ts`, `src/background/passkeys.ts` | The passkey bridge in the top frame's isolated world (the wrapper's port, the passkey sheet) and the background's half (the open requests, the app's passkey ops, conditional mediation in the inline menu). |
+| `src/pages/` | `frame.ts`: the in-page menu, the save prompt and the passkey sheet (an extension-origin frame, armed only while IntersectionObserver v2 says it is uncovered). `popup.ts`: pairing, the page's logins, search, copy through the app, the lookalike stop, the change-password link. |
 | `static/` | `frame.html`, `popup.html`, `ui.css`. |
 | `build-wasm.sh` | Builds `lockdown-wasm` for `wasm32-unknown-unknown` and runs the pinned `wasm-bindgen` CLI into `pkg/` (ES module, `--target web`). |
 | `schema/` | JSON Schema for every message across the matcher boundary. `crates/matcher/tests/wire_schema.rs` keeps it in step with the Rust structs. |
 | `test/clickjacking.spec.ts`, `test/fixtures/{harness.js,top.html,frame.html}` | The red team against the wasm build alone, unchanged. |
 | `test/extension.spec.ts`, `test/fixtures/ext/`, `test/desktop.ts` | End to end: the unpacked build in Chromium, the real `lockdown-native-host`, the real desktop endpoint and core over a throwaway vault (`apps/desktop/src-tauri/examples/browser-endpoint.rs`), local fixture pages. |
-| `test/manifest.spec.ts` | What differs between the two manifests. |
+| `test/passkeys.spec.ts`, `test/fixtures/ext/webauthn.html` | Passkeys end to end against a real relying-party page that verifies every attestation and signature with WebCrypto; the endpoint fixture runs with `--platform-check`. |
+| `test/manifest.spec.ts` | What differs between the two manifests, and where the passkey scripts run. |
 | `test/server.ts` | The static server for every fixture, reachable as any name the suite maps to it; `/basic/` answers only with the fixture's Basic Auth credentials. |
 
 ## Run it
@@ -29,7 +32,7 @@ pnpm run build:wasm      # pkg/
 pnpm run build:native    # lockdown-native-host and the endpoint fixture
 pnpm typecheck
 pnpm build               # dist/chromium, dist/firefox
-pnpm test
+pnpm test                # LOCKDOWN_TEST_BINS=<dir> runs private copies of the host and the endpoint fixture
 ```
 
 CI runs the same steps in the `extension` job of `.github/workflows/ci.yml`.

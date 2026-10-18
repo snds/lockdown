@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react"
 
-import { Badge, Button, Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@unicron/ui"
+import { Badge, Button, Field, FieldDescription, FieldLabel, Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle, Switch } from "@unicron/ui"
 
+import { useSettings } from "@/app/settings"
 import { describeError } from "@/core/client"
 import { dateLocal } from "@/lib/format"
 
@@ -14,6 +15,7 @@ import { useBrowserClient, type EndpointStatus, type PairedBrowser } from "./bro
  */
 export function BrowsersSection({ onNotice }: { onNotice: (text: string) => void }) {
   const client = useBrowserClient()
+  const { settings, update } = useSettings()
   const [status, setStatus] = useState<EndpointStatus | null>(null)
   const [paired, setPaired] = useState<PairedBrowser[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -58,6 +60,21 @@ export function BrowsersSection({ onNotice }: { onNotice: (text: string) => void
           {error}
         </p>
       )}
+      <Field orientation="horizontal">
+        <FieldLabel htmlFor="browser-passkeys">Offer Lockdown's passkeys in browsers</FieldLabel>
+        <Switch
+          id="browser-passkeys"
+          checked={settings.browser_passkeys ?? true}
+          disabled={busy}
+          onCheckedChange={(on) =>
+            void run(async () => (await update({ browser_passkeys: on }), on ? "Browsers offer Lockdown's passkeys." : "Browsers use their own passkeys; Lockdown steps aside."))
+          }
+        />
+      </Field>
+      <FieldDescription>
+        When a site asks for a passkey, the paired browser offers the ones in Lockdown and can save new ones here, with a choice to use another device
+        or security key instead. Off, every passkey request goes to the browser's own.
+      </FieldDescription>
       {status && status.browsers.length > 0 && (
         <ItemGroup role="list" aria-label="Browsers on this computer">
           {status.browsers.map((b) => (

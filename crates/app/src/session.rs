@@ -65,6 +65,7 @@ mod duplicates;
 mod history;
 pub mod items;
 mod organize;
+pub(crate) mod passkeys;
 pub(crate) mod security;
 pub(crate) mod sharing;
 pub(crate) mod transfer;
@@ -758,9 +759,13 @@ impl Session {
                 row.subtitle.clear();
             }
             let mut has_password = false;
+            let held = passkeys::groups(&fields);
+            row.passkeys = held.len() as u32;
+            if held.iter().any(|p| p.hidden.is_some()) {
+                row.warnings.push(PASSKEY_HIDDEN_WARNING.into());
+            }
             for f in &fields {
                 match f.kind {
-                    FieldKind::Passkey => row.passkeys += 1,
                     FieldKind::Totp => {
                         row.codes += 1;
                         if let FieldValue::Text(uri) = &f.value
@@ -895,6 +900,9 @@ impl Session {
             .iter()
             .find(|f| f.field_id == field_id)
             .ok_or_else(|| format!("no field '{field_id}' on this item"))?;
+        if field.kind == FieldKind::Passkey {
+            return Err("a passkey's material is never shown; it signs inside Lockdown".into());
+        }
         match &field.value {
             FieldValue::Text(t) if is_secret_kind(field.kind) => Ok(Revealed::from_text(t)),
             FieldValue::Bytes(b) if is_secret_kind(field.kind) => Ok(Revealed::new(b.clone())),
@@ -2189,6 +2197,10 @@ impl lockdown_sync::AuditExpectations for AllVaults<'_> {
         self.base.vault_head(vault_id, seq)
     }
 }
+
+/// The warning a row carries when a site's Signal hid one of its passkeys
+/// (Needs attention, with Undo in the item).
+pub const PASSKEY_HIDDEN_WARNING: &str = "passkey-hidden-by-site";
 
 fn parse_id(id: &str) -> Result<Id, String> {
     Id::parse(id).map_err(|_| format!("'{id}' isn't an item id"))

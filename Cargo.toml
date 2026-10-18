@@ -21,6 +21,7 @@ members = [
     "crates/native-messaging",
     "bins/native-host",
     "crates/security",
+    "crates/passkey",
 ]
 # The pure-Rust crates: everything that builds on CI without a platform SDK.
 # `ffi` and `wasm` are built with the shells, which bring UniFFI and the wasm
@@ -45,6 +46,7 @@ default-members = [
     "crates/native-messaging",
     "bins/native-host",
     "crates/security",
+    "crates/passkey",
 ]
 
 [workspace.package]
@@ -78,6 +80,7 @@ lockdown-ffi = { path = "crates/ffi", version = "0.1.0" }
 lockdown-server = { path = "bins/server", version = "0.1.0" }
 lockdown-native-messaging = { path = "crates/native-messaging", version = "0.1.0" }
 lockdown-security = { path = "crates/security", version = "0.1.0" }
+lockdown-passkey = { path = "crates/passkey", version = "0.1.0" }
 
 # Cryptography: the same crates and versions the identity crate uses, so one
 # copy of each is linked (04-security.md §4–§5, 01-identity.md §10a).
@@ -90,6 +93,9 @@ sha2 = { version = "0.11", default-features = false }
 ed25519-dalek = { version = "3.0", default-features = false, features = ["fast", "zeroize"] }
 x-wing = { version = "0.1", default-features = false, features = ["zeroize", "getrandom"] }
 blake3 = "1.8"
+# The passkey authenticator's P-256 ECDSA and Ed25519 (crates/passkey): the
+# same `ring` rustls already links on its `ring` provider.
+ring = { version = "0.17", default-features = false, features = ["alloc"] }
 getrandom = "0.3"
 # OPAQUE (RFC 9807) for account login (04-security §3). `opaque-ke` still
 # builds on the previous RustCrypto generation (digest 0.10, sha2 0.10,

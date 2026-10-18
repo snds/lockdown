@@ -172,7 +172,7 @@ pub enum SaveProposal {
 }
 
 /// The signed matcher data built into this build, verified once.
-fn matcher_data() -> AppResult<MatcherData> {
+pub(crate) fn matcher_data() -> AppResult<MatcherData> {
     MatcherData::builtin()
         .map_err(|e| AppError::refused(format!("the matcher's data didn't verify: {e}")))
 }
@@ -198,7 +198,7 @@ fn strength(d: MatchDecision) -> u8 {
     }
 }
 
-fn is_match(d: MatchDecision) -> bool {
+pub(crate) fn is_match(d: MatchDecision) -> bool {
     strength(d) <= 2
 }
 
@@ -217,7 +217,7 @@ fn parse_page(text: &str) -> AppResult<Origin> {
 }
 
 /// The saved addresses of an item with their rules.
-fn saved_urls(fields: &[PlainField]) -> Vec<(String, MatchRule)> {
+pub(crate) fn saved_urls(fields: &[PlainField]) -> Vec<(String, MatchRule)> {
     fields
         .iter()
         .filter(|f| f.kind == FieldKind::Url)
@@ -230,7 +230,7 @@ fn saved_urls(fields: &[PlainField]) -> Vec<(String, MatchRule)> {
 
 /// The strongest decision any of `urls` gives for `page`, with the address
 /// that gave it.
-fn best_decision(
+pub(crate) fn best_decision(
     urls: &[(String, MatchRule)],
     page: &Origin,
     data: &MatcherData,
@@ -287,7 +287,7 @@ fn rule_name(rule: MatchRule) -> &'static str {
     }
 }
 
-fn text(fields: &[PlainField], field_id: &str) -> Option<String> {
+pub(crate) fn text(fields: &[PlainField], field_id: &str) -> Option<String> {
     fields
         .iter()
         .find(|f| f.field_id == field_id)
@@ -462,7 +462,15 @@ impl App {
         self.call(move |core| {
             core.clock.touch(Instant::now());
             match decide_fill(core, &item_id, what, field.as_deref(), &facts)? {
-                Ok(plan) => read_values(core, &item_id, plan).map(FillOutcome::Fill),
+                Ok(plan) => {
+                    let values = read_values(core, &item_id, plan)?;
+                    // A password this core filled: the site may upgrade that
+                    // login to a passkey for a while (passkeys.rs).
+                    if what == FillWhat::Login && values.iter().any(|v| v.role == "pw") {
+                        core.note_password_fill(&item_id, &facts.frame);
+                    }
+                    Ok(FillOutcome::Fill(values))
+                }
                 Err(outcome) => Ok(outcome),
             }
         })

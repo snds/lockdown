@@ -57,7 +57,7 @@ interface VaultViewProps {
 
 const EMPTY: Record<ListView, [string, string]> = {
   all: ["Nothing saved yet", "Add one with New item, or import from another manager in Settings."],
-  passkeys: ["No passkeys yet", "Passkeys arrive with the sign-in flows; a Login keeps its own."],
+  passkeys: ["No passkeys yet", "Save a passkey with Lockdown when a site offers one in your browser; a Login keeps its own."],
   codes: ["No codes here", "Add a code from the Codes screen."],
   "wi-fi": ["No Wi-Fi networks", "Add one with New item → Wi-Fi network."],
   expiring: ["Nothing expiring", "Items with an expiry date within thirty days show here."],

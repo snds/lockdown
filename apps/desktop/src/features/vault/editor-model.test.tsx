@@ -69,4 +69,28 @@ describe("the editor's model (D110)", () => {
     expect(wipeRows(rows).find((r) => r.label === "PIN")!.text).toBe("")
     expect(wipeRows(rows).find((r) => r.label === "Recovery email")!.text).toBe("me@example.org")
   })
+
+  it("a passkey is one line in the editor, every part kept, none removable on its own", () => {
+    const withPasskey: ItemDetail = {
+      ...existingLogin,
+      fields: [
+        ...existingLogin.fields.filter((f) => f.field_id !== "passkey.0.key"),
+        { field_id: "passkey.0.rp_id", label: "relying party", kind: "text", hidden: false, value: "example.com", mask: null },
+        { field_id: "passkey.0.user_name", label: "user name", kind: "text", hidden: false, value: "me", mask: null },
+        { field_id: "passkey.0.key", label: "private key", kind: "passkey", hidden: true, value: null, mask: "••••••••" },
+        { field_id: "passkey.0.backed_up", label: "synced", kind: "boolean", hidden: false, value: "true", mask: null },
+      ],
+    }
+    const rows = initialRows(login, withPasskey)
+    const passkey = rows.filter((r) => r.fieldId?.startsWith("passkey."))
+    expect(passkey.filter((r) => !r.quiet).map((r) => [r.label, r.managed])).toEqual([["Passkey for example.com", true]])
+    expect(passkey.every((r) => !r.editable)).toBe(true)
+    const changes = buildChanges(rows).filter((c) => c.field_id?.startsWith("passkey."))
+    expect(changes).toEqual([
+      { field_id: "passkey.0.rp_id", action: "keep" },
+      { field_id: "passkey.0.user_name", action: "keep" },
+      { field_id: "passkey.0.key", action: "keep" },
+      { field_id: "passkey.0.backed_up", action: "keep" },
+    ])
+  })
 })

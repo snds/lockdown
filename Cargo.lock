@@ -3090,16 +3090,19 @@ dependencies = [
 name = "lockdown-app"
 version = "0.1.0"
 dependencies = [
+ "ciborium",
  "ecosystem-identity",
  "lockdown-codes",
  "lockdown-crypto",
  "lockdown-cxf",
  "lockdown-matcher",
+ "lockdown-passkey",
  "lockdown-security",
  "lockdown-server",
  "lockdown-store",
  "lockdown-sync",
  "lockdown-vault",
+ "ring",
  "rusqlite",
  "serde",
  "serde_bytes",
@@ -3285,6 +3288,20 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "lockdown-passkey"
+version = "0.1.0"
+dependencies = [
+ "ciborium",
+ "data-encoding",
+ "lockdown-matcher",
+ "psl",
+ "ring",
+ "serde",
+ "serde_json",
+ "zeroize",
 ]
 
 [[package]]

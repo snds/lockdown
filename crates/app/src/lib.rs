@@ -22,6 +22,7 @@
 pub mod approval;
 pub mod browser;
 pub mod lock;
+pub mod passkeys;
 pub mod recency;
 mod revealed;
 pub mod secrets;
@@ -160,6 +161,9 @@ struct Core {
     approver: Option<Box<dyn Approver + Send + Sync>>,
     /// The security center's scores and alerts for this session.
     security: security::SecurityState,
+    /// Password fills this core made lately, for the passkey upgrade rule
+    /// (`passkeys`); dropped on lock.
+    recent_fills: Vec<passkeys::RecentFill>,
 }
 
 impl Core {
@@ -185,6 +189,7 @@ impl Core {
             settings,
             approver: None,
             security: security::SecurityState::default(),
+            recent_fills: Vec::new(),
         }
     }
 
@@ -418,6 +423,7 @@ impl Core {
         // Dropping the session drops the identity, the persona keys and
         // the vault: every key type zeroes itself on drop.
         self.session = None;
+        self.recent_fills.clear();
         self.security_forget();
         self.last_reason = Some(reason);
     }

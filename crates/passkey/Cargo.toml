@@ -1,0 +1,22 @@
+[package]
+name = "lockdown-passkey"
+description = "Lockdown's WebAuthn authenticator: makes ES256 passkeys, signs assertions, checks the relying party against the caller's origin, builds the client data (docs/plan/19-passkeys.md)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# P-256 ECDSA and Ed25519 from the `ring` the TLS stack already links
+# (rustls on the `ring` provider), so no new crypto crate enters the tree.
+ring.workspace = true
+lockdown-matcher.workspace = true
+psl.workspace = true
+data-encoding.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+ciborium.workspace = true

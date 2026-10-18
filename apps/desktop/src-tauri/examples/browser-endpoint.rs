@@ -6,8 +6,14 @@
 //! part (approve a pairing, read a code) from lines on stdin.
 //!
 //! ```text
-//! browser-endpoint --dir <scratch> --host <lockdown-native-host> --profile <chromium user data dir>
+//! browser-endpoint --dir <scratch> --host <lockdown-native-host> --profile <chromium user data dir> [--platform-check]
 //! ```
+//!
+//! With `--platform-check`, a stand-in for Touch ID or Windows Hello is
+//! installed as the app's platform check: it answers what the last
+//! `platform yes|no` line said and prints a `platform_check` event each
+//! time it is asked, so the passkey suite (extension/test/passkeys.spec.ts)
+//! can see user verification happen.
 //!
 //! Never built into the app: it is an example of `lockdown-desktop`, and
 //! it prints a test vault's own test values when asked, which the app
@@ -15,10 +21,14 @@
 
 use std::io::BufRead;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use lockdown_app::{App, FieldChange, GateInput, LockPolicy, Paths, Revealed};
+use lockdown_app::passkeys::B64;
+use lockdown_app::{
+    App, ApprovalKind, Approver, FieldChange, GateInput, LockPolicy, Paths, Revealed,
+};
 use lockdown_desktop_lib::browser::{CopySink, Endpoint, EndpointConfig};
 use lockdown_native_messaging::manifest::{Browser, manifest};
 use serde_json::json;
@@ -39,6 +49,25 @@ impl CopySink for PrintingClipboard {
     }
 }
 
+/// The stand-in platform check.
+struct TestCheck {
+    yes: Arc<AtomicBool>,
+}
+
+impl Approver for TestCheck {
+    fn confirm(&self, kind: ApprovalKind, reason: &str) -> Result<bool, String> {
+        let yes = self.yes.load(Ordering::SeqCst);
+        emit(
+            json!({ "event": "platform_check", "kind": format!("{kind:?}"), "reason": reason, "answer": yes }),
+        );
+        Ok(yes)
+    }
+
+    fn method(&self) -> &'static str {
+        "the test check"
+    }
+}
+
 fn arg(name: &str) -> PathBuf {
     let args: Vec<String> = std::env::args().collect();
     let at = args
@@ -56,6 +85,13 @@ fn main() {
     let data = paths.data.clone();
     let app = App::start(paths, None, LockPolicy::default());
     app.open_or_create(true).expect("a vault");
+    let platform = Arc::new(AtomicBool::new(true));
+    if std::env::args().any(|a| a == "--platform-check") {
+        app.set_approver(Box::new(TestCheck {
+            yes: Arc::clone(&platform),
+        }))
+        .unwrap();
+    }
 
     let local = app
         .add_login(
@@ -218,8 +254,33 @@ fn main() {
                 app.unlock().unwrap();
                 emit(json!({ "event": "unlocked" }));
             }
+            ["platform", answer] => {
+                platform.store(*answer == "yes", Ordering::SeqCst);
+                emit(json!({ "event": "platform", "yes": *answer == "yes" }));
+            }
+            ["passkeys", item] => {
+                let views = app.passkeys(item).unwrap_or_default();
+                emit(json!({ "event": "passkeys", "passkeys": views }));
+            }
+            ["restore", item, credential] => {
+                let ok = lockdown_passkey_b64(credential)
+                    .map(|c| app.passkey_restore(item, c).is_ok())
+                    .unwrap_or(false);
+                emit(json!({ "event": "restored", "ok": ok }));
+            }
+            ["browser-passkeys", on] => {
+                let mut settings = app.settings().unwrap();
+                settings.browser_passkeys = *on == "on";
+                app.set_settings(settings).unwrap();
+                emit(json!({ "event": "browser_passkeys", "on": *on == "on" }));
+            }
             ["quit"] => break,
             _ => emit(json!({ "event": "unknown", "line": line })),
         }
     }
+}
+
+/// A credential id as the page and the app write it (base64url).
+fn lockdown_passkey_b64(text: &str) -> Option<B64> {
+    serde_json::from_value(json!(text)).ok()
 }

@@ -24,9 +24,15 @@ zxcvbn.workspace = true
 # directory, the change-password link, the playbooks.
 lockdown-security.workspace = true
 serde_json.workspace = true
+# The passkey authenticator (passkeys.rs): ES256 credentials, assertions,
+# the RP ID and client-data rules.
+lockdown-passkey.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+# The relying party's side of the passkey tests: verify what the core signed.
+ring.workspace = true
+ciborium.workspace = true
 # The server, in process on a random port, so the sync tests drive the
 # real key-transparency log; rusqlite so one test can rewrite that log
 # under the server and see the audit refuse it.

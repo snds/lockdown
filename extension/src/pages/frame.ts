@@ -5,7 +5,8 @@
 // covers, fades or transforms this frame; elsewhere the content script's
 // measurement of the frame's host stands in (docs/plan/16-browser-extension.md §6).
 
-import type { FillWhat, LoginCandidate, MenuData, PickAnswer, SaveOffer, WalletEntry } from "../shared/protocol"
+import type { PickWhat } from "../shared/messages"
+import type { LoginCandidate, MenuData, PasskeyOption, PickAnswer, SaveOffer, SheetData, WalletEntry } from "../shared/protocol"
 
 const [mode, nonce] = location.hash.slice(1).split(":")
 const root = document.getElementById("app") as HTMLElement
@@ -44,7 +45,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 /** Two heights only, so the page learns no more from the frame's size than
  *  "something to offer" or "a message". */
 function size(list: boolean) {
-  window.parent.postMessage({ lockdown: "height", px: list ? 232 : mode === "prompt" ? 150 : 64 }, "*")
+  const px = mode === "passkey" ? (list ? 260 : 150) : list ? 232 : mode === "prompt" ? 150 : 64
+  window.parent.postMessage({ lockdown: "height", px }, "*")
 }
 
 function send<T>(msg: Record<string, unknown>): Promise<T> {
@@ -52,7 +54,7 @@ function send<T>(msg: Record<string, unknown>): Promise<T> {
 }
 
 function close() {
-  void send({ t: "menu_close" })
+  void send({ t: mode === "passkey" ? "pk_sheet_cancel" : "menu_close" })
 }
 
 function header(host: string): HTMLElement {
@@ -94,7 +96,7 @@ function arm() {
   }
 }
 
-async function pick(data: MenuData, itemId: string, what: FillWhat, field: string | null, confirmed: boolean) {
+async function pick(data: MenuData, itemId: string, what: PickWhat, field: string | null, confirmed: boolean) {
   if (visible === false) {
     message(data.host, "Something on this page covers Lockdown's menu, so Lockdown won't fill.", "stop")
     return
@@ -106,7 +108,7 @@ async function pick(data: MenuData, itemId: string, what: FillWhat, field: strin
     const p = el("p", "msg", answer.confirm)
     p.setAttribute("role", "status")
     const row = el("div", "actions")
-    const go = el("button", "primary", what === "card" ? "Fill card" : what === "code" ? "Fill code" : "Fill")
+    const go = el("button", "primary", what === "card" ? "Fill card" : what === "code" ? "Fill code" : what === "passkey" ? "Sign in" : "Fill")
     go.addEventListener("click", (e) => {
       if (deliberate(e)) void pick(data, itemId, what, field, true)
     })
@@ -145,6 +147,14 @@ function renderMenu(data: MenuData) {
   }
   const list: HTMLElement[] = []
   const what = data.kind
+  // A page asking for a passkey (conditional mediation): its passkeys first.
+  for (const p of (data.passkeys ?? []) as PasskeyOption[]) {
+    list.push(
+      row(p.title, `Passkey · ${p.user_name || p.user_display_name}`, (e) => {
+        if (deliberate(e)) void pick(data, p.item_id, "passkey", p.credential_id, false)
+      }, "passkey"),
+    )
+  }
   if (what === "login" || what === "code") {
     for (const c of data.logins as LoginCandidate[]) {
       const sub = c.crown_jewel ? "Protected" : what === "code" ? `One-time code · ${c.username}` : c.username || c.saved || ""
@@ -170,6 +180,13 @@ function renderMenu(data: MenuData) {
   const ul = el("div", "list")
   ul.setAttribute("role", "list")
   ul.append(...list)
+  if ((data.passkeys ?? []).length > 0) {
+    const other = el("button", "link", "Use a passkey from another device")
+    other.addEventListener("click", (e) => {
+      if (deliberate(e)) void send({ t: "menu_passkey_other" })
+    })
+    ul.append(other)
+  }
   root.append(ul)
   size(true)
   arm()
@@ -201,6 +218,133 @@ async function renderPrompt() {
   arm()
 }
 
+// --- the passkey sheet (docs/plan/19-passkeys.md §3) ---------------------
+
+function busy(host: string, text: string) {
+  root.replaceChildren(header(host))
+  const p = el("p", "msg", text)
+  p.setAttribute("role", "status")
+  root.append(p)
+  size(false)
+}
+
+/** A stop with one way out. */
+function stop(host: string, text: string, label = "OK") {
+  root.replaceChildren(header(host))
+  const p = el("p", "msg stop", text)
+  p.setAttribute("role", "alert")
+  const row = el("div", "actions")
+  const ok = el("button", "secondary", label)
+  ok.addEventListener("click", close)
+  row.append(ok)
+  root.append(p, row)
+  size(false)
+  arm()
+}
+
+function anotherDevice(): HTMLButtonElement {
+  const b = el("button", "link", "Use another device or security key")
+  b.addEventListener("click", (e) => {
+    if (deliberate(e)) void send({ t: "pk_sheet_handoff" })
+  })
+  return b
+}
+
+async function sheetPick(d: SheetData, o: PasskeyOption, confirmed: boolean) {
+  if (visible === false) return stop(d.host, "Something on this page covers Lockdown, so Lockdown won't sign in.")
+  if (confirmed) busy(d.host, "Checking it's you…")
+  const a = await send<PickAnswer & { error?: string }>({ t: "pk_sheet_pick", item_id: o.item_id, credential_id: o.credential_id, confirmed, frame_visible: visible })
+  if (a?.done) return
+  if (a?.confirm) {
+    root.replaceChildren(header(d.host))
+    const p = el("p", "msg", a.confirm)
+    p.setAttribute("role", "status")
+    const row = el("div", "actions")
+    const go = el("button", "primary", "Sign in")
+    go.addEventListener("click", (e) => {
+      if (deliberate(e)) void sheetPick(d, o, true)
+    })
+    const back = el("button", "secondary", "Back")
+    back.addEventListener("click", () => renderSheet(d))
+    row.append(go, back)
+    root.append(p, row)
+    size(false)
+    shownAt = Date.now()
+    arm()
+    go.focus()
+    return
+  }
+  stop(d.host, a?.refuse ?? a?.error ?? "Lockdown didn't sign in.")
+}
+
+async function sheetCreate(d: SheetData) {
+  if (visible === false) return stop(d.host, "Something on this page covers Lockdown, so Lockdown won't make a passkey.")
+  busy(d.host, "Saving the passkey…")
+  const a = await send<PickAnswer & { error?: string }>({ t: "pk_sheet_create", frame_visible: visible })
+  if (a?.done) return
+  stop(d.host, a?.refuse ?? a?.error ?? "Lockdown didn't save the passkey.")
+}
+
+function renderSheet(d: SheetData) {
+  root.replaceChildren(header(d.host))
+  const site = d.rp_name || d.rp_id
+  if (d.kind === "locked") {
+    const p = el("p", "msg", "Lockdown is locked. Unlock it on this computer to use your passkeys here.")
+    p.setAttribute("role", "status")
+    const row = el("div", "actions")
+    const again = el("button", "primary", "Try again")
+    again.addEventListener("click", async (e) => {
+      if (!deliberate(e)) return
+      const next = await send<SheetData & { error?: string }>({ t: "pk_sheet_retry" })
+      if (next && !next.error) renderSheet(next)
+    })
+    row.append(again, anotherDevice())
+    root.append(p, row)
+    size(false)
+    arm()
+    return
+  }
+  if (d.kind === "create") {
+    const plan = d.plan
+    if (!plan) return stop(d.host, "This request isn't open any more.")
+    if (plan.excluded) return stop(d.host, `Lockdown already holds a passkey for this account on ${plan.rp_id}.`, "OK")
+    const p = el("p", "msg", `Save a passkey for ${site} in Lockdown?`)
+    p.append(
+      el(
+        "span",
+        "sub block",
+        plan.item_id ? `As ${plan.user_name}, in your login “${plan.title}”.` : `As ${plan.user_name}, in a new login for ${plan.rp_id}.`,
+      ),
+    )
+    const row = el("div", "actions")
+    const save = el("button", "primary", "Save passkey")
+    save.addEventListener("click", (e) => {
+      if (deliberate(e)) void sheetCreate(d)
+    })
+    const cancel = el("button", "secondary", "Cancel")
+    cancel.addEventListener("click", close)
+    row.append(save, cancel)
+    root.append(p, row, anotherDevice())
+    size(true)
+    arm()
+    return
+  }
+  const lead = el("p", "msg", `Sign in to ${d.rp_id} with a passkey`)
+  const ul = el("div", "list")
+  ul.setAttribute("role", "list")
+  for (const o of d.options) {
+    ul.append(
+      row(o.title, o.user_name || o.user_display_name, (e) => {
+        if (deliberate(e)) void sheetPick(d, o, false)
+      }, "passkey"),
+    )
+  }
+  ul.append(anotherDevice())
+  root.append(lead, ul)
+  size(true)
+  arm()
+}
+
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") close()
 })
@@ -209,6 +353,11 @@ if (!/^[0-9a-f]{32}$/.test(nonce ?? "")) {
   root.textContent = ""
 } else if (mode === "prompt") {
   void renderPrompt()
+} else if (mode === "passkey") {
+  void send<SheetData & { error?: string }>({ t: "pk_sheet" }).then((d) => {
+    if (!d || d.error) return message("", d?.error ?? "This request isn't open any more.")
+    renderSheet(d)
+  })
 } else {
   void send<MenuData & { error?: string }>({ t: "menu_data" }).then((d) => {
     if (!d || d.error) return message("", d?.error ?? "Lockdown isn't reachable.")

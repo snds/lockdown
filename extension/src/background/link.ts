@@ -68,7 +68,7 @@ export class Link {
   private nextId = 1
   private challenge: string | null = null
   private authed = false
-  private state: LinkState = { link: "connecting", message: "", paired: false, locked: true, pairing: null }
+  private state: LinkState = { link: "connecting", message: "", paired: false, locked: true, pairing: null, passkeys: false }
   private pairPoll: ReturnType<typeof setInterval> | null = null
 
   /** Opens the port (once) and waits for the host's `ready`. */
@@ -203,8 +203,8 @@ export class Link {
   async status(): Promise<LinkState> {
     try {
       await this.ensure()
-      const s = await this.send<{ locked: boolean; paired: boolean }>("status")
-      this.state = { ...this.state, link: "ready", message: "", locked: s.locked, paired: s.paired }
+      const s = await this.send<{ locked: boolean; paired: boolean; passkeys?: boolean }>("status")
+      this.state = { ...this.state, link: "ready", message: "", locked: s.locked, paired: s.paired, passkeys: s.passkeys === true }
     } catch (e) {
       if (e instanceof DesktopError && this.state.link === "ready") this.state = { ...this.state, message: e.message }
     }
