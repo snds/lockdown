@@ -440,8 +440,9 @@ impl Core {
         if let Err(r) = pk::choose_alg(&req.algs) {
             return Ok(Outcome::Refused(r));
         }
-        // The Login it joins: for an upgrade, only the one this core just
-        // filled on this site; otherwise the one that fits.
+        // The Login it joins: for an upgrade, only one this core just filled
+        // on this site, or whose saved password it just saw typed here
+        // (`browser::save_proposal`); otherwise the one that fits.
         let target = if req.conditional {
             let recent: Vec<String> = self
                 .recent_fills
@@ -455,7 +456,7 @@ impl Core {
                 _ => {
                     return refused(
                         RefusalName::NotAllowed,
-                        "an automatic passkey needs a sign-in Lockdown just filled for this account here",
+                        "an automatic passkey needs a sign-in Lockdown just saw for this account here",
                     );
                 }
             }
