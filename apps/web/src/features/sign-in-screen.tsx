@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react"
+import { useEffect, useState, type FormEvent, type ReactNode } from "react"
 
 import {
   Button,
@@ -17,12 +17,15 @@ import {
 
 import { describeError } from "@/core/client"
 import type { Status } from "@/core/types"
-import { needsSecurityKey } from "@/features/depth/depth-client"
+import { needsEmailApproval, needsSecurityKey } from "@/features/depth/depth-client"
 import { JoinWithDevice } from "@/features/depth/join-device"
 
 import { cameraScanner } from "../core/camera-scan"
 import type { WebSession } from "../core/web-client"
 import { answerWithKey, type GetRequest } from "../core/webauthn"
+
+/** How often a sign-in approved by email is asked after. */
+const EMAIL_POLL_MS = 2_000
 
 interface SignInScreenProps {
   session: WebSession
@@ -79,6 +82,28 @@ function SignInForm({ session, server, onSignedIn, credentials }: Pick<SignInScr
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [waiting, setWaiting] = useState<GetRequest | null>(null)
+  const [emailed, setEmailed] = useState<string | null>(null)
+  // The server emailed a link to approve this tab: wait for it here.
+  useEffect(() => {
+    if (!emailed) return
+    const timer = setInterval(() => {
+      session
+        .signInContinue()
+        .then((status) => {
+          if (status) {
+            clearInterval(timer)
+            setEmailed(null)
+            onSignedIn(status)
+          }
+        })
+        .catch((e) => {
+          clearInterval(timer)
+          setEmailed(null)
+          setError(describeError(e))
+        })
+    }, EMAIL_POLL_MS)
+    return () => clearInterval(timer)
+  }, [emailed, session, onSignedIn])
   const answerKey = async () => {
     if (!waiting || !credentials) return
     setBusy(true)
@@ -112,6 +137,11 @@ function SignInForm({ session, server, onSignedIn, credentials }: Pick<SignInScr
         setWaiting(await session.signInWaiting())
         return
       }
+      if (needsEmailApproval(err)) {
+        form.reset()
+        setEmailed(describeError(err))
+        return
+      }
       setError(describeError(err))
       const pw = form.elements.namedItem("password")
       if (pw instanceof HTMLInputElement) pw.value = ""
@@ -119,6 +149,16 @@ function SignInForm({ session, server, onSignedIn, credentials }: Pick<SignInScr
       setBusy(false)
     }
   }
+  if (emailed)
+    return (
+      <div className="flex flex-col items-center gap-3" aria-live="polite">
+        <p className="text-sm">{`${emailed.charAt(0).toUpperCase()}${emailed.slice(1)}.`}</p>
+        <Spinner />
+        <Button variant="ghost-muted" onClick={() => setEmailed(null)}>
+          Cancel
+        </Button>
+      </div>
+    )
   if (waiting)
     return (
       <div className="flex flex-col gap-4">

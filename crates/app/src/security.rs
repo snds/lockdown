@@ -734,6 +734,31 @@ fn assemble(inp: &Inputs<'_>) -> SecurityReport {
                     f.site = b.domain.as_ref().map(|d| format!("https://{d}"));
                     f
                 }
+                AlertKind::SecurityKeyAdded | AlertKind::SecurityKeyRemoved => {
+                    let added = a.kind == AlertKind::SecurityKeyAdded;
+                    let mut f = finding(
+                        "security_key_change",
+                        "important",
+                        if added {
+                            "Security key added to your account"
+                        } else {
+                            "Security key removed from your account"
+                        },
+                        "new-sign-in",
+                    );
+                    let name = a
+                        .key_name
+                        .as_deref()
+                        .map(|n| format!("\u{201c}{n}\u{201d}"))
+                        .unwrap_or_else(|| "A security key".into());
+                    f.detail = format!(
+                        "{name} was {} your Lockdown account's sign-in. If that wasn't you, someone is signed in: end the sessions you don't know in Devices and change your account password.",
+                        if added { "added to" } else { "removed from" }
+                    );
+                    f
+                }
+                // A kind a newer server sends that this build doesn't know.
+                AlertKind::Other => continue,
             };
             f.id = format!("alert:{}", a.seq);
             f.key = f.id.clone();

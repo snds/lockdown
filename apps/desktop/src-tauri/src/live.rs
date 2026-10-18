@@ -4,7 +4,9 @@
 //! each notice it raises reaches the webview as one window event,
 //! [`EVENT`], carrying the notice as JSON (`{kind, …}`): plain words and
 //! counts, never a value. The webview redraws on `synced`, re-reads alerts
-//! or sessions on `alerts` and `sessions`, and says so on `session_ended`.
+//! or sessions on `alerts` and `sessions`, and says so on `session_ended`;
+//! a `notify` notice (a new device, a security key changed) is also shown
+//! as an OS notification through Tauri's notification plugin.
 //!
 //! The session commands are one call each into `lockdown-app` on a worker
 //! thread.
@@ -38,9 +40,20 @@ pub mod commands {
     }
 
     /// Starts the live channel; the handle lives as long as the window.
+    /// A `notify` notice is also shown as an OS notification, from here:
+    /// the webview holds no notification permission.
     pub fn start(handle: &AppHandle, core: &App) -> LiveHandle {
         let emitter = handle.clone();
         core.start_live(Arc::new(move |notice: LiveNotice| {
+            if let LiveNotice::Notify { title, body } = &notice {
+                use tauri_plugin_notification::NotificationExt;
+                let _ = emitter
+                    .notification()
+                    .builder()
+                    .title(title)
+                    .body(body)
+                    .show();
+            }
             let _ = emitter.emit(super::EVENT, notice);
         }))
     }

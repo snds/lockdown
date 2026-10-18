@@ -16,7 +16,9 @@
 //!   `/v1/vaults` and `/v1/identity` ([`notify_writes`], a layer over the
 //!   router, so routes added later are covered too), to the writer's
 //!   account and, for a shared vault, to its owner and every member still
-//!   in it; alerts recorded or dismissed; sessions started or ended.
+//!   in it, and, for an item shared on its own, to each person it is
+//!   shared with; an item shared or unshared, to the other person; alerts
+//!   recorded or dismissed; sessions started or ended.
 //! - **Bounds.** At most [`PER_ACCOUNT`] open streams per account and
 //!   [`TOTAL`] in all; a stream re-checks its session every minute and
 //!   closes when the session ends or the token runs out.
@@ -121,6 +123,11 @@ impl Notifier {
     /// dropped.
     pub fn notify(&self, change: Change) {
         let _ = self.tx.send(change);
+    }
+
+    /// Every change from now on (the streams' feed; tests watch it).
+    pub fn subscribe(&self) -> broadcast::Receiver<Change> {
+        self.tx.subscribe()
     }
 
     /// How many streams are open.
@@ -340,6 +347,7 @@ pub async fn notify_writes(
         state.tokens.verify(&token, state.now()).ok()
     });
     let vault = vault_in_path(req.uri().path());
+    let item = item_in_path(req.uri().path());
     let response = next.run(req).await;
     if let (Some(kind), Some(claims)) = (kind, who)
         && response.status().is_success()
@@ -350,9 +358,16 @@ pub async fn notify_writes(
             origin: Some(claims.nonce),
             only: None,
         });
-        // A shared vault: its owner and every member still in it hear too.
+        // A shared vault: its owner and every member still in it hear too;
+        // an item shared on its own: each person it is shared with.
         if let Some(vault_id) = vault {
-            for account_id in vault_audience(&state, vault_id) {
+            let mut audience = vault_audience(&state, vault_id);
+            if let Some(item_id) = item {
+                audience.extend(item_audience(&state, vault_id, item_id));
+                audience.sort();
+                audience.dedup();
+            }
+            for account_id in audience {
                 if account_id != claims.account_id {
                     state
                         .live
@@ -368,6 +383,38 @@ pub async fn notify_writes(
 fn vault_in_path(path: &str) -> Option<Id> {
     let rest = path.strip_prefix("/v1/vaults/")?;
     Id::parse(rest.split('/').next()?).ok()
+}
+
+/// The item a `/v1/vaults/{vault}/items/{item}` path names.
+fn item_in_path(path: &str) -> Option<Id> {
+    let rest = path.strip_prefix("/v1/vaults/")?;
+    let mut parts = rest.split('/');
+    let _vault = parts.next()?;
+    if parts.next()? != "items" {
+        return None;
+    }
+    Id::parse(parts.next()?).ok()
+}
+
+/// Everyone an item is shared with on its own (`/v1/shares/items`), sorted
+/// and without repeats.
+pub fn item_audience(state: &AppState, vault_id: Id, item_id: Id) -> Vec<Id> {
+    let (Some(sharing), Ok(Some(owner))) =
+        (state.storage.sharing(), state.storage.vault_owner(vault_id))
+    else {
+        return Vec::new();
+    };
+    let Ok(shares) = sharing.item_shares_from(owner) else {
+        return Vec::new();
+    };
+    let mut out: Vec<Id> = shares
+        .into_iter()
+        .filter(|s| s.vault_id == vault_id && s.item_id == item_id)
+        .map(|s| s.recipient.account_id)
+        .collect();
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// Everyone who reads a shared vault: its owner and its active members,

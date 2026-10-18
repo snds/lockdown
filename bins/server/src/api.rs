@@ -537,7 +537,8 @@ pub async fn register_start(
 ) -> ApiResult<Cbor<RegisterStartReply>> {
     check_login_name(&body.login)?;
     brake(&state, &peer, Some(&body.login))?;
-    if !state.config.signups_open {
+    // Closed sign-ups still take a login name the operator invited.
+    if !state.config.signups_open && !crate::admin::invited(&state, &body.login) {
         return Err(ApiError::new(
             StatusCode::FORBIDDEN,
             ErrorCode::SignupsClosed,
@@ -562,7 +563,8 @@ pub async fn register_finish(
 ) -> ApiResult<StatusCode> {
     check_login_name(&body.login)?;
     brake(&state, &peer, Some(&body.login))?;
-    if !state.config.signups_open {
+    // Closed sign-ups still take a login name the operator invited.
+    if !state.config.signups_open && !crate::admin::invited(&state, &body.login) {
         return Err(ApiError::new(
             StatusCode::FORBIDDEN,
             ErrorCode::SignupsClosed,
@@ -574,6 +576,9 @@ pub async fn register_finish(
     state
         .storage
         .create_account(&body.login, body.profile_id, &file)?;
+    if !state.config.signups_open {
+        crate::admin::invite_used(&state, &body.login);
+    }
     Ok(StatusCode::CREATED)
 }
 
@@ -689,6 +694,18 @@ pub async fn login_finish(
             user_agent,
         )?));
     }
+    // Without keys, a server with email approval asks the account's address
+    // about a device it has never seen (docs/plan/25-self-host-2.md §5).
+    if crate::second_factor::email_required(&state, &account, body.device.device_id)? {
+        return Ok(Cbor(crate::second_factor::begin_email(
+            &state,
+            account,
+            body.device.device_id,
+            body.device.device_pub,
+            &peer,
+            user_agent,
+        )?));
+    }
     Ok(Cbor(issue_session(
         &state,
         &account,
@@ -734,6 +751,21 @@ pub(crate) fn issue_session(
             account.account_id,
             lockdown_sync::wire::LiveKind::Alerts,
         ));
+        // And, with SMTP, the account's address hears too.
+        if let Some(mail) = &state.mail
+            && crate::breach_monitor::looks_like_email(&account.login)
+        {
+            mail.outbox.queue(crate::mail::new_device(
+                &account.login,
+                &crate::mail::SignInFacts {
+                    device: crate::sessions::client_label(user_agent.as_deref())
+                        .unwrap_or_else(|| "a new device".into()),
+                    address: peer.0.clone(),
+                    at: state.now(),
+                },
+                &mail.public_url,
+            ));
+        }
     }
     let ttl = i64::try_from(state.config.session_ttl.as_secs()).unwrap_or(i64::MAX);
     let (token, claims) = state
