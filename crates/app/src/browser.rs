@@ -247,6 +247,25 @@ fn best_decision(
     best
 }
 
+/// Every live login's saved address, crown jewels left out (their sites
+/// are never named, D113), for the security center's lookalike rule.
+fn saved_sites(vault: &lockdown_vault::Vault) -> AppResult<Vec<String>> {
+    let mut out = Vec::new();
+    for item in vault.items() {
+        if item.kind != ItemKind::Login
+            || item.state != ItemState::Live
+            || item.class == ItemClass::CrownJewel
+        {
+            continue;
+        }
+        let fields = vault
+            .open_item(item.item_id)
+            .map_err(|e| AppError::refused(e.to_string()))?;
+        out.extend(saved_urls(&fields).into_iter().map(|(u, _)| u));
+    }
+    Ok(out)
+}
+
 fn rule_name(rule: MatchRule) -> &'static str {
     match rule {
         MatchRule::ExactHost => "exact_host",
@@ -354,6 +373,14 @@ impl App {
                     code_field: first_code(&fields),
                     edited_at,
                 });
+            }
+            // Beyond your own logins: a page that imitates a well-known site,
+            // by the security center's own rule (lockdown_app::security).
+            if logins.is_empty() && lookalike_of.is_empty() {
+                let saved = saved_sites(vault)?;
+                if let Some(domain) = crate::security::imitated_site(&page, &saved) {
+                    lookalike_of.push(domain);
+                }
             }
             logins.sort_by(|a, b| {
                 strength(a.decision)
@@ -568,6 +595,13 @@ fn decide_fill(
             decision
         }
         FillWhat::Card | FillWhat::Identity => {
+            if let Some(domain) = crate::security::imitated_site(&facts.frame, &saved_sites(vault)?)
+            {
+                return Ok(Err(FillOutcome::Refuse(format!(
+                    "{} looks like {domain} but isn't; Lockdown won't fill here",
+                    frame.host
+                ))));
+            }
             if !is_secure(&frame) {
                 return Ok(Err(FillOutcome::Refuse(format!(
                     "{} isn't a secure (https) page; Lockdown fills cards and addresses only on secure pages",
@@ -742,6 +776,10 @@ mod tests {
         let evil = app.page_matches("https://paypal.com.evil.net/").unwrap();
         assert!(evil.logins.is_empty());
         assert_eq!(evil.lookalike_of, vec!["www.paypal.com".to_string()]);
+        // A well-known site you have no login for: the security center's rule.
+        let fake = app.page_matches("https://githuh.com/login").unwrap();
+        assert!(fake.logins.is_empty());
+        assert_eq!(fake.lookalike_of, vec!["github.com".to_string()]);
         let none = app.page_matches("http://unrelated.test/").unwrap();
         assert!(none.logins.is_empty() && none.lookalike_of.is_empty());
         assert!(!none.secure);
@@ -863,6 +901,11 @@ mod tests {
             app.fill(&card, FillWhat::Card, None, facts(page, page))
                 .unwrap(),
             FillOutcome::Confirm(_)
+        ));
+        let fake = "https://paypa1.com/checkout";
+        assert!(matches!(
+            app.fill(&card, FillWhat::Card, None, PageFacts { user_confirmed: true, ..facts(fake, fake) }).unwrap(),
+            FillOutcome::Refuse(r) if r.contains("looks like paypal.com")
         ));
         let insecure = PageFacts {
             user_confirmed: true,

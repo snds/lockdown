@@ -8,6 +8,8 @@ import type { FieldView, ItemDetail, ItemSummary, TemplateView } from "@/core/ty
 import { codeKey, useCodes } from "@/features/codes/use-codes"
 import { whenLocal } from "@/lib/format"
 
+import { ItemSecurity } from "@/features/security/item-security"
+
 import { ItemCodeDisplay } from "./code-display"
 import { RiskTierBadge } from "@unicron/ui/security/risk-tier-badge"
 
@@ -211,6 +213,7 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice }:
           </div>
         </section>
       )}
+      {!trashed && <ItemSecurity key={`${item.id}:${item.version}`} itemId={item.id} onNotice={onNotice} />}
       {item.crown_jewel ? <ItemCrownJewel title={title}>{body}</ItemCrownJewel> : body}
       <Dialog open={resolving !== null} onOpenChange={(o) => !o && setResolving(null)}>
         <DialogContent>

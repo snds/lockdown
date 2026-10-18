@@ -6,12 +6,17 @@
 //! lockdown-server [--listen ADDR] [--data DIR] [--server-key PATH]
 //!                 [--session-ttl SECS] [--signups open|closed]
 //!                 [--max-blob BYTES] [--blob-grace SECS]
+//!                 [--breach-feed-url URL] [--breach-feed-key KEY]
+//!                 [--breach-scan-hours N] [--breach-scan-pause-ms MS]
 //! ```
 //!
 //! Every flag has an environment variable (`LOCKDOWN_LISTEN`,
 //! `LOCKDOWN_DATA`, `LOCKDOWN_SERVER_KEY`, `LOCKDOWN_SESSION_TTL`,
-//! `LOCKDOWN_SIGNUPS`, `LOCKDOWN_MAX_BLOB`, `LOCKDOWN_BLOB_GRACE`) so a
-//! container needs no command line.
+//! `LOCKDOWN_SIGNUPS`, `LOCKDOWN_MAX_BLOB`, `LOCKDOWN_BLOB_GRACE`,
+//! `LOCKDOWN_BREACH_FEED_URL`, `LOCKDOWN_BREACH_FEED_KEY`,
+//! `LOCKDOWN_BREACH_SCAN_HOURS`, `LOCKDOWN_BREACH_SCAN_PAUSE_MS`) so a
+//! container needs no command line. The email breach monitor runs only
+//! with a feed URL (the HIBP v3 `breachedaccount` API needs a paid key).
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -50,6 +55,26 @@ struct Cli {
     /// How long a blob nothing names is kept before it is collected, in seconds.
     #[arg(long, env = "LOCKDOWN_BLOB_GRACE", default_value_t = lockdown_server::DEFAULT_BLOB_GRACE.as_secs())]
     blob_grace: u64,
+    /// The email breach feed (HIBP v3 `breachedaccount` shape), e.g.
+    /// `https://haveibeenpwned.com/api/v3/breachedaccount/`. Without it the
+    /// breach monitor is off and nothing is sent anywhere.
+    #[arg(long, env = "LOCKDOWN_BREACH_FEED_URL", value_name = "URL")]
+    breach_feed_url: Option<String>,
+    /// The feed's API key (HIBP needs a paid one).
+    #[arg(
+        long,
+        env = "LOCKDOWN_BREACH_FEED_KEY",
+        value_name = "KEY",
+        hide_env_values = true
+    )]
+    breach_feed_key: Option<String>,
+    /// Hours between breach checks of every account.
+    #[arg(long, env = "LOCKDOWN_BREACH_SCAN_HOURS", default_value_t = 24)]
+    breach_scan_hours: u64,
+    /// Milliseconds between two accounts in one check, to stay under the
+    /// feed's rate limit (HIBP's smallest plan allows ten a minute).
+    #[arg(long, env = "LOCKDOWN_BREACH_SCAN_PAUSE_MS", default_value_t = 6500)]
+    breach_scan_pause_ms: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -95,6 +120,16 @@ fn run(cli: Cli) -> Result<(), String> {
         ..Config::default()
     };
     let state = Arc::new(AppState::new(Box::new(storage), keys, config));
+    if let Some(url) = cli.breach_feed_url.as_deref() {
+        let feed = lockdown_server::breach_monitor::HttpBreachFeed::new(url, cli.breach_feed_key)?;
+        lockdown_server::breach_monitor::spawn(
+            state.clone(),
+            Box::new(feed),
+            Duration::from_secs(cli.breach_scan_hours.max(1) * 3600),
+            Duration::from_millis(cli.breach_scan_pause_ms),
+        )
+        .map_err(|e| format!("couldn't start the breach monitor: {e}"))?;
+    }
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

@@ -594,11 +594,29 @@ pub async fn login_finish(
             "the device didn't prove it holds its key",
         )
     })?;
+    // A device the account has never seen, while it already has another:
+    // the other devices hear about it (account alerts).
+    let new_device = state
+        .storage
+        .device_pub(account.account_id, body.device.device_id)?
+        .is_none();
     state.storage.register_device(
         account.account_id,
         body.device.device_id,
         &body.device.device_pub,
     )?;
+    if new_device
+        && let Some(alerts) = state.storage.alerts()
+        && alerts.device_count(account.account_id)? > 1
+    {
+        alerts.record_alert(
+            account.account_id,
+            lockdown_sync::wire::AlertKind::NewDevice,
+            state.now(),
+            Some(body.device.device_id),
+            None,
+        )?;
+    }
     let ttl = i64::try_from(state.config.session_ttl.as_secs()).unwrap_or(i64::MAX);
     let (token, expires_at) = state
         .tokens
@@ -1241,4 +1259,41 @@ pub async fn get_blob(
         body,
     )
         .into_response())
+}
+
+// --- account alerts (docs/plan/13-security-center.md) ----------------------
+
+fn alert_store(state: &AppState) -> ApiResult<&dyn crate::alerts::AlertStore> {
+    state
+        .storage
+        .alerts()
+        .ok_or_else(|| ApiError::not_found("account alerts on this server"))
+}
+
+/// `GET /v1/account/alerts?since=N`: the account's alerts that concern the
+/// asking device.
+pub async fn account_alerts(
+    State(state): State<Arc<AppState>>,
+    session: Session,
+    Query(since): Query<Since>,
+) -> ApiResult<Cbor<lockdown_sync::wire::AlertsSince>> {
+    let store = alert_store(&state)?;
+    Ok(Cbor(lockdown_sync::wire::AlertsSince {
+        alerts: store.alerts_for(session.account_id, session.device_id, since.since)?,
+        current_seq: store.alert_seq(session.account_id)?,
+    }))
+}
+
+/// `POST /v1/account/alerts/{seq}/dismiss`: dismissed for every device of
+/// the account.
+pub async fn dismiss_alert(
+    State(state): State<Arc<AppState>>,
+    session: Session,
+    Path(seq): Path<u64>,
+) -> ApiResult<StatusCode> {
+    if alert_store(&state)?.dismiss_alert(session.account_id, seq)? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::not_found(format!("alert {seq}")))
+    }
 }

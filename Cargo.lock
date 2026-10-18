@@ -3002,6 +3002,7 @@ dependencies = [
  "lockdown-crypto",
  "lockdown-cxf",
  "lockdown-matcher",
+ "lockdown-security",
  "lockdown-server",
  "lockdown-store",
  "lockdown-sync",
@@ -3197,6 +3198,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "lockdown-security"
+version = "0.1.0"
+dependencies = [
+ "lockdown-matcher",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha1 0.11.0",
+ "tempfile",
+ "thiserror 2.0.21",
+ "zeroize",
+]
+
+[[package]]
 name = "lockdown-server"
 version = "0.1.0"
 dependencies = [
@@ -3208,7 +3224,9 @@ dependencies = [
  "lockdown-crypto",
  "lockdown-sync",
  "lockdown-vault",
+ "reqwest",
  "rusqlite",
+ "rustls",
  "serde",
  "serde_bytes",
  "serde_json",

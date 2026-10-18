@@ -552,3 +552,28 @@ impl Transport for HttpTransport {
         Err(Self::refused(status, &body))
     }
 }
+/// The account's alerts (docs/plan/13-security-center.md). Inherent
+/// rather than on [`Transport`], so the sync engine's test transports need
+/// nothing new.
+impl HttpTransport {
+    /// `GET /v1/account/alerts?since=N`.
+    pub fn account_alerts(&self, token: &str, since: u64) -> Result<wire::AlertsSince> {
+        self.call::<(), _>(
+            reqwest::Method::GET,
+            &format!("/v1/account/alerts?since={since}"),
+            Some(token),
+            None,
+        )
+    }
+
+    /// `POST /v1/account/alerts/{seq}/dismiss`.
+    pub fn dismiss_alert(&self, token: &str, seq: u64) -> Result<()> {
+        self.call_raw(
+            reqwest::Method::POST,
+            &format!("/v1/account/alerts/{seq}/dismiss"),
+            Some(token),
+            None,
+        )
+        .map(|_| ())
+    }
+}
