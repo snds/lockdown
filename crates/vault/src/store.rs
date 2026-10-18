@@ -51,6 +51,74 @@ pub enum StoreError {
 /// The store's result type.
 pub type StoreResult<T> = std::result::Result<T, StoreError>;
 
+/// Where a blob goes while it is sealed, chunk by chunk (D233): memory for
+/// a store that keeps blobs in memory, a file being written for one that
+/// keeps them on disk. [`Store::keep_blob`] takes it once its name is
+/// known.
+#[derive(Debug)]
+pub enum BlobSink {
+    /// Bytes in memory.
+    Memory(Vec<u8>),
+    /// A file being written, and where.
+    File {
+        /// The open file.
+        file: std::fs::File,
+        /// Its path, renamed into place on keep.
+        path: std::path::PathBuf,
+    },
+}
+
+impl BlobSink {
+    /// A sink in memory.
+    pub fn memory() -> Self {
+        Self::Memory(Vec::new())
+    }
+}
+
+impl std::io::Write for BlobSink {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Memory(v) => v.write(buf),
+            Self::File { file, .. } => file.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self {
+            Self::Memory(_) => Ok(()),
+            Self::File { file, .. } => file.flush(),
+        }
+    }
+}
+
+/// A blob being read, from memory or a file, so it can be hashed and then
+/// opened chunk by chunk without being held whole.
+#[derive(Debug)]
+pub enum BlobSource {
+    /// Bytes in memory.
+    Memory(std::io::Cursor<Vec<u8>>),
+    /// A file on disk.
+    File(std::fs::File),
+}
+
+impl std::io::Read for BlobSource {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Memory(c) => c.read(buf),
+            Self::File(f) => f.read(buf),
+        }
+    }
+}
+
+impl std::io::Seek for BlobSource {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        match self {
+            Self::Memory(c) => c.seek(pos),
+            Self::File(f) => f.seek(pos),
+        }
+    }
+}
+
 /// One vault as the store knows it: the public ids of its place in the key
 /// tree and its Vault Key wrapped by the persona's Lockdown App Data Key.
 /// Opening the vault needs that App Data Key from the identity and nothing
@@ -119,6 +187,31 @@ pub trait Store {
     fn remove_blob(&mut self, hash: Hash32) -> StoreResult<()>;
     /// Every blob name held, in hash order.
     fn list_blobs(&self) -> StoreResult<Vec<Hash32>>;
+    /// Somewhere to write a blob as it is sealed (D233). The default is
+    /// memory; a store on disk gives a file, so a large file's ciphertext
+    /// is never whole in memory either.
+    fn blob_sink(&mut self) -> StoreResult<BlobSink> {
+        Ok(BlobSink::memory())
+    }
+    /// Keeps a sealed blob under its name, from the sink [`Self::blob_sink`]
+    /// gave. Keeping a name already held is a no-op.
+    fn keep_blob(&mut self, hash: Hash32, sink: BlobSink) -> StoreResult<()> {
+        match sink {
+            BlobSink::Memory(bytes) => self.put_blob(hash, &bytes),
+            BlobSink::File { path, .. } => {
+                let _ = std::fs::remove_file(&path);
+                Err(StoreError::Unsupported(
+                    "this store keeps blobs in memory, not as files".into(),
+                ))
+            }
+        }
+    }
+    /// A blob to read in pieces. The default reads it whole.
+    fn open_blob(&self, hash: Hash32) -> StoreResult<BlobSource> {
+        Ok(BlobSource::Memory(std::io::Cursor::new(
+            self.get_blob(hash)?,
+        )))
+    }
     /// The newest manifest head for a vault.
     fn latest_head(&self, vault_id: Id) -> StoreResult<ManifestHead> {
         self.heads(vault_id)?

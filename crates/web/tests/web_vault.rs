@@ -553,3 +553,114 @@ fn a_share_link_opens_and_a_request_is_answered_with_no_account() {
     assert_eq!(gone.code, lockdown_app::ErrorCode::Refused);
     drop(desktop);
 }
+
+#[test]
+fn the_web_vault_reaches_vault_depth_through_the_same_commands() {
+    let running = server();
+    let url = running.url();
+    let dir = tempfile::tempdir().unwrap();
+    let (_desktop, secret_key) = register(dir.path(), &url);
+    let mut web = tab(dir.path(), "tab");
+    sign_in(&mut web, &url, &secret_key, None);
+
+    // A variant by its template id, and the templates name it.
+    let kinds = ok(&mut web, "templates", json!({}));
+    assert!(
+        kinds["kinds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["id"] == "identity/passport")
+    );
+    let passport = ok(
+        &mut web,
+        "add_item",
+        json!({ "kind": "identity/passport", "title": "Passport", "fields": [
+            { "field_id": "passport.number", "action": "set", "secret": b"X1234567".as_slice() }
+        ]}),
+    );
+    let shown = ok(&mut web, "show", json!({ "id": passport }));
+    assert_eq!(shown["template"], "identity/passport");
+
+    // A person's own template, and an item from it.
+    let tid = ok(
+        &mut web,
+        "save_user_template",
+        json!({ "template": { "name": "Locker", "fields": [
+            { "key": "number", "label": "Number", "kind": "text", "required": true }
+        ]}}),
+    );
+    let made = ok(
+        &mut web,
+        "add_item",
+        json!({ "kind": format!("user:{}", tid.as_str().unwrap()), "fields": [
+            { "field_id": "tpl.number", "action": "set", "text": "12" }
+        ]}),
+    );
+    assert_eq!(
+        ok(&mut web, "show", json!({ "id": made }))["template"],
+        format!("user:{}", tid.as_str().unwrap())
+    );
+    assert_eq!(
+        ok(&mut web, "user_templates", json!({}))
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    // The generator: options with entropy, and a generate that takes them.
+    let preview = ok(
+        &mut web,
+        "generator_preview",
+        json!({ "recipe": { "style": "words", "words": 7 } }),
+    );
+    assert!(preview["bits"].as_f64().unwrap() > 90.0);
+    let login = ok(
+        &mut web,
+        "add_item",
+        json!({ "kind": "login", "title": "Words", "fields": [
+            { "field_id": "pw", "action": "generate", "recipe": { "style": "words", "words": 4, "separator": " " } }
+        ]}),
+    );
+    let pw = bytes(&mut web, "reveal", json!({ "id": login, "fieldId": "pw" }));
+    assert_eq!(String::from_utf8(pw).unwrap().split(' ').count(), 4);
+
+    // The Wi-Fi card: a grid of bytes, never JSON.
+    let net = ok(
+        &mut web,
+        "add_item",
+        json!({ "kind": "wi-fi", "fields": [
+            { "field_id": "wifi.ssid", "action": "set", "text": "home" },
+            { "field_id": "wifi.passphrase", "action": "set", "secret": b"k7Hq3mWx9rTa4nPe6uYc".as_slice() }
+        ]}),
+    );
+    let grid = bytes(&mut web, "wifi_qr", json!({ "id": net }));
+    assert_eq!(grid.len(), 1 + usize::from(grid[0]) * usize::from(grid[0]));
+
+    // A sign-in elsewhere, in hours, bounded.
+    ok(
+        &mut web,
+        "log_away",
+        json!({ "id": login, "place": "Hotel TV", "remindInHours": 24 }),
+    );
+    assert_eq!(
+        ok(&mut web, "away_reminders", json!({}))
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        call(
+            &mut web,
+            "log_away",
+            json!({ "id": login, "place": "x", "remindInHours": 0 })
+        )
+        .is_err()
+    );
+
+    // The attachment room, from the server.
+    let room = ok(&mut web, "storage_usage", json!({}));
+    assert_eq!(room["quota"], 5_000_000_000u64);
+}

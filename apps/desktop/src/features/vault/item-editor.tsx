@@ -39,7 +39,11 @@ import { DERIVED_TITLE, buildChanges, customRow, initialRows, isSecretControl, r
 import { FieldControl } from "./field-control"
 
 export interface EditorTarget {
-  /** The kind to make, or the item's kind. */
+  /**
+   * The template to make from, or the item's (D231, D232): a kind
+   * (`login`), a variant (`identity/passport`) or one of the person's own
+   * (`user:<id>`).
+   */
   kind: string
   /** The item to change, or `null` to make one. */
   item: ItemDetail | null
@@ -66,8 +70,8 @@ interface ItemEditorProps {
  * unicron's `DialogContent` at `size="lg"`.
  */
 export function ItemEditor({ target, onClose, onSaved }: ItemEditorProps) {
-  const { forKind, error: templatesError, templates } = useTemplates()
-  const template = target ? forKind(target.kind) : null
+  const { forTemplate, error: templatesError, templates } = useTemplates()
+  const template = target ? forTemplate(target.kind, target.item?.kind) : null
   return (
     <Dialog open={target !== null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent size="lg">
@@ -86,6 +90,11 @@ export function ItemEditor({ target, onClose, onSaved }: ItemEditorProps) {
       </DialogContent>
     </Dialog>
   )
+}
+
+/** A login's first website and its own password rules, from the rows being edited (D236). */
+function siteOf(rows: EditorRow[]): { url?: string; rule?: string } {
+  return { url: rows.find((r) => r.fieldId === "url.0")?.text || undefined, rule: rows.find((r) => r.fieldId === "pw.rule")?.text || undefined }
 }
 
 function plainTitle(item: ItemDetail | null): string {
@@ -172,7 +181,7 @@ function EditorForm({
         await gate.run((g) => client.editItem({ id: item.id, title: t && t !== plainTitle(item) ? t : undefined, changes }, g))
         id = item.id
       } else {
-        const input = { kind: template.kind, title: title.trim() || undefined, crownJewel: crownJewel || undefined, fields: changes }
+        const input = { kind: template.id ?? template.kind, title: title.trim() || undefined, crownJewel: crownJewel || undefined, fields: changes }
         id = vaultId && vaults.length > 1 ? await client.addItemIn(vaultId, input) : await client.addItem(input)
       }
       setRows(wipeRows)
@@ -190,7 +199,7 @@ function EditorForm({
     onClose()
   }
 
-  const titleHint = editing ? undefined : DERIVED_TITLE[template.kind]
+  const titleHint = editing ? undefined : (DERIVED_TITLE[template.kind] ?? (template.id?.startsWith("user:") ? "Left empty, the template's name is used." : undefined))
   return (
     <form onSubmit={submit} className="grid gap-4" aria-busy={busy}>
       <DialogHeader>
@@ -213,6 +222,8 @@ function EditorForm({
                   row={r}
                   onChange={(p) => patch(r.key, p)}
                   context={context}
+                  linkScope={{ vaultId, itemId: item?.id }}
+                  site={r.fieldId === "pw" && template.kind === "login" ? siteOf(rows) : undefined}
                   onDiscard={r.fieldId === null || (!r.exists && r.template?.repeats && r.fieldId !== r.template.field_id) ? () => setRows((rs) => rs.filter((x) => x.key !== r.key)) : undefined}
                 />
               ))}

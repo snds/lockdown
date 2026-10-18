@@ -3,7 +3,7 @@
 // `fill` verdict, are written once and are not kept.
 
 import type { FillValue, FillWhat } from "../shared/protocol"
-import { cardFields, codeBoxes, identityFields, loginPair } from "./detect"
+import { cardFields, codeBoxes, identityFields, loginPair, newPasswordFields } from "./detect"
 
 type Fieldish = HTMLInputElement | HTMLSelectElement
 
@@ -104,6 +104,15 @@ export function apply(el: HTMLInputElement, what: FillWhat, values: FillValue[])
       break
     }
   }
+  el.focus({ preventScroll: true })
+  return n
+}
+
+/** Writes a password Lockdown made into `el` and the field that repeats
+ *  it; answers how many took it. */
+export function applyNewPassword(el: HTMLInputElement, value: string): number {
+  let n = 0
+  for (const f of newPasswordFields(el)) if (write(f, value)) n++
   el.focus({ preventScroll: true })
   return n
 }

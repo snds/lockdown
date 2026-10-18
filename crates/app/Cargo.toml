@@ -23,6 +23,7 @@ serde.workspace = true
 serde_bytes.workspace = true
 zeroize.workspace = true
 zxcvbn.workspace = true
+qrcode.workspace = true
 # The security center (security.rs): the breach range check, the 2FA
 # directory, the change-password link, the playbooks.
 lockdown-security = { path = "../security", version = "0.1.0", default-features = false }

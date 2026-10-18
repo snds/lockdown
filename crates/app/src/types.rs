@@ -101,6 +101,9 @@ pub struct ItemSummary {
     /// `fill-only`, no change below `edit`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub access: Option<String>,
+    /// The template it is drawn from (D231): the kind (`identity`), a
+    /// variant (`identity/passport`) or the person's own (`user:<id>`).
+    pub template: String,
 }
 
 /// The one value a row (and the quick-access palette) offers to copy: a
@@ -120,6 +123,15 @@ pub struct CopyTarget {
 pub struct TemplateView {
     /// `ItemKind::as_str`.
     pub kind: String,
+    /// The template's id (D231): the kind for its own template, or
+    /// `kind/variant` (`identity/passport`); what `add_item` takes as `kind`.
+    pub id: String,
+    /// The variant's name, or empty for the kind's own.
+    pub variant: String,
+    /// A Material Symbols icon name.
+    pub icon: String,
+    /// Whether any field is ever put into a page (a Contact's are not).
+    pub fills: bool,
     /// Singular, in plain words: "Wi-Fi network".
     pub name: String,
     /// One line for the "New item" list.
@@ -270,6 +282,27 @@ pub struct FieldView {
     /// A web address's match rule (`exact_host`, `base_domain`, …).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub match_rule: Option<String>,
+    /// For a link to another item's field (D235): what it points at. Its
+    /// value comes from there, through that item's gates.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link: Option<LinkView>,
+}
+
+/// What a linked field points at, by name only: never a value.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct LinkView {
+    pub item_id: String,
+    pub field_id: String,
+    /// The other item's title, or empty when it's gone.
+    pub title: String,
+    /// The field's label there.
+    pub label: String,
+    /// Whether that field is a secret (reveal and copy go through the
+    /// other item) or a code (`copy_code`).
+    pub secret: bool,
+    pub code: bool,
+    /// The item or field is no longer there (trashed, removed, moved).
+    pub missing: bool,
 }
 
 /// One item in full.
@@ -287,6 +320,12 @@ pub struct ItemDetail {
     /// Where it is filed and what is attached (flattened into the item).
     #[serde(flatten)]
     pub place: ItemPlace,
+    /// The template it is drawn from (as [`ItemSummary::template`]).
+    pub template: String,
+    /// Sign-ins on someone else's screen not yet signed out (D237).
+    pub away: Vec<AwayView>,
+    /// A card asks before its security code is used (D238).
+    pub reprompt: bool,
 }
 
 /// The server's key-transparency log as this device last verified it
@@ -636,4 +675,138 @@ pub struct ExpiryReminder {
     pub date: String,
     /// Negative once lapsed.
     pub days: i64,
+}
+
+// --- vault depth (docs/plan/21-vault-depth.md) -------------------------------
+
+/// A sign-in on a TV or someone else's device, logged from large type so
+/// Lockdown can remind the person to sign out there (D237).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct AwayView {
+    /// Where, in the person's words ("Hotel room TV").
+    pub place: String,
+    /// When it was logged, seconds since the epoch; also its id.
+    pub at: i64,
+    /// When to remind.
+    pub remind_at: i64,
+    /// The reminder is due.
+    pub due: bool,
+}
+
+/// One due or open sign-in elsewhere, for the reminder toast.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct AwayReminder {
+    pub item_id: String,
+    pub title: String,
+    pub place: String,
+    pub at: i64,
+    pub remind_at: i64,
+    pub due: bool,
+}
+
+/// One field of a person's own template.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
+pub struct UserFieldView {
+    /// The key; the item's field is `tpl.<key>`.
+    pub key: String,
+    /// `tpl.<key>`.
+    #[serde(default)]
+    pub field_id: String,
+    pub label: String,
+    /// A field-of-your-own kind's name (`text`, `hidden`, `url`, `email`,
+    /// `phone`, `date`, `boolean`, `totp`, `linked`).
+    pub kind: String,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub hint: String,
+    #[serde(default)]
+    pub section: String,
+    /// Read-only: whether the value is a secret.
+    #[serde(default)]
+    pub secret: bool,
+}
+
+/// A person's own template (D232).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct UserTemplateView {
+    /// The template item's id; `add_item` takes `user:<id>` as its kind.
+    pub id: String,
+    /// The vault it lives in (a shared vault's members share it).
+    pub vault_id: String,
+    pub name: String,
+    pub summary: String,
+    pub icon: String,
+    pub fields: Vec<UserFieldView>,
+    /// How many saved versions it has.
+    pub versions: u64,
+}
+
+/// A template as a shell sends it to save.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize)]
+pub struct UserTemplateInput {
+    pub name: String,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub icon: String,
+    pub fields: Vec<UserFieldView>,
+}
+
+/// One item a linked field may point at, and its fields by label: never a
+/// value (D235). A crown jewel lists only its template's fields.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct LinkTargetView {
+    pub item_id: String,
+    pub title: String,
+    pub kind: String,
+    pub crown_jewel: bool,
+    pub fields: Vec<LinkFieldView>,
+}
+
+/// One field a link may point at.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct LinkFieldView {
+    pub field_id: String,
+    pub label: String,
+    pub secret: bool,
+    pub code: bool,
+}
+
+/// A site's password rules as the generator reads them (D236).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct SiteRuleView {
+    /// The host the rule was found for.
+    pub host: String,
+    /// The rule in its own language.
+    pub rule: String,
+    /// The rule in plain words.
+    pub words: String,
+    /// `saved` (on this login) or `published` (the bundled list).
+    pub source: String,
+}
+
+/// What a generator recipe would make, without making it (D230).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct GeneratorPreview {
+    /// The options in plain words.
+    pub words: String,
+    /// The bits of entropy of a value made this way.
+    pub bits: f64,
+    /// zxcvbn's word for that many bits' worth: `weak`, `fair` or `strong`.
+    pub strength: String,
+    /// The site's rules that will apply instead of the options, if any.
+    pub site: Option<SiteRuleView>,
+}
+
+/// The account's attachment room on the server (D234).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct StorageView {
+    pub used: u64,
+    /// `None` when the server sets no limit.
+    pub quota: Option<u64>,
+    /// "1.2 GB".
+    pub used_words: String,
+    /// "5 GB", or empty with no limit.
+    pub quota_words: String,
 }

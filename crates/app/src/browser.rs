@@ -422,6 +422,11 @@ impl App {
                     continue;
                 }
                 let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
+                // A Contact (someone else's details) is never offered to a
+                // form, nor a variant with nothing a form takes (D231).
+                if !lockdown_vault::template_of(item.kind, &fields).fills() {
+                    continue;
+                }
                 let crown_jewel = item.class == ItemClass::CrownJewel;
                 let subtitle = if crown_jewel {
                     String::new()
@@ -710,7 +715,20 @@ fn read_values(core: &mut Core, item_id: &str, plan: FillPlan) -> AppResult<Vec<
         FillWhat::Card => {
             for role in ["card.number", "card.cvc"] {
                 if has_field(&fields, role) {
-                    let value = core.reveal_for_fill(item_id, role, ApprovalKind::Use, &gate)?;
+                    let value = match core.reveal_for_fill(item_id, role, ApprovalKind::Use, &gate)
+                    {
+                        Ok(v) => v,
+                        // A card that asks before its security code (D238)
+                        // fills without it unless the platform's own check
+                        // ran and passed here; the person copies it from
+                        // the app after the ask.
+                        Err(e)
+                            if role == "card.cvc" && e.code == crate::ErrorCode::ApprovalNeeded =>
+                        {
+                            continue;
+                        }
+                        Err(e) => return Err(e),
+                    };
                     out.push(FillValue {
                         role: role.into(),
                         value,
@@ -898,6 +916,33 @@ mod tests {
         assert_eq!(got[0].0, "code");
         assert_eq!(got[0].1.len(), 6);
         assert!(got[0].1.chars().all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn a_card_that_asks_first_fills_without_its_security_code() {
+        let (_dir, app) = fresh();
+        let card = app
+            .add_item(
+                "card",
+                Some("Guarded card"),
+                false,
+                vec![
+                    FieldChange::secret("card.number", b"4242424242424242"),
+                    FieldChange::secret("card.cvc", b"123"),
+                    FieldChange::text("card.expiry", "2030-08"),
+                    FieldChange::text("card.reprompt", "true"),
+                ],
+            )
+            .unwrap();
+        let page = "https://shop.example.com/checkout";
+        let confirmed = PageFacts {
+            user_confirmed: true,
+            ..facts(page, page)
+        };
+        let got = values(app.fill(&card, FillWhat::Card, None, confirmed).unwrap());
+        let roles: Vec<&str> = got.iter().map(|(r, _)| r.as_str()).collect();
+        assert!(roles.contains(&"card.number") && roles.contains(&"card.expiry"));
+        assert!(!roles.contains(&"card.cvc"), "{roles:?}");
     }
 
     #[test]

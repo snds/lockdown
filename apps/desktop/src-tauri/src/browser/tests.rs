@@ -197,6 +197,8 @@ fn nothing_is_answered_before_pairing_and_a_wrong_proof_stays_unpaired() {
         "wallet",
         "offer_save",
         "basic_auth",
+        "password_rule",
+        "suggest",
     ] {
         assert_eq!(host.err(op, json!({})), "not_paired", "{op}");
     }
@@ -561,6 +563,35 @@ fn a_request_waiting_for_the_app_is_answered_through_the_gate() {
         Some("window"),
         "the method that approved it goes back to the core, which sets UV only for a real check"
     );
+}
+
+#[test]
+fn a_new_password_field_is_offered_a_strong_password_under_the_sites_rules() {
+    let rig = rig();
+    let mut host = paired(&rig);
+    let page = "https://www.1800flowers.com/signup";
+    let rule = host.ok("password_rule", json!({ "frame": page }));
+    assert_eq!(rule["site"]["source"], "published");
+    assert!(
+        rule.get("value").is_none(),
+        "the rule names, it never makes"
+    );
+    let one = host.ok("suggest", json!({ "frame": page }));
+    let two = host.ok("suggest", json!({ "frame": page }));
+    let (one, two) = (
+        one["value"].as_str().unwrap(),
+        two["value"].as_str().unwrap(),
+    );
+    assert_eq!(one.chars().count(), 20);
+    assert_ne!(one, two);
+    assert!(one.chars().any(|c| c.is_ascii_digit()));
+    let plain = host.ok("suggest", json!({ "frame": "https://new.test/join" }));
+    assert!(plain["site"].is_null());
+    assert_eq!(host.err("suggest", json!({})), "bad_request");
+    // Nothing reached the vault: the sign-up's save does that.
+    assert!(rig.app.list().unwrap().is_empty());
+    rig.app.lock().unwrap();
+    assert_eq!(host.err("suggest", json!({ "frame": page })), "locked");
 }
 
 #[test]

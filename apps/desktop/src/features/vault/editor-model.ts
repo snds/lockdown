@@ -1,5 +1,5 @@
 import { encodeSecret } from "@/core/secret-bytes"
-import type { Control, FieldChangeInput, FieldTemplateView, ItemDetail, TemplateView } from "@/core/types"
+import type { Control, FieldChangeInput, FieldTemplateView, ItemDetail, Recipe, TemplateView } from "@/core/types"
 
 /** What happens to a secret on save. `keep` sends no bytes at all. */
 export type SecretMode = "keep" | "type" | "generate" | "remove"
@@ -35,6 +35,8 @@ export interface EditorRow {
   managed?: boolean
   /** Kept and sent as `keep`, never drawn (a passkey's other parts). */
   quiet?: boolean
+  /** With `generate`: the person's options (D230); the template's rule when absent. */
+  recipe?: Recipe
 }
 
 const SECRET_CONTROLS: readonly Control[] = ["secret", "secret-multiline", "totp", "passkey"]
@@ -52,6 +54,7 @@ export function controlForKind(kind: string): { control: Control; editable: bool
     case "date":
     case "boolean":
     case "totp":
+    case "linked":
       return { control: kind as Control, editable: true }
     case "text":
     case "address":
@@ -102,6 +105,8 @@ export function initialRows(template: TemplateView, item: ItemDetail | null): Ed
         text: secret ? "" : (f?.value ?? ""),
         flag: f?.value === "true",
         secret: f ? "keep" : "type",
+        // A field of the person's own template (D232) names its kind when it is added to an item.
+        customKind: t.field_id.startsWith("tpl.") ? kindOfControl(t.control) : null,
         ...(t.control === "url" ? { matchRule: f?.match_rule ?? "exact_host", originalRule: f?.match_rule ?? "exact_host" } : {}),
       }),
     )
@@ -182,6 +187,25 @@ export function repeatRow(rows: EditorRow[], template: FieldTemplateView): Edito
   })
 }
 
+/** The kind a field of your own stores, from its control (the inverse of `controlForKind`). */
+export function kindOfControl(control: Control): string {
+  switch (control) {
+    case "secret":
+    case "secret-multiline":
+      return "hidden"
+    case "url":
+    case "email":
+    case "phone":
+    case "date":
+    case "boolean":
+    case "totp":
+    case "linked":
+      return control
+    default:
+      return "text"
+  }
+}
+
 /** A field the person adds by hand ("Add field"). */
 export function customRow(n: number, label: string, kind: string): EditorRow {
   const { control } = controlForKind(kind)
@@ -197,14 +221,15 @@ export function buildChanges(rows: EditorRow[]): FieldChangeInput[] {
   const out: FieldChangeInput[] = []
   for (const r of rows) {
     const id = r.fieldId ?? undefined
-    const custom = r.fieldId === null ? { label: r.label, kind: r.customKind ?? "text" } : {}
+    // A field added by hand, or a template's own (`tpl.*`) the item lacks yet, says its label and kind.
+    const custom = r.fieldId === null || (!r.exists && r.customKind) ? { label: r.label, kind: r.customKind ?? "text" } : {}
     const secret = isSecretControl(r.control)
     if (r.exists && (!r.editable || (!secret && r.removed))) {
       out.push({ field_id: id, action: r.removed ? "remove" : "keep" })
       continue
     }
     if (secret) {
-      if (r.secret === "generate") out.push({ field_id: id, ...custom, action: "generate" })
+      if (r.secret === "generate") out.push({ field_id: id, ...custom, action: "generate", ...(r.recipe ? { recipe: r.recipe } : {}) })
       else if (r.secret === "remove" && r.exists) out.push({ field_id: id, action: "remove" })
       else if (r.secret === "type" && r.text !== "") out.push({ field_id: id, ...custom, action: "set", secret: encodeSecret(r.text) })
       else if (r.exists) out.push({ field_id: id, action: "keep" })

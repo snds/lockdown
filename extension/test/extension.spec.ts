@@ -2,9 +2,10 @@
 // unpacked MV3 build in a real Chromium, the real native host the browser
 // launches, the real desktop endpoint and core over a throwaway vault, and
 // local fixture pages. Pairing, every fill row, the red team against the
-// real fill path, save and update, the shortcut, Basic Auth and the popup.
-// Bridges (fill fixes, the sign-in map, change-password links, aliases)
-// have their own suite: bridges.spec.ts.
+// real fill path, save and update, the shortcut, Basic Auth and the popup,
+// and a strong password suggested under a site's own rules. Bridges (fill
+// fixes, the sign-in map, change-password links, aliases) have their own
+// suite: bridges.spec.ts.
 import { chromium, expect, test, type BrowserContext, type Frame, type Page, type Worker } from "@playwright/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -48,7 +49,7 @@ test.beforeAll(async () => {
       `--load-extension=${dist}`,
       // No proxy: the mapped names below must land on this machine.
       "--no-proxy-server",
-      "--host-resolver-rules=MAP *.test 127.0.0.1, MAP *.evil.net 127.0.0.1, MAP www.paypal.com 127.0.0.1",
+      "--host-resolver-rules=MAP *.test 127.0.0.1, MAP *.evil.net 127.0.0.1, MAP www.paypal.com 127.0.0.1, MAP www.1800flowers.com 127.0.0.1",
     ],
   });
   worker = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent("serviceworker"));
@@ -341,5 +342,46 @@ test("a changed password is offered as an update of the saved login", async () =
   await expect(prompt.locator("body")).toContainText("Update the password for Local site");
   await prompt.getByRole("button", { name: "Update" }).click();
   await expect.poll(async () => (await desktop.ask(`password ${items.local}`, "password")).value).toBe("correct-horse-2");
+  await page.close();
+});
+
+test("a sign-up field is offered a strong password under the site's published rules, then saved", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("www.1800flowers.com", "/ext/signup.html"));
+  await page.fill("#user", "flower-fan");
+  await page.focus("#pass");
+  const menu = await lockdownFrame(page);
+  const suggest = menu.getByRole("button", { name: /Use a strong password/ });
+  await expect(suggest).toContainText("Follows 1800flowers.com's password rules");
+  await expect(suggest).toBeEnabled();
+  // Nothing is made until the pick: the fields are still empty.
+  await expect(page.locator("#pass")).toHaveValue("");
+  await suggest.click();
+  await expect.poll(async () => (await page.locator("#pass").inputValue()).length).toBe(20);
+  const made = await page.locator("#pass").inputValue();
+  await expect(page.locator("#again")).toHaveValue(made);
+  expect(made).toMatch(/[0-9]/);
+  await page.click("#go");
+  await page.waitForURL(/welcome\.html/);
+  const prompt = await lockdownFrame(page, "prompt");
+  await expect(prompt.locator("body")).toContainText("Save this login for www.1800flowers.com");
+  await prompt.getByRole("button", { name: "Save" }).click();
+  let id = "";
+  await expect.poll(async () => {
+    const list = await desktop.ask("list", "list");
+    id = (list.items as { id: string; username: string }[]).find((i) => i.username === "flower-fan")?.id ?? "";
+    return id;
+  }).not.toBe("");
+  expect((await desktop.ask(`password ${id}`, "password")).value).toBe(made);
+  await page.close();
+});
+
+test("a sign-in field is not offered a new password", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("localhost", "/ext/login.html"));
+  await page.focus("#pass");
+  const menu = await lockdownFrame(page);
+  await expect(menu.getByRole("button", { name: /Local site/ })).toBeVisible();
+  await expect(menu.getByRole("button", { name: /Use a strong password/ })).toHaveCount(0);
   await page.close();
 });

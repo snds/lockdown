@@ -154,7 +154,8 @@ Every third-party API is a local fixture: the alias services and the clock are f
 8. The federated map doesn't yet learn from the provider's own list of connected apps (Google's "Third-party connections"); it knows only what the person browsed with the extension or typed.
 9. The clock sample is one request; a server behind a slow proxy may often be refused as too slow (4 s), and the codes then use the device's clock.
 10. An age identity is typed in the import's password field; there is no saved age identity in Lockdown yet.
-11. One run of the full extension suite under heavy machine load saw the existing save-prompt test time out on a disabled Save button (the prompt's visibility check); it passed alone and on the next full run.
+11. Imported codes land as their own Code items. Since vault depth (doc 21) a custom field can hold a TOTP code, so a code whose issuer matches a saved login could join that login instead; the import wizard doesn't offer that yet.
+12. One run of the full extension suite under heavy machine load saw the existing save-prompt test time out on a disabled Save button (the prompt's visibility check); it passed alone and on the next full run.
 
 **unicron host-contract gaps:** none blocking. `Icon` takes no size class, so the few icons that needed one sit in a sized `span` (the design-system ratchet stays at its baseline, 4). Printing a dialog alone still relies on the app's own `data-print-page` rule in `index.css`; a `Dialog` print mode in unicron would replace it.
 

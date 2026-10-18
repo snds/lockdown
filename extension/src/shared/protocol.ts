@@ -98,6 +98,19 @@ export interface MenuData {
   /** Passkeys for a page that asked for one with conditional mediation,
    *  listed with its logins. */
   passkeys: PasskeyOption[]
+  /** A field for a new password: the strong password Lockdown would make
+   *  for it, by its rules only (docs/plan/21-vault-depth.md). */
+  suggest?: PasswordSuggestion | null
+}
+
+/** What the app's `password_rule` answers: the rules a suggested
+ *  password follows, never the password. */
+export interface PasswordSuggestion {
+  words: string
+  bits: number
+  strength: string
+  /** The site's rules, saved on its login or published by the site. */
+  site: { host: string; rule: string; words: string; source: "saved" | "published" } | null
 }
 
 export interface PickAnswer {

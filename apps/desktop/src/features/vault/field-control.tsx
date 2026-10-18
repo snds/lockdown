@@ -19,6 +19,9 @@ import type { Control } from "@/core/types"
 import { MATCH_RULES } from "@/features/organization/org-model"
 
 import { isSecretControl, type EditorRow } from "./editor-model"
+import { recipeOf } from "./depth-model"
+import { GeneratorOptions } from "./generator-options"
+import { LinkPicker } from "./link-picker"
 import { useStrength } from "./use-strength"
 
 interface FieldControlProps {
@@ -28,6 +31,10 @@ interface FieldControlProps {
   onDiscard?: () => void
   /** The form's plain words (title, username, website), which make a typed password weaker when it holds them. */
   context?: readonly string[]
+  /** Where a link may point: the item's vault, and the item itself (which it can't point at). */
+  linkScope?: { vaultId: string; itemId?: string }
+  /** For a login's password: its first website and its own rules, for the generator's preview (D236). */
+  site?: { url?: string; rule?: string }
 }
 
 const NO_CONTEXT: readonly string[] = []
@@ -58,7 +65,7 @@ function generatorWords(row: EditorRow): string | null {
  * gets the strength word from the core's estimate (`useStrength`). Every
  * other control is a unicron primitive with no overrides.
  */
-export function FieldControl({ row, onChange, onDiscard, context = NO_CONTEXT }: FieldControlProps) {
+export function FieldControl({ row, onChange, onDiscard, context = NO_CONTEXT, linkScope, site }: FieldControlProps) {
   const id = `field-${row.key.replace(/[^a-z0-9]+/gi, "-")}`
   const required = row.template?.required ?? false
   const hint = row.template?.hint || undefined
@@ -95,18 +102,31 @@ export function FieldControl({ row, onChange, onDiscard, context = NO_CONTEXT }:
 
   if (isSecretControl(row.control)) {
     if (row.secret === "generate" || row.secret === "remove") {
+      const generating = row.secret === "generate"
       return (
-        <Field orientation="horizontal">
-          <FieldContent>
-            <FieldLabel>{row.label}</FieldLabel>
-            <FieldDescription>
-              {row.secret === "generate" ? `A new one is made when you save: ${words}. You can copy it from the item afterwards.` : "Removed when you save."}
-            </FieldDescription>
-          </FieldContent>
-          <Button type="button" variant="ghost" size="sm" onClick={() => onChange({ secret: row.exists ? "keep" : "type", text: "" })}>
-            Undo
-          </Button>
-        </Field>
+        <div className="flex flex-col gap-3">
+          <Field orientation="horizontal">
+            <FieldContent>
+              <FieldLabel>{row.label}</FieldLabel>
+              <FieldDescription>
+                {generating
+                  ? row.recipe
+                    ? "A new one is made when you save, with the options below. You can copy it from the item afterwards."
+                    : `A new one is made when you save: ${words}. You can copy it from the item afterwards.`
+                  : "Removed when you save."}
+              </FieldDescription>
+            </FieldContent>
+            {generating && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => onChange({ recipe: row.recipe ? undefined : recipeOf(row.template?.generator) })}>
+                {row.recipe ? "Usual rule" : "Options"}
+              </Button>
+            )}
+            <Button type="button" variant="ghost" size="sm" onClick={() => onChange({ secret: row.exists ? "keep" : "type", text: "", recipe: undefined })}>
+              Undo
+            </Button>
+          </Field>
+          {generating && row.recipe && <GeneratorOptions id={`${id}-gen`} recipe={row.recipe} onChange={(recipe) => onChange({ recipe })} url={site?.url} rule={site?.rule} />}
+        </div>
       )
     }
     const kept = row.exists && row.text === ""
@@ -146,6 +166,15 @@ export function FieldControl({ row, onChange, onDiscard, context = NO_CONTEXT }:
       >
         {actions}
       </SecretField>
+    )
+  }
+
+  if (row.control === "linked") {
+    return (
+      <div className="flex flex-col gap-1">
+        <LinkPicker id={id} label={row.label} value={row.text} onChange={(text) => onChange({ text })} vaultId={linkScope?.vaultId ?? ""} except={linkScope?.itemId} required={required} />
+        {discard}
+      </div>
     )
   }
 

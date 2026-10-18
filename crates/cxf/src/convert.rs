@@ -12,9 +12,11 @@ use zeroize::Zeroizing;
 
 use crate::model::{
     Account, Address, BasicAuth, CXF_VERSION, Credential, CredentialScope, CreditCard,
-    EditableField, Header, Item, Note, Passkey, PersonName, Totp, b64url, from_b64url,
+    DriversLicense, EditableField, File, Header, IdentityDocument, Item, Note, Passkey, Passport,
+    PersonName, Totp, Wifi, b64url, from_b64url,
 };
 use crate::{CxfError, Result};
+use lockdown_vault::TEMPLATE_FIELD;
 
 /// An item in Lockdown's shape, before it is sealed into a vault.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -127,6 +129,9 @@ fn hidden(id: &str, label: &str, f: &Option<EditableField>) -> Option<PlainField
 }
 
 fn kind_of(creds: &[Credential]) -> ItemKind {
+    if creds.iter().any(|c| matches!(c, Credential::Wifi(_))) {
+        return ItemKind::WiFi;
+    }
     if creds.iter().any(|c| matches!(c, Credential::BasicAuth(_))) {
         return ItemKind::Login;
     }
@@ -137,8 +142,58 @@ fn kind_of(creds: &[Credential]) -> ItemKind {
         Some(Credential::CreditCard(_)) => ItemKind::Card,
         Some(Credential::Note(_)) => ItemKind::Note,
         Some(Credential::Totp(_)) => ItemKind::Code,
-        Some(Credential::PersonName(_)) | Some(Credential::Address(_)) => ItemKind::Identity,
+        Some(Credential::PersonName(_))
+        | Some(Credential::Address(_))
+        | Some(Credential::DriversLicense(_))
+        | Some(Credential::Passport(_))
+        | Some(Credential::IdentityDocument(_)) => ItemKind::Identity,
         _ => ItemKind::Custom,
+    }
+}
+
+/// CXF's Wi-Fi security types and the template's choices, where one
+/// matches the other exactly. A choice CXF has no word for (WPA2/WPA3,
+/// Enterprise) rides in the Lockdown extension as well.
+const WIFI_TYPES: [(&str, &str); 5] = [
+    ("WPA3", "wpa3-personal"),
+    ("WPA2", "wpa2-personal"),
+    ("WPA", "wpa-personal"),
+    ("WEP", "wep"),
+    ("Open", "unsecured"),
+];
+
+fn date(id: &str, label: &str, f: &Option<EditableField>) -> Option<PlainField> {
+    f.as_ref().map(|f| {
+        PlainField::new(
+            id,
+            FieldKind::Date,
+            label,
+            FieldValue::Text(f.value.clone()),
+        )
+    })
+}
+
+/// A full name split for the two name fields: the last word is the surname.
+fn split_name(fields: &mut Vec<PlainField>, full: &Option<EditableField>) {
+    let Some(full) = full
+        .as_ref()
+        .map(|f| f.value.trim())
+        .filter(|v| !v.is_empty())
+    else {
+        return;
+    };
+    match full.rsplit_once(' ') {
+        Some((given, family)) => {
+            fields.push(PlainField::text("name.given", "Given names", given.trim()));
+            fields.push(PlainField::text("name.family", "Surname", family));
+        }
+        None => fields.push(PlainField::text("name.family", "Surname", full)),
+    }
+}
+
+fn variant(fields: &mut Vec<PlainField>, name: &str) {
+    if !fields.iter().any(|f| f.field_id == TEMPLATE_FIELD) {
+        fields.push(PlainField::text(TEMPLATE_FIELD, "Template", name));
     }
 }
 
@@ -298,6 +353,79 @@ fn to_item(item: &Item) -> Result<ImportedItem> {
                 fields.extend(text("address.postal_code", "postal code", &a.postal_code));
                 fields.extend(text("address.tel", "phone", &a.tel));
             }
+            Credential::Wifi(w) => {
+                fields.extend(text("wifi.ssid", "Network name", &w.ssid));
+                fields.extend(hidden("wifi.passphrase", "Password", &w.passphrase));
+                if let Some(t) = &w.network_security_type {
+                    match WIFI_TYPES.iter().find(|(_, cxf)| *cxf == t.value) {
+                        Some((ours, _)) => {
+                            fields.push(PlainField::text("wifi.security", "Security", ours))
+                        }
+                        None => report.push(format!(
+                            "the Wi-Fi security type '{}' has no match here and was left out",
+                            t.value
+                        )),
+                    }
+                }
+                if let Some(h) = &w.hidden {
+                    fields.push(PlainField::new(
+                        "wifi.hidden",
+                        FieldKind::Boolean,
+                        "Hidden network",
+                        FieldValue::Boolean(h.value == "true"),
+                    ));
+                }
+            }
+            Credential::DriversLicense(d) => {
+                variant(&mut fields, "driver-licence");
+                fields.extend(hidden("dl.number", "Licence number", &d.license_number));
+                fields.extend(text("dl.class", "Categories", &d.license_class));
+                fields.extend(text("dl.country", "Country", &d.country));
+                fields.extend(text("dl.territory", "State or region", &d.territory));
+                fields.extend(text("dl.authority", "Issued by", &d.issuing_authority));
+                fields.extend(date("dl.issued", "Issued", &d.issue_date));
+                fields.extend(date("expires_at", "Expires", &d.expiry_date));
+                fields.extend(date("dl.birth_date", "Date of birth", &d.birth_date));
+                split_name(&mut fields, &d.full_name);
+            }
+            Credential::Passport(p) => {
+                variant(&mut fields, "passport");
+                fields.extend(hidden("passport.number", "Passport number", &p.passport_number));
+                fields.extend(text("passport.type", "Type", &p.passport_type));
+                fields.extend(text("passport.country", "Issuing country", &p.issuing_country));
+                fields.extend(text("passport.authority", "Issuing authority", &p.issuing_authority));
+                fields.extend(date("passport.issued", "Issued", &p.issue_date));
+                fields.extend(date("expires_at", "Expires", &p.expiry_date));
+                fields.extend(text("passport.nationality", "Nationality", &p.nationality));
+                fields.extend(date("passport.birth_date", "Date of birth", &p.birth_date));
+                fields.extend(text("passport.birth_place", "Place of birth", &p.birth_place));
+                fields.extend(text("passport.sex", "Sex", &p.sex));
+                fields.extend(text(
+                    "passport.national_id",
+                    "Personal number",
+                    &p.national_identification_number,
+                ));
+                split_name(&mut fields, &p.full_name);
+            }
+            Credential::IdentityDocument(d) => {
+                variant(&mut fields, "national-id");
+                fields.extend(hidden("id.number", "Number", &d.document_number));
+                fields.extend(text("id.personal_number", "Personal number", &d.identification_number));
+                fields.extend(text("id.country", "Issuing country", &d.issuing_country));
+                fields.extend(text("id.authority", "Issued by", &d.issuing_authority));
+                fields.extend(date("id.issued", "Issued", &d.issue_date));
+                fields.extend(date("expires_at", "Expires", &d.expiry_date));
+                fields.extend(text("id.nationality", "Nationality", &d.nationality));
+                fields.extend(date("id.birth_date", "Date of birth", &d.birth_date));
+                if d.birth_place.is_some() || d.sex.is_some() {
+                    report.push("an ID document's place of birth and sex have no field here and were left out".into());
+                }
+                split_name(&mut fields, &d.full_name);
+            }
+            Credential::File(f) => report.push(format!(
+                "the file '{}' ({} bytes) was named, but a CXF file holds a file's name and checksum, not its contents",
+                f.name, f.decrypted_size
+            )),
             Credential::Other { kind, .. } => {
                 report.push(format!("credential type '{kind}' isn't imported yet"))
             }
@@ -531,7 +659,13 @@ fn from_item(item: &ImportedItem) -> Result<Item> {
             take(format!("card.{part}"));
         }
     }
-    if f.iter().any(|p| p.field_id.starts_with("name.")) {
+    // A document's holder goes in its own credential's full name (below);
+    // the two name fields then ride in the Lockdown extension.
+    let document = matches!(
+        field_text(f, TEMPLATE_FIELD).as_deref(),
+        Some("passport" | "driver-licence" | "national-id")
+    );
+    if !document && f.iter().any(|p| p.field_id.starts_with("name.")) {
         credentials.push(Credential::PersonName(PersonName {
             title: field_text(f, "name.title").map(EditableField::string),
             given: field_text(f, "name.given").map(EditableField::string),
@@ -564,6 +698,142 @@ fn from_item(item: &ImportedItem) -> Result<Item> {
         ] {
             take(format!("address.{part}"));
         }
+    }
+    if let Some(ssid) = field_text(f, "wifi.ssid") {
+        let security = field_text(f, "wifi.security");
+        let exact = security
+            .as_deref()
+            .and_then(|s| WIFI_TYPES.iter().find(|(ours, _)| *ours == s));
+        credentials.push(Credential::Wifi(Wifi {
+            ssid: Some(EditableField::string(ssid)),
+            network_security_type: exact
+                .map(|(_, cxf)| EditableField::typed("wifi-network-security-type", *cxf))
+                .or_else(|| {
+                    // "WPA2/WPA3" joins on WPA2; Enterprise has no CXF word.
+                    (security.as_deref() == Some("WPA2/WPA3")).then(|| {
+                        EditableField::typed("wifi-network-security-type", "wpa2-personal")
+                    })
+                }),
+            passphrase: field_text(f, "wifi.passphrase").map(EditableField::concealed),
+            hidden: field(f, "wifi.hidden").and_then(|p| match p.value {
+                FieldValue::Boolean(b) => Some(EditableField::typed("boolean", b.to_string())),
+                _ => None,
+            }),
+        }));
+        take("wifi.ssid".into());
+        take("wifi.passphrase".into());
+        take("wifi.hidden".into());
+        if exact.is_some() {
+            take("wifi.security".into());
+        }
+    }
+    let marker = field_text(f, TEMPLATE_FIELD);
+    let full_name = || -> Option<EditableField> {
+        let parts: Vec<String> = [field_text(f, "name.given"), field_text(f, "name.family")]
+            .into_iter()
+            .flatten()
+            .filter(|p| !p.trim().is_empty())
+            .collect();
+        (!parts.is_empty()).then(|| EditableField::string(parts.join(" ")))
+    };
+    let d = |id: &str| field_text(f, id).map(|v| EditableField::typed("date", v));
+    let t = |id: &str| field_text(f, id).map(EditableField::string);
+    match marker.as_deref() {
+        Some("passport") => {
+            credentials.push(Credential::Passport(Passport {
+                issuing_country: t("passport.country"),
+                passport_type: t("passport.type"),
+                passport_number: field_text(f, "passport.number").map(EditableField::concealed),
+                national_identification_number: t("passport.national_id"),
+                nationality: t("passport.nationality"),
+                full_name: full_name(),
+                birth_date: d("passport.birth_date"),
+                birth_place: t("passport.birth_place"),
+                sex: t("passport.sex"),
+                issue_date: d("passport.issued"),
+                expiry_date: d("expires_at"),
+                issuing_authority: t("passport.authority"),
+            }));
+            for id in [
+                "passport.country",
+                "passport.type",
+                "passport.number",
+                "passport.national_id",
+                "passport.nationality",
+                "passport.birth_date",
+                "passport.birth_place",
+                "passport.sex",
+                "passport.issued",
+                "passport.authority",
+            ] {
+                take(id.into());
+            }
+        }
+        Some("driver-licence") => {
+            credentials.push(Credential::DriversLicense(DriversLicense {
+                full_name: full_name(),
+                birth_date: d("dl.birth_date"),
+                issue_date: d("dl.issued"),
+                expiry_date: d("expires_at"),
+                issuing_authority: t("dl.authority"),
+                territory: field_text(f, "dl.territory")
+                    .map(|v| EditableField::typed("subdivision-code", v)),
+                country: field_text(f, "dl.country")
+                    .map(|v| EditableField::typed("country-code", v)),
+                license_number: field_text(f, "dl.number").map(EditableField::concealed),
+                license_class: t("dl.class"),
+            }));
+            for id in [
+                "dl.birth_date",
+                "dl.issued",
+                "dl.authority",
+                "dl.territory",
+                "dl.country",
+                "dl.number",
+                "dl.class",
+            ] {
+                take(id.into());
+            }
+        }
+        Some("national-id") => {
+            credentials.push(Credential::IdentityDocument(IdentityDocument {
+                issuing_country: t("id.country"),
+                document_number: field_text(f, "id.number").map(EditableField::concealed),
+                identification_number: t("id.personal_number"),
+                nationality: t("id.nationality"),
+                full_name: full_name(),
+                birth_date: d("id.birth_date"),
+                birth_place: None,
+                sex: None,
+                issue_date: d("id.issued"),
+                expiry_date: d("expires_at"),
+                issuing_authority: t("id.authority"),
+            }));
+            for id in [
+                "id.country",
+                "id.number",
+                "id.personal_number",
+                "id.nationality",
+                "id.birth_date",
+                "id.issued",
+                "id.authority",
+            ] {
+                take(id.into());
+            }
+        }
+        _ => {}
+    }
+    // Attached files as CXF `file` credentials: name, size and SHA-256.
+    // The bytes have no place in a CXF document (see `File`); the export's
+    // report says so, and a Lockdown backup carries them.
+    for a in &item.attachments {
+        let digest = lockdown_crypto::hash::sha256(&a.bytes);
+        credentials.push(Credential::File(File {
+            id: b64url(&lockdown_crypto::hash::hash(&digest).as_bytes()[..16]),
+            name: a.name.clone(),
+            decrypted_size: a.bytes.len() as u64,
+            integrity_hash: Some(b64url(&digest)),
+        }));
     }
     let rest: Vec<&PlainField> = f.iter().filter(|p| !used.contains(&p.field_id)).collect();
     let extensions = if rest.is_empty() && kind_of(&credentials) == item.kind {
@@ -933,6 +1203,251 @@ mod tests {
         assert_eq!(
             items[1].report,
             vec!["credential type 'ssh-key' isn't imported yet".to_string()]
+        );
+    }
+
+    fn foreign(credentials: serde_json::Value) -> Header {
+        let json = serde_json::json!({
+            "version": 1, "exporterRpId": "other.example", "exporterDisplayName": "Other",
+            "timestamp": 1,
+            "accounts": [{"id": "YQ", "items": [{"id": "aXRlbQ", "title": "From elsewhere",
+                "credentials": credentials}]}]
+        });
+        parse(json.to_string().as_bytes(), &Limits::default()).unwrap()
+    }
+
+    fn value_of<'a>(fields: &'a [PlainField], id: &str) -> Option<&'a FieldValue> {
+        fields.iter().find(|f| f.field_id == id).map(|f| &f.value)
+    }
+
+    #[test]
+    fn wifi_goes_out_in_cxfs_own_type_and_comes_back() {
+        let mut net = ImportedItem::new(b64url(b"net-1"), ItemKind::WiFi, "Home");
+        net.fields.extend([
+            PlainField::text("wifi.ssid", "Network name", "home-net"),
+            PlainField::hidden("wifi.passphrase", "Password", "k7Hq3mWx9rTa4nPe6uYc"),
+            PlainField::text("wifi.security", "Security", "WPA2"),
+            PlainField::new(
+                "wifi.hidden",
+                FieldKind::Boolean,
+                "Hidden network",
+                FieldValue::Boolean(true),
+            ),
+        ]);
+        let mut enterprise = ImportedItem::new(b64url(b"net-2"), ItemKind::WiFi, "Office");
+        enterprise.fields.extend([
+            PlainField::text("wifi.ssid", "Network name", "corp"),
+            PlainField::text("wifi.security", "Security", "Enterprise"),
+            PlainField::text("wifi.eap_identity", "Enterprise identity", "sean"),
+        ]);
+        let header = from_items(
+            &[net.clone(), enterprise.clone()],
+            "lockdown.app",
+            "Lockdown",
+            1,
+        )
+        .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&write(&header).unwrap()).unwrap();
+        let item = &json["accounts"][0]["items"][0];
+        let wifi = &item["credentials"][0];
+        assert_eq!(wifi["type"], "wifi");
+        assert_eq!(wifi["ssid"]["value"], "home-net");
+        assert_eq!(wifi["passphrase"]["fieldType"], "concealed-string");
+        assert_eq!(wifi["networkSecurityType"]["value"], "wpa2-personal");
+        assert_eq!(
+            wifi["networkSecurityType"]["fieldType"],
+            "wifi-network-security-type"
+        );
+        assert_eq!(wifi["hidden"]["value"], "true");
+        // Everything CXF's type holds left the Lockdown extension; the
+        // item's kind is all the extension still says.
+        let ext = item["extensions"]
+            .as_array()
+            .map(|a| a[0]["fields"].as_array().unwrap().len());
+        assert!(ext.is_none() || ext == Some(0), "{item}");
+        // Enterprise has no CXF word: the type is left out, the choice rides along.
+        let office = &json["accounts"][0]["items"][1];
+        assert!(
+            office["credentials"][0]
+                .get("networkSecurityType")
+                .is_none()
+        );
+        let back = to_items(&header).unwrap();
+        assert_eq!(back[0].kind, ItemKind::WiFi);
+        assert_eq!(
+            value_of(&back[0].fields, "wifi.security"),
+            Some(&FieldValue::Text("WPA2".into()))
+        );
+        assert_eq!(
+            value_of(&back[0].fields, "wifi.hidden"),
+            Some(&FieldValue::Boolean(true))
+        );
+        assert_eq!(
+            value_of(&back[1].fields, "wifi.security"),
+            Some(&FieldValue::Text("Enterprise".into()))
+        );
+        assert!(value_of(&back[1].fields, "wifi.eap_identity").is_some());
+        // Another manager's Wi-Fi lands as a network.
+        let other = to_items(&foreign(serde_json::json!([{
+            "type": "wifi",
+            "ssid": {"fieldType": "string", "value": "cafe"},
+            "networkSecurityType": {"fieldType": "wifi-network-security-type", "value": "wpa3-personal"},
+            "passphrase": {"fieldType": "concealed-string", "value": "latte-art"},
+            "hidden": {"fieldType": "boolean", "value": "false"}
+        }]))).unwrap();
+        assert_eq!(other[0].kind, ItemKind::WiFi);
+        assert_eq!(
+            value_of(&other[0].fields, "wifi.security"),
+            Some(&FieldValue::Text("WPA3".into()))
+        );
+        let pw = other[0]
+            .fields
+            .iter()
+            .find(|f| f.field_id == "wifi.passphrase")
+            .unwrap();
+        assert_eq!(pw.kind, FieldKind::Hidden);
+    }
+
+    #[test]
+    fn identity_documents_map_to_their_variants_both_ways() {
+        let items = to_items(&foreign(serde_json::json!([
+            {"type": "passport",
+             "passportNumber": {"fieldType": "concealed-string", "value": "X1234567"},
+             "issuingCountry": {"fieldType": "country-code", "value": "GB"},
+             "fullName": {"fieldType": "string", "value": "Sean Q Sands"},
+             "expiryDate": {"fieldType": "date", "value": "2034-05-01"},
+             "sex": {"fieldType": "string", "value": "X"}}
+        ])))
+        .unwrap();
+        let p = &items[0];
+        assert_eq!(p.kind, ItemKind::Identity);
+        assert_eq!(
+            value_of(&p.fields, TEMPLATE_FIELD),
+            Some(&FieldValue::Text("passport".into()))
+        );
+        assert_eq!(
+            value_of(&p.fields, "name.given"),
+            Some(&FieldValue::Text("Sean Q".into()))
+        );
+        assert_eq!(
+            value_of(&p.fields, "name.family"),
+            Some(&FieldValue::Text("Sands".into()))
+        );
+        assert_eq!(
+            p.fields
+                .iter()
+                .find(|f| f.field_id == "passport.number")
+                .unwrap()
+                .kind,
+            FieldKind::Hidden
+        );
+        assert_eq!(
+            p.fields
+                .iter()
+                .find(|f| f.field_id == "expires_at")
+                .unwrap()
+                .kind,
+            FieldKind::Date
+        );
+
+        let dl = to_items(&foreign(serde_json::json!([
+            {"type": "drivers-license",
+             "licenseNumber": {"fieldType": "concealed-string", "value": "SANDS901"},
+             "licenseClass": {"fieldType": "string", "value": "B"},
+             "territory": {"fieldType": "subdivision-code", "value": "CA"}}
+        ])))
+        .unwrap();
+        assert_eq!(
+            value_of(&dl[0].fields, TEMPLATE_FIELD),
+            Some(&FieldValue::Text("driver-licence".into()))
+        );
+        assert_eq!(
+            value_of(&dl[0].fields, "dl.class"),
+            Some(&FieldValue::Text("B".into()))
+        );
+
+        let id = to_items(&foreign(serde_json::json!([
+            {"type": "identity-document",
+             "documentNumber": {"fieldType": "concealed-string", "value": "ID-77"},
+             "identificationNumber": {"fieldType": "string", "value": "AB123456C"},
+             "birthPlace": {"fieldType": "string", "value": "York"}}
+        ])))
+        .unwrap();
+        assert_eq!(
+            value_of(&id[0].fields, TEMPLATE_FIELD),
+            Some(&FieldValue::Text("national-id".into()))
+        );
+        assert_eq!(
+            value_of(&id[0].fields, "id.personal_number"),
+            Some(&FieldValue::Text("AB123456C".into()))
+        );
+        assert!(
+            id[0].report.iter().any(|r| r.contains("place of birth")),
+            "{:?}",
+            id[0].report
+        );
+
+        // Out again in CXF's own types, and back to the same variant.
+        let header = from_items(
+            &[p.clone(), dl[0].clone(), id[0].clone()],
+            "lockdown.app",
+            "Lockdown",
+            1,
+        )
+        .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&write(&header).unwrap()).unwrap();
+        let types: Vec<&str> = json["accounts"][0]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["credentials"][0]["type"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            types,
+            vec!["passport", "drivers-license", "identity-document"]
+        );
+        let passport = &json["accounts"][0]["items"][0]["credentials"][0];
+        assert_eq!(passport["fullName"]["value"], "Sean Q Sands");
+        assert_eq!(passport["passportNumber"]["value"], "X1234567");
+        let back = to_items(&header).unwrap();
+        assert_eq!(
+            value_of(&back[0].fields, TEMPLATE_FIELD),
+            Some(&FieldValue::Text("passport".into()))
+        );
+        assert_eq!(
+            value_of(&back[0].fields, "name.given"),
+            Some(&FieldValue::Text("Sean Q".into()))
+        );
+    }
+
+    #[test]
+    fn files_are_named_with_their_checksum_and_never_carried() {
+        let mut doc = ImportedItem::new(b64url(b"doc-1"), ItemKind::Document, "Lease");
+        doc.attachments.push(ImportedAttachment {
+            name: "lease.pdf".into(),
+            mime: "application/pdf".into(),
+            bytes: Zeroizing::new(b"%PDF-1.7 the lease".to_vec()),
+        });
+        let header = from_items(&[doc], "lockdown.app", "Lockdown", 1).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&write(&header).unwrap()).unwrap();
+        let file = &json["accounts"][0]["items"][0]["credentials"][0];
+        assert_eq!(file["type"], "file");
+        assert_eq!(file["name"], "lease.pdf");
+        assert_eq!(file["decryptedSize"], 18);
+        assert_eq!(
+            file["integrityHash"],
+            b64url(&lockdown_crypto::hash::sha256(b"%PDF-1.7 the lease"))
+        );
+        assert!(
+            !json.to_string().contains("the lease\""),
+            "no bytes in the document"
+        );
+        let back = to_items(&header).unwrap();
+        assert!(back[0].attachments.is_empty());
+        assert!(
+            back[0].report[0].contains("lease.pdf"),
+            "{:?}",
+            back[0].report
         );
     }
 }

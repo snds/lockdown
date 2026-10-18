@@ -41,6 +41,7 @@ const VIEWS: Array<[ListView, IconName]> = [
   ["passkeys", "passkey"],
   ["codes", "timer"],
   ["wi-fi", "wifi"],
+  ["contacts", "contact_page"],
   ["expiring", "schedule"],
   ["attention", "warning"],
   ["archived", "archive"],

@@ -75,6 +75,7 @@ export const VIEW_LABELS: Record<ListView, string> = {
   deleted: "Deleted",
   favourites: "Favourites",
   archived: "Archived",
+  contacts: "Contacts",
 }
 
 /** The rows a view holds. "All" leaves trashed and archived items to their own views. */
@@ -85,7 +86,7 @@ export function rowsIn(rows: ItemSummary[], view: ListView): ItemSummary[] {
 
 /** How many rows each view holds, for the sidebar's counts. */
 export function countViews(rows: ItemSummary[]): Record<ListView, number> {
-  const counts: Record<ListView, number> = { all: 0, passkeys: 0, codes: 0, "wi-fi": 0, expiring: 0, attention: 0, deleted: 0, favourites: 0, archived: 0 }
+  const counts: Record<ListView, number> = { all: 0, passkeys: 0, codes: 0, "wi-fi": 0, expiring: 0, attention: 0, deleted: 0, favourites: 0, archived: 0, contacts: 0 }
   for (const r of rows) {
     if (r.state !== "trashed" && r.state !== "archived") counts.all += 1
     for (const v of r.views) counts[v] += 1

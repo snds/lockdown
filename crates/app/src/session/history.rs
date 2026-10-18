@@ -109,6 +109,9 @@ impl Session {
             export_opt_in: lockdown_vault::export_opted_in(&fields),
             fields: shown_fields(&fields, false),
             place: self.place_of(vault, item_id, &fields)?,
+            template: super::depth::template_id(item.kind, &fields),
+            away: Vec::new(),
+            reprompt: super::depth::reprompts(item.kind, &fields),
         })
     }
 

@@ -203,6 +203,10 @@ struct ServeArgs {
     /// How long a blob nothing names is kept before it is collected, in seconds.
     #[arg(long, env = "LOCKDOWN_BLOB_GRACE", default_value_t = lockdown_server::DEFAULT_BLOB_GRACE.as_secs())]
     blob_grace: u64,
+    /// How many bytes of attachments the vaults one account owns may hold;
+    /// 0 is no limit.
+    #[arg(long, env = "LOCKDOWN_ATTACHMENT_QUOTA", default_value_t = lockdown_server::DEFAULT_ATTACHMENT_QUOTA)]
+    attachment_quota: u64,
     /// The email breach feed (HIBP v3 `breachedaccount` shape), e.g.
     /// `https://haveibeenpwned.com/api/v3/breachedaccount/`. Without it the
     /// breach monitor is off and nothing is sent anywhere.
@@ -290,6 +294,7 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
         signups_open: cli.signups == Signups::Open,
         max_blob_bytes: cli.max_blob,
         blob_grace: Duration::from_secs(cli.blob_grace),
+        attachment_quota: (cli.attachment_quota > 0).then_some(cli.attachment_quota),
         trusted_proxies,
         web_vault: match cli.web_vault {
             Some(dir) if dir.join("index.html").is_file() => Some(dir),
