@@ -151,21 +151,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-47
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-47@sha256:8ac0732eb12cfdaa9a12c083718c3809fb5ae95af6d67bc182ef7140da69caec
       options: --privileged
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: linux-flatpak-stage
-          path: packaging/flatpak/stage
-      - run: chmod +x packaging/flatpak/stage/lockdown-*
-      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
-        with:
-          manifest-path: packaging/flatpak/design.snds.lockdown.yml
-          bundle: lockdown-${{ needs.meta.outputs.version || 'dev' }}.flatpak
-          cache: false
-          upload-artifact: false
+          path: stage
+      # The same build reproducible.yml compares on two runners
+      # (docs/plan/29-release-polish.md §1): the commit's time as
+      # flatpak-builder's source date and as the OSTree commit's time.
+      - name: Build and bundle (reproducible files and commit)
+        env:
+          SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          packaging/repro/build-flatpak.sh stage flat
+          cp flat/lockdown.flatpak "lockdown-${{ needs.meta.outputs.version || 'dev' }}.flatpak"
+          cat flat/flatpak-hashes.txt
       - name: Install the bundle and run the host from it
         run: |
           flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
@@ -175,7 +179,7 @@ jobs:
           echo "$out"
           echo "$out" | grep -q '"event":"refused"'
       # A browser on the host reaching the app inside the sandbox through
-      # the host-side wrapper (docs/plan/29-release-polish.md §4).
+      # the host-side wrapper (docs/plan/29-release-polish.md §3).
       - name: A browser reaches the app inside the Flatpak
         run: sh packaging/flatpak/browser-test.sh
       - uses: actions/upload-artifact@v4

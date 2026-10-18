@@ -1,9 +1,9 @@
 # Reproducible builds (docs/plan/24-release.md §5,
 # docs/plan/29-release-polish.md §1): the browser extension's store
 # packages, the server and CLI binaries, the server image, the Linux
-# desktop packages (deb, rpm) and the Flatpak's files are each built twice,
-# on two different runner images, from the same commit, and their SHA-256
-# must match. The Flatpak bundle's own bytes, and the macOS and Windows
+# desktop packages (deb, rpm) and the Flatpak's files and OSTree commit are
+# each built twice, on two different runner images, from the same commit,
+# and must match. The Flatpak bundle file's own bytes, and the macOS and Windows
 # bundles (built on two runner images each outside pull requests), are
 # compared and reported, not required; doc 29 says what differs and why.
 name: Reproducible
@@ -208,7 +208,7 @@ jobs:
           echo "reproducible: $(wc -l < "$a") desktop files, identical on both runners"
 
   flatpak-compare:
-    name: flatpak, same files both times
+    name: flatpak, same files and commit both times
     needs: flatpak
     runs-on: ubuntu-latest
     steps:
@@ -226,14 +226,18 @@ jobs:
             echo "::error::the Flatpak's files differ between the two runners"
             exit 1
           fi
-          # Reported: the commit and the bundle file.
-          for what in commit bundle; do
-            if [ "$(grep "flatpak:$what" "$fa/flatpak-hashes.txt")" = "$(grep "flatpak:$what" "$fb/flatpak-hashes.txt")" ]; then
-              echo "flatpak $what: identical on both runners"
-            else
-              echo "flatpak $what: differs between the runners (reported, not required; docs/plan/29-release-polish.md §1)"
-            fi
-          done
+          # Required too: the OSTree commit, re-made at the commit's time.
+          if [ "$(grep flatpak:commit "$fa/flatpak-hashes.txt")" != "$(grep flatpak:commit "$fb/flatpak-hashes.txt")" ]; then
+            echo "::error::the Flatpak's OSTree commit differs between the two runners"
+            exit 1
+          fi
+          # Reported: the bundle file around the commit.
+          if [ "$(grep flatpak:bundle "$fa/flatpak-hashes.txt")" = "$(grep flatpak:bundle "$fb/flatpak-hashes.txt")" ]; then
+            echo "flatpak bundle: identical on both runners"
+          else
+            echo "flatpak bundle: differs between the runners (reported, not required; docs/plan/29-release-polish.md §1)"
+          fi
+          echo "reproducible: the Flatpak's files and its OSTree commit, identical on both runners"
 
   # macOS and Windows bundles on two runner images each, compared and
   # reported (never failing the run): built on pushes to main and by hand,
