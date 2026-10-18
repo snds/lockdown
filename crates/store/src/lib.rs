@@ -13,8 +13,11 @@
 //!   [`Vault`](lockdown_vault::Vault) can load from and save to any backend
 //! - [`SqliteStore`] — the file-backed store: WAL mode, a schema version
 //!   table, every write to one vault in one transaction
-//! - [`MemoryStore`] — the in-memory store for tests and the offscreen
-//!   WASM document
+//! - [`MemoryStore`] — the in-memory store for tests, the offscreen
+//!   WASM document and the web vault
+//! - [`DeviceStore`] — the store a device keeps its vaults in:
+//!   [`SqliteStore`] with the default `sqlite` feature, [`MemoryStore`]
+//!   without it (the web vault, docs/plan/17-web-vault.md)
 //! - [`HeadMemory`] — what this device remembers about each vault's newest
 //!   accepted head, kept in a separate file so a vault file put back from
 //!   an old copy is caught ("Rollback attempt blocked")
@@ -27,6 +30,7 @@
 
 pub mod memory;
 pub mod remembered;
+#[cfg(feature = "sqlite")]
 pub mod sqlite;
 pub mod synced_identity;
 pub mod transparency;
@@ -34,9 +38,33 @@ pub mod transparency;
 pub use lockdown_vault::store::{Store, StoreError, StoreResult, VAULT_RECORD_V, VaultRecord};
 pub use memory::MemoryStore;
 pub use remembered::{HeadMemory, RememberedHead, write_private};
+#[cfg(feature = "sqlite")]
 pub use sqlite::{SCHEMA_VERSION, SqliteStore};
 pub use synced_identity::{AcceptError, SyncedIdentity};
 pub use transparency::{ServerView, TransparencyMemory};
 
 /// The store's result type, for callers that used the old name.
 pub type Result<T> = StoreResult<T>;
+
+/// The store a device keeps its vaults in: the SQLite file.
+#[cfg(feature = "sqlite")]
+pub type DeviceStore = SqliteStore;
+
+/// The store a device keeps its vaults in: memory only, in a build with no
+/// SQLite (the web vault, where the vault lives as long as the tab).
+#[cfg(not(feature = "sqlite"))]
+pub type DeviceStore = MemoryStore;
+
+/// Opens the device's store at `path`: the SQLite file, made when missing.
+#[cfg(feature = "sqlite")]
+pub fn open_device_store(path: &std::path::Path) -> StoreResult<DeviceStore> {
+    SqliteStore::open(path)
+}
+
+/// Opens the device's store: an empty one in memory. `path` is where the
+/// SQLite file would be; nothing is written there.
+#[cfg(not(feature = "sqlite"))]
+pub fn open_device_store(path: &std::path::Path) -> StoreResult<DeviceStore> {
+    let _ = path;
+    Ok(MemoryStore::new())
+}

@@ -3404,6 +3404,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "lockdown-web"
+version = "0.1.0"
+dependencies = [
+ "ciborium",
+ "ecosystem-identity",
+ "lockdown-app",
+ "lockdown-crypto",
+ "lockdown-server",
+ "lockdown-store",
+ "lockdown-sync",
+ "lockdown-vault",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "tempfile",
+ "zeroize",
+]
+
+[[package]]
 name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"

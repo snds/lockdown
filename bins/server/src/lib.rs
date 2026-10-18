@@ -17,6 +17,7 @@
 //! - [`api`] — the handlers; the wire types are `lockdown_sync::wire`
 //! - [`alerts`] — account alerts: a new device's sign-in, an email breach
 //! - [`breach_monitor`] — the email breach job over an injectable feed
+//! - [`web_vault`] — the built web vault at `/vault/`, with its headers
 //!
 //! The key-transparency log (`storage::kt_log`, served under `/v1/kt/`) is
 //! appended inside the same transactions that accept identity manifests,
@@ -29,6 +30,7 @@ pub mod keys;
 pub mod ratelimit;
 pub mod storage;
 pub mod token;
+pub mod web_vault;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -112,6 +114,9 @@ pub struct Config {
     pub max_blob_bytes: u64,
     /// How long a blob nothing names is kept before it is collected.
     pub blob_grace: Duration,
+    /// The built web vault (`apps/web/dist`) to serve at `/vault/`; `None`
+    /// serves none (docs/plan/17-web-vault.md).
+    pub web_vault: Option<std::path::PathBuf>,
 }
 
 /// The default blob cap: 64 MiB.
@@ -129,6 +134,7 @@ impl Default for Config {
             per_login: (10, 1.0 / 6.0),
             max_blob_bytes: DEFAULT_MAX_BLOB_BYTES,
             blob_grace: DEFAULT_BLOB_GRACE,
+            web_vault: None,
         }
     }
 }
@@ -251,6 +257,9 @@ pub fn app(state: Arc<AppState>) -> Router {
         )
         .route("/v1/account/alerts", get(api::account_alerts))
         .route("/v1/account/alerts/{seq}/dismiss", post(api::dismiss_alert))
+        .route("/vault", get(web_vault::redirect))
+        .route("/vault/", get(web_vault::index))
+        .route("/vault/{*path}", get(web_vault::file))
         .with_state(state)
 }
 

@@ -11,10 +11,17 @@ repository.workspace = true
 lockdown-vault.workspace = true
 lockdown-crypto.workspace = true
 ecosystem-identity.workspace = true
-rusqlite.workspace = true
+rusqlite = { workspace = true, optional = true }
 serde.workspace = true
 serde_bytes.workspace = true
 thiserror.workspace = true
+
+[features]
+default = ["sqlite"]
+# The SQLite file store. A build without it (the web vault, where SQLite
+# does not compile and the vault lives in the tab's memory) gets
+# `MemoryStore` as its `DeviceStore`.
+sqlite = ["dep:rusqlite"]
 
 [dev-dependencies]
 tempfile.workspace = true

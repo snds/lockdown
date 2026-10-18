@@ -33,8 +33,9 @@ mod transfer;
 pub mod types;
 pub mod views;
 
+#[cfg(not(target_os = "wasi"))]
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Instant, SystemTime};
 
 pub use approval::{Approval, ApprovalKind, Approver, GateInput, PasswordApprover, Route};
 pub use lock::{LockPolicy, LockReason};
@@ -142,7 +143,8 @@ impl From<String> for AppError {
 pub type AppResult<T> = Result<T, AppError>;
 
 /// How often the worker checks the lock timers when no call arrives.
-const TICK: Duration = Duration::from_secs(1);
+#[cfg(not(target_os = "wasi"))]
+const TICK: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// What lives on the worker thread.
 struct Core {
@@ -415,15 +417,66 @@ impl Core {
     }
 }
 
+#[cfg(not(target_os = "wasi"))]
 type Job = Box<dyn FnOnce(&mut Core) + Send>;
 
 /// The app, as a shell holds it. Clone it freely; every clone talks to the
 /// same session on the same thread.
+#[cfg(not(target_os = "wasi"))]
 #[derive(Clone)]
 pub struct App {
     tx: Sender<Job>,
 }
 
+/// The app in a build with no threads (the web vault, compiled for
+/// `wasm32-wasip1` and run in a dedicated worker): the session lives
+/// beside the caller and each call runs in place, one at a time. The
+/// timers run when the host calls [`App::tick`] (the worker does every
+/// second), as the worker thread's loop does elsewhere.
+#[cfg(target_os = "wasi")]
+#[derive(Clone)]
+pub struct App {
+    core: std::rc::Rc<std::cell::RefCell<Core>>,
+}
+
+#[cfg(target_os = "wasi")]
+impl App {
+    /// Makes the session's home; nothing is opened yet, as on every build.
+    pub fn start(paths: Paths, persona: Option<String>, policy: LockPolicy) -> Self {
+        Self {
+            core: std::rc::Rc::new(std::cell::RefCell::new(Core::new(paths, persona, policy))),
+        }
+    }
+
+    /// Runs the lock timers and a due backup: what the worker thread does
+    /// between calls elsewhere. Returns whether the vault is locked now.
+    pub fn tick(&self) -> bool {
+        let mut core = self.core.borrow_mut();
+        core.enforce();
+        core.backup_tick();
+        core.session.is_none()
+    }
+
+    /// Runs `f` in place, after the timers (so a call that arrives after
+    /// the idle timeout finds the vault locked, as on the worker thread).
+    fn call<T, F>(&self, f: F) -> AppResult<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut Core) -> AppResult<T> + Send + 'static,
+    {
+        let Ok(mut core) = self.core.try_borrow_mut() else {
+            return Err(AppError {
+                code: ErrorCode::Stopped,
+                message: "another call is still running".into(),
+                detail: None,
+            });
+        };
+        core.enforce();
+        f(&mut core)
+    }
+}
+
+#[cfg(not(target_os = "wasi"))]
 impl App {
     /// Starts the worker. Nothing is opened yet: call [`App::probe`] to see
     /// what is here, then [`App::open_or_create`] or one of the join flows.
@@ -470,7 +523,9 @@ impl App {
         self.tx.send(job).map_err(|_| stopped())?;
         reply_rx.recv().map_err(|_| stopped())?
     }
+}
 
+impl App {
     /// A call that needs the vault open; it counts as activity.
     fn with_session<T, F>(&self, f: F) -> AppResult<T>
     where
@@ -906,6 +961,48 @@ impl App {
         })
     }
 
+    /// [`App::account_login`] on an empty device after a sign-in the shell
+    /// ran itself with this device's keystore (the web vault, which must
+    /// see the export key to seal its device key, docs/plan/17-web-vault.md):
+    /// enrols this device from the account with no second password round.
+    pub fn account_login_signed_in(
+        &self,
+        server: &str,
+        login: &str,
+        export_key: ecosystem_identity::ExportKey,
+        session: lockdown_crypto::auth::Session,
+        secret_key: Option<&str>,
+    ) -> AppResult<Vec<String>> {
+        let (server, login, secret_key) = (
+            server.to_string(),
+            login.to_string(),
+            secret_key.map(|s| zeroize::Zeroizing::new(s.to_string())),
+        );
+        self.call(move |core| {
+            session::enrol_from_sign_in(
+                &core.paths,
+                &server,
+                &login,
+                export_key,
+                session,
+                secret_key.as_deref().map(String::as_str),
+            )
+            .map_err(AppError::refused)
+        })
+    }
+
+    /// Takes a fresh session token from a sign-in the shell ran itself for
+    /// the open account (the web vault's unlock).
+    pub fn renew_session(
+        &self,
+        server: &str,
+        login: &str,
+        session: lockdown_crypto::auth::Session,
+    ) -> AppResult<()> {
+        let (server, login) = (server.to_string(), login.to_string());
+        self.with_session(move |s| s.renew_session(&server, &login, session))
+    }
+
     /// On a device with nothing on it: the identity back from the server
     /// with the recovery kit and the account password.
     pub fn recover(
@@ -1284,6 +1381,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     fn fresh() -> (tempfile::TempDir, App) {
         let dir = tempfile::tempdir().unwrap();

@@ -10,8 +10,11 @@ repository.workspace = true
 [dependencies]
 lockdown-crypto.workspace = true
 lockdown-vault.workspace = true
-lockdown-store.workspace = true
-lockdown-sync.workspace = true
+# Their native halves (the SQLite file, the HTTPS client) come with the
+# default `native` feature, so a build for the web vault leaves them out
+# (docs/plan/17-web-vault.md).
+lockdown-store = { path = "../store", version = "0.1.0", default-features = false }
+lockdown-sync = { path = "../sync", version = "0.1.0", default-features = false }
 lockdown-matcher.workspace = true
 lockdown-codes.workspace = true
 lockdown-cxf.workspace = true
@@ -21,8 +24,15 @@ zeroize.workspace = true
 zxcvbn.workspace = true
 # The security center (security.rs): the breach range check, the 2FA
 # directory, the change-password link, the playbooks.
-lockdown-security.workspace = true
+lockdown-security = { path = "../security", version = "0.1.0", default-features = false }
 serde_json.workspace = true
+
+[features]
+default = ["native"]
+# The SQLite store and the built-in HTTPS clients. Off for the web vault,
+# where the vault lives in the tab's memory and the browser makes every
+# request (the host installs `lockdown_sync::install_http_hook`).
+native = ["lockdown-store/sqlite", "lockdown-sync/http", "lockdown-security/http"]
 
 [dev-dependencies]
 tempfile.workspace = true

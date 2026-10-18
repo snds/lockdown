@@ -9,7 +9,7 @@ repository.workspace = true
 
 [dependencies]
 lockdown-vault.workspace = true
-lockdown-store.workspace = true
+lockdown-store = { path = "../store", version = "0.1.0", default-features = false }
 lockdown-crypto.workspace = true
 ecosystem-identity.workspace = true
 serde.workspace = true
@@ -17,8 +17,15 @@ serde_bytes.workspace = true
 thiserror.workspace = true
 # The HTTP transport: blocking, TLS through rustls on the `ring` provider
 # (no aws-lc build step), certificates from the platform verifier.
-reqwest = { workspace = true }
-rustls = { workspace = true }
+reqwest = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+
+[features]
+default = ["http"]
+# The built-in HTTPS client (blocking reqwest over rustls). A build
+# without it (the web vault, docs/plan/17-web-vault.md) sends through the
+# host's client, installed with `install_http_hook`.
+http = ["dep:reqwest", "dep:rustls"]
 
 [dev-dependencies]
 tempfile.workspace = true

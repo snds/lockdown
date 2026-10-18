@@ -1,0 +1,40 @@
+[package]
+name = "lockdown-web"
+description = "The web vault's core: lockdown-app compiled for wasm32-wasip1 and run in a dedicated worker, with the browser's fetch for HTTP, the tab's memory for the store, and a device key sealed under the OPAQUE export key between unlocks"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+# `cdylib` is the module the worker instantiates; `rlib` lets the native
+# tests drive the same command table against an in-process server.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Without `native`: no SQLite (the vault lives in the tab's memory) and no
+# built-in HTTPS client (the browser makes every request through the hook
+# this crate installs). A native build of the workspace unifies `native`
+# back on, which is what the native tests run against.
+lockdown-app = { path = "../app", version = "0.1.0", default-features = false }
+lockdown-sync = { path = "../sync", version = "0.1.0", default-features = false }
+lockdown-store = { path = "../store", version = "0.1.0", default-features = false }
+lockdown-crypto.workspace = true
+lockdown-vault.workspace = true
+ecosystem-identity.workspace = true
+serde.workspace = true
+serde_bytes.workspace = true
+serde_json.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+lockdown-server.workspace = true
+# The forged-memory test rewrites what one visit carries to the next.
+ciborium.workspace = true
+# Test speed only: the lowered Argon2id floor for the identity and the
+# OPAQUE stretching step (07-workspace §2). Never in the web build.
+ecosystem-identity = { workspace = true, features = ["insecure-test-kdf"] }
+lockdown-crypto = { workspace = true, features = ["insecure-test-kdf"] }
+lockdown-app = { path = "../app", version = "0.1.0" }

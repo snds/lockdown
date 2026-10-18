@@ -75,6 +75,10 @@ struct Cli {
     /// feed's rate limit (HIBP's smallest plan allows ten a minute).
     #[arg(long, env = "LOCKDOWN_BREACH_SCAN_PAUSE_MS", default_value_t = 6500)]
     breach_scan_pause_ms: u64,
+    /// The built web vault (`apps/web/dist`) to serve at `/vault/`.
+    /// Without it no web vault is served.
+    #[arg(long, env = "LOCKDOWN_WEB_VAULT", value_name = "DIR")]
+    web_vault: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -117,8 +121,19 @@ fn run(cli: Cli) -> Result<(), String> {
         signups_open: cli.signups == Signups::Open,
         max_blob_bytes: cli.max_blob,
         blob_grace: Duration::from_secs(cli.blob_grace),
+        web_vault: match cli.web_vault {
+            Some(dir) if dir.join("index.html").is_file() => Some(dir),
+            Some(dir) => {
+                return Err(format!(
+                    "{} has no index.html; build the web vault first (apps/web: pnpm build)",
+                    dir.display()
+                ));
+            }
+            None => None,
+        },
         ..Config::default()
     };
+    let web = config.web_vault.is_some();
     let state = Arc::new(AppState::new(Box::new(storage), keys, config));
     if let Some(url) = cli.breach_feed_url.as_deref() {
         let feed = lockdown_server::breach_monitor::HttpBreachFeed::new(url, cli.breach_feed_key)?;
@@ -139,10 +154,11 @@ fn run(cli: Cli) -> Result<(), String> {
             .await
             .map_err(|e| format!("couldn't listen on {}: {e}", cli.listen))?;
         eprintln!(
-            "lockdown-server listening on {} (data {}, signups {:?})",
+            "lockdown-server listening on {} (data {}, signups {:?}, web vault {})",
             cli.listen,
             data.display(),
-            cli.signups
+            cli.signups,
+            if web { "at /vault/" } else { "off" }
         );
         lockdown_server::serve(listener, state, async {
             let _ = tokio::signal::ctrl_c().await;
