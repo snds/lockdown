@@ -20,6 +20,7 @@ import { PaneHeader } from "@/components/master-detail"
 import { describeError, useClient } from "@/core/client"
 import type { ApprovalRoute, Density, LockState, RevealGesture, Status } from "@/core/types"
 import { TransferDialog } from "@/features/transfer/transfer-dialog"
+import { BrowsersSection } from "@/features/browsers/browsers-section"
 
 interface SettingsViewProps {
   status: Status
@@ -203,6 +204,8 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
           </Button>
         </div>
       </Section>
+
+      <BrowsersSection onNotice={onNotice} />
 
       <TransferDialog
         kind={transfer}
