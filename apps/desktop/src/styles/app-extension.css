@@ -127,3 +127,29 @@
   --color-area-codes-foreground: var(--area-codes-foreground);
   --color-area-codes-text: var(--area-codes-text);
 }
+
+/*
+ * The Wi-Fi guest card's print (docs/plan/21-vault-depth.md, D239): while a
+ * card is drawn for printing, the page prints that card alone, black on
+ * white, whatever the theme; nothing else of the vault reaches the paper.
+ */
+@media print {
+  body:has([data-print-card]) * {
+    visibility: hidden;
+  }
+  [data-print-card],
+  [data-print-card] * {
+    visibility: visible;
+  }
+  [data-print-card] {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 2rem;
+    background: #ffffff;
+    color: #000000;
+  }
+}

@@ -64,11 +64,15 @@ pub enum ItemKind {
     /// trash setting), kept as an item so they sync, merge and stay sealed
     /// like everything else (`crate::organization`).
     VaultInfo,
+    /// Hidden: a kind of item the person made (its name, icon and fields;
+    /// `crate::user_template`), kept as an item so it syncs and keeps a
+    /// history like everything else (D232).
+    Template,
 }
 
 impl ItemKind {
     /// Every kind, for template lists and tests.
-    pub const ALL: [ItemKind; 19] = [
+    pub const ALL: [ItemKind; 20] = [
         Self::Login,
         Self::Passkey,
         Self::Code,
@@ -88,6 +92,7 @@ impl ItemKind {
         Self::Custom,
         Self::Consent,
         Self::VaultInfo,
+        Self::Template,
     ];
 
     /// Whether the extension and OS providers may ever offer this kind to
@@ -95,13 +100,13 @@ impl ItemKind {
     pub fn autofill_allowed(self) -> bool {
         !matches!(
             self,
-            Self::SshKey | Self::BankAccount | Self::Consent | Self::VaultInfo
+            Self::SshKey | Self::BankAccount | Self::Consent | Self::VaultInfo | Self::Template
         )
     }
 
     /// Whether the person sees this kind in lists.
     pub fn hidden(self) -> bool {
-        matches!(self, Self::Consent | Self::VaultInfo)
+        matches!(self, Self::Consent | Self::VaultInfo | Self::Template)
     }
 
     /// The word used in exports and messages.
@@ -126,6 +131,7 @@ impl ItemKind {
             Self::Custom => "custom",
             Self::Consent => "consent",
             Self::VaultInfo => "vault-info",
+            Self::Template => "template",
         }
     }
 }

@@ -188,6 +188,13 @@ pub fn handle(shared: &Shared, conn: &mut Conn, frame: &[u8]) -> Zeroizing<Vec<u
         }),
         "passkey_options" | "passkey_plan" | "passkey_create" | "passkey_get"
         | "passkey_signal" => super::passkeys::answer(shared, conn, &head.op, frame),
+        // A strong password for a new-password field (docs/plan/21-vault-depth.md):
+        // the rules it follows, then the value itself.
+        "password_rule" => args::<Matches>(frame).and_then(|a| {
+            let p = shared.app.password_suggestion(&a.frame)?;
+            Ok(json!(p))
+        }),
+        "suggest" => return suggest(shared, &head.id, frame),
         other => Err(Refusal::new(
             "unknown_op",
             format!("'{other}' isn't something Lockdown answers"),
@@ -474,4 +481,40 @@ fn save(shared: &Shared, conn: &Conn, offer_id: &str) -> Result<Value, Refusal> 
         offer.update.as_deref(),
     )?;
     Ok(json!({ "item_id": item_id, "kind": kind }))
+}
+
+/// A new strong password for a sign-up or change-password field in
+/// `frame`, under that site's rules (D236). It is made, not read from the
+/// vault, and the answer frame is wiped once sent.
+fn suggest(shared: &Shared, id: &Value, frame: &[u8]) -> Zeroizing<Vec<u8>> {
+    let a: Matches = match args(frame) {
+        Ok(a) => a,
+        Err(r) => return error_frame(id, &r),
+    };
+    let (value, preview) = match shared.app.suggest_password(&a.frame) {
+        Ok(v) => v,
+        Err(e) => return error_frame(id, &e.into()),
+    };
+    #[derive(Serialize)]
+    struct Answer<'a> {
+        id: &'a Value,
+        ok: bool,
+        result: Suggested<'a>,
+    }
+    #[derive(Serialize)]
+    struct Suggested<'a> {
+        value: &'a str,
+        words: &'a str,
+        site: Option<&'a str>,
+    }
+    let answer = Answer {
+        id,
+        ok: true,
+        result: Suggested {
+            value: value.as_str(),
+            words: &preview.words,
+            site: preview.site.as_ref().map(|s| s.host.as_str()),
+        },
+    };
+    Zeroizing::new(serde_json::to_vec(&answer).unwrap_or_default())
 }

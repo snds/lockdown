@@ -437,7 +437,9 @@ impl Document {
 fn one(it: &DocItem, limits: &Limits) -> std::result::Result<ImportedItem, String> {
     let kind = ItemKind::ALL
         .into_iter()
-        .find(|k| k.as_str() == it.kind && !k.hidden())
+        // The person's own templates come back too (D232); the app's
+        // other hidden records never travel in a backup.
+        .find(|k| k.as_str() == it.kind && (!k.hidden() || *k == ItemKind::Template))
         .ok_or_else(|| format!("'{}' isn't a kind this build knows", it.kind))?;
     let class = match it.class.as_str() {
         "standard" => ItemClass::Standard,

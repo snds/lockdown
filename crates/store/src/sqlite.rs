@@ -6,10 +6,18 @@
 //! items          (vault_id, item_id, body)     Item envelope as canonical CBOR
 //! heads          (vault_id, seq, body)         ManifestHead as canonical CBOR
 //! blobs          (hash, body)                  attachment ciphertext, named by its BLAKE3
+//! blob_files     (hash, size)                  attachment ciphertext kept as a file beside
+//!                                              the database: `<file>.blobs/<hash>`
 //! ```
 //!
 //! Schema 2 added `blobs` (step 8, attachments). A schema 1 file gains the
-//! table on open and its version row moves to 2.
+//! table on open and its version row moves to 2. Schema 3 added
+//! `blob_files` (D233): a file attached through [`Store::blob_sink`] is
+//! sealed chunk by chunk straight into a file in the blob folder (written
+//! as `.incoming-…`, synced, then renamed to its name), so neither the
+//! file nor its ciphertext is ever whole in memory, and SQLite's blob size
+//! limit (about a gigabyte) never applies. A schema 2 file gains the table
+//! on open; its blobs stay in `blobs` and are read as before.
 //!
 //! What the file reveals to someone who copies it: vault, item and device
 //! ids, manifest sequence numbers and timestamps, ciphertext sizes. What
@@ -34,7 +42,7 @@ use crate::remembered::{create_private_dir, write_private};
 use crate::{Store, StoreError, StoreResult, VaultRecord};
 
 /// The schema this build writes and the highest it reads.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// A store in one SQLite file.
 pub struct SqliteStore {
@@ -90,6 +98,10 @@ impl SqliteStore {
              CREATE TABLE IF NOT EXISTS blobs (
                  hash BLOB PRIMARY KEY NOT NULL,
                  body BLOB NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS blob_files (
+                 hash BLOB PRIMARY KEY NOT NULL,
+                 size INTEGER NOT NULL
              );",
         )
         .map_err(backend)?;
@@ -119,10 +131,60 @@ impl SqliteStore {
             }
             Some(_) => {}
         }
-        Ok(Self {
+        let store = Self {
             path: path.to_path_buf(),
             conn,
-        })
+        };
+        store.sweep_incoming();
+        Ok(store)
+    }
+
+    /// The folder beside the database where blobs kept as files live.
+    pub fn blob_dir(&self) -> PathBuf {
+        let mut name = self.path.as_os_str().to_os_string();
+        name.push(".blobs");
+        PathBuf::from(name)
+    }
+
+    fn blob_path(&self, hash: Hash32) -> PathBuf {
+        self.blob_dir().join(hash.to_hex())
+    }
+
+    /// Removes half-written blobs a crash left behind (`.incoming-…`).
+    fn sweep_incoming(&self) {
+        let Ok(entries) = std::fs::read_dir(self.blob_dir()) else {
+            return;
+        };
+        for e in entries.flatten() {
+            if e.file_name().to_string_lossy().starts_with(".incoming-") {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+
+    fn file_blob(&self, hash: Hash32) -> StoreResult<Option<u64>> {
+        self.conn
+            .query_row(
+                "SELECT size FROM blob_files WHERE hash = ?1",
+                params![&hash.0[..]],
+                |r| r.get::<_, i64>(0),
+            )
+            .optional()
+            .map_err(backend)
+            .map(|v| v.map(|n| n.max(0) as u64))
+    }
+
+    fn open_file_blob(&self, hash: Hash32, size: u64) -> StoreResult<std::fs::File> {
+        let file = std::fs::File::open(self.blob_path(hash))
+            .map_err(|_| StoreError::NotFound(format!("blob {hash}'s file")))?;
+        let len = file
+            .metadata()
+            .map_err(|e| StoreError::Backend(e.to_string()))?
+            .len();
+        if len != size {
+            return Err(StoreError::Tampered(format!("blob {hash}'s file")));
+        }
+        Ok(file)
     }
 
     /// Where the file lives.
@@ -308,6 +370,13 @@ impl Store for SqliteStore {
     }
 
     fn get_blob(&self, hash: Hash32) -> StoreResult<Vec<u8>> {
+        if let Some(size) = self.file_blob(hash)? {
+            let mut file = self.open_file_blob(hash, size)?;
+            let mut out = Vec::with_capacity(size as usize);
+            std::io::Read::read_to_end(&mut file, &mut out)
+                .map_err(|e| StoreError::Backend(e.to_string()))?;
+            return Ok(out);
+        }
         let body: Option<Vec<u8>> = self
             .conn
             .query_row(
@@ -324,7 +393,8 @@ impl Store for SqliteStore {
         let n: i64 = self
             .conn
             .query_row(
-                "SELECT COUNT(*) FROM blobs WHERE hash = ?1",
+                "SELECT (SELECT COUNT(*) FROM blobs WHERE hash = ?1)
+                      + (SELECT COUNT(*) FROM blob_files WHERE hash = ?1)",
                 params![&hash.0[..]],
                 |r| r.get(0),
             )
@@ -336,13 +406,87 @@ impl Store for SqliteStore {
         self.conn
             .execute("DELETE FROM blobs WHERE hash = ?1", params![&hash.0[..]])
             .map_err(backend)?;
+        if self.file_blob(hash)?.is_some() {
+            self.conn
+                .execute(
+                    "DELETE FROM blob_files WHERE hash = ?1",
+                    params![&hash.0[..]],
+                )
+                .map_err(backend)?;
+            // Crypto-shredded already (its key is gone); the file goes too.
+            let _ = std::fs::remove_file(self.blob_path(hash));
+        }
         Ok(())
+    }
+
+    fn blob_sink(&mut self) -> StoreResult<lockdown_vault::BlobSink> {
+        let dir = self.blob_dir();
+        create_private_dir(&dir).map_err(|e| StoreError::Backend(e.to_string()))?;
+        let mut tag = [0u8; 12];
+        lockdown_crypto::rand::random_bytes(&mut tag)
+            .map_err(|e| StoreError::Backend(e.to_string()))?;
+        let name: String = tag.iter().map(|b| format!("{b:02x}")).collect();
+        let path = dir.join(format!(".incoming-{name}"));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = options
+            .open(&path)
+            .map_err(|e| StoreError::Backend(e.to_string()))?;
+        Ok(lockdown_vault::BlobSink::File { file, path })
+    }
+
+    fn keep_blob(&mut self, hash: Hash32, sink: lockdown_vault::BlobSink) -> StoreResult<()> {
+        let (file, path) = match sink {
+            lockdown_vault::BlobSink::Memory(bytes) => return self.put_blob(hash, &bytes),
+            lockdown_vault::BlobSink::File { file, path } => (file, path),
+        };
+        let done = (|| -> StoreResult<()> {
+            if self.has_blob(hash)? {
+                return Ok(());
+            }
+            file.sync_all()
+                .map_err(|e| StoreError::Backend(e.to_string()))?;
+            let size = file
+                .metadata()
+                .map_err(|e| StoreError::Backend(e.to_string()))?
+                .len();
+            drop(file);
+            std::fs::rename(&path, self.blob_path(hash))
+                .map_err(|e| StoreError::Backend(e.to_string()))?;
+            let size =
+                i64::try_from(size).map_err(|_| StoreError::Backend("a blob past i64".into()))?;
+            self.conn
+                .execute(
+                    "INSERT OR IGNORE INTO blob_files (hash, size) VALUES (?1, ?2)",
+                    params![&hash.0[..], size],
+                )
+                .map_err(backend)?;
+            Ok(())
+        })();
+        let _ = std::fs::remove_file(&path);
+        done
+    }
+
+    fn open_blob(&self, hash: Hash32) -> StoreResult<lockdown_vault::BlobSource> {
+        if let Some(size) = self.file_blob(hash)? {
+            return Ok(lockdown_vault::BlobSource::File(
+                self.open_file_blob(hash, size)?,
+            ));
+        }
+        Ok(lockdown_vault::BlobSource::Memory(std::io::Cursor::new(
+            self.get_blob(hash)?,
+        )))
     }
 
     fn list_blobs(&self) -> StoreResult<Vec<Hash32>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT hash FROM blobs ORDER BY hash")
+            .prepare("SELECT hash FROM blobs UNION SELECT hash FROM blob_files ORDER BY hash")
             .map_err(backend)?;
         let rows = stmt
             .query_map([], |r| r.get::<_, Vec<u8>>(0))

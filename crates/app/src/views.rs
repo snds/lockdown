@@ -14,6 +14,12 @@
 //! - **Favourites**: items the person starred.
 //! - **Archived**: archived items, out of the main list and search; an
 //!   archived item is in no other view.
+//! - **Contacts**: the people in the person's address book (the Identity
+//!   variant `contact`), kept apart from the identities forms are filled
+//!   from and never filled themselves (02-model §4; D231).
+//!
+//! A sign-in logged on someone else's screen whose reminder is due puts
+//! its item in Needs attention too (D237).
 //!
 //! "Expiring" counts from how long a renewal takes: a passport or other
 //! document from ninety days out, a card from sixty, a licence, membership
@@ -51,6 +57,7 @@ pub enum SmartView {
     Deleted,
     Favourites,
     Archived,
+    Contacts,
 }
 
 impl SmartView {
@@ -65,6 +72,7 @@ impl SmartView {
             Self::Deleted => "deleted",
             Self::Favourites => "favourites",
             Self::Archived => "archived",
+            Self::Contacts => "contacts",
         }
     }
 }
@@ -92,6 +100,9 @@ pub fn classify(item: &ItemSummary, now: i64) -> Vec<SmartView> {
     }
     if item.kind == "wi-fi" {
         views.push(SmartView::WiFi);
+    }
+    if item.template == "identity/contact" {
+        views.push(SmartView::Contacts);
     }
     let expiring = item
         .expires_at
@@ -212,7 +223,20 @@ mod tests {
             expires_in_days: None,
             attachments: 0,
             access: None,
+            template: kind.into(),
         }
+    }
+
+    #[test]
+    fn contacts_have_their_own_view_and_a_due_sign_in_needs_attention() {
+        let mut contact = item("identity");
+        contact.template = "identity/contact".into();
+        assert_eq!(classify(&contact, NOW), vec![SmartView::Contacts]);
+        assert!(classify(&item("identity"), NOW).is_empty());
+        let mut away = item("login");
+        away.warnings.push("signed-in-elsewhere".into());
+        assert_eq!(classify(&away, NOW), vec![SmartView::Attention]);
+        assert_eq!(SmartView::Contacts.as_str(), "contacts");
     }
 
     /// 2026-10-17T00:00:00Z.

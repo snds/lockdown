@@ -26,7 +26,8 @@
 //! - [`field`] — plain and sealed fields and the field associated data
 //! - [`item`] — the item envelope, kinds, classes, states, versions
 //! - [`crown_jewel`] — the crown-jewel rules and default classification
-//! - [`template`] — every kind's fields as data: control, required, crown jewel, fill rule, generator
+//! - [`template`] — every kind's fields as data: control, required, crown jewel, fill rule, generator; variants
+//! - [`user_template`] — the templates a person makes, kept as hidden items
 //! - [`compose`] — a shell's add or edit checked against the template, with an explicit keep for secrets
 //! - [`manifest`] — the signed, hash-chained manifest head and chain check
 //! - [`organization`] — folders, tags and favourites; the vault's name and folder tree in a hidden item
@@ -59,6 +60,7 @@ pub mod store;
 pub mod template;
 pub mod test_support;
 pub mod transparency;
+pub mod user_template;
 pub mod vault;
 
 /// Identifiers and timestamps are the identity crate's, so an `Id` here is
@@ -67,10 +69,14 @@ pub use ecosystem_identity::records::{Id, Timestamp};
 pub use lockdown_crypto::Hash32;
 
 pub use attachment::{
-    AttachmentMeta, AttachmentPlace, CHUNK_SIZE, SealedAttachment, open_attachment, padded_size,
-    seal_attachment,
+    AttachmentMeta, AttachmentPlace, CHUNK_SIZE, MAX_ATTACHMENT_BYTES, SealedAttachment,
+    StreamedAttachment, open_attachment, open_attachment_stream, padded_size, seal_attachment,
+    seal_attachment_stream,
 };
-pub use compose::{Change, FieldChange, FieldInput, compose_edit, compose_new, is_reserved};
+pub use compose::{
+    Change, FieldChange, FieldInput, compose_edit, compose_new, compose_new_from, compose_new_user,
+    is_reserved, parse_link,
+};
 pub use crown_jewel::{
     CROWN_JEWEL_RULES, Classify, CrownJewelDefault, LoginRole, crown_jewel_default,
 };
@@ -87,13 +93,17 @@ pub use manifest::{
 };
 pub use organization::{Folder, Organization, VaultInfo, is_org_field};
 pub use signer::Signer;
-pub use store::{Store, StoreError, StoreResult, VAULT_RECORD_V, VaultRecord};
+pub use store::{
+    BlobSink, BlobSource, Store, StoreError, StoreResult, VAULT_RECORD_V, VaultRecord,
+};
 pub use template::{
-    COMMON, CUSTOM_KINDS, Control, FieldTemplate, Fill, SIGN_IN_METHODS, TEMPLATES, Template,
-    common_field, template_for,
+    COMMON, CUSTOM_KINDS, Control, FieldTemplate, Fill, SIGN_IN_METHODS, TEMPLATE_FIELD, TEMPLATES,
+    Template, WIFI_SECURITY, common_field, template_for, template_named, template_of,
+    template_variant, variant_of,
 };
 pub use transparency::{LogEntry, LogLeaf, SignedTreeHead, SthRef, TreeHead};
+pub use user_template::{UserField, UserTemplate, user_template_of};
 pub use vault::{
-    AttachmentInfo, EXPORT_OPT_IN, ImportSpec, NewAttachment, Unlock, Vault, VaultContext,
-    export_opted_in, is_reserved_field, member_record,
+    AttachmentInfo, EXPORT_OPT_IN, ImportSpec, NewAttachment, PreparedAttachment, Unlock, Vault,
+    VaultContext, export_opted_in, is_reserved_field, member_record,
 };

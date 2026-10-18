@@ -8,11 +8,12 @@ import { GateProvider } from "@/app/gate"
 import { useLockWatch } from "@/app/lock-watch"
 import { LockedProvider } from "@/app/locked"
 import { SettingsProvider } from "@/app/settings"
-import { TemplatesProvider } from "@/app/templates"
+import { TemplatesProvider, useTemplates } from "@/app/templates"
 import { AppShell, type Nav } from "@/app/shell"
 import { describeError, useClient } from "@/core/client"
 import type { ItemSummary, LockState, PersonaInfo, Status, VaultView as VaultEntry } from "@/core/types"
 import { useExpiryReminder } from "@/features/organization/expiry"
+import { useAwayReminder } from "@/features/vault/use-away-reminder"
 import { OrganizationNav } from "@/features/organization/organization-nav"
 import { VaultsProvider } from "@/features/organization/vaults-context"
 import { CodesView } from "@/features/codes/codes-view"
@@ -93,6 +94,15 @@ function Root() {
     toast(text, { action: { label: "Show", onClick: show } })
   }, [])
   useExpiryReminder(client, status !== null, remind, showExpiring)
+  // A sign-in on someone else's screen that is due to be signed out (D237).
+  const showAttention = useCallback(() => setNav({ area: "vault", view: "attention" }), [])
+  useAwayReminder(client, status !== null, remind, showAttention)
+  // The person's own templates live in the vault: load them once it is open (D232).
+  const { refreshUserTemplates } = useTemplates()
+  const open = status !== null
+  useEffect(() => {
+    if (open) refreshUserTemplates()
+  }, [open, refreshUserTemplates])
   // The server's live channel (docs/plan/20-self-host-server.md §5): a
   // change from another device was synced in the core; redraw.
   useLive((n) => {

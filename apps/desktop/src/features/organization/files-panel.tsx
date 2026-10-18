@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import {
   Button,
@@ -22,11 +22,15 @@ import {
 
 import { useGate } from "@/app/gate"
 import { describeError, useClient } from "@/core/client"
-import type { AttachmentView } from "@/core/types"
+import type { AttachmentView, StorageView } from "@/core/types"
 
 import { sizeWords } from "./org-model"
 
-/** The largest file the app attaches (`lockdown_app` refuses past it too, until attachments stream). */
+/**
+ * The largest file this window reads itself and hands over (the path the
+ * web vault and a test take). The desktop attaches from the disk instead,
+ * through its own file dialog, a chunk at a time up to 1 GiB (D233).
+ */
 export const MAX_FILE_BYTES = 100 * 1024 * 1024
 
 interface FilesPanelProps {
@@ -54,6 +58,46 @@ export function FilesPanel({ itemId, files, editable, onChanged, onNotice }: Fil
   const [busy, setBusy] = useState(false)
   const [removing, setRemoving] = useState<AttachmentView | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [room, setRoom] = useState<StorageView | null>(null)
+
+  // The account's attachment room on its server (D234); nothing without an account.
+  useEffect(() => {
+    if (!editable) return
+    let live = true
+    Promise.resolve()
+      .then(() => client.storageUsage())
+      .then((r) => live && setRoom(r ?? null))
+      .catch(() => live && setRoom(null))
+    return () => {
+      live = false
+    }
+  }, [client, editable, files.length])
+
+  /**
+   * Attach: the shell's own file dialog and the core reading the disk a
+   * chunk at a time (D233), so this window never holds the file; where
+   * that isn't offered (the web vault), the system's picker and the bytes.
+   */
+  const attachFromDisk = async () => {
+    setError(null)
+    let chosen
+    try {
+      chosen = await client.attachChoose()
+    } catch {
+      pick.current?.click()
+      return
+    }
+    if (!chosen) return
+    setBusy(true)
+    try {
+      await gate.run((g) => client.attachChosen(itemId, chosen.token, g))
+      onChanged(`Attached "${chosen.name}".`)
+    } catch (e) {
+      setError(describeError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const add = async (file: File) => {
     setError(null)
@@ -77,6 +121,23 @@ export function FilesPanel({ itemId, files, editable, onChanged, onNotice }: Fil
 
   const save = async (f: AttachmentView) => {
     setError(null)
+    // The desktop writes the file to disk itself, a chunk at a time, where the person chooses.
+    let place
+    try {
+      place = await client.attachmentSaveChoose(f.name)
+    } catch {
+      place = undefined
+    }
+    if (place === null) return
+    if (place) {
+      try {
+        await gate.run((g) => client.attachmentSave(itemId, f.id, place.token, g))
+        onNotice(`Saved "${f.name}" to ${place.name}.`)
+      } catch (e) {
+        setError(describeError(e))
+      }
+      return
+    }
     try {
       const bytes = await gate.run((g) => client.attachment(itemId, f.id, g))
       const blob = new Blob([bytes as BlobPart], { type: f.mime || "application/octet-stream" })
@@ -113,7 +174,7 @@ export function FilesPanel({ itemId, files, editable, onChanged, onNotice }: Fil
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-medium text-muted-foreground uppercase">Files</h3>
         {editable && (
-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => pick.current?.click()}>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => void attachFromDisk()}>
             <Icon name="attach_file" data-icon="inline-start" />
             {busy ? "Attaching…" : "Attach a file"}
           </Button>
@@ -129,6 +190,11 @@ export function FilesPanel({ itemId, files, editable, onChanged, onNotice }: Fil
           if (f) void add(f)
         }}
       />
+      {room && (
+        <p className="text-xs text-muted-foreground">
+          {room.quota !== null ? `${room.used_words} of ${room.quota_words} used for files on your server.` : `${room.used_words} of files on your server.`}
+        </p>
+      )}
       {files.length === 0 ? (
         <p className="text-sm text-muted-foreground">No files. Attach a scan, a receipt or a key file; it is encrypted with the item.</p>
       ) : (

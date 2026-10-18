@@ -68,6 +68,54 @@ pub fn hash(bytes: &[u8]) -> Hash32 {
     Hash32(*blake3::hash(bytes).as_bytes())
 }
 
+/// BLAKE3 over bytes that arrive in pieces (a file sealed chunk by chunk),
+/// the same hash as [`hash`] over them joined.
+#[derive(Default, Clone)]
+pub struct Hasher(blake3::Hasher);
+
+impl Hasher {
+    /// A fresh hasher.
+    pub fn new() -> Self {
+        Self(blake3::Hasher::new())
+    }
+
+    /// Adds `bytes`.
+    pub fn update(&mut self, bytes: &[u8]) -> &mut Self {
+        self.0.update(bytes);
+        self
+    }
+
+    /// The hash of everything added.
+    pub fn finalize(&self) -> Hash32 {
+        Hash32(*self.0.finalize().as_bytes())
+    }
+}
+
+/// SHA-256 of `bytes`, only where another format names it (a CXF file's
+/// `integrityHash`); Lockdown's own hashes are BLAKE3.
+pub fn sha256(bytes: &[u8]) -> [u8; 32] {
+    use sha2_010::Digest;
+    sha2_010::Sha256::digest(bytes).into()
+}
+
+/// SHA-256 over bytes that arrive in pieces.
+#[derive(Default, Clone)]
+pub struct Sha256(sha2_010::Sha256);
+
+impl Sha256 {
+    /// Adds `bytes`.
+    pub fn update(&mut self, bytes: &[u8]) {
+        use sha2_010::Digest;
+        self.0.update(bytes);
+    }
+
+    /// The hash of everything added.
+    pub fn finalize(self) -> [u8; 32] {
+        use sha2_010::Digest;
+        self.0.finalize().into()
+    }
+}
+
 /// Keyed BLAKE3 (a MAC) of `bytes` under a 32-byte key.
 pub fn keyed_hash(key: &[u8; 32], bytes: &[u8]) -> Hash32 {
     Hash32(*blake3::keyed_hash(key, bytes).as_bytes())
@@ -103,5 +151,22 @@ mod tests {
         assert_eq!(h.to_hex().to_uppercase().parse::<Hash32>().unwrap(), h);
         assert!(Hash32::from_hex("abc").is_none());
         assert!(Hash32::from_hex(&"zz".repeat(32)).is_none());
+    }
+
+    #[test]
+    fn pieces_hash_as_the_whole() {
+        let mut h = Hasher::new();
+        h.update(b"hello ").update(b"world");
+        assert_eq!(h.finalize(), hash(b"hello world"));
+        // SHA-256 of "abc", FIPS 180-2 appendix B.1.
+        let abc = sha256(b"abc");
+        assert_eq!(
+            Hash32(abc).to_hex(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        let mut s = Sha256::default();
+        s.update(b"a");
+        s.update(b"bc");
+        assert_eq!(s.finalize(), abc);
     }
 }

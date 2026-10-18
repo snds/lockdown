@@ -29,6 +29,10 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
+      # The generator's statistical tests by name, so a run shows them
+      # (docs/plan/21-vault-depth.md): chi-squared, NIST monobit and runs.
+      - name: Generator randomness
+        run: cargo test -p lockdown-crypto --lib generator::tests::stats
 
   deny:
     name: cargo-deny

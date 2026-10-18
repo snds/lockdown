@@ -211,7 +211,8 @@ impl Builder {
                 self.totp(v);
                 return self;
             }
-            Control::Passkey => None,
+            // An import never names another item's field; kept as text.
+            Control::Passkey | Control::Linked => None,
         };
         match stored {
             Some(value) => self.push(PlainField::new(

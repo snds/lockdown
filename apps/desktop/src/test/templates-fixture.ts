@@ -23,6 +23,10 @@ const READABLE = { length: 20, symbols: false, unambiguous: true, words: "20 cha
 
 const t = (kind: string, name: string, fields: FieldTemplateView[], over: Partial<TemplateView> = {}): TemplateView => ({
   kind,
+  id: over.variant ? `${kind}/${over.variant}` : kind,
+  variant: "",
+  icon: "category",
+  fills: true,
   name,
   summary: `About a ${name.toLowerCase()}`,
   creatable: true,
@@ -75,6 +79,18 @@ export const TEMPLATES: Templates = {
     ),
     t("note", "Note", [f("body", "Note", "multiline", { section: "Note" })]),
     t(
+      "identity",
+      "Passport",
+      [
+        f("passport.number", "Passport number", "secret", { required: true, section: "Passport" }),
+        f("passport.country", "Issuing country", "text", { section: "Passport" }),
+        f("expires_at", "Expires", "date", { section: "Passport" }),
+        NOTES,
+      ],
+      { variant: "passport", icon: "flight", primary: "passport.number", subtitle: "passport.country" },
+    ),
+    t("custom", "Custom item", [NOTES], { autofill: false }),
+    t(
       "crypto-wallet",
       "Crypto wallet",
       [f("seed", "Recovery phrase", "secret-multiline", { required: true, crown_jewel: true, section: "Wallet" }), f("wallet.network", "Network", "text"), NOTES],
@@ -88,5 +104,7 @@ export const TEMPLATES: Templates = {
     { kind: "text", label: "Text" },
     { kind: "hidden", label: "Secret" },
     { kind: "date", label: "Date" },
+    { kind: "totp", label: "One-time code" },
+    { kind: "linked", label: "Link to another item" },
   ],
 }

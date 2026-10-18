@@ -36,6 +36,13 @@ import type {
   ExpiryReminder,
   VaultView,
   VersionView,
+  AwayReminder,
+  GeneratorPreview,
+  LinkTargetView,
+  Recipe,
+  StorageView,
+  UserTemplateInput,
+  UserTemplateView,
 } from "./types"
 import { splitOncePage } from "./secret-bytes"
 
@@ -208,6 +215,33 @@ export interface Client {
   securityChangePassword(itemId: string): Promise<ChangeLink>
   /** What to do about each kind of finding. */
   securityPlaybooks(): Promise<Playbook[]>
+
+  // --- vault depth (docs/plan/21-vault-depth.md) -------------------------------
+  /** The person's own templates (D232). */
+  userTemplates(): Promise<UserTemplateView[]>
+  /** Saves a template, new (in `vault`) or a new version of `id`; resolves to its id. */
+  saveUserTemplate(input: { vault?: string; id?: string; template: UserTemplateInput }): Promise<string>
+  deleteUserTemplate(id: string): Promise<void>
+  /** What a link in `vaultId` may point at, by label only (D235). */
+  linkTargets(vaultId: string, except?: string): Promise<LinkTargetView[]>
+  /** What `recipe` would make, with a login's site rules when it has some (D230, D236). */
+  generatorPreview(recipe: Recipe, url?: string, rule?: string): Promise<GeneratorPreview>
+  /** The Wi-Fi card's QR grid (D239): its width, then a byte per module. A secret; the caller wipes it. */
+  wifiQr(id: string, gate?: GateInput): Promise<Uint8Array>
+  /** Logs a sign-in on someone else's screen, reminded in `remindInHours` (D237). */
+  logAway(input: { id: string; place: string; remindInHours: number }, gate?: GateInput): Promise<number>
+  clearAway(id: string, at: number, gate?: GateInput): Promise<number>
+  awayReminders(): Promise<AwayReminder[]>
+  /** The account's attachment room on its server; `null` with no account (D234). */
+  storageUsage(): Promise<StorageView | null>
+  /** The OS's open dialog for a file to attach; the path stays in the shell (D233). */
+  attachChoose(): Promise<Chosen | null>
+  /** Attaches the chosen file, read from disk a chunk at a time. */
+  attachChosen(id: string, token: number, gate?: GateInput): Promise<string>
+  /** The OS's save dialog for an attached file. */
+  attachmentSaveChoose(name: string): Promise<Chosen | null>
+  /** Writes an attached file to the chosen place a chunk at a time. */
+  attachmentSave(id: string, attId: string, token: number, gate?: GateInput): Promise<void>
 }
 
 /** Whether a rejection is the app's own error shape. */
@@ -332,6 +366,20 @@ export const tauriClient: Client = {
   securityDismissAlert: (seq) => call("security_dismiss_alert", { seq }),
   securityChangePassword: (itemId) => call("security_change_password", { itemId }),
   securityPlaybooks: () => call("security_playbooks"),
+  userTemplates: () => call("user_templates"),
+  saveUserTemplate: (input) => call("save_user_template", { vault: input.vault ?? null, id: input.id ?? null, template: input.template }),
+  deleteUserTemplate: (id) => call("delete_user_template", { id }),
+  linkTargets: (vaultId, except) => call("link_targets", { vaultId, except: except ?? null }),
+  generatorPreview: (recipe, url, rule) => call("generator_preview", { recipe, url: url ?? null, rule: rule ?? null }),
+  wifiQr: (id, gate) => callBytes("wifi_qr", { id, gate }),
+  logAway: (input, gate) => call("log_away", { ...input, gate }),
+  clearAway: (id, at, gate) => call("clear_away", { id, at, gate }),
+  awayReminders: () => call("away_reminders"),
+  storageUsage: () => call("storage_usage"),
+  attachChoose: () => call("attach_choose"),
+  attachChosen: (id, token, gate) => call("attach_chosen", { id, token, gate }),
+  attachmentSaveChoose: (name) => call("attachment_save_choose", { name }),
+  attachmentSave: (id, attId, token, gate) => call("attachment_save", { id, attId, token, gate }),
 }
 
 const ClientContext = createContext<Client>(tauriClient)
