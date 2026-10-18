@@ -93,13 +93,10 @@ impl Approvals {
         let deadline = Instant::now() + timeout;
         let mut list = self.lock();
         loop {
-            if let Some(at) = list.iter().position(|p| p.id == id) {
-                if let Some(answer) = list[at].answer.clone() {
-                    list.remove(at);
-                    return answer;
-                }
-            } else {
-                return None;
+            let at = list.iter().position(|p| p.id == id)?;
+            if let Some(answer) = list[at].answer.clone() {
+                list.remove(at);
+                return answer;
             }
             let left = deadline.saturating_duration_since(Instant::now());
             if left.is_zero() {

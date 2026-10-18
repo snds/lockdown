@@ -819,5 +819,10 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         security_dismiss_alert,
         security_change_password,
         security_playbooks,
+        crate::passkey_commands::passkeys,
+        crate::passkey_commands::passkey_delete,
+        crate::passkey_commands::passkey_restore,
+        crate::passkey_commands::browser_passkey_pending,
+        crate::passkey_commands::browser_passkey_answer,
     ]
 }

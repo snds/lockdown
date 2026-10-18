@@ -132,7 +132,7 @@ pub fn rp_id_for(
         return Ok(rp);
     }
     if let Some(doc) = related
-        && effective_origins(doc).iter().any(|o| *o == caller.origin)
+        && effective_origins(doc).contains(&caller.origin)
     {
         return Ok(rp);
     }

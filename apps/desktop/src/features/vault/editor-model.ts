@@ -31,6 +31,10 @@ export interface EditorRow {
   /** A web address's match rule, and the one it had (an edit). */
   matchRule?: string
   originalRule?: string
+  /** A passkey, kept as it is: deleted from the item's Passkeys, which warns first (docs/plan/19-passkeys.md). */
+  managed?: boolean
+  /** Kept and sent as `keep`, never drawn (a passkey's other parts). */
+  quiet?: boolean
 }
 
 const SECRET_CONTROLS: readonly Control[] = ["secret", "secret-multiline", "totp", "passkey"]
@@ -104,6 +108,25 @@ export function initialRows(template: TemplateView, item: ItemDetail | null): Ed
   }
   for (const f of item?.fields ?? []) {
     if (f.field_id === "title" || template.fields.some((t) => t.field_id === f.field_id)) continue
+    // A passkey is one group of fields: one line for it, the rest kept quietly.
+    const pk = /^passkey\.(\d+)\.(.+)$/.exec(f.field_id)
+    if (pk) {
+      const rp = item?.fields.find((x) => x.field_id === `passkey.${pk[1]}.rp_id`)?.value ?? ""
+      rows.push(
+        row({
+          key: f.field_id,
+          fieldId: f.field_id,
+          label: pk[2] === "key" ? `Passkey${rp ? ` for ${rp}` : ""}` : f.label,
+          control: "passkey",
+          exists: true,
+          editable: false,
+          secret: "keep",
+          managed: pk[2] === "key",
+          quiet: pk[2] !== "key",
+        }),
+      )
+      continue
+    }
     // A later copy of a repeating field (a Login's second website) takes the first's template.
     const repeat = template.fields.find((t) => t.repeats && f.field_id.startsWith(t.field_id.replace(/\.0$/, ".")))
     if (repeat) {

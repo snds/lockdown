@@ -254,6 +254,9 @@ pub struct HiddenView {
     pub at: i64,
 }
 
+/// One change to an item's fields, decided before the item is opened for it.
+type FieldEdit = Box<dyn FnOnce(&mut Vec<lockdown_vault::PlainField>) -> Result<bool, String>>;
+
 /// A password fill this core made, for the upgrade rule.
 pub(crate) struct RecentFill {
     pub item_id: String,
@@ -687,9 +690,7 @@ impl Core {
         let mut changed = 0u32;
         for found in all {
             let p = &found.passkey;
-            let edit: Option<
-                Box<dyn FnOnce(&mut Vec<lockdown_vault::PlainField>) -> Result<bool, String>>,
-            > = match signal {
+            let edit: Option<FieldEdit> = match signal {
                 Signal::UnknownCredential { credential_id, .. } => {
                     (p.credential_id == credential_id.0 && p.hidden.is_none()).then(|| {
                         let n = p.n;
@@ -702,8 +703,7 @@ impl Core {
                                 Some(&format!("unknown {at}")),
                             );
                             Ok(true)
-                        })
-                            as Box<dyn FnOnce(&mut Vec<_>) -> Result<bool, String>>
+                        }) as FieldEdit
                     })
                 }
                 Signal::AllAcceptedCredentials {
