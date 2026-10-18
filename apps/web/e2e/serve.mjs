@@ -25,9 +25,16 @@ if (!existsSync(path.join(dist, "index.html"))) {
 }
 
 const data = mkdtempSync(path.join(tmpdir(), "lockdown-web-e2e-"))
-const server = spawn(bin, ["--listen", `127.0.0.1:${port}`, "--data", data, "--web-vault", dist], {
-  stdio: "inherit",
-})
+// Every page and the CLI reach the server from 127.0.0.1 and reuse a few
+// login names, so the sign-in brake is raised: the suite is one person in
+// a hurry, not an attack (the brake itself is tested in bins/server).
+const server = spawn(
+  bin,
+  ["--listen", `127.0.0.1:${port}`, "--data", data, "--web-vault", dist, "--address-burst", "1000", "--login-burst", "100"],
+  {
+    stdio: "inherit",
+  },
+)
 const stop = () => {
   server.kill("SIGINT")
 }

@@ -54,6 +54,8 @@ Every flag has an environment variable, so a container needs no command line. `l
 | `--signups` | `LOCKDOWN_SIGNUPS` | `open` (image: `closed`) | Whether new accounts may register. |
 | `--session-ttl` | `LOCKDOWN_SESSION_TTL` | 28800 (8 h) | How long a sign-in lasts before the device asks for the password again. |
 | `--max-blob` | `LOCKDOWN_MAX_BLOB` | 64 MiB | The largest attachment taken. |
+| `--address-burst` | `LOCKDOWN_ADDRESS_BURST` | 30 | Sign-in steps one client address may take in a burst before the brake slows it to one every 2 s. Raise it when many people share one address. |
+| `--login-burst` | `LOCKDOWN_LOGIN_BURST` | 10 | Sign-in steps one login name may take in a burst before the brake slows it to one every 6 s. |
 | `--attachment-quota` | `LOCKDOWN_ATTACHMENT_QUOTA` | 5 GB (5000000000) | The attachment room per account, counted over the vaults it owns (a shared vault's files count against its owner); 0 is no limit. Clients read it at `GET /v1/account/storage`. |
 | `--breach-feed-url`, `--breach-feed-key` | `LOCKDOWN_BREACH_FEED_URL`, `LOCKDOWN_BREACH_FEED_KEY` | none | Email breach monitoring through Have I Been Pwned (needs a paid key; off unless set). |
 | `--breach-range`, `--breach-catalog` | `LOCKDOWN_BREACH_RANGE`, `LOCKDOWN_BREACH_CATALOG` | none | Email breach monitoring over your own data, no key needed (§8). |
