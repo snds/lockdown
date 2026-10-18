@@ -7,7 +7,7 @@ import type { Scope } from "@/features/organization/org-model"
 import { VIEW_LABELS, type ListView } from "@/features/vault/list-model"
 
 /** The areas of the window (brief §3): the vault's views, and the screens (Sharing: docs/plan/18-sharing.md). */
-export type Area = "vault" | "codes" | "security" | "devices" | "recovery" | "status" | "settings" | "sharing"
+export type Area = "vault" | "codes" | "security" | "devices" | "recovery" | "status" | "settings" | "sharing" | "people"
 
 export interface Nav {
   area: Area
