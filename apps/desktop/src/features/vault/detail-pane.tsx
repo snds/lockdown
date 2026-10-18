@@ -198,7 +198,7 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
   })
 
   const passkeys = (
-    <PasskeysBlock itemId={item.id} title={item.fields.find((f) => f.field_id === "title")?.value ?? ""} fields={item.fields} onChanged={onChanged} />
+    <PasskeysBlock itemId={item.id} title={item.fields.find((f) => f.field_id === "title")?.value ?? ""} fields={item.fields} onChanged={onChanged} canEdit={!trashed && canEdit} />
   )
   const body = layoutFor(item, template, field, codeBlocks, passkeys)
   return (
