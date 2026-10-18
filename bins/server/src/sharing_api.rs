@@ -687,6 +687,11 @@ pub async fn share_item(
         envelope: create.envelope.into_vec(),
         created_at: state.now(),
     })?;
+    // The person it is for hears at once (a content-free `sync`).
+    state.live.notify(crate::live::Change::account(
+        create.recipient.account_id,
+        lockdown_sync::wire::LiveKind::Sync,
+    ));
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -761,6 +766,17 @@ pub async fn unshare_item(
         return Err(ApiError::forbidden("that share is someone else's"));
     }
     store.delete_item_share(share_id)?;
+    // The other person hears at once: the recipient loses it, or the owner
+    // learns it was given back.
+    let other = if share.owner_account == session.account_id {
+        share.recipient.account_id
+    } else {
+        share.owner_account
+    };
+    state.live.notify(crate::live::Change::account(
+        other,
+        lockdown_sync::wire::LiveKind::Sync,
+    ));
     Ok(StatusCode::NO_CONTENT)
 }
 

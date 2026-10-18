@@ -36,6 +36,7 @@ shell = [
     "dep:webkit2gtk",
     "dep:objc2-app-kit",
     "dep:objc2-foundation",
+    "dep:tauri-plugin-notification",
 ]
 
 [build-dependencies]
@@ -74,6 +75,10 @@ tauri-plugin-global-shortcut = { version = "2.4.0", optional = true }
 # plugin wraps, so a copy can carry the marks that keep it out of clipboard
 # history and cloud clipboard (docs/plan/26-desktop-finish.md §6).
 arboard = { version = "3.7", default-features = false, optional = true }
+# OS notifications for a new device's sign-in and a security key change
+# (docs/plan/25-self-host-2.md §5), shown from Rust only; the webview gets
+# no notification permission.
+tauri-plugin-notification = { version = "2", optional = true }
 # The browser extension's endpoint (src/browser/, docs/plan/16-browser-extension.md):
 # the channel's shared rules, the Unix socket and the process-identity check
 # from the identity crate (D4, D33), the matcher for a result's host, HMAC

@@ -295,7 +295,7 @@ mod tests {
 
     #[test]
     fn each_breach_is_reported_once_and_only_email_logins_are_asked() {
-        let s = SqliteStorage::open_in_memory().unwrap();
+        let s = SqliteStorage::open_scratch().unwrap();
         let sean = s
             .create_account("sean@example.com", Id::new(), b"pf")
             .unwrap();
@@ -320,9 +320,10 @@ mod tests {
         assert_eq!(
             *feed.asked.lock().unwrap(),
             vec![
-                "sean@example.com".to_string(),
-                "down@example.com".to_string()
-            ]
+                "down@example.com".to_string(),
+                "sean@example.com".to_string()
+            ],
+            "every account, by login name"
         );
         let again = scan_once(&s, &feed, 200, Duration::ZERO).unwrap();
         assert_eq!(again.alerts, 0, "the same breach isn't reported twice");
@@ -334,7 +335,7 @@ mod tests {
 
     #[test]
     fn watched_aliases_are_asked_too_and_each_reported_once_per_address() {
-        let s = SqliteStorage::open_in_memory().unwrap();
+        let s = SqliteStorage::open_scratch().unwrap();
         let sean = s
             .create_account("sean@example.com", Id::new(), b"pf")
             .unwrap();

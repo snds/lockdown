@@ -99,6 +99,7 @@ mod shell {
                     _ => PermissionResponse::Deny,
                 }
             })
+            .plugin(tauri_plugin_notification::init())
             .setup(|app| {
                 if cfg!(debug_assertions) {
                     // Nothing logged here ever names a value; the app's

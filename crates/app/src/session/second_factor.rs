@@ -138,6 +138,12 @@ impl WaitingSignIn {
         )
     }
 
+    /// When the server mailed an approval link instead of asking for a
+    /// key: the address it went to, masked.
+    pub fn email_to(&self) -> Option<String> {
+        lockdown_sync::account_security::request_of(&self.needed).and_then(|r| r.email_to)
+    }
+
     /// Asks the server whether the key answered; once it has, finishes what
     /// the sign-in was for and returns its lines.
     pub fn poll(&mut self) -> Result<Option<Vec<String>>, String> {

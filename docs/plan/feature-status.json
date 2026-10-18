@@ -1,5 +1,5 @@
 {
- "as_of": "137195c",
+ "as_of": "0151bea",
  "source": "docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)",
  "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, a web vault the server serves (the same core on wasm32-wasip1 in a worker, doc 17), and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Lockdown's clients and server speak TLS 1.3 with the hybrid X25519MLKEM768 group first (crates/tls, doc 20); plain HTTP is refused away from loopback. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and the web vault refuses some features in words for now (doc 17 §10). OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.",
  "non_v1_built": [
@@ -1300,13 +1300,13 @@
    "name": "Email breach monitoring",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
     "server"
    ],
-   "left": "A breach feed key (the built-in feed needs a paid key); alias monitoring is built and opt-in.",
+   "left": "Nothing for desktop and the server: the paid feed is optional, and an operator range file or service works without a key.",
    "evidence": [
     "rg for breach monitoring in crates/ and bins/ finds none"
    ],
@@ -1395,13 +1395,13 @@
    "name": "Vault account sign-in alerts",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
     "server"
    ],
-   "left": "OS notifications and email verification for new devices (no SMTP setting yet); the session list that ends tokens at once is built.",
+   "left": "Phone notifications (mobile, deferred); on macOS, OS notifications show only for the bundled app.",
    "evidence": [
     "apps/desktop/src/features/devices/devices-view.tsx:58 (revoke behind the gate)",
     "bins/server/tests/api.rs:959 the_identity_chain_is_ordered_pinned_and_revokes_devices",
@@ -1600,10 +1600,9 @@
    "review": false,
    "status": "partial",
    "surfaces": [
-    "server",
-    "web"
+    "server"
    ],
-   "left": "An admin page, scheduled restore drills, the Backup Key on the recovery kit, and support; packaging, the operator guide and encrypted server backups are built.",
+   "left": "The last successful restore shown in the clients, a passkey on the admin page, a drill that starts a client against the scratch copy, and support (not code); the admin page, invites, scheduled backups, restore drills and the operator kit are built.",
    "evidence": [
     "bins/server/src/main.rs:1 (one binary for cloud and self-host)",
     "bins/server/src/lib.rs:228 (routes)",
@@ -1622,7 +1621,7 @@
    "surfaces": [
     "server"
    ],
-   "left": "Publishing the image, Postgres, and S3-compatible attachment storage; the image is built and smoke-tested in CI (5.5 MiB idle, 6.2 MiB loaded, 53 MB image), attachments can be stored as files.",
+   "left": "Publishing the image (a release step, never automatic); Postgres, S3-compatible attachments and the smoke-tested image are built.",
    "evidence": [
     "bins/server/src/main.rs:11 (every flag has an env var so a container needs no command line)",
     "no Dockerfile or Containerfile in the repo"
@@ -1656,9 +1655,10 @@
    "surfaces": [
     "core",
     "desktop",
+    "web",
     "server"
    ],
-   "left": "The mobile push relay (shape in D229, mobile deferred), pings to recipients of items shared on their own, and the web vault subscribing.",
+   "left": "The mobile push relay (D229, mobile deferred) and the web vault opening the live channel itself; pings to single-item share recipients are built.",
    "evidence": [
     "docs/plan/07-workspace.md:28 (push listed as not yet)"
    ],

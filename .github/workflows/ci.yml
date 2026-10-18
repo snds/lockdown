@@ -245,3 +245,50 @@ jobs:
         run: cargo build --release -p lockdown-cli
       - name: Smoke test
         run: bins/server/container/smoke.sh lockdown-server:ci target/release/lockdown
+
+  # The second storage pass (docs/plan/25-self-host-2.md §2–§3): the
+  # server's whole test suite, and every crate that drives a server in
+  # process, again against Postgres (a service container), and the
+  # attachment bucket against MinIO built from its source at a pinned
+  # commit (no published image is pulled). The tests reach nothing but these
+  # two services on this runner.
+  storage-backends:
+    name: server · Postgres · MinIO
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: lockdown
+          POSTGRES_PASSWORD: lockdown
+          POSTGRES_DB: lockdown_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U lockdown"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: false
+      - name: MinIO, built from source at a pinned commit
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/minio/minio@v0.0.0-20260212201848-7aac2a2c5b7c
+          mkdir -p "$RUNNER_TEMP/minio-data"
+          MINIO_ROOT_USER=lockdowntest MINIO_ROOT_PASSWORD=lockdowntest-secret \
+            nohup "$RUNNER_TEMP/bin/minio" server "$RUNNER_TEMP/minio-data" --address 127.0.0.1:9000 \
+            > "$RUNNER_TEMP/minio.log" 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:9000/minio/health/live && exit 0; sleep 1; done
+          cat "$RUNNER_TEMP/minio.log"; exit 1
+      - name: Server, CLI, app and web tests against Postgres and MinIO
+        env:
+          LOCKDOWN_TEST_SERVICES: require
+          LOCKDOWN_TEST_DATABASE_URL: postgres://lockdown:lockdown@127.0.0.1:5432/lockdown_test?sslmode=disable
+          LOCKDOWN_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+          LOCKDOWN_TEST_S3_ACCESS_KEY: lockdowntest
+          LOCKDOWN_TEST_S3_SECRET_KEY: lockdowntest-secret
+        run: cargo test -p lockdown-server -p lockdown-cli -p lockdown-app -p lockdown-web

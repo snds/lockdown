@@ -18,7 +18,9 @@
 //!   [`App::security_key_add_page`] (the system browser adds one on the
 //!   server's own page), [`App::security_key_remove`] (`Approve` gate); a
 //!   new device's sign-in that waits for one comes back as
-//!   `approval_needed` with detail `security_key`, [`App::second_factor_page`]
+//!   `approval_needed` with detail `security_key` (or `email`, when the
+//!   server mailed the account a link to approve the device instead),
+//!   [`App::second_factor_page`]
 //!   names the page to open and [`App::second_factor_wait`] finishes once
 //!   the key answered.
 
@@ -64,6 +66,17 @@ pub struct SecretKeyView {
 }
 
 fn waiting_error(w: &WaitingSignIn) -> AppError {
+    // A server with email approval mails a link instead of asking for a
+    // key (docs/plan/25-self-host-2.md §5): the detail says which.
+    if let Some(to) = w.email_to() {
+        return AppError {
+            code: ErrorCode::ApprovalNeeded,
+            message: format!(
+                "the server emailed a link to {to}: open it and choose Approve, and this device carries on by itself"
+            ),
+            detail: Some("email".into()),
+        };
+    }
     AppError {
         code: ErrorCode::ApprovalNeeded,
         message: format!(

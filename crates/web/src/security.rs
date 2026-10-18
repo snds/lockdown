@@ -213,6 +213,8 @@ impl WebVault {
         secret_key: Option<&str>,
     ) -> AppError {
         let pending = needed.pending_id;
+        let email_to =
+            lockdown_sync::account_security::request_of(&needed).and_then(|r| r.email_to);
         self.waiting = Some(Waiting {
             server: server.to_string(),
             login: login.to_string(),
@@ -221,6 +223,17 @@ impl WebVault {
             needed,
             secret_key: secret_key.map(|s| Zeroizing::new(s.to_string())),
         });
+        // A server with email approval mailed a link instead of asking for
+        // a key (docs/plan/25-self-host-2.md §5).
+        if let Some(to) = email_to {
+            return AppError {
+                code: ErrorCode::ApprovalNeeded,
+                message: format!(
+                    "the server emailed a link to {to}: open it and choose Approve, and this tab carries on by itself"
+                ),
+                detail: Some("email".into()),
+            };
+        }
         AppError {
             code: ErrorCode::ApprovalNeeded,
             message: format!(
