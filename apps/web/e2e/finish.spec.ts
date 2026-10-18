@@ -18,6 +18,9 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test"
 const PASSWORD = "correct horse battery staple"
 const A = `finish-a-${Date.now()}@example.com`
 const B = `finish-b-${Date.now()}@example.com`
+// The memory test signs in on its own account: the server allows a login
+// name ten sign-in steps in a burst (two per sign-in), and A has used them.
+const C = `finish-c-${Date.now()}@example.com`
 const TYPED = "zq-measure-typed-71"
 const target = process.env.CARGO_TARGET_DIR ?? path.resolve(import.meta.dirname, "../../../target")
 const cli = process.env.LOCKDOWN_CLI_BIN ?? path.join(target, "debug", "lockdown")
@@ -43,6 +46,7 @@ test.beforeAll(async ({ baseURL }) => {
   for (const [who, login] of [
     ["a", A],
     ["b", B],
+    ["c", C],
   ] as const) {
     lockdown(["init"], undefined, who)
     const kit = lockdown(["account", "register", "--server", baseURL!, "--login", login, "--password-stdin"], `${PASSWORD}\n`, who)
@@ -58,12 +62,12 @@ test.afterAll(() => {
   if (home) rmSync(home, { recursive: true, force: true })
 })
 
-async function signedIn(context: BrowserContext, who: "a" | "b"): Promise<Page> {
+async function signedIn(context: BrowserContext, who: "a" | "b" | "c"): Promise<Page> {
   const page = await context.newPage()
   page.on("pageerror", (e) => console.log(`page error: ${e.message}`))
   await page.goto("/vault/")
   const form = page.getByRole("form", { name: "Sign in" })
-  await form.getByLabel("Login name").fill(who === "a" ? A : B)
+  await form.getByLabel("Login name").fill({ a: A, b: B, c: C }[who])
   await form.getByLabel("Account password").fill(PASSWORD)
   await form.getByLabel("Secret Key").fill(keys[who]!)
   await form.getByRole("button", { name: "Sign in" }).click()
@@ -150,7 +154,7 @@ test("the contacts screen checks someone's keys by the code they paste over", as
 
 test("what a typed password leaves in the page's memory after the tab hides and the vault locks", async ({ browser }) => {
   const context = await browser.newContext()
-  const page = await signedIn(context, "a")
+  const page = await signedIn(context, "c")
   const cdp = await context.newCDPSession(page)
   const inHeap = async () => {
     await cdp.send("HeapProfiler.collectGarbage")
