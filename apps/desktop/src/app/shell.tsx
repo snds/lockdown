@@ -7,7 +7,7 @@ import type { Scope } from "@/features/organization/org-model"
 import { VIEW_LABELS, type ListView } from "@/features/vault/list-model"
 
 /** The areas of the window (brief §3): the vault's views, and four screens. */
-export type Area = "vault" | "codes" | "devices" | "recovery" | "status" | "settings"
+export type Area = "vault" | "codes" | "security" | "devices" | "recovery" | "status" | "settings"
 
 export interface Nav {
   area: Area
@@ -41,6 +41,7 @@ const VIEWS: Array<[ListView, IconName]> = [
 ]
 
 const SCREENS: Array<[Area, IconName, string]> = [
+  ["security", "security", "Security"],
   ["devices", "devices", "Devices"],
   ["recovery", "health_and_safety", "Recovery"],
   ["status", "shield", "Status"],
@@ -49,8 +50,8 @@ const SCREENS: Array<[Area, IconName, string]> = [
 
 /**
  * The sidebar of brief §3: persona switcher (a read-only list for now),
- * All items and the smart views with counts, then Devices · Recovery ·
- * Status · Settings, and Lock. Codes is a view of the vault that opens its
+ * All items and the smart views with counts, then Security · Devices ·
+ * Recovery · Status · Settings, and Lock. Codes is a view of the vault that opens its
  * own screen, because a code is usually part of a Login (brief §3). Rows
  * take the density knobs through `data-row`.
  */

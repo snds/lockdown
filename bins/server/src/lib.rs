@@ -15,12 +15,16 @@
 //! - [`token`] — the `lk1` session token
 //! - [`ratelimit`] — the brake on the login endpoints
 //! - [`api`] — the handlers; the wire types are `lockdown_sync::wire`
+//! - [`alerts`] — account alerts: a new device's sign-in, an email breach
+//! - [`breach_monitor`] — the email breach job over an injectable feed
 //!
 //! The key-transparency log (`storage::kt_log`, served under `/v1/kt/`) is
 //! appended inside the same transactions that accept identity manifests,
 //! vault heads and device logins. Push is not built.
 
+pub mod alerts;
 pub mod api;
+pub mod breach_monitor;
 pub mod keys;
 pub mod ratelimit;
 pub mod storage;
@@ -245,6 +249,8 @@ pub fn app(state: Arc<AppState>) -> Router {
             "/v1/vaults/{vault}/items/{item}",
             get(api::get_item).put(api::push_item),
         )
+        .route("/v1/account/alerts", get(api::account_alerts))
+        .route("/v1/account/alerts/{seq}/dismiss", post(api::dismiss_alert))
         .with_state(state)
 }
 

@@ -175,6 +175,26 @@ impl Session {
                 &mut out,
             );
         }
+        // The hashes are keyed afresh each search, so their order means
+        // nothing: list the groups by kind, then by their newest item's title.
+        let title_of = |id: &str| {
+            seen.iter()
+                .find(|s| s.id.to_string() == id)
+                .map(|s| s.title.to_lowercase())
+                .unwrap_or_default()
+        };
+        let rank = |reason: &str| match reason {
+            "same-login" => 0,
+            "same-password" => 1,
+            _ => 2,
+        };
+        out.sort_by_cached_key(|g| {
+            (
+                rank(&g.reason),
+                g.ids.first().map(|i| title_of(i)).unwrap_or_default(),
+                g.ids.clone(),
+            )
+        });
         Ok(out)
     }
 

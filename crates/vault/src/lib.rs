@@ -67,7 +67,7 @@ pub use attachment::{
     AttachmentMeta, AttachmentPlace, CHUNK_SIZE, SealedAttachment, open_attachment, padded_size,
     seal_attachment,
 };
-pub use compose::{Change, FieldChange, FieldInput, compose_edit, compose_new};
+pub use compose::{Change, FieldChange, FieldInput, compose_edit, compose_new, is_reserved};
 pub use crown_jewel::{
     CROWN_JEWEL_RULES, Classify, CrownJewelDefault, LoginRole, crown_jewel_default,
 };

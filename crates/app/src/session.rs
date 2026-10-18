@@ -64,6 +64,7 @@ mod duplicates;
 mod history;
 pub mod items;
 mod organize;
+pub(crate) mod security;
 mod transfer;
 
 const KEYSTORE_FILE: &str = "device-key.cbor";
@@ -2174,11 +2175,14 @@ fn is_secret_kind(kind: FieldKind) -> bool {
 }
 
 /// An item's fields as a shell may show them: the organization fields
-/// leave the list (they come as the item's `organization`).
+/// leave the list (they come as the item's `organization`), and Lockdown's
+/// own reserved fields (the security center's settings) are never shown.
 fn shown_fields(fields: &[PlainField], reveal: bool) -> Vec<FieldView> {
     fields
         .iter()
-        .filter(|f| !lockdown_vault::is_org_field(&f.field_id))
+        .filter(|f| {
+            !lockdown_vault::is_org_field(&f.field_id) && !lockdown_vault::is_reserved(&f.field_id)
+        })
         .map(|f| field_view(f, reveal))
         .collect()
 }

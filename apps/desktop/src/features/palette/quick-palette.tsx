@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandItemAction, CommandList, Icon, commandItemActionShortcut } from "@unicron/ui"
 import { CrownJewelMark } from "@unicron/ui/security/crown-jewel"
@@ -59,7 +59,8 @@ export function QuickPalette({ open, onOpenChange, rows, onOpen, onNotice }: Qui
   const paths = useMemo(() => folderPaths(vaults), [vaults])
   // Live items only (trashed and archived ones leave search), favourites first,
   // then what this device uses most lately, then A–Z: the first result is the likely one.
-  const live = useMemo(() => rankRows(rows.filter((r) => r.state !== "trashed" && r.state !== "archived"), Date.now() / 1000), [rows])
+  const [now] = useState(() => Date.now() / 1000)
+  const live = useMemo(() => rankRows(rows.filter((r) => r.state !== "trashed" && r.state !== "archived"), now), [rows, now])
   const words = (r: ItemSummary) => {
     const base = searchWords(r, forKind(r.kind)?.name ?? "")
     if (r.crown_jewel) return base

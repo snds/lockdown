@@ -1,5 +1,5 @@
 {
- "as_of": "71bee69",
+ "as_of": "a3ca4f8",
  "source": "docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)",
  "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser extension exists: extension/ holds only the wasm matcher boundary, its JSON schema and a Playwright clickjacking harness. The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI and the self-host server. The CLI still carries its own copy of the flows and handles logins only for item kinds. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 today; the plan leaves the licence open (05-self-host §12 asks Sean between AGPL-3.0 and a source-available licence for the server), so oss-clients and oss-server wait on that call. Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for desktop, CLI and server only; every one still needs its mobile and extension half when those surfaces exist.",
  "non_v1_built": [
@@ -1149,9 +1149,12 @@
    "name": "Breached password check",
    "target": "beat",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: k-anonymity checks, offline dump support and re-checks.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "The extension's and web vault's view of the same findings.",
    "evidence": [
     "rg for breach or k-anonymity in crates/ and apps/ finds none"
    ],
@@ -1164,9 +1167,12 @@
    "name": "Weak and reused password report",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: the weak and reused report across vaults; the core scorer exists but D116 limits it to typing.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Reuse across more than one vault once multiple vaults land.",
    "evidence": [
     "crates/app/src/strength.rs:55 (zxcvbn score for a password being typed only)",
     "D116 (never a stored secret)"
@@ -1180,9 +1186,11 @@
    "name": "Email breach monitoring",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: monitoring account email and aliases.",
+   "status": "partial",
+   "surfaces": [
+    "server"
+   ],
+   "left": "A breach feed key (the built-in feed needs a paid key) and alias monitoring.",
    "evidence": [
     "rg for breach monitoring in crates/ and bins/ finds none"
    ],
@@ -1195,9 +1203,12 @@
    "name": "Missing 2FA report",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: the report from 2fa.directory and the passkeys directory.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "A refresh schedule for the bundled 2fa.directory snapshot (D129).",
    "evidence": [
     "rg for 2fa.directory data finds none"
    ],
@@ -1210,9 +1221,12 @@
    "name": "Breach-response playbooks",
    "target": "novel",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: the seven guided incident flows.",
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "The seven guided incident flows from the plan; seven plain playbooks exist.",
    "evidence": [
     "rg for playbook in crates/ and apps/ finds none"
    ],
@@ -1228,9 +1242,9 @@
    "status": "partial",
    "surfaces": [
     "core",
-    "cli"
+    "desktop"
    ],
-   "left": "The hard stop and explicit confirm in a real fill and paste path (extension), and the full Unicode confusables table.",
+   "left": "The hard stop at fill time, in the browser extension.",
    "evidence": [
     "crates/matcher/src/lib.rs:583 lookalikes_get_a_hard_stop",
     "crates/matcher/src/lookalike.rs:126 an_empty_table_still_catches_typos_and_decoys_but_not_homoglyphs",
@@ -1245,9 +1259,12 @@
    "name": "One-tap change-password link",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: /.well-known/change-password then curated recipe URLs.",
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "desktop"
+   ],
+   "left": "Curated per-site change-password recipes beyond the W3C well-known page.",
    "evidence": [
     "rg for change-password in crates/ and apps/ finds none"
    ],
@@ -1262,12 +1279,10 @@
    "review": false,
    "status": "partial",
    "surfaces": [
-    "core",
-    "desktop",
-    "cli",
-    "server"
+    "server",
+    "desktop"
    ],
-   "left": "New-device sign-in alerts, a session list that ends tokens, and email verification for new devices.",
+   "left": "OS notifications, a session list that ends tokens, email verification for new devices.",
    "evidence": [
     "apps/desktop/src/features/devices/devices-view.tsx:58 (revoke behind the gate)",
     "bins/server/tests/api.rs:959 the_identity_chain_is_ordered_pinned_and_revokes_devices",

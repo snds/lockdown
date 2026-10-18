@@ -32,7 +32,7 @@ Every change is additive; nothing in a vault file written before this slice chan
 | Change | Where | Older data | Older builds |
 |---|---|---|---|
 | Three common fields `org.folder` (a folder id or empty), `org.tags` (one per line, normalized), `org.favourite` (yes or no), on every item this build makes or changes, empty when unset, so their ids say nothing | `vault::organization`, `compose`, `template::COMMON` | An item without them reads as unfiled; an edit adds them | Read them as fields of their own (shown as such) |
-| An edit that leaves an organization field out keeps it (the rule "an edit names every field" exempts these three) | `compose::compose_edit` | | |
+| An edit that leaves an organization field out keeps it (the rule "an edit names every field" exempts these three, as it exempts the security center's reserved `lockdown.*` fields); a restore of an earlier version keeps the current organization and reserved fields; a move carries both | `compose::compose_edit`, `session::history` | | |
 | Item kind `vault-info` (hidden, never autofilled): `vault.name`, `vault.trash_days`, `vault.order`, and one `folder.<id>` field per folder whose sealed value is CBOR `{v, name, parent}` | `item::ItemKind::VaultInfo`, `organization::VaultInfo` | No info item: the default (named Personal, or Vault after the first; 30 days) | **Can't read a vault that has one**: an unknown kind fails the item's decode. Every device of a person needs this build before a vault is named or given a folder (§6) |
 | A repeating template field (`url.0` → `url.<n>`), `FieldTemplate.repeats` | `template` | | |
 | `sign_in_method` (a choice) and `sign_in_provider` (text) on the Login template | `template::LOGIN` | Absent | Kept as fields of their own |
@@ -77,8 +77,8 @@ Everything is composed from unicron 0.9.0 primitives with no new `className`, `s
 
 | Gate | Before | After |
 |---|---|---|
-| `cargo test --workspace` | 225 passed | see the PR (the slice adds 24 Rust tests: vault 9, store 1, app 14) |
-| `pnpm test` | 61 passed in 15 files | 79 passed in 18 files |
+| `cargo test --workspace` | 225 passed (at 8c0a4f8) | 249 before merging main; 285 after merging the security center |
+| `pnpm test` | 61 passed in 15 files (at 8c0a4f8) | 79 in 18 files before merging main; 85 in 19 after |
 | `pnpm ds:ratchet` | 4 / 0 / 0 / 0 | 4 / 0 / 0 / 0 |
 
 The core tests worth naming: `organization::tests` (tags, folders that never loop, two info items read as one and folded, organize in a new version), `carry::tests` (a move keeps history and files and verifies under the target chain; a class change re-wraps under the Crown-Jewel Key), `vault::tests` (archive, the purge sweep with a hold, removing a file keeps the history), `compose::tests` (several websites with rules, the organization fields kept by an edit), `organize::tests` (an open conflict holds the trashed half), and `crates/app/tests/organization.rs` (everything through `App`, and a second vault, its folder and an archive reaching another device through the real server).

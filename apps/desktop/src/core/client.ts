@@ -5,6 +5,7 @@ import type {
   AppError,
   ApprovalKind,
   ApprovalRoute,
+  ChangeLink,
   CodeAdvanced,
   CodeView,
   Copied,
@@ -17,8 +18,10 @@ import type {
   LockState,
   OncePage,
   PersonaInfo,
+  Playbook,
   PolicyInput,
   Probe,
+  SecurityReport,
   Settings,
   Status,
   SyncOutcome,
@@ -159,6 +162,20 @@ export interface Client {
   expiryReminders(): Promise<ExpiryReminder[]>
   /** `addItem` into a chosen vault. */
   addItemIn(vaultId: string, input: { kind: string; title?: string; crownJewel?: boolean; fields: FieldChangeInput[] }): Promise<string>
+  /** The security center's report from what this device knows now; no network. */
+  securityReport(): Promise<SecurityReport>
+  /** Checks again (breach ranges by five-character prefix, the account's alerts), then the report. */
+  securityCheck(): Promise<SecurityReport>
+  /** Dismisses (`until: null`) or snoozes a finding: a setting on the item, so it syncs. */
+  securityDismiss(itemId: string, key: string, until: number | null): Promise<SecurityReport>
+  /** Brings a dismissed or snoozed finding back. */
+  securityRestore(itemId: string, key: string): Promise<SecurityReport>
+  /** Dismisses an account alert for every device of the account. */
+  securityDismissAlert(seq: number): Promise<SecurityReport>
+  /** Opens the item's change-password page in the browser (the shell opens it) and says which page. */
+  securityChangePassword(itemId: string): Promise<ChangeLink>
+  /** What to do about each kind of finding. */
+  securityPlaybooks(): Promise<Playbook[]>
 }
 
 /** Whether a rejection is the app's own error shape. */
@@ -262,6 +279,13 @@ export const tauriClient: Client = {
   noteUse: (id) => call("note_use", { id }),
   expiryReminders: () => call("expiry_reminders"),
   addItemIn: (vaultId, input) => call("add_item", { ...input, vault: vaultId }),
+  securityReport: () => call("security_report"),
+  securityCheck: () => call("security_check"),
+  securityDismiss: (itemId, key, until) => call("security_dismiss", { itemId, key, until }),
+  securityRestore: (itemId, key) => call("security_restore", { itemId, key }),
+  securityDismissAlert: (seq) => call("security_dismiss_alert", { seq }),
+  securityChangePassword: (itemId) => call("security_change_password", { itemId }),
+  securityPlaybooks: () => call("security_playbooks"),
 }
 
 const ClientContext = createContext<Client>(tauriClient)

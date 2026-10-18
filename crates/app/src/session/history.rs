@@ -25,13 +25,19 @@ fn changed(before: &[PlainField], after: &[PlainField]) -> Vec<String> {
             f.label.clone()
         }
     };
-    for f in after.iter().filter(|f| !is_org_field(&f.field_id)) {
+    for f in after
+        .iter()
+        .filter(|f| !is_org_field(&f.field_id) && !lockdown_vault::is_reserved(&f.field_id))
+    {
         match before.iter().find(|b| b.field_id == f.field_id) {
             Some(b) if b == f => {}
             _ => out.push(label(f)),
         }
     }
-    for b in before.iter().filter(|b| !is_org_field(&b.field_id)) {
+    for b in before
+        .iter()
+        .filter(|b| !is_org_field(&b.field_id) && !lockdown_vault::is_reserved(&b.field_id))
+    {
         if !after.iter().any(|f| f.field_id == b.field_id) {
             out.push(format!("{} (removed)", label(b)));
         }
@@ -118,8 +124,16 @@ impl Session {
             return Err("that is already the current version".into());
         }
         let mut old = vault.open_version(item_id, n).map_err(|e| e.to_string())?;
-        let now = vault.organization(item_id).map_err(|e| e.to_string())?;
-        now.apply(&mut old);
+        let current = vault.open_item(item_id).map_err(|e| e.to_string())?;
+        // Where it is filed, and Lockdown's own fields (the security
+        // center's settings), stay as they are now.
+        lockdown_vault::Organization::of(&current).apply(&mut old);
+        old.retain(|f| !lockdown_vault::is_reserved(&f.field_id));
+        old.extend(
+            current
+                .into_iter()
+                .filter(|f| lockdown_vault::is_reserved(&f.field_id)),
+        );
         let new = vault.update_item(item_id, old).map_err(|e| e.to_string())?;
         self.save()?;
         Ok(new)

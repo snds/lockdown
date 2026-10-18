@@ -90,6 +90,16 @@ impl Session {
             .ok_or_else(|| format!("vault {vault_id} isn't one of this persona's"))
     }
 
+    /// An item's envelope in whichever vault of the persona holds it.
+    pub(crate) fn item_anywhere(
+        &self,
+        item_id: Id,
+    ) -> lockdown_vault::Result<&lockdown_vault::Item> {
+        self.vaults()
+            .find_map(|v| v.item(item_id).ok())
+            .ok_or_else(|| lockdown_vault::Error::NotFound(format!("item {item_id}")))
+    }
+
     /// Opens every vault of the persona the store holds that isn't open yet
     /// (one a sync just pulled), under the same checks as at unlock.
     pub(crate) fn open_new_vaults(&mut self) -> Result<(), String> {
