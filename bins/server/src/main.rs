@@ -167,6 +167,75 @@ struct StoreArgs {
     /// system's: the database server's private CA.
     #[arg(long, env = "LOCKDOWN_DATABASE_CA", value_name = "PEM")]
     database_ca: Option<PathBuf>,
+    /// Keep attachment bodies in an S3-compatible bucket at this endpoint
+    /// (`https://host[:port]`; plain `http://` only to this machine).
+    #[arg(
+        long,
+        env = "LOCKDOWN_S3_ENDPOINT",
+        value_name = "URL",
+        conflicts_with = "blob_dir"
+    )]
+    s3_endpoint: Option<String>,
+    /// The bucket (it must exist).
+    #[arg(
+        long,
+        env = "LOCKDOWN_S3_BUCKET",
+        value_name = "NAME",
+        requires = "s3_endpoint"
+    )]
+    s3_bucket: Option<String>,
+    /// The signing region.
+    #[arg(long, env = "LOCKDOWN_S3_REGION", default_value = "us-east-1")]
+    s3_region: String,
+    /// The access key id.
+    #[arg(
+        long,
+        env = "LOCKDOWN_S3_ACCESS_KEY",
+        value_name = "ID",
+        hide_env_values = true
+    )]
+    s3_access_key: Option<String>,
+    /// The secret access key (better in the environment than on the
+    /// command line).
+    #[arg(
+        long,
+        env = "LOCKDOWN_S3_SECRET_KEY",
+        value_name = "KEY",
+        hide_env_values = true
+    )]
+    s3_secret_key: Option<String>,
+    /// Put in front of every object name (`lockdown/`).
+    #[arg(long, env = "LOCKDOWN_S3_PREFIX", default_value = "")]
+    s3_prefix: String,
+    /// Address the bucket as `bucket.host` instead of `host/bucket`.
+    #[arg(long, env = "LOCKDOWN_S3_VIRTUAL_HOSTED")]
+    s3_virtual_hosted: bool,
+}
+
+impl StoreArgs {
+    /// The bucket for attachment bodies, when one is set (and checked).
+    fn s3(&self) -> Result<Option<lockdown_server::s3::S3Bodies>, String> {
+        let Some(endpoint) = &self.s3_endpoint else {
+            return Ok(None);
+        };
+        let bodies = lockdown_server::s3::S3Bodies::new(lockdown_server::s3::S3Config {
+            endpoint: endpoint.clone(),
+            bucket: self
+                .s3_bucket
+                .clone()
+                .ok_or("give the bucket with --s3-bucket")?,
+            region: self.s3_region.clone(),
+            access_key: self.s3_access_key.clone().unwrap_or_default(),
+            secret_key: zeroize::Zeroizing::new(self.s3_secret_key.clone().unwrap_or_default()),
+            prefix: self.s3_prefix.clone(),
+            virtual_hosted: self.s3_virtual_hosted,
+        })?;
+        bodies.check().map_err(|e| match e {
+            lockdown_server::storage::StorageError::Backend(m) => m,
+            other => other.to_string(),
+        })?;
+        Ok(Some(bodies))
+    }
 }
 
 #[derive(Args, Debug)]
@@ -313,6 +382,9 @@ fn open_storage(args: &StoreArgs, exclusive: bool) -> Result<SqlStorage, String>
             SqlStorage::open(&data.join(backup::DB_NAME)).map_err(|e| e.to_string())?
         }
     };
+    if let Some(bucket) = args.s3()? {
+        return Ok(storage.with_bodies(std::sync::Arc::new(bucket)));
+    }
     match &args.blob_dir {
         Some(dir) => storage.with_blob_dir(dir).map_err(|e| e.to_string()),
         None => Ok(storage),
@@ -534,11 +606,13 @@ fn run_backup(command: BackupCommand) -> Result<(), String> {
                     Some(url) => Some(pg_options(&store, url, true)?),
                     None => None,
                 },
-                bodies: match &store.blob_dir {
-                    Some(dir) => Some(std::sync::Arc::new(
+                bodies: match (store.s3()?, &store.blob_dir) {
+                    (Some(bucket), _) => Some(std::sync::Arc::new(bucket)
+                        as std::sync::Arc<dyn lockdown_server::storage::BlobBodies>),
+                    (None, Some(dir)) => Some(std::sync::Arc::new(
                         lockdown_server::storage::BlobDir::new(dir).map_err(|e| e.to_string())?,
                     )),
-                    None => None,
+                    (None, None) => None,
                 },
             };
             let summary = backup::restore(&input, &key, &target)?;

@@ -248,6 +248,23 @@ impl S3Bodies {
     }
 }
 
+impl S3Bodies {
+    /// Makes the bucket when it isn't there (first setup, and tests against
+    /// a fresh MinIO).
+    pub fn ensure_bucket(&self) -> Result<()> {
+        let (status, _) = self.send(reqwest::Method::HEAD, &self.path(None), Vec::new())?;
+        if status == 200 {
+            return Ok(());
+        }
+        let (status, _) = self.send(reqwest::Method::PUT, &self.path(None), Vec::new())?;
+        if (200..300).contains(&status) {
+            Ok(())
+        } else {
+            Err(s3_err(&format!("it refused to make the bucket ({status})")))
+        }
+    }
+}
+
 impl BlobBodies for S3Bodies {
     fn put(&self, vault_id: Id, hash: Hash32, body: &[u8]) -> Result<()> {
         if body.len() > MAX_OBJECT {
