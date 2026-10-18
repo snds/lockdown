@@ -311,6 +311,12 @@ pub(crate) fn write_identity_store(
 
 /// Whether this app may change the identity's records: Lockdown manages
 /// it, or no app does (01-identity §2, §7).
+/// Whether Lockdown may change this identity's profile and devices: refused
+/// when another app manages it.
+pub fn check_manager_public(identity: &Identity) -> Result<()> {
+    check_manager(identity)
+}
+
 pub(crate) fn check_manager(identity: &Identity) -> Result<()> {
     match identity.profile().manager.as_deref() {
         Some(m) if m != APP => Err(Error::Invalid(format!(

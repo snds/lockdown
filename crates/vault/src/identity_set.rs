@@ -104,13 +104,19 @@ pub struct IdentityManifest {
     /// with `sig` empty.
     #[serde(with = "serde_bytes")]
     pub sig: Vec<u8>,
+    /// ML-DSA-65 by the identity's post-quantum signing key over the same
+    /// bytes, once the profile publishes that key (`crate::pq`; D62,
+    /// additive: absent on manifests written before it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_sig: Option<serde_bytes::ByteBuf>,
 }
 
 impl IdentityManifest {
-    /// The bytes the signature covers.
+    /// The bytes both signatures cover: the manifest with neither.
     pub fn signable(&self) -> Result<Vec<u8>> {
         let mut copy = self.clone();
         copy.sig.clear();
+        copy.pq_sig = None;
         Ok(to_canonical(&copy)?)
     }
 
@@ -387,6 +393,7 @@ impl RecordSet {
             written_by,
             written_at: Timestamp::now(),
             sig: Vec::new(),
+            pq_sig: None,
         };
         Ok(Self { manifest, records })
     }
@@ -394,6 +401,17 @@ impl RecordSet {
     /// Signs the manifest.
     pub fn sign(&mut self, isk: &SigningKey) -> Result<()> {
         self.manifest.sign(isk)
+    }
+
+    /// Signs the manifest with both keys: Ed25519 and, beside it, ML-DSA-65
+    /// (`crate::pq`).
+    pub fn sign_hybrid(
+        &mut self,
+        isk: &SigningKey,
+        pq: &lockdown_crypto::pq_sign::PqSigningKey,
+    ) -> Result<()> {
+        self.manifest.sign(isk)?;
+        crate::pq::sign_manifest(&mut self.manifest, pq)
     }
 
     /// Whether this set lists the same records (by hash) and the same
@@ -446,6 +464,7 @@ impl RecordSet {
                 .map_err(|_| broken("the profile's signing key is malformed".into()))?;
         profile.verify(&isk_dalek)?;
         manifest.verify_signature(&isk)?;
+        crate::pq::verify_manifest(&profile, manifest)?;
         if manifest.profile_id != profile.profile_id {
             return Err(broken(
                 "the identity manifest names another profile than its profile record".into(),
@@ -566,6 +585,62 @@ mod tests {
             identity.device_id(),
         )
         .unwrap()
+    }
+
+    #[test]
+    fn a_published_post_quantum_key_makes_its_signature_required() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut identity, keystore) = make_identity(dir.path(), "a");
+        let isk = crate::identity::identity_signing_key(&identity, &keystore).unwrap();
+        // Before the key is published, Ed25519 alone is a whole signature.
+        let mut classic = set_of(&identity, None);
+        classic.sign(&isk).unwrap();
+        classic.verify(None).unwrap();
+        assert!(classic.manifest.pq_sig.is_none());
+
+        crate::pq::publish_key(&mut identity, &keystore).unwrap();
+        assert!(
+            crate::pq::publish_key(&mut identity, &keystore)
+                .unwrap()
+                .is_none(),
+            "once"
+        );
+        let pq = crate::pq::identity_pq_key(&identity, &keystore).unwrap();
+        let mut set = set_of(&identity, None);
+        set.sign(&isk).unwrap();
+        assert!(
+            set.verify(None).is_err(),
+            "the profile names the key, so its signature is needed"
+        );
+        set.sign_hybrid(&isk, &pq).unwrap();
+        set.verify(Some(&identity.profile().isk_pub)).unwrap();
+        // The bytes round-trip with the new field, and old manifests hash
+        // as they always did.
+        let back: IdentityManifest =
+            lockdown_crypto::cbor::from_slice(&set.manifest.to_bytes().unwrap()).unwrap();
+        assert_eq!(back, set.manifest);
+        assert_eq!(
+            classic.manifest.to_bytes().unwrap(),
+            to_canonical(&classic.manifest).unwrap()
+        );
+        // A forged or borrowed post-quantum signature fails.
+        let mut forged = set.clone();
+        forged.manifest.pq_sig.as_mut().unwrap()[10] ^= 1;
+        assert!(forged.verify(None).is_err());
+        let mut moved = set.clone();
+        moved.manifest.written_at = Timestamp(moved.manifest.written_at.0 + 1);
+        moved.sign(&isk).unwrap();
+        assert!(
+            moved.verify(None).is_err(),
+            "Ed25519 re-signed, ML-DSA not: refused"
+        );
+        // The same root key derives the same key on every device.
+        assert_eq!(
+            crate::pq::identity_pq_key(&identity, &keystore)
+                .unwrap()
+                .verifying_key(),
+            pq.verifying_key()
+        );
     }
 
     #[test]

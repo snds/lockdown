@@ -43,6 +43,8 @@ use crate::sharing::{
 };
 use lockdown_vault::identity::keys_for;
 
+pub(crate) mod phrase;
+
 /// The most a shared item or link title is cut to in a message.
 const NAME_CHARS: usize = 60;
 

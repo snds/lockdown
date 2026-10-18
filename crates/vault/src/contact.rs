@@ -114,6 +114,7 @@ impl PublicIdentity {
                 .map_err(|_| broken("their profile's signing key is malformed".into()))?;
         profile.verify(&isk_dalek)?;
         manifest.verify_signature(&isk)?;
+        crate::pq::verify_manifest(&profile, manifest)?;
         if manifest.profile_id != profile.profile_id {
             return Err(broken(
                 "their identity manifest names another profile than their profile record".into(),
@@ -222,6 +223,10 @@ pub struct Contact {
     /// scanned; `None` until then.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verified_at: Option<Timestamp>,
+    /// Their identity's ML-DSA-65 public key, pinned when first seen
+    /// (`crate::pq`; absent for an identity from before it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_isk: Option<serde_bytes::ByteBuf>,
 }
 
 /// A fingerprint, two ways.
@@ -325,6 +330,8 @@ impl Contact {
             log_index,
             first_seen: Timestamp::now(),
             verified_at: None,
+            pq_isk: crate::pq::published_key(&verified.profile)?
+                .map(|k| serde_bytes::ByteBuf::from(k.as_bytes().to_vec())),
         })
     }
 
@@ -377,6 +384,12 @@ impl Contact {
         if newer.isk_pub != self.isk_pub || newer.kem_pub != self.kem_pub {
             return Err(Error::Transparency(format!(
                 "{}'s keys changed since you pinned them; nothing is shared with the new keys until you compare fingerprints again",
+                self.login
+            )));
+        }
+        if self.pq_isk.is_some() && newer.pq_isk != self.pq_isk {
+            return Err(Error::Transparency(format!(
+                "{}'s post-quantum signing key changed or went missing since you pinned it; refused",
                 self.login
             )));
         }

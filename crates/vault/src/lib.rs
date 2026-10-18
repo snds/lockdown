@@ -59,6 +59,7 @@ pub mod item;
 pub mod keys;
 pub mod manifest;
 pub mod organization;
+pub mod phrase_check;
 pub mod pq;
 pub mod send;
 pub mod sharing;

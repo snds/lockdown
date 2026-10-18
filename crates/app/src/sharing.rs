@@ -278,6 +278,9 @@ pub struct ContactView {
     pub devices: usize,
     /// The key-transparency log entry their keys were checked against.
     pub log_index: u64,
+    /// Whether their identity signs with a post-quantum key beside
+    /// Ed25519, pinned here (D248; additive).
+    pub post_quantum: bool,
 }
 
 impl ContactView {
@@ -293,6 +296,7 @@ impl ContactView {
             verified: c.verified_at.is_some(),
             devices: c.devices.values().filter(|d| !d.revoked).count(),
             log_index: c.log_index,
+            post_quantum: c.pq_isk.is_some(),
         }
     }
 }

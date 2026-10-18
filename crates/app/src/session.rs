@@ -296,6 +296,8 @@ pub struct Session {
     opened_send: Option<lockdown_vault::send::SendPayload>,
     /// A link this device opened to approve a new one (`devices_link`).
     link: Option<devices_link::OpenLink>,
+    /// Phrase checks of someone's keys under way (`sharing::phrase`).
+    phrase_checks: BTreeMap<Id, sharing::phrase::Pending>,
 }
 
 impl Session {
@@ -519,6 +521,7 @@ impl Session {
             received: Vec::new(),
             opened_send: None,
             link: None,
+            phrase_checks: BTreeMap::new(),
         };
         session.load_sharing()?;
         session.remember()?;
@@ -2099,6 +2102,11 @@ fn push_identity_records(
     new_revocations: Vec<Revocation>,
 ) -> Result<bool, String> {
     let isk_pub = identity.profile().isk_pub;
+    // The identity's post-quantum key goes on the profile once (D248); an
+    // identity another app manages keeps signing with Ed25519 alone.
+    if lockdown_vault::identity::check_manager_public(identity).is_ok() {
+        lockdown_vault::pq::publish_key(identity, keystore).map_err(|e| e.to_string())?;
+    }
     for _ in 0..IDENTITY_ROUNDS {
         let prev = synced.manifest().cloned();
         let mut revocations: Vec<Revocation> = prev
@@ -2118,7 +2126,16 @@ fn push_identity_records(
             return Ok(false);
         }
         let isk = identity_signing_key(identity, keystore).map_err(|e| e.to_string())?;
-        set.sign(&isk).map_err(|e| e.to_string())?;
+        if lockdown_vault::pq::published_key(identity.profile())
+            .map_err(|e| e.to_string())?
+            .is_some()
+        {
+            let pq = lockdown_vault::pq::identity_pq_key(identity, keystore)
+                .map_err(|e| e.to_string())?;
+            set.sign_hybrid(&isk, &pq).map_err(|e| e.to_string())?;
+        } else {
+            set.sign(&isk).map_err(|e| e.to_string())?;
+        }
         drop(isk);
         match push_identity(transport, token, &set, synced, Some(&isk_pub))
             .map_err(|e| e.to_string())?

@@ -22,6 +22,7 @@
 pub mod approval;
 pub mod browser;
 pub mod devices;
+pub mod key_check;
 pub mod live;
 pub mod lock;
 pub mod passkeys;
