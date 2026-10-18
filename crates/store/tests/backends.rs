@@ -475,3 +475,107 @@ fn attachments_round_trip_through_the_store_and_a_purge_collects_the_blob() {
         });
     }
 }
+
+#[test]
+fn a_streamed_attachment_goes_to_a_file_and_back_in_chunks() {
+    for mut fixture in Fixture::all() {
+        let name = fixture.name();
+        let device = Device::new();
+        let mut vault = device.create();
+        let id = vault
+            .create_item(ItemKind::Document, ItemClass::Standard, note("scan"))
+            .unwrap();
+        let data: Vec<u8> = (0..(3 << 20) + 77).map(|i| (i % 241) as u8).collect();
+        let (att, hash) = fixture.with(|store| {
+            let mut sink = store.blob_sink().unwrap();
+            let (att, hash, size) = vault
+                .attach_stream(
+                    id,
+                    "scan.tiff",
+                    "image/tiff",
+                    data.len() as u64,
+                    &mut std::io::Cursor::new(&data),
+                    &mut sink,
+                )
+                .unwrap();
+            assert_eq!(size, lockdown_vault::attachment::blob_size(4 << 20));
+            if name == "sqlite" {
+                assert!(
+                    matches!(sink, lockdown_vault::BlobSink::File { .. }),
+                    "{name}"
+                );
+            }
+            store.keep_blob(hash, sink).unwrap();
+            // Kept twice is a no-op.
+            let again = store.blob_sink().unwrap();
+            store.keep_blob(hash, again).unwrap();
+            vault.save(store, &device.adk).unwrap();
+            (att, hash)
+        });
+        assert!(
+            vault.pending_blobs().is_empty(),
+            "{name}: nothing held back"
+        );
+        fixture.with(|store| {
+            assert_eq!(store.list_blobs().unwrap(), vec![hash], "{name}");
+            let again = device.load(store, 0).unwrap();
+            let mut src = store.open_blob(hash).unwrap();
+            if name == "sqlite" {
+                assert!(matches!(src, lockdown_vault::BlobSource::File(_)), "{name}");
+            }
+            let mut out = Vec::new();
+            let meta = again
+                .open_attachment_to(id, att, &mut src, &mut out)
+                .unwrap();
+            assert_eq!(meta.name, "scan.tiff");
+            assert_eq!(out, data, "{name}");
+            // The whole-blob path reads it too (sync's push).
+            let blob = store.get_blob(hash).unwrap();
+            let (_, plain) = again.open_attachment(id, att, &blob).unwrap();
+            assert_eq!(plain.as_slice(), data.as_slice());
+        });
+        if let Fixture::Sqlite { path, .. } = &fixture {
+            let store = SqliteStore::open(path).unwrap();
+            let file = store.blob_dir().join(hash.to_hex());
+            assert!(file.exists());
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mode = std::fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+                assert_eq!(mode, 0o600);
+            }
+            // A file changed on disk is refused, by its length here and by
+            // its name when it is opened.
+            let len = std::fs::metadata(&file).unwrap().len();
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&file)
+                .and_then(|mut f| std::io::Write::write_all(&mut f, b"x"))
+                .unwrap();
+            assert!(matches!(
+                store.open_blob(hash),
+                Err(StoreError::Tampered(_))
+            ));
+            let f = std::fs::OpenOptions::new().write(true).open(&file).unwrap();
+            f.set_len(len).unwrap();
+            // A crash's half-written file is swept at the next open.
+            let stray = store.blob_dir().join(".incoming-0123");
+            std::fs::write(&stray, b"half").unwrap();
+            drop(store);
+            let store = SqliteStore::open(path).unwrap();
+            assert!(!stray.exists());
+            drop(store);
+        }
+        // Purge: the file goes with the key.
+        vault.purge_item(id).unwrap();
+        fixture.with(|store| vault.save(store, &device.adk).unwrap());
+        fixture.with(|store| {
+            assert!(store.list_blobs().unwrap().is_empty(), "{name}: collected");
+            assert!(!store.has_blob(hash).unwrap());
+        });
+        if let Fixture::Sqlite { path, .. } = &fixture {
+            let store = SqliteStore::open(path).unwrap();
+            assert!(!store.blob_dir().join(hash.to_hex()).exists());
+        }
+    }
+}

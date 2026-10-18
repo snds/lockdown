@@ -287,6 +287,167 @@ pub fn open_attachment(
     Ok((meta, plain))
 }
 
+/// What sealing a file as a stream made: the same facts a
+/// [`SealedAttachment`] carries, without the blob, which went to the
+/// writer frame by frame.
+#[derive(Clone, Debug)]
+pub struct StreamedAttachment {
+    /// BLAKE3 of the blob written.
+    pub blob_hash: Hash32,
+    /// How many chunks.
+    pub chunks: u32,
+    /// How many bytes were written.
+    pub blob_size: u64,
+    /// The sealed name, type and size.
+    pub meta: Sealed,
+}
+
+fn io_error(e: std::io::Error) -> Error {
+    Error::Invalid(format!("the file couldn't be read or written: {e}"))
+}
+
+/// Seals a file read from `reader` (exactly `meta.size` bytes) into
+/// `out`, one chunk at a time (matrix `attachments`: a large file is never
+/// whole in memory; D233). Only one chunk of plaintext is held at once,
+/// in a buffer wiped as it goes. The frames are the same as
+/// [`seal_attachment`]'s, so either side opens the other's. A reader that
+/// ends early or runs on past the stated size is refused: the file changed
+/// while it was read.
+pub fn seal_attachment_stream(
+    key: &AttachmentKey,
+    place: &AttachmentPlace,
+    meta: &AttachmentMeta,
+    reader: &mut dyn std::io::Read,
+    out: &mut dyn std::io::Write,
+) -> Result<StreamedAttachment> {
+    let len = meta.size;
+    if len > MAX_ATTACHMENT_BYTES {
+        return Err(Error::Invalid(format!(
+            "a file is at most {} bytes; this one is {len}",
+            MAX_ATTACHMENT_BYTES
+        )));
+    }
+    let padded = padded_size(len);
+    let count = chunk_count(padded);
+    let mut hasher = lockdown_crypto::hash::Hasher::new();
+    let mut buf = Zeroizing::new(vec![0u8; CHUNK_SIZE]);
+    let mut read_so_far = 0u64;
+    let mut written = 0u64;
+    for index in 0..count {
+        let start = u64::from(index) * CHUNK_SIZE as u64;
+        let chunk_len = (padded - start).min(CHUNK_SIZE as u64) as usize;
+        let real = len.saturating_sub(start).min(chunk_len as u64) as usize;
+        let chunk = &mut buf[..chunk_len];
+        chunk.fill(0);
+        let mut got = 0;
+        while got < real {
+            match reader.read(&mut chunk[got..real]) {
+                Ok(0) => {
+                    return Err(Error::Invalid(
+                        "the file got shorter while it was read; try again".into(),
+                    ));
+                }
+                Ok(n) => got += n,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(io_error(e)),
+            }
+        }
+        read_so_far += real as u64;
+        let sealed = seal(key, &aad(place, Part::Chunk, index, count)?, chunk)?;
+        for part in [&sealed.nonce, &sealed.ct] {
+            out.write_all(part).map_err(io_error)?;
+            hasher.update(part);
+            written += part.len() as u64;
+        }
+    }
+    let mut one = [0u8; 1];
+    loop {
+        match reader.read(&mut one) {
+            Ok(0) => break,
+            Ok(_) => {
+                return Err(Error::Invalid(
+                    "the file grew while it was read; try again".into(),
+                ));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(io_error(e)),
+        }
+    }
+    debug_assert_eq!(read_so_far, len);
+    out.flush().map_err(io_error)?;
+    let meta_bytes = Zeroizing::new(to_canonical(meta)?);
+    let meta_sealed = seal(key, &aad(place, Part::Meta, 0, count)?, &meta_bytes)?;
+    Ok(StreamedAttachment {
+        blob_hash: hasher.finalize(),
+        chunks: count,
+        blob_size: written,
+        meta: meta_sealed,
+    })
+}
+
+/// Opens a blob read from `src` into `out`, one chunk at a time: first the
+/// whole blob is hashed against `expected_hash` (the name the signed list
+/// carries) without keeping it, then it is read again from the start and
+/// each chunk opened in its place and written, the padding left off.
+/// Only one chunk of plaintext is held at once. A blob that changes
+/// between the two passes can only fail a tag: every chunk is bound to
+/// this file's key, its index and the count. On an error part of the file
+/// may already be in `out`; a caller writing to disk writes to a partial
+/// file and renames it only on success.
+pub fn open_attachment_stream<R: std::io::Read + std::io::Seek>(
+    key: &AttachmentKey,
+    place: &AttachmentPlace,
+    chunks: u32,
+    expected_hash: Hash32,
+    meta: &Sealed,
+    src: &mut R,
+    out: &mut dyn std::io::Write,
+) -> Result<AttachmentMeta> {
+    use std::io::SeekFrom;
+    let meta = open_meta(key, place, chunks, meta)?;
+    src.seek(SeekFrom::Start(0)).map_err(io_error)?;
+    let mut hasher = lockdown_crypto::hash::Hasher::new();
+    let mut len = 0usize;
+    let mut buf = vec![0u8; CHUNK_SIZE + CHUNK_OVERHEAD];
+    loop {
+        let n = match src.read(&mut buf) {
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(io_error(e)),
+        };
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+        len += n;
+    }
+    let found = hasher.finalize();
+    if found != expected_hash {
+        return Err(Error::BlobMismatch {
+            expected: expected_hash,
+            found,
+        });
+    }
+    let frames = chunk_frames(len, chunks)?;
+    src.seek(SeekFrom::Start(0)).map_err(io_error)?;
+    let mut left = meta.size;
+    for (index, frame) in frames.into_iter().enumerate() {
+        let index = u32::try_from(index).map_err(|_| Error::Invalid("too many chunks".into()))?;
+        let frame_buf = &mut buf[..frame.len()];
+        src.read_exact(frame_buf)
+            .map_err(|_| Error::Crypto(lockdown_crypto::Error::Tampered))?;
+        let chunk = open_chunk(key, place, index, chunks, frame_buf)?;
+        let take = left.min(chunk.len() as u64) as usize;
+        out.write_all(&chunk[..take]).map_err(io_error)?;
+        left -= take as u64;
+    }
+    if left > 0 {
+        return Err(Error::Crypto(lockdown_crypto::Error::Tampered));
+    }
+    out.flush().map_err(io_error)?;
+    Ok(meta)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -431,6 +592,147 @@ mod tests {
         // Another key opens nothing.
         assert!(
             open_attachment(&key(), &p, 3, sealed.blob_hash, &sealed.meta, &sealed.blob).is_err()
+        );
+    }
+
+    /// A reader that hands over at most `step` bytes a call, as a pipe or a
+    /// slow disk does.
+    struct Trickle<'a> {
+        data: &'a [u8],
+        step: usize,
+    }
+
+    impl std::io::Read for Trickle<'_> {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let n = self.step.min(buf.len()).min(self.data.len());
+            buf[..n].copy_from_slice(&self.data[..n]);
+            self.data = &self.data[n..];
+            Ok(n)
+        }
+    }
+
+    #[test]
+    fn a_stream_seals_the_same_frames_and_opens_both_ways() {
+        let k = key();
+        let p = place();
+        for len in [0usize, 5, 4096, (1 << 20) - 1, 1 << 20, (3 << 20) + 17] {
+            let data: Vec<u8> = (0..len).map(|i| (i % 253) as u8).collect();
+            let mut blob = Vec::new();
+            let mut reader = Trickle {
+                data: &data,
+                step: 65_537,
+            };
+            let s = seal_attachment_stream(&k, &p, &meta(len), &mut reader, &mut blob).unwrap();
+            assert_eq!(s.blob_size, blob.len() as u64);
+            assert_eq!(s.blob_size, blob_size(padded_size(len as u64)));
+            assert_eq!(s.blob_hash, hash(&blob));
+            assert_eq!(s.chunks, chunk_count(padded_size(len as u64)));
+            // The whole-file opener reads a streamed blob…
+            let (_, plain) =
+                open_attachment(&k, &p, s.chunks, s.blob_hash, &s.meta, &blob).unwrap();
+            assert_eq!(plain.as_slice(), data.as_slice());
+            // …and the streaming opener reads a whole-file one.
+            let whole = seal_attachment(&k, &p, &meta(len), &data).unwrap();
+            let mut out = Vec::new();
+            let m = open_attachment_stream(
+                &k,
+                &p,
+                whole.chunks,
+                whole.blob_hash,
+                &whole.meta,
+                &mut std::io::Cursor::new(&whole.blob),
+                &mut out,
+            )
+            .unwrap();
+            assert_eq!(m.size, len as u64);
+            assert_eq!(out, data);
+        }
+    }
+
+    #[test]
+    fn a_stream_refuses_a_file_that_changes_and_a_blob_that_was_changed() {
+        let k = key();
+        let p = place();
+        let data = vec![3u8; (2 << 20) + 9];
+        // Shorter or longer than it said.
+        let mut short = Trickle {
+            data: &data[..100],
+            step: 4096,
+        };
+        assert!(
+            seal_attachment_stream(&k, &p, &meta(data.len()), &mut short, &mut Vec::new())
+                .unwrap_err()
+                .to_string()
+                .contains("shorter")
+        );
+        let mut long = Trickle {
+            data: &data,
+            step: 4096,
+        };
+        assert!(
+            seal_attachment_stream(&k, &p, &meta(100), &mut long, &mut Vec::new())
+                .unwrap_err()
+                .to_string()
+                .contains("grew")
+        );
+        let mut blob = Vec::new();
+        let s = seal_attachment_stream(
+            &k,
+            &p,
+            &meta(data.len()),
+            &mut std::io::Cursor::new(&data),
+            &mut blob,
+        )
+        .unwrap();
+        // A changed byte: refused by name before any chunk is opened.
+        let mut bad = blob.clone();
+        bad[100] ^= 1;
+        let mut out = Vec::new();
+        assert!(matches!(
+            open_attachment_stream(
+                &k,
+                &p,
+                s.chunks,
+                s.blob_hash,
+                &s.meta,
+                &mut std::io::Cursor::new(&bad),
+                &mut out
+            ),
+            Err(Error::BlobMismatch { .. })
+        ));
+        assert!(out.is_empty(), "nothing written before the name checks");
+        // The name "fixed" too: the chunk's tag fails.
+        assert!(matches!(
+            open_attachment_stream(
+                &k,
+                &p,
+                s.chunks,
+                hash(&bad),
+                &s.meta,
+                &mut std::io::Cursor::new(&bad),
+                &mut Vec::new()
+            ),
+            Err(Error::Crypto(lockdown_crypto::Error::Tampered))
+        ));
+        // Cut short, with a matching name: the frames don't fit the count.
+        let cut = blob[..blob.len() - 50].to_vec();
+        assert!(
+            open_attachment_stream(
+                &k,
+                &p,
+                s.chunks,
+                hash(&cut),
+                &s.meta,
+                &mut std::io::Cursor::new(&cut),
+                &mut Vec::new()
+            )
+            .is_err()
+        );
+        // Over the cap: refused before anything is read.
+        let mut huge = meta(0);
+        huge.size = MAX_ATTACHMENT_BYTES + 1;
+        assert!(
+            seal_attachment_stream(&k, &p, &huge, &mut std::io::empty(), &mut Vec::new()).is_err()
         );
     }
 }

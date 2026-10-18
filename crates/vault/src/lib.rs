@@ -69,8 +69,9 @@ pub use ecosystem_identity::records::{Id, Timestamp};
 pub use lockdown_crypto::Hash32;
 
 pub use attachment::{
-    AttachmentMeta, AttachmentPlace, CHUNK_SIZE, SealedAttachment, open_attachment, padded_size,
-    seal_attachment,
+    AttachmentMeta, AttachmentPlace, CHUNK_SIZE, MAX_ATTACHMENT_BYTES, SealedAttachment,
+    StreamedAttachment, open_attachment, open_attachment_stream, padded_size, seal_attachment,
+    seal_attachment_stream,
 };
 pub use compose::{
     Change, FieldChange, FieldInput, compose_edit, compose_new, compose_new_from, compose_new_user,
@@ -92,7 +93,9 @@ pub use manifest::{
 };
 pub use organization::{Folder, Organization, VaultInfo, is_org_field};
 pub use signer::Signer;
-pub use store::{Store, StoreError, StoreResult, VAULT_RECORD_V, VaultRecord};
+pub use store::{
+    BlobSink, BlobSource, Store, StoreError, StoreResult, VAULT_RECORD_V, VaultRecord,
+};
 pub use template::{
     COMMON, CUSTOM_KINDS, Control, FieldTemplate, Fill, SIGN_IN_METHODS, TEMPLATE_FIELD, TEMPLATES,
     Template, WIFI_SECURITY, common_field, template_for, template_named, template_of,

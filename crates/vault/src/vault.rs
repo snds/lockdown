@@ -679,6 +679,101 @@ impl Vault {
         Ok((att_id, sealed.blob_hash))
     }
 
+    /// [`Self::attach`] for a file read from `reader` (`size` bytes),
+    /// sealed chunk by chunk into `out` (a store's [`crate::BlobSink`]),
+    /// so the file is never whole in memory (D233). Nothing is kept
+    /// pending here: the caller keeps the blob in its store under the name
+    /// this returns before it saves the vault. Returns the attachment's id,
+    /// the blob's name and its length.
+    pub fn attach_stream(
+        &mut self,
+        item_id: Id,
+        name: &str,
+        mime: &str,
+        size: u64,
+        reader: &mut dyn std::io::Read,
+        out: &mut dyn std::io::Write,
+    ) -> Result<(Id, Hash32, u64)> {
+        let item = self.item(item_id)?;
+        let item_key = self.item_key(item)?;
+        let header = item.header();
+        let latest = item.latest()?;
+        let att_id = Id::new();
+        let att_key = AttachmentKey::from_bytes(lockdown_crypto::rand::random_32()?);
+        let wrapped = wrap_key(
+            &att_key,
+            &item_key,
+            &self.attachment_key_place(item_id, att_id),
+        )?;
+        let meta = AttachmentMeta {
+            name: name.to_string(),
+            mime: mime.to_string(),
+            size,
+        };
+        let sealed = crate::attachment::seal_attachment_stream(
+            &att_key,
+            &self.attachment_place(item_id, att_id),
+            &meta,
+            reader,
+            out,
+        )?;
+        let mut attachments = latest.attachments.clone();
+        attachments.push(AttachmentRef {
+            att_id,
+            att_key: Some(wrapped),
+            chunks: sealed.chunks,
+            blob: sealed.blob_hash,
+            blob_size: sealed.blob_size,
+            meta: sealed.meta,
+        });
+        let fields = self.open_envelope(item, latest.n)?;
+        let n = latest.n + 1;
+        let parent_hash = latest.hash(&header)?;
+        let version =
+            self.make_version(&header, &item_key, n, parent_hash, &fields, attachments)?;
+        self.items
+            .get_mut(&item_id)
+            .ok_or_else(|| Error::NotFound(format!("item {item_id}")))?
+            .versions
+            .push(version);
+        self.commit_head()?;
+        Ok((att_id, sealed.blob_hash, sealed.blob_size))
+    }
+
+    /// [`Self::open_attachment`] from a blob read in pieces, written to
+    /// `out` chunk by chunk (D233).
+    pub fn open_attachment_to<R: std::io::Read + std::io::Seek>(
+        &self,
+        item_id: Id,
+        att_id: Id,
+        src: &mut R,
+        out: &mut dyn std::io::Write,
+    ) -> Result<AttachmentMeta> {
+        let item = self.item(item_id)?;
+        let latest = item.latest()?;
+        let r = latest
+            .attachments
+            .iter()
+            .find(|a| a.att_id == att_id)
+            .ok_or_else(|| Error::NotFound(format!("attachment {att_id} of item {item_id}")))?;
+        let env = r.att_key.as_ref().ok_or(Error::Shredded {
+            item_id,
+            version_n: latest.n,
+        })?;
+        let item_key = self.item_key(item)?;
+        let key: AttachmentKey =
+            unwrap_key(env, &item_key, &self.attachment_key_place(item_id, att_id))?;
+        crate::attachment::open_attachment_stream(
+            &key,
+            &self.attachment_place(item_id, att_id),
+            r.chunks,
+            r.blob,
+            &r.meta,
+            src,
+            out,
+        )
+    }
+
     /// The attachments of an item's newest version, with their sealed
     /// facts opened where the key still exists.
     pub fn attachments(&self, item_id: Id) -> Result<Vec<AttachmentInfo>> {
