@@ -379,13 +379,29 @@ fn over_the_real_socket_the_host_binary_is_checked_by_process_identity() {
     assert_eq!(file.app_exe, me);
     let mut ch = UnixSocketTransport::at(&file.socket)
         .connect(Duration::from_secs(5))
-        .unwrap();
+        .expect("the endpoint's socket accepts a connection");
     ch.send(&serde_json::to_vec(&HostHello::new(chrome())).unwrap())
         .unwrap();
-    let ready: Value = serde_json::from_slice(&ch.recv(Duration::from_secs(10)).unwrap()).unwrap();
+    // Before it answers, the endpoint hashes the connecting executable: this
+    // test binary, hundreds of MB with the shell feature. The workspace
+    // builds sha2 optimised, so that takes about a second; the wait is
+    // generous so a slow runner reads as a pass, or as this message.
+    let started = std::time::Instant::now();
+    let ready = ch.recv(Duration::from_secs(90)).unwrap_or_else(|e| {
+        panic!(
+            "no `ready` from the endpoint {:?} after the hello ({e}): the process-identity check of {} (path and SHA-256) didn't finish",
+            started.elapsed(),
+            me.display()
+        )
+    });
+    let ready: Value = serde_json::from_slice(&ready).unwrap();
     assert_eq!(ready["event"], "ready", "{ready}");
     ch.send(br#"{"id":1,"op":"status"}"#).unwrap();
-    let status: Value = serde_json::from_slice(&ch.recv(Duration::from_secs(10)).unwrap()).unwrap();
+    let status: Value = serde_json::from_slice(
+        &ch.recv(Duration::from_secs(30))
+            .expect("the endpoint answers `status` once it said ready"),
+    )
+    .unwrap();
     assert_eq!(status["result"]["paired"], false);
     drop(endpoint);
     assert!(

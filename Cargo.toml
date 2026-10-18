@@ -133,6 +133,15 @@ http-body-util = "0.1"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 
+# SHA-256 runs optimised in development and test builds too: the browser
+# channel checks each end's executable by its hash on every connection
+# (docs/plan/16-browser-extension.md §2, D155), and a debug build of the
+# app, the endpoint fixture or the desktop's shell-feature test binary is
+# several hundred MB, which unoptimised sha2 takes ten to twenty seconds to
+# hash (measured: 414 MB in 9.2 s unoptimised, 0.6 s optimised).
+[profile.dev.package.sha2]
+opt-level = 3
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
