@@ -316,6 +316,35 @@ fn imitates(candidate: &Site, trusted: &Site, equivalent: &EquivalentDomains) ->
         && lookalike::label_imitates_with(Confusables::builtin(), &candidate.label, &trusted.label)
 }
 
+/// The site a page imitates, by the rule the security center applies to
+/// saved logins (the browser extension's hard stop reuses it,
+/// docs/plan/16-browser-extension.md §7): the closest of `saved` (a confusable
+/// skeleton first, then by name), else a well-known site from the
+/// directory. `None` for a page that is itself well known, is one of
+/// `saved`'s sites, or imitates nothing.
+pub fn imitated_site(page: &str, saved: &[String]) -> Option<String> {
+    let site = site_of(page)?;
+    if TwoFaDirectory::builtin().lookup(&site.domain).is_some() {
+        return None;
+    }
+    let equivalent = EquivalentDomains::curated();
+    let rank = |t: &Site| (t.skeleton != site.skeleton, t.domain.clone());
+    let mine: Vec<Site> = saved.iter().filter_map(|u| site_of(u)).collect();
+    if mine.iter().any(|t| t.domain == site.domain) {
+        return None;
+    }
+    mine.iter()
+        .filter(|t| imitates(&site, t, &equivalent))
+        .min_by_key(|t| rank(t))
+        .or_else(|| {
+            well_known()
+                .iter()
+                .filter(|t| imitates(&site, t, &equivalent))
+                .min_by_key(|t| rank(t))
+        })
+        .map(|t| t.domain.clone())
+}
+
 fn active(d: Option<&Dismissal>, now: i64) -> Option<Dismissal> {
     d.copied().filter(|d| d.until.is_none_or(|u| u > now))
 }

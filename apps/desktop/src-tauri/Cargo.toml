@@ -59,6 +59,21 @@ log = { version = "0.4", optional = true }
 # The OS's own save and folder dialogs for export and backups, opened from
 # Rust only; no dialog or fs permission reaches the webview.
 tauri-plugin-dialog = { version = "2.8", optional = true }
+# The browser extension's endpoint (src/browser/, docs/plan/16-browser-extension.md):
+# the channel's shared rules, the Unix socket and the process-identity check
+# from the identity crate (D4, D33), the matcher for a result's host, HMAC
+# for the pairing proof, and the OS random source for codes and challenges.
+lockdown-native-messaging.workspace = true
+lockdown-matcher.workspace = true
+ecosystem-identity.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+getrandom.workspace = true
+data-encoding.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+# Test speed only: the identity crate's lowered Argon2id floor, so the
+# endpoint tests create an identity in milliseconds. Never in an app build.
+ecosystem-identity = { workspace = true, features = ["insecure-test-kdf"] }
+lockdown-crypto = { workspace = true, features = ["insecure-test-kdf"] }

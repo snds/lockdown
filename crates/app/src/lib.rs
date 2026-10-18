@@ -20,6 +20,7 @@
 #![forbid(unsafe_code)]
 
 pub mod approval;
+pub mod browser;
 pub mod lock;
 pub mod recency;
 mod revealed;

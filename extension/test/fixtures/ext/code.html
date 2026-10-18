@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Two-step verification</title><link rel="stylesheet" href="style.css"></head>
+<body>
+  <h1>Enter the code from your app</h1>
+  <form id="otp" onsubmit="return false">
+    <div id="fields"></div>
+  </form>
+  <script>
+    const split = new URLSearchParams(location.search).get("split");
+    const f = document.getElementById("fields");
+    if (split) {
+      f.className = "boxes";
+      for (let i = 0; i < 6; i++) f.insertAdjacentHTML("beforeend", `<input id="d${i}" inputmode="numeric" maxlength="1" aria-label="Digit ${i + 1}">`);
+    } else {
+      f.innerHTML = '<label for="code">Code</label><input id="code" name="otp" inputmode="numeric" autocomplete="one-time-code">';
+    }
+  </script>
+</body>
+</html>

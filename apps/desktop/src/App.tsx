@@ -18,6 +18,7 @@ import { VaultsProvider } from "@/features/organization/vaults-context"
 import { CodesView } from "@/features/codes/codes-view"
 import { DevicesView } from "@/features/devices/devices-view"
 import { QuickPalette } from "@/features/palette/quick-palette"
+import { PairingDialog } from "@/features/browsers/pairing-dialog"
 import { RecoveryView } from "@/features/recovery/recovery-view"
 import { SecurityView } from "@/features/security/security-view"
 import { SettingsView } from "@/features/settings/settings-view"
@@ -151,6 +152,7 @@ function Root() {
         }}
         onNotice={notice}
       />
+      <PairingDialog onNotice={notice} />
       </VaultsProvider>
     </LockedProvider>
   )

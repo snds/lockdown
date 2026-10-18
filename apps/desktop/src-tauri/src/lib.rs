@@ -6,6 +6,7 @@
 //! bytes, `copy_secret` never answers with the value at all.
 
 pub mod approver;
+pub mod browser;
 pub mod clipboard;
 pub mod codes;
 pub mod items;
@@ -15,6 +16,9 @@ pub mod transfer;
 
 #[cfg(feature = "shell")]
 mod commands;
+
+#[cfg(feature = "shell")]
+mod browser_commands;
 
 #[cfg(feature = "shell")]
 mod shell {
@@ -82,15 +86,18 @@ mod shell {
                 }
                 lockdown_app::secrets::install(Box::new(Keychain));
                 let paths = paths()?;
+                let data = paths.data.clone();
                 let core = App::start(paths, None, LockPolicy::default());
                 // Touch ID / Windows Hello where the machine has it; else
                 // approvals go to the password (D101).
                 if let Some(platform) = super::approver::PlatformApprover::detect() {
                     core.set_approver(Box::new(platform))?;
                 }
-                app.manage(core);
+                app.manage(core.clone());
                 app.manage(super::clipboard::ClipboardGuard::default());
                 app.manage(super::transfer::Picked::default());
+                // The browser extension's endpoint (docs/plan/16-browser-extension.md).
+                super::browser_commands::start(app.handle(), core, data);
                 Ok(())
             })
             // Losing the window to the dock counts as hidden (the core's

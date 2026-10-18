@@ -39,12 +39,16 @@ jobs:
         with:
           command: check
 
-  # The extension boundary (docs/plan/09-extension-boundary.md): build the
-  # wasm, then replay the clickjacking red team in a real Chromium.
+  # The extension (docs/plan/16-browser-extension.md) and the boundary it
+  # stands on (docs/plan/09-extension-boundary.md): build the wasm, the
+  # native host and the desktop endpoint fixture, typecheck and build the
+  # MV3 extension for Chromium and Firefox, then run the clickjacking red
+  # team and the end-to-end suite (the unpacked build in Chromium, the real
+  # host, the real endpoint over a throwaway vault).
   extension:
-    name: wasm · playwright
+    name: wasm · extension · playwright
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: extension
@@ -73,7 +77,13 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
       - name: Build wasm
         run: pnpm run build:wasm
-      - name: Red team in the browser
+      - name: Build the native host and the desktop endpoint fixture
+        run: pnpm run build:native
+      - name: Typecheck the extension
+        run: pnpm typecheck
+      - name: Build the extension (Chromium and Firefox)
+        run: pnpm build
+      - name: Red team and end to end in the browser
         run: pnpm test
       - uses: actions/upload-artifact@v4
         if: failure()

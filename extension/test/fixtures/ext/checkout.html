@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Checkout</title><link rel="stylesheet" href="style.css"></head>
+<body>
+  <h1>Pay</h1>
+  <form id="pay" onsubmit="return false">
+    <label for="number">Card number</label>
+    <input id="number" name="cardnumber" autocomplete="cc-number" inputmode="numeric">
+    <label for="name">Name on card</label>
+    <input id="name" name="ccname" autocomplete="cc-name">
+    <label for="exp">Expiry (MM/YY)</label>
+    <input id="exp" name="exp" autocomplete="cc-exp" maxlength="5" placeholder="MM/YY">
+    <label for="cvc">Security code</label>
+    <input id="cvc" name="cvc" autocomplete="cc-csc" maxlength="4">
+  </form>
+</body>
+</html>

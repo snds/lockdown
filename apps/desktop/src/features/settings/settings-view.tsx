@@ -22,6 +22,7 @@ import type { ApprovalRoute, Density, LockState, RevealGesture, Status } from "@
 import { BackupsSection } from "@/features/backups/backups-section"
 import { ExportDialog } from "@/features/export/export-dialog"
 import { ImportWizard } from "@/features/import/import-wizard"
+import { BrowsersSection } from "@/features/browsers/browsers-section"
 
 interface SettingsViewProps {
   status: Status
@@ -209,6 +210,8 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
       <Section title="Backups">
         <BackupsSection onChanged={onChanged} onNotice={onNotice} />
       </Section>
+
+      <BrowsersSection onNotice={onNotice} />
 
       <ImportWizard
         open={transfer === "import"}

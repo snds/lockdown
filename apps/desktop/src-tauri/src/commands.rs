@@ -125,7 +125,7 @@ async fn reveal(
 /// opaque `hash` from `copyRef`). Nothing in it is derived from the value.
 #[derive(Serialize)]
 pub struct Copied {
-    clears_in_secs: u64,
+    pub(crate) clears_in_secs: u64,
     copy: u64,
 }
 
@@ -175,7 +175,7 @@ async fn copy_code(
 
 /// The clipboard rule (clipboard.rs): write, remember a hash and a
 /// generation, clear later only if both still match.
-fn copy_with_timer(
+pub(crate) fn copy_with_timer(
     guard: &ClipboardGuard,
     handle: &AppHandle,
     revealed: lockdown_app::Revealed,
@@ -781,6 +781,12 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         crate::transfer::commands::backup_now,
         crate::transfer::commands::backup_off,
         crate::transfer::commands::backup_restore_preview,
+        crate::browser_commands::browser_status,
+        crate::browser_commands::browser_pending,
+        crate::browser_commands::browser_answer,
+        crate::browser_commands::browser_paired,
+        crate::browser_commands::browser_unpair,
+        crate::browser_commands::browser_install,
         crate::organization::commands::vaults,
         crate::organization::commands::create_vault,
         crate::organization::commands::rename_vault,

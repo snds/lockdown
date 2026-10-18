@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>A page with a sign-in frame</title><link rel="stylesheet" href="style.css"></head>
+<body>
+  <h1>News</h1>
+  <iframe id="frame" title="Sign-in"></iframe>
+  <script>
+    // ?frame=<origin of the frame's page>
+    const origin = new URLSearchParams(location.search).get("frame") || location.origin;
+    document.getElementById("frame").src = `${origin}/ext/login.html`;
+  </script>
+</body>
+</html>

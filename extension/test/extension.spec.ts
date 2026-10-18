@@ -1,0 +1,345 @@
+// The extension end to end (docs/plan/16-browser-extension.md §8): the
+// unpacked MV3 build in a real Chromium, the real native host the browser
+// launches, the real desktop endpoint and core over a throwaway vault, and
+// local fixture pages. Pairing, every fill row, the red team against the
+// real fill path, save and update, the shortcut, Basic Auth and the popup.
+import { chromium, expect, test, type BrowserContext, type Frame, type Page, type Worker } from "@playwright/test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { Desktop } from "./desktop";
+import { serve, type Served } from "./server";
+
+const DEV_ID = "dbdblnolpiehhlabpmhobmkbjipmebpe";
+const dist = fileURLToPath(new URL("../dist/chromium", import.meta.url));
+
+let served: Served;
+let desktop: Desktop;
+let ctx: BrowserContext;
+let worker: Worker;
+let scratch: string;
+let items: Record<string, string>;
+let port: number;
+const at = (host: string, path: string) => `http://${host}:${port}${path}`;
+
+test.describe.configure({ mode: "serial" });
+test.setTimeout(60_000);
+
+test.beforeAll(async () => {
+  served = await serve();
+  port = served.port;
+  scratch = await mkdtemp(join(tmpdir(), "lockdown-ext-"));
+  const profile = join(scratch, "profile");
+  desktop = Desktop.start(join(scratch, "vault"), profile);
+  const ready = await desktop.ready;
+  expect(ready.listening, String(ready.problem)).toBe(true);
+  items = ready.items as Record<string, string>;
+  ctx = await chromium.launchPersistentContext(profile, {
+    channel: "chromium",
+    headless: true,
+    viewport: { width: 1000, height: 760 },
+    env: { ...process.env, LOCKDOWN_DATA: String(ready.data) },
+    args: [
+      `--disable-extensions-except=${dist}`,
+      `--load-extension=${dist}`,
+      "--host-resolver-rules=MAP *.test 127.0.0.1, MAP *.evil.net 127.0.0.1, MAP www.paypal.com 127.0.0.1",
+    ],
+  });
+  worker = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent("serviceworker"));
+});
+
+test.afterAll(async () => {
+  await ctx?.close();
+  desktop?.stop();
+  await served?.close();
+  if (scratch) await rm(scratch, { recursive: true, force: true });
+});
+
+/** Lockdown's frame inside `where` (the menu or the save prompt). The host
+ *  is in a closed shadow root, so it is found as a frame, not a node. */
+async function lockdownFrame(page: Page, kind: "menu" | "prompt" = "menu"): Promise<Frame> {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const f = page.frames().find((x) => x.url().startsWith(`chrome-extension://${DEV_ID}/frame.html#${kind}:`));
+    if (f) {
+      await f.waitForLoadState();
+      return f;
+    }
+    if (Date.now() > deadline) throw new Error(`no Lockdown ${kind} frame on ${page.url()}`);
+    await page.waitForTimeout(50);
+  }
+}
+
+async function popup(query = ""): Promise<Page> {
+  const p = await ctx.newPage();
+  await p.goto(`chrome-extension://${DEV_ID}/popup.html${query}`);
+  return p;
+}
+
+async function tabId(urlPattern: string): Promise<number> {
+  return worker.evaluate(async (pattern) => {
+    const [tab] = await chrome.tabs.query({ url: pattern });
+    return tab.id as number;
+  }, urlPattern);
+}
+
+test("the unpacked build loads with its fixed id", async () => {
+  expect(new URL(worker.url()).host).toBe(DEV_ID);
+});
+
+test("nothing fills before the browser is paired", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("localhost", "/ext/login.html"));
+  await page.focus("#user");
+  const menu = await lockdownFrame(page);
+  // The first connection waits for the host to hash the app's executable
+  // (a large debug build on CI), so it gets longer than the default.
+  await expect(menu.locator("body")).toContainText("Pair this browser", { timeout: 30_000 });
+  await expect(page.locator("#pass")).toHaveValue("");
+  await page.close();
+});
+
+test("pairing shows the same code in the browser and the app, and the app approves it", async () => {
+  const p = await popup();
+  await p.getByRole("button", { name: "Pair with Lockdown" }).click();
+  const shown = (await p.locator(".code").textContent())?.replace(/\s/g, "");
+  const request = await desktop.next("pairing");
+  expect(shown).toBe(request.code);
+  expect(String(request.name)).toMatch(/on Linux|on macOS|on Windows/);
+  await desktop.ask(`approve ${request.request_id}`, "answered");
+  await expect(p.getByRole("searchbox", { name: "Search Lockdown" })).toBeVisible({ timeout: 10_000 });
+  await p.close();
+});
+
+test("a login fills through the inline menu, decided in the core", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("localhost", "/ext/login.html"));
+  await page.focus("#user");
+  const menu = await lockdownFrame(page);
+  const item = menu.getByRole("button", { name: /Local site/ });
+  await expect(item).toBeEnabled();
+  await item.click();
+  await expect(page.locator("#user")).toHaveValue("sean@example.com");
+  await expect(page.locator("#pass")).toHaveValue("correct-horse-1");
+  // The page never reached into the menu: its document is the extension's.
+  const pageSees = await page.evaluate(() => document.querySelectorAll("iframe").length);
+  expect(pageSees).toBe(0);
+  await page.close();
+});
+
+test("red team: a field in a cross-origin frame asks before it fills", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("localhost", `/ext/framed.html?frame=${encodeURIComponent(`http://127.0.0.1:${port}`)}`));
+  const child = page.frame({ url: /127\.0\.0\.1.*login\.html/ })!;
+  await child.waitForLoadState();
+  await child.focus("#user");
+  const menu = await lockdownFrame(page);
+  await menu.getByRole("button", { name: /Loopback/ }).click();
+  await expect(menu.locator("body")).toContainText("inside a page from localhost");
+  await expect(child.locator("#pass")).toHaveValue("");
+  await menu.getByRole("button", { name: "Fill", exact: true }).click();
+  await expect(child.locator("#pass")).toHaveValue("framed-pass-2");
+  await page.close();
+});
+
+for (const kase of ["opacity-overlay", "pointer-events-none-overlay"]) {
+  test(`red team: a field under a ${kase} is refused on the real fill path`, async () => {
+    const page = await ctx.newPage();
+    await page.goto(at("localhost", `/ext/login.html?case=${kase}`));
+    await page.focus("#user");
+    const menu = await lockdownFrame(page);
+    await menu.getByRole("button", { name: /Local site/ }).click();
+    await expect(menu.locator("body")).toContainText("clickjacking");
+    await expect(page.locator("#user")).toHaveValue("");
+    await expect(page.locator("#pass")).toHaveValue("");
+    await page.close();
+  });
+}
+
+test("red team: a page that covers Lockdown's menu cannot click through it", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("localhost", "/ext/login.html?case=cover-menu"));
+  await page.focus("#user");
+  const menu = await lockdownFrame(page);
+  await page.waitForSelector("#decoy");
+  const item = menu.getByRole("button", { name: /Local site/ });
+  // IntersectionObserver v2 sees the decoy over the frame: the choice stays
+  // disabled, and nothing reaches the fields.
+  await expect(item).toBeDisabled({ timeout: 5_000 });
+  await page.mouse.click(10, 10);
+  await expect(page.locator("#pass")).toHaveValue("");
+  await page.close();
+});
+
+test("red team: a lookalike page gets a hard stop, in the menu and the popup", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("paypal.com.evil.net", "/ext/login.html"));
+  await page.focus("#user");
+  const menu = await lockdownFrame(page);
+  await expect(menu.getByRole("alert")).toContainText("isn't www.paypal.com");
+  await expect(menu.getByRole("button", { name: /PayPal/ })).toHaveCount(0);
+  const tab = await tabId("*://paypal.com.evil.net/*");
+  const p = await popup(`?tab=${tab}`);
+  await expect(p.getByRole("alert")).toContainText("www.paypal.com");
+  await p.getByRole("searchbox").fill("paypal");
+  const copy = p.getByRole("button", { name: "Copy password" });
+  await expect(copy).toHaveCount(1);
+  await copy.click();
+  await expect(p.getByRole("button", { name: "Copy anyway" })).toBeVisible();
+  const copied = desktop.next("copied");
+  await p.getByRole("button", { name: "Copy anyway" }).click();
+  expect((await copied).len).toBe("paypal-pass-3".length);
+  await p.close();
+  await page.close();
+});
+
+test("a one-time code fills after the second action, single field and split boxes", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("localhost", "/ext/code.html"));
+  await page.focus("#code");
+  let menu = await lockdownFrame(page);
+  await menu.getByRole("button", { name: /Local site/ }).click();
+  await expect(menu.locator("body")).toContainText("deliberate");
+  await expect(page.locator("#code")).toHaveValue("");
+  await menu.getByRole("button", { name: "Fill code" }).click();
+  const code = await desktop.ask(`code ${items.local}`, "code");
+  const filled = await page.locator("#code").inputValue();
+  expect([code.code, code.next]).toContain(filled);
+
+  await page.goto(at("localhost", "/ext/code.html?split=1"));
+  await page.focus("#d0");
+  menu = await lockdownFrame(page);
+  await menu.getByRole("button", { name: /Local site/ }).click();
+  await menu.getByRole("button", { name: "Fill code" }).click();
+  await expect(page.locator("#d5")).not.toHaveValue("");
+  const digits = await page.$$eval("#fields input", (els) => els.map((e) => (e as HTMLInputElement).value).join(""));
+  const again = await desktop.ask(`code ${items.local}`, "code");
+  expect([again.code, again.next, code.code, code.next]).toContain(digits);
+  await page.close();
+});
+
+test("a card fills only after the second action", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("localhost", "/ext/checkout.html"));
+  await page.focus("#number");
+  const menu = await lockdownFrame(page);
+  await menu.getByRole("button", { name: /Everyday card/ }).click();
+  await expect(menu.locator("body")).toContainText("deliberate");
+  await expect(page.locator("#number")).toHaveValue("");
+  await menu.getByRole("button", { name: "Fill card" }).click();
+  await expect(page.locator("#number")).toHaveValue("4242424242424242");
+  await expect(page.locator("#name")).toHaveValue("Sean Sands");
+  await expect(page.locator("#exp")).toHaveValue("08/30");
+  await expect(page.locator("#cvc")).toHaveValue("123");
+  await page.close();
+});
+
+test("an identity fills an address form", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("localhost", "/ext/address.html"));
+  await page.focus("#given");
+  const menu = await lockdownFrame(page);
+  await menu.getByRole("button", { name: /Home/ }).click();
+  await expect(page.locator("#given")).toHaveValue("Sean");
+  await expect(page.locator("#family")).toHaveValue("Sands");
+  await expect(page.locator("#email")).toHaveValue("sean@example.com");
+  await expect(page.locator("#city")).toHaveValue("Springfield");
+  await expect(page.locator("#zip")).toHaveValue("12345");
+  await page.close();
+});
+
+test("the fill shortcut fills the best login for the focused field", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("localhost", "/ext/login.html"));
+  await page.bringToFront();
+  await page.focus("#pass");
+  const answer = await worker.evaluate(() => (globalThis as unknown as { lockdownCommand(c: string): Promise<unknown> }).lockdownCommand("fill-login"));
+  expect(answer).toEqual({ done: true });
+  await expect(page.locator("#pass")).toHaveValue("correct-horse-1");
+  await expect(page.locator("#user")).toHaveValue("sean@example.com");
+  await page.close();
+});
+
+test("HTTP Basic Auth is answered for the one login saved for that host", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("basic.test", "/basic/"));
+  await expect(page.locator("#in")).toHaveText("Welcome, basic-user");
+  await page.close();
+});
+
+test("the popup searches summaries and copies through the app", async () => {
+  const p = await popup();
+  await p.getByRole("searchbox").fill("local");
+  const results = p.getByRole("list", { name: "Results" });
+  await expect(results.getByRole("listitem")).toHaveCount(1);
+  await expect(results).toContainText("Local site");
+  await expect(results).not.toContainText("correct-horse-1");
+  const copied = desktop.next("copied");
+  await results.getByRole("button", { name: "Copy password" }).click();
+  expect((await copied).len).toBe("correct-horse-1".length);
+  await expect(p.getByRole("status")).toContainText("clears it in");
+  await p.close();
+});
+
+test("the popup fills the page in front and links to its change-password page", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("localhost", "/ext/login.html"));
+  const tab = await tabId(`*://localhost/*`);
+  const p = await popup(`?tab=${tab}`);
+  await expect(p.getByRole("heading", { name: /For localhost/ })).toBeVisible();
+  await p.getByRole("button", { name: "Fill" }).click();
+  await expect(page.locator("#pass")).toHaveValue("correct-horse-1");
+  const opened = ctx.waitForEvent("page");
+  await p.getByRole("button", { name: "Change password" }).click();
+  const change = await opened;
+  await change.waitForLoadState();
+  expect(change.url()).toBe(`http://localhost:${port}/.well-known/change-password`);
+  await change.close();
+  await p.close();
+  await page.close();
+});
+
+test("a locked app says so instead of filling", async () => {
+  await desktop.ask("lock", "locked");
+  const page = await ctx.newPage();
+  await page.goto(at("localhost", "/ext/login.html"));
+  await page.focus("#user");
+  const menu = await lockdownFrame(page);
+  await expect(menu.locator("body")).toContainText("locked");
+  await desktop.ask("unlock", "unlocked");
+  await page.close();
+});
+
+test("a new sign-up is offered for saving, and saved through the app", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("newsite.test", "/ext/signup.html"));
+  await page.fill("#user", "newbie");
+  await page.fill("#pass", "brand-new-pass-5");
+  await page.fill("#again", "brand-new-pass-5");
+  await page.click("#go");
+  await page.waitForURL(/welcome\.html/);
+  const prompt = await lockdownFrame(page, "prompt");
+  await expect(prompt.locator("body")).toContainText("Save this login for newsite.test");
+  await prompt.getByRole("button", { name: "Save" }).click();
+  await expect.poll(async () => {
+    const list = await desktop.ask("list", "list");
+    return (list.items as { username: string; site: string }[]).find((i) => i.username === "newbie")?.site;
+  }).toBe(`http://newsite.test:${port}`);
+  await page.close();
+});
+
+test("a changed password is offered as an update of the saved login", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("localhost", "/ext/change.html"));
+  await page.fill("#old", "correct-horse-1");
+  await page.fill("#new", "correct-horse-2");
+  await page.click("#go");
+  await page.waitForURL(/welcome\.html/);
+  const prompt = await lockdownFrame(page, "prompt");
+  await expect(prompt.locator("body")).toContainText("Update the password for Local site");
+  await prompt.getByRole("button", { name: "Update" }).click();
+  await expect.poll(async () => (await desktop.ask(`password ${items.local}`, "password")).value).toBe("correct-horse-2");
+  await page.close();
+});
