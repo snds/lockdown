@@ -1,12 +1,12 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `71bee69`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `a3ca4f8`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
 **Done** means it works end to end in today's surfaces (core, desktop, CLI, server) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **9** | **50** | **53** | **10** |
+| **All 122 v1 features** | **12** | **53** | **47** | **10** |
 | [Vault & item types](#vault--item-types) | 0 | 12 | 0 | 0 |
 | [Organization & search](#organization--search) | 1 | 2 | 4 | 0 |
 | [Autofill (browser)](#autofill-browser) | 0 | 3 | 6 | 0 |
@@ -16,7 +16,7 @@ _Generated from `feature-status.json` (as of `71bee69`) by `render-feature-statu
 | [Vendor login bridges](#vendor-login-bridges) | 1 | 4 | 2 | 0 |
 | [Sharing & collaboration](#sharing--collaboration) | 0 | 2 | 4 | 0 |
 | [Family & emergency/recovery](#family--emergencyrecovery) | 0 | 2 | 3 | 0 |
-| [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 0 | 2 | 6 | 0 |
+| [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 3 | 5 | 0 | 0 |
 | [Privacy](#privacy) | 0 | 1 | 1 | 0 |
 | [Import/export & portability](#importexport--portability) | 0 | 3 | 5 | 0 |
 | [Self-hosting & deployment](#self-hosting--deployment) | 0 | 2 | 1 | 1 |
@@ -123,14 +123,14 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser 
 
 ## Security monitoring & phishing defense
 
-- [ ] **Lookalike-domain warning**: Partial · core, cli. The hard stop and explicit confirm in a real fill and paste path (extension), and the full Unicode confusables table.
-- [ ] **Vault account sign-in alerts**: Partial · core, desktop, cli, server. New-device sign-in alerts, a session list that ends tokens, and email verification for new devices.
-- [ ] **Breached password check**: Not started · nowhere yet. Everything: k-anonymity checks, offline dump support and re-checks.
-- [ ] **Weak and reused password report**: Not started · nowhere yet. Everything: the weak and reused report across vaults; the core scorer exists but D116 limits it to typing.
-- [ ] **Email breach monitoring**: Not started · nowhere yet. Everything: monitoring account email and aliases.
-- [ ] **Missing 2FA report**: Not started · nowhere yet. Everything: the report from 2fa.directory and the passkeys directory.
-- [ ] **Breach-response playbooks**: Not started · nowhere yet. Everything: the seven guided incident flows.
-- [ ] **One-tap change-password link**: Not started · nowhere yet. Everything: /.well-known/change-password then curated recipe URLs.
+- [x] **Breached password check**: Done · core, desktop. The extension's and web vault's view of the same findings.
+- [x] **Weak and reused password report**: Done · core, desktop. Reuse across more than one vault once multiple vaults land.
+- [x] **Missing 2FA report**: Done · core, desktop. A refresh schedule for the bundled 2fa.directory snapshot (D129).
+- [ ] **Email breach monitoring**: Partial · server. A breach feed key (the built-in feed needs a paid key) and alias monitoring.
+- [ ] **Breach-response playbooks**: Partial · core, desktop. The seven guided incident flows from the plan; seven plain playbooks exist.
+- [ ] **Lookalike-domain warning**: Partial · core, desktop. The hard stop at fill time, in the browser extension.
+- [ ] **One-tap change-password link**: Partial · core, desktop. Curated per-site change-password recipes beyond the W3C well-known page.
+- [ ] **Vault account sign-in alerts**: Partial · server, desktop. OS notifications, a session list that ends tokens, email verification for new devices.
 
 ## Privacy
 
