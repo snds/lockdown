@@ -1,0 +1,25 @@
+[package]
+name = "lockdown-native-host"
+description = "The native-messaging host the browser launches for the Lockdown extension: it checks the desktop app it reaches and relays framed JSON, and decrypts nothing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "lockdown_native_host"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lockdown-native-host"
+path = "src/main.rs"
+
+[dependencies]
+lockdown-native-messaging.workspace = true
+# The Unix socket transport and the process-identity check (D4, D33).
+ecosystem-identity.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

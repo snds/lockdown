@@ -1,0 +1,20 @@
+[package]
+name = "lockdown-native-messaging"
+description = "The browser extension's channel to the desktop app: native-messaging framing, the host's hello, the endpoint file both sides meet at, and the browsers' host manifests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# The identity root's default place (D15), so the host finds Lockdown's
+# data directory the same way the app does (D47).
+ecosystem-identity.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+data-encoding.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

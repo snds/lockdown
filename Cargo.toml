@@ -18,6 +18,8 @@ members = [
     "bins/cli",
     "bins/server",
     "apps/desktop/src-tauri",
+    "crates/native-messaging",
+    "bins/native-host",
     "crates/security",
 ]
 # The pure-Rust crates: everything that builds on CI without a platform SDK.
@@ -40,6 +42,8 @@ default-members = [
     "crates/platform-auth",
     "bins/cli",
     "bins/server",
+    "crates/native-messaging",
+    "bins/native-host",
     "crates/security",
 ]
 
@@ -72,6 +76,7 @@ lockdown-app = { path = "crates/app", version = "0.1.0" }
 lockdown-platform-auth = { path = "crates/platform-auth", version = "0.1.0" }
 lockdown-ffi = { path = "crates/ffi", version = "0.1.0" }
 lockdown-server = { path = "bins/server", version = "0.1.0" }
+lockdown-native-messaging = { path = "crates/native-messaging", version = "0.1.0" }
 lockdown-security = { path = "crates/security", version = "0.1.0" }
 
 # Cryptography: the same crates and versions the identity crate uses, so one

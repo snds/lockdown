@@ -3103,12 +3103,20 @@ name = "lockdown-desktop"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "data-encoding",
+ "ecosystem-identity",
+ "getrandom 0.3.4",
+ "hmac 0.13.0",
  "keyring",
  "lockdown-app",
+ "lockdown-crypto",
+ "lockdown-matcher",
+ "lockdown-native-messaging",
  "lockdown-platform-auth",
  "log",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",
@@ -3146,6 +3154,28 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "url",
+]
+
+[[package]]
+name = "lockdown-native-host"
+version = "0.1.0"
+dependencies = [
+ "ecosystem-identity",
+ "lockdown-native-messaging",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "lockdown-native-messaging"
+version = "0.1.0"
+dependencies = [
+ "data-encoding",
+ "ecosystem-identity",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
