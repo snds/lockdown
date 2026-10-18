@@ -49,7 +49,10 @@ fn handshake(
             break;
         }
     }
-    assert!(!c.is_handshaking() && !s.is_handshaking(), "handshake stalled");
+    assert!(
+        !c.is_handshaking() && !s.is_handshaking(),
+        "handshake stalled"
+    );
     c.writer().write_all(b"ping\n").unwrap();
     let mut buf = Vec::new();
     c.write_tls(&mut buf).unwrap();
@@ -103,16 +106,18 @@ fn lockdowns_own_client_and_server_agree_on_the_hybrid_group() {
     // Hybrid only on the server: still the hybrid group, by IP name too.
     let strict = Arc::new(server_config(e.cert.clone(), Groups::HybridOnly).unwrap());
     let (c, s) = handshake(client, strict, "127.0.0.1").unwrap();
-    assert_eq!((c, s), (NamedGroup::X25519MLKEM768, NamedGroup::X25519MLKEM768));
+    assert_eq!(
+        (c, s),
+        (NamedGroup::X25519MLKEM768, NamedGroup::X25519MLKEM768)
+    );
 }
 
 #[test]
 fn a_classical_peer_falls_back_to_x25519_unless_the_server_is_hybrid_only() {
     let e = ends();
     // An older client (rustls's plain ring provider: X25519, P-256, P-384).
-    let old_client = Arc::new(
-        lockdown_tls::client_config_with(&e.trust, classical_provider()).unwrap(),
-    );
+    let old_client =
+        Arc::new(lockdown_tls::client_config_with(&e.trust, classical_provider()).unwrap());
     let server = Arc::new(server_config(e.cert.clone(), Groups::PreferHybrid).unwrap());
     let (c, s) = handshake(old_client.clone(), server, "localhost").unwrap();
     assert_eq!((c, s), (NamedGroup::X25519, NamedGroup::X25519));
@@ -189,7 +194,11 @@ fn a_missing_or_empty_pinned_file_is_an_error_not_the_system_store() {
     assert!(lockdown_tls::read_certs(&empty).is_err());
     assert!(lockdown_tls::read_certs(&dir.path().join("nope.pem")).is_err());
     let junk = dir.path().join("junk.pem");
-    std::fs::write(&junk, "-----BEGIN CERTIFICATE-----\n!!!\n-----END CERTIFICATE-----\n").unwrap();
+    std::fs::write(
+        &junk,
+        "-----BEGIN CERTIFICATE-----\n!!!\n-----END CERTIFICATE-----\n",
+    )
+    .unwrap();
     assert!(lockdown_tls::read_certs(&junk).is_err());
     assert!(lockdown_tls::read_key(&junk).is_err());
 }
@@ -267,7 +276,9 @@ fn openssl_as_the_server_negotiates_the_hybrid_with_lockdowns_client() {
     // Hybrid only on our side: nothing classical to fall back to.
     let provider = Arc::new(lockdown_tls::provider(Groups::HybridOnly));
     let config = lockdown_tls::client_config_with(&Trust::Only(vec![ca.ca_der]), provider).unwrap();
-    let mut conn = ClientConnection::new(Arc::new(config), ServerName::try_from("localhost").unwrap()).unwrap();
+    let mut conn =
+        ClientConnection::new(Arc::new(config), ServerName::try_from("localhost").unwrap())
+            .unwrap();
     let mut sock = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
     let mut tls = rustls::Stream::new(&mut conn, &mut sock);
     tls.write_all(b"ping\n").unwrap();

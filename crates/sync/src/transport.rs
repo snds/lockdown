@@ -182,8 +182,8 @@ impl HttpTransport {
     ) -> Result<Self> {
         check_base(base)?;
         lockdown_tls::install_default_provider();
-        let tls =
-            lockdown_tls::client_config(trust).map_err(|e| TransportError::Network(e.to_string()))?;
+        let tls = lockdown_tls::client_config(trust)
+            .map_err(|e| TransportError::Network(e.to_string()))?;
         let client = reqwest::blocking::Client::builder()
             .timeout(timeout)
             .connect_timeout(std::time::Duration::from_secs(15))
@@ -653,9 +653,7 @@ impl HttpTransport {
     /// `POST /v1/account/sessions/{id}/end`.
     pub fn end_session(&self, token: &str, id: &str) -> Result<()> {
         if id.len() != 32 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err(TransportError::Network(format!(
-                "{id} isn't a session id"
-            )));
+            return Err(TransportError::Network(format!("{id} isn't a session id")));
         }
         self.call_raw(
             reqwest::Method::POST,
@@ -862,9 +860,18 @@ mod tests {
         assert_eq!(
             got,
             vec![
-                LiveEvent { v: 1, kind: LiveKind::Sync },
-                LiveEvent { v: 1, kind: LiveKind::Other },
-                LiveEvent { v: 1, kind: LiveKind::SessionEnded },
+                LiveEvent {
+                    v: 1,
+                    kind: LiveKind::Sync
+                },
+                LiveEvent {
+                    v: 1,
+                    kind: LiveKind::Other
+                },
+                LiveEvent {
+                    v: 1,
+                    kind: LiveKind::SessionEnded
+                },
             ]
         );
         let huge = format!("data: {}\n\n", "x".repeat(MAX_EVENT_BYTES + 10));

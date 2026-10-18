@@ -322,7 +322,11 @@ fn kind_of_write(method: &Method, path: &str) -> Option<LiveKind> {
 
 /// The layer that announces every successful write under `/v1/vaults`,
 /// `/v1/identity` and `/v1/account/alerts` to the writer's account.
-pub async fn notify_writes(State(state): State<Arc<AppState>>, req: Request, next: Next) -> Response {
+pub async fn notify_writes(
+    State(state): State<Arc<AppState>>,
+    req: Request,
+    next: Next,
+) -> Response {
     let kind = kind_of_write(req.method(), req.uri().path());
     let who = kind.and_then(|_| {
         let token = req
@@ -350,7 +354,9 @@ pub async fn notify_writes(State(state): State<Arc<AppState>>, req: Request, nex
         if let Some(vault_id) = vault {
             for account_id in vault_audience(&state, vault_id) {
                 if account_id != claims.account_id {
-                    state.live.notify(Change::account(account_id, LiveKind::Sync));
+                    state
+                        .live
+                        .notify(Change::account(account_id, LiveKind::Sync));
                 }
             }
         }
@@ -397,13 +403,19 @@ mod tests {
             kind_of_write(&Method::PUT, "/v1/vaults/x/heads"),
             Some(LiveKind::Sync)
         );
-        assert_eq!(kind_of_write(&Method::PUT, "/v1/identity"), Some(LiveKind::Sync));
+        assert_eq!(
+            kind_of_write(&Method::PUT, "/v1/identity"),
+            Some(LiveKind::Sync)
+        );
         assert_eq!(
             kind_of_write(&Method::POST, "/v1/account/alerts/3/dismiss"),
             Some(LiveKind::Alerts)
         );
         assert_eq!(kind_of_write(&Method::GET, "/v1/vaults"), None);
-        assert_eq!(kind_of_write(&Method::POST, "/v1/account/login/finish"), None);
+        assert_eq!(
+            kind_of_write(&Method::POST, "/v1/account/login/finish"),
+            None
+        );
     }
 
     #[test]
@@ -421,7 +433,10 @@ mod tests {
         let a = Id::new();
         let held: Vec<_> = (0..PER_ACCOUNT).map(|_| n.admit(a).unwrap()).collect();
         assert!(n.admit(a).is_none());
-        assert!(n.admit(Id::new()).is_some(), "another account still gets in");
+        assert!(
+            n.admit(Id::new()).is_some(),
+            "another account still gets in"
+        );
         assert_eq!(n.open_streams(), PER_ACCOUNT);
         drop(held);
         assert_eq!(n.open_streams(), 0);

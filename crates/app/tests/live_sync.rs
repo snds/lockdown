@@ -90,8 +90,15 @@ fn a_change_on_one_device_shows_on_the_other_without_a_sync_and_sessions_end() {
     let sessions = a.sessions().unwrap();
     assert_eq!(sessions.len(), 2, "{sessions:?}");
     assert_eq!(sessions.iter().filter(|s| s.current).count(), 1);
-    assert!(sessions.iter().all(|s| s.device_name.is_some()), "{sessions:?}");
-    assert!(sessions.iter().all(|s| s.client.as_deref().unwrap_or("").starts_with("lockdown/")));
+    assert!(
+        sessions.iter().all(|s| s.device_name.is_some()),
+        "{sessions:?}"
+    );
+    assert!(
+        sessions
+            .iter()
+            .all(|s| s.client.as_deref().unwrap_or("").starts_with("lockdown/"))
+    );
 
     // A ends B's session: B hears it and forgets the token.
     assert_eq!(a.end_other_sessions().unwrap(), 1);

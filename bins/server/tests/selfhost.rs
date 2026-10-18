@@ -102,7 +102,13 @@ fn lockdowns_client_and_server_speak_hybrid_tls_end_to_end() {
     let laptop = Device::new();
     let session = sign_in(&url, &t.trust, "me@example.com", &laptop, true);
     let transport = HttpTransport::with_trust(&url, &t.trust).unwrap();
-    assert!(transport.list_vaults(&session.token).unwrap().vaults.is_empty());
+    assert!(
+        transport
+            .list_vaults(&session.token)
+            .unwrap()
+            .vaults
+            .is_empty()
+    );
     let sth = transport.kt_sth().unwrap();
     assert!(sth.sth.size >= 1, "the device's login is in the log");
 
@@ -128,8 +134,12 @@ fn lockdowns_client_and_server_speak_hybrid_tls_end_to_end() {
     // this CA is refused before any request.
     let plain = format!("http://{}", server.addr);
     assert!(matches!(
-        HttpTransport::with_trust(&plain, &t.trust).unwrap().kt_sth(),
-        Err(TransportError::Network(_)) | Err(TransportError::Decode(_)) | Err(TransportError::Refused { .. })
+        HttpTransport::with_trust(&plain, &t.trust)
+            .unwrap()
+            .kt_sth(),
+        Err(TransportError::Network(_))
+            | Err(TransportError::Decode(_))
+            | Err(TransportError::Refused { .. })
     ));
     let other = pki(&["localhost", "127.0.0.1"]);
     let stranger = HttpTransport::with_trust(&url, &Trust::Only(vec![other.ca_der])).unwrap();
@@ -169,7 +179,12 @@ fn a_device_lists_the_sessions_and_ends_another_whose_token_then_stops() {
     ta.end_session(&a.token, &phones[0].id).unwrap();
     let tb = HttpTransport::with_trust(&url, &t.trust).unwrap();
     let ended = |token: &str| match tb.list_vaults(token) {
-        Err(TransportError::Refused { status, code, message, .. }) => {
+        Err(TransportError::Refused {
+            status,
+            code,
+            message,
+            ..
+        }) => {
             assert_eq!((status, code), (401, ErrorCode::Unauthenticated));
             assert!(message.contains("ended"), "{message}");
             true
@@ -178,7 +193,10 @@ fn a_device_lists_the_sessions_and_ends_another_whose_token_then_stops() {
         Err(e) => panic!("{e}"),
     };
     assert_eq!(
-        [ended(&b.token), ended(&b2.token)].iter().filter(|e| **e).count(),
+        [ended(&b.token), ended(&b2.token)]
+            .iter()
+            .filter(|e| **e)
+            .count(),
         1,
         "exactly one of the phone's sessions ended"
     );

@@ -1389,8 +1389,9 @@ impl Storage for SqliteStorage {
         // empty. A row is only ever there for a file that is.
         let stored: &[u8] = match &self.blob_dir {
             Some(dir) if !body.is_empty() => {
-                crate::keys::write_private(&Self::blob_file(dir, vault_id, hash), body)
-                    .map_err(|e| StorageError::Backend(format!("couldn't write a blob file: {e}")))?;
+                crate::keys::write_private(&Self::blob_file(dir, vault_id, hash), body).map_err(
+                    |e| StorageError::Backend(format!("couldn't write a blob file: {e}")),
+                )?;
                 &[]
             }
             _ => body,
@@ -1427,8 +1428,9 @@ impl Storage for SqliteStorage {
                         "a blob lives in the blob directory, but none is set (--blob-dir)".into(),
                     ));
                 };
-                let bytes = std::fs::read(Self::blob_file(dir, vault_id, hash))
-                    .map_err(|e| StorageError::Backend(format!("couldn't read a blob file: {e}")))?;
+                let bytes = std::fs::read(Self::blob_file(dir, vault_id, hash)).map_err(|e| {
+                    StorageError::Backend(format!("couldn't read a blob file: {e}"))
+                })?;
                 if bytes.len() as u64 != to_u64(size) {
                     return Err(StorageError::Backend(
                         "a blob file isn't the size its row says".into(),

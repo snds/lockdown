@@ -107,8 +107,12 @@ pub trait SessionStore: Send + Sync {
     /// such live session.
     fn end_session(&self, account_id: Id, id: &[u8; 16], now: i64) -> Result<bool>;
     /// Ends every live session of the account but `keep`; the ids ended.
-    fn end_other_sessions(&self, account_id: Id, keep: &[u8; 16], now: i64)
-    -> Result<Vec<[u8; 16]>>;
+    fn end_other_sessions(
+        &self,
+        account_id: Id,
+        keep: &[u8; 16],
+        now: i64,
+    ) -> Result<Vec<[u8; 16]>>;
     /// Drops rows whose token ran out [`KEEP_AFTER_END_SECS`] ago or more.
     fn prune_sessions(&self, now: i64) -> Result<usize>;
 }
@@ -361,19 +365,30 @@ mod tests {
             .touch_session(&[1; 16], 600, Some("192.0.2.7"), None)
             .unwrap();
         let one = store.session(&[1; 16]).unwrap().unwrap();
-        assert_eq!((one.last_seen, one.address.as_deref()), (600, Some("192.0.2.7")));
+        assert_eq!(
+            (one.last_seen, one.address.as_deref()),
+            (600, Some("192.0.2.7"))
+        );
 
         // Another account can't end this one's sessions.
         assert!(!store.end_session(b, &[1; 16], 700).unwrap());
         assert!(store.end_session(a, &[1; 16], 700).unwrap());
         assert!(!store.end_session(a, &[1; 16], 701).unwrap(), "only once");
-        assert_eq!(store.session(&[1; 16]).unwrap().unwrap().ended_at, Some(700));
+        assert_eq!(
+            store.session(&[1; 16]).unwrap().unwrap().ended_at,
+            Some(700)
+        );
 
         store.open_session(&row(a, 5, 800, 10_000)).unwrap();
         let ended = store.end_other_sessions(a, &[5; 16], 900).unwrap();
         assert_eq!(ended, vec![[2; 16]]);
         assert_eq!(
-            store.live_sessions(a, 900).unwrap().iter().map(|r| r.id[0]).collect::<Vec<_>>(),
+            store
+                .live_sessions(a, 900)
+                .unwrap()
+                .iter()
+                .map(|r| r.id[0])
+                .collect::<Vec<_>>(),
             vec![5]
         );
         assert_eq!(store.live_sessions(b, 900).unwrap().len(), 1);

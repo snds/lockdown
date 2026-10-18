@@ -74,7 +74,11 @@ fn register(url: &str, trust: &Trust, login: &str) {
         device_pub: SigningKey::from_bytes(seed).verifying_key().to_bytes(),
         sign: Box::new(move |m| Ok(SigningKey::from_bytes(seed).sign(m))),
     };
-    let mut auth = OpaqueAccountAuth::new(HttpTransport::with_trust(url, trust).unwrap(), login, binding);
+    let mut auth = OpaqueAccountAuth::new(
+        HttpTransport::with_trust(url, trust).unwrap(),
+        login,
+        binding,
+    );
     auth.register_account(&Id::new(), "correct horse battery staple")
         .unwrap();
     auth.sign_in("correct horse battery staple").unwrap();
@@ -131,7 +135,11 @@ fn tls_healthcheck_redirect_and_a_certificate_renewed_on_sighup() {
         .arg(&files.cert)
         .output()
         .unwrap();
-    assert!(health.status.success(), "{}", String::from_utf8_lossy(&health.stderr));
+    assert!(
+        health.status.success(),
+        "{}",
+        String::from_utf8_lossy(&health.stderr)
+    );
 
     // Plain HTTP on the redirect port goes to the same path over HTTPS.
     let plain = reqwest::blocking::Client::builder()
@@ -155,7 +163,13 @@ fn tls_healthcheck_redirect_and_a_certificate_renewed_on_sighup() {
     std::fs::write(&files.cert, &second.chain_pem).unwrap();
     std::fs::write(&files.key, &second.key_pem).unwrap();
     let pid = s.child.id().to_string();
-    assert!(Command::new("kill").args(["-HUP", &pid]).status().unwrap().success());
+    assert!(
+        Command::new("kill")
+            .args(["-HUP", &pid])
+            .status()
+            .unwrap()
+            .success()
+    );
     let trusts_second = Trust::Only(vec![second.ca_der.clone()]);
     let mut renewed = false;
     for _ in 0..100 {
@@ -170,7 +184,12 @@ fn tls_healthcheck_redirect_and_a_certificate_renewed_on_sighup() {
         std::thread::sleep(Duration::from_millis(50));
     }
     assert!(renewed, "the renewed certificate is served after SIGHUP");
-    assert!(HttpTransport::with_trust(&s.url, &trust).unwrap().kt_sth().is_err());
+    assert!(
+        HttpTransport::with_trust(&s.url, &trust)
+            .unwrap()
+            .kt_sth()
+            .is_err()
+    );
 }
 
 fn backup_cmd(args: &[&str], key: &str) -> std::process::Output {
@@ -199,7 +218,12 @@ fn a_backup_restores_the_same_server_and_refuses_a_wrong_key_or_a_changed_byte()
     let data = dir.path().join("data");
     let blobs = dir.path().join("blobs");
     let s = start(
-        &["--listen", "127.0.0.1:0", "--blob-dir", blobs.to_str().unwrap()],
+        &[
+            "--listen",
+            "127.0.0.1:0",
+            "--blob-dir",
+            blobs.to_str().unwrap(),
+        ],
         &data,
     );
     register(&s.url, &Trust::Platform, "me@example.com");
@@ -229,19 +253,33 @@ fn a_backup_restores_the_same_server_and_refuses_a_wrong_key_or_a_changed_byte()
         ],
         &key,
     );
-    assert!(made.status.success(), "{}", String::from_utf8_lossy(&made.stderr));
+    assert!(
+        made.status.success(),
+        "{}",
+        String::from_utf8_lossy(&made.stderr)
+    );
     let printed = String::from_utf8_lossy(&made.stdout);
     assert!(printed.contains("3 files (1 attachments)"), "{printed}");
     drop(s);
     // Never over an existing file.
     let again = backup_cmd(
-        &["create", "--data", data.to_str().unwrap(), "--out", file.to_str().unwrap()],
+        &[
+            "create",
+            "--data",
+            data.to_str().unwrap(),
+            "--out",
+            file.to_str().unwrap(),
+        ],
         &key,
     );
     assert!(!again.status.success());
 
     let verified = backup_cmd(&["verify", "--in", file.to_str().unwrap()], &key);
-    assert!(verified.status.success(), "{}", String::from_utf8_lossy(&verified.stderr));
+    assert!(
+        verified.status.success(),
+        "{}",
+        String::from_utf8_lossy(&verified.stderr)
+    );
     assert!(String::from_utf8_lossy(&verified.stdout).contains("2 accounts"));
 
     let wrong = backup_cmd(
@@ -256,23 +294,47 @@ fn a_backup_restores_the_same_server_and_refuses_a_wrong_key_or_a_changed_byte()
     bytes[n / 2] ^= 1;
     let bent = dir.path().join("bent.ldbk");
     std::fs::write(&bent, &bytes).unwrap();
-    assert!(!backup_cmd(&["verify", "--in", bent.to_str().unwrap()], &key).status.success());
+    assert!(
+        !backup_cmd(&["verify", "--in", bent.to_str().unwrap()], &key)
+            .status
+            .success()
+    );
     let cut = dir.path().join("cut.ldbk");
     std::fs::write(&cut, &std::fs::read(&file).unwrap()[..n - 100]).unwrap();
-    assert!(!backup_cmd(&["verify", "--in", cut.to_str().unwrap()], &key).status.success());
+    assert!(
+        !backup_cmd(&["verify", "--in", cut.to_str().unwrap()], &key)
+            .status
+            .success()
+    );
 
     // Restore into an empty directory; a full one is refused.
     let refused = backup_cmd(
-        &["restore", "--in", file.to_str().unwrap(), "--data", data.to_str().unwrap()],
+        &[
+            "restore",
+            "--in",
+            file.to_str().unwrap(),
+            "--data",
+            data.to_str().unwrap(),
+        ],
         &key,
     );
     assert!(!refused.status.success());
     let fresh = dir.path().join("restored");
     let restored = backup_cmd(
-        &["restore", "--in", file.to_str().unwrap(), "--data", fresh.to_str().unwrap()],
+        &[
+            "restore",
+            "--in",
+            file.to_str().unwrap(),
+            "--data",
+            fresh.to_str().unwrap(),
+        ],
         &key,
     );
-    assert!(restored.status.success(), "{}", String::from_utf8_lossy(&restored.stderr));
+    assert!(
+        restored.status.success(),
+        "{}",
+        String::from_utf8_lossy(&restored.stderr)
+    );
     let blob_back = fresh
         .join("blobs")
         .join(vault_dir.file_name().unwrap())
@@ -280,11 +342,19 @@ fn a_backup_restores_the_same_server_and_refuses_a_wrong_key_or_a_changed_byte()
     assert_eq!(std::fs::read(blob_back).unwrap().len(), 3_000_000);
 
     let back = start(
-        &["--listen", "127.0.0.1:0", "--blob-dir", fresh.join("blobs").to_str().unwrap()],
+        &[
+            "--listen",
+            "127.0.0.1:0",
+            "--blob-dir",
+            fresh.join("blobs").to_str().unwrap(),
+        ],
         &fresh,
     );
     let after = HttpTransport::new(&back.url).unwrap().kt_sth().unwrap();
-    assert_eq!(after.log_key, before.log_key, "the same log key every client pinned");
+    assert_eq!(
+        after.log_key, before.log_key,
+        "the same log key every client pinned"
+    );
     assert_eq!(after.sth.size, before.sth.size);
     // The OPAQUE setup came back too: the account still signs in.
     let seed = SigningKey::generate().unwrap().inner().to_bytes();
@@ -293,8 +363,11 @@ fn a_backup_restores_the_same_server_and_refuses_a_wrong_key_or_a_changed_byte()
         device_pub: SigningKey::from_bytes(seed).verifying_key().to_bytes(),
         sign: Box::new(move |m| Ok(SigningKey::from_bytes(seed).sign(m))),
     };
-    let mut auth =
-        OpaqueAccountAuth::new(HttpTransport::new(&back.url).unwrap(), "me@example.com", binding);
+    let mut auth = OpaqueAccountAuth::new(
+        HttpTransport::new(&back.url).unwrap(),
+        "me@example.com",
+        binding,
+    );
     assert!(auth.sign_in("correct horse battery staple").is_ok());
 }
 

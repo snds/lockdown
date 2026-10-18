@@ -166,12 +166,7 @@ impl std::fmt::Display for Summary {
         write!(
             f,
             "snapshot {} made at {} (Unix time) by lockdown-server {}: {} files ({} attachments), {} bytes",
-            self.snapshot_id,
-            self.created,
-            self.server_version,
-            self.files,
-            self.blobs,
-            self.bytes
+            self.snapshot_id, self.created, self.server_version, self.files, self.blobs, self.bytes
         )
     }
 }
@@ -226,7 +221,8 @@ impl<W: Write> Sealer<W> {
 
     fn emit(&mut self, last: bool) -> Result<(), String> {
         let aad = chunk_aad(&self.header_hash, self.index, last);
-        let sealed = lockdown_crypto::seal(&self.key, &aad, &self.buf).map_err(|e| e.to_string())?;
+        let sealed =
+            lockdown_crypto::seal(&self.key, &aad, &self.buf).map_err(|e| e.to_string())?;
         let len = u32::try_from(sealed.nonce.len() + sealed.ct.len())
             .map_err(|_| "a chunk is too large".to_string())?;
         self.out
@@ -294,7 +290,8 @@ impl<R: Read> Opener<R> {
                     &sealed,
                 )
                 .map_err(|_| {
-                    "the backup didn't open: a wrong Backup Key, or the file was changed".to_string()
+                    "the backup didn't open: a wrong Backup Key, or the file was changed"
+                        .to_string()
                 })?,
                 true,
             ),
@@ -350,7 +347,9 @@ fn blob_files(dir: &Path) -> Result<Vec<(String, PathBuf)>, String> {
             continue;
         }
         let vault_name = vault.file_name().to_string_lossy().to_string();
-        for file in std::fs::read_dir(vault.path()).map_err(|e| io("couldn't list a blob folder", e))? {
+        for file in
+            std::fs::read_dir(vault.path()).map_err(|e| io("couldn't list a blob folder", e))?
+        {
             let file = file.map_err(|e| io("couldn't list a blob folder", e))?;
             let name = file.file_name().to_string_lossy().to_string();
             if file.path().is_file() && !name.ends_with(".tmp") {
@@ -381,7 +380,8 @@ fn allowed_name(name: &str) -> bool {
 }
 
 fn hash_file(path: &Path) -> Result<(u64, [u8; 32]), String> {
-    let mut f = std::fs::File::open(path).map_err(|e| io(&format!("couldn't read {}", path.display()), e))?;
+    let mut f = std::fs::File::open(path)
+        .map_err(|e| io(&format!("couldn't read {}", path.display()), e))?;
     let mut h = blake3::Hasher::new();
     let mut size = 0u64;
     let mut buf = vec![0u8; 64 << 10];
@@ -402,11 +402,18 @@ fn hash_file(path: &Path) -> Result<(u64, [u8; 32]), String> {
 /// file; user-only).
 pub fn create(sources: &Sources, key: &BackupKey, out: &Path, now: i64) -> Result<Summary, String> {
     if out.exists() {
-        return Err(format!("{} is already there; pick another name", out.display()));
+        return Err(format!(
+            "{} is already there; pick another name",
+            out.display()
+        ));
     }
     let work = tempfile::Builder::new()
         .prefix(".lockdown-backup-")
-        .tempdir_in(out.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new(".")))
+        .tempdir_in(
+            out.parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(Path::new(".")),
+        )
         .map_err(|e| io("couldn't make a working folder beside the backup", e))?;
     let db_copy = work.path().join(DB_NAME);
     let storage = SqliteStorage::open(&sources.db).map_err(|e| e.to_string())?;
@@ -484,14 +491,18 @@ pub fn create(sources: &Sources, key: &BackupKey, out: &Path, now: i64) -> Resul
                 sealer.push(&buf[..n])?;
             }
             if copied != entry.size {
-                return Err(format!("{} changed while it was copied; run the backup again", path.display()));
+                return Err(format!(
+                    "{} changed while it was copied; run the backup again",
+                    path.display()
+                ));
             }
         }
         let writer = sealer.finish()?;
         let file = writer
             .into_inner()
             .map_err(|e| format!("couldn't write the backup: {e}"))?;
-        file.sync_all().map_err(|e| io("couldn't write the backup", e))
+        file.sync_all()
+            .map_err(|e| io("couldn't write the backup", e))
     })();
     if let Err(e) = result {
         let _ = std::fs::remove_file(&partial);
@@ -523,7 +534,8 @@ fn read_backup(
     key: &BackupKey,
     mut sink: impl FnMut(&str, &[u8]) -> Result<(), String>,
 ) -> Result<Summary, String> {
-    let file = std::fs::File::open(input).map_err(|e| io(&format!("couldn't open {}", input.display()), e))?;
+    let file = std::fs::File::open(input)
+        .map_err(|e| io(&format!("couldn't open {}", input.display()), e))?;
     let mut reader = std::io::BufReader::new(file);
     let mut magic = [0u8; 8];
     reader
@@ -580,18 +592,25 @@ fn read_backup(
     let mut names = std::collections::BTreeSet::new();
     for entry in &manifest.files {
         if !allowed_name(&entry.name) || !names.insert(entry.name.as_str()) {
-            return Err(format!("the backup names a file it may not hold: {:?}", entry.name));
+            return Err(format!(
+                "the backup names a file it may not hold: {:?}",
+                entry.name
+            ));
         }
     }
     if !names.contains(DB_NAME) || !names.contains(KEY_NAME) {
         return Err("the backup lacks the database or the server key file".into());
     }
     for entry in &manifest.files {
-        let size = usize::try_from(entry.size).map_err(|_| "a file in the backup is too large".to_string())?;
+        let size = usize::try_from(entry.size)
+            .map_err(|_| "a file in the backup is too large".to_string())?;
         let mut bytes = Zeroizing::new(vec![0u8; size]);
         opener.read_exact(&mut bytes)?;
         if blake3::hash(&bytes).as_bytes() != &entry.hash {
-            return Err(format!("{} in the backup doesn't match its hash", entry.name));
+            return Err(format!(
+                "{} in the backup doesn't match its hash",
+                entry.name
+            ));
         }
         sink(&entry.name, &bytes)?;
     }
@@ -617,12 +636,14 @@ pub fn verify(input: &Path, key: &BackupKey) -> Result<(Summary, DbFacts), Strin
     let summary = read_backup(input, key, |name, bytes| {
         if name == DB_NAME {
             let path = work.path().join(DB_NAME);
-            crate::keys::write_private(&path, bytes).map_err(|e| io("couldn't write the database copy", e))?;
+            crate::keys::write_private(&path, bytes)
+                .map_err(|e| io("couldn't write the database copy", e))?;
             facts = Some(db_facts(&path)?);
         }
         if name == KEY_NAME {
             let path = work.path().join(KEY_NAME);
-            crate::keys::write_private(&path, bytes).map_err(|e| io("couldn't write the key copy", e))?;
+            crate::keys::write_private(&path, bytes)
+                .map_err(|e| io("couldn't write the key copy", e))?;
             crate::keys::ServerKeys::load_or_create(&path)
                 .map_err(|e| format!("the server key file in the backup doesn't open: {e}"))?;
         }
@@ -643,7 +664,8 @@ pub struct DbFacts {
 }
 
 fn db_facts(path: &Path) -> Result<DbFacts, String> {
-    let storage = SqliteStorage::open(path).map_err(|e| format!("the database copy doesn't open: {e}"))?;
+    let storage =
+        SqliteStorage::open(path).map_err(|e| format!("the database copy doesn't open: {e}"))?;
     storage.counts().map_err(|e| e.to_string())
 }
 
@@ -679,7 +701,8 @@ pub fn restore(
     for (name, path) in blob_files(&staging.path().join("blobs"))? {
         let to = blobs.join(name.trim_start_matches(BLOB_PREFIX));
         if let Some(dir) = to.parent() {
-            crate::keys::create_private_dir(dir).map_err(|e| io("couldn't make a blob folder", e))?;
+            crate::keys::create_private_dir(dir)
+                .map_err(|e| io("couldn't make a blob folder", e))?;
         }
         move_file(&path, &to).map_err(|e| io("couldn't put a blob in place", e))?;
     }
@@ -711,7 +734,15 @@ mod tests {
     fn only_the_known_names_may_be_in_a_snapshot() {
         assert!(allowed_name(DB_NAME) && allowed_name(KEY_NAME));
         assert!(allowed_name("blobs/0b8f-aa/abcdef0123"));
-        for bad in ["blobs/../x", "blobs/a/../../b", "../server-key.cbor", "blobs/a", "blobs/a/b/c", "/etc/passwd", "blobs/a/b.tmp"] {
+        for bad in [
+            "blobs/../x",
+            "blobs/a/../../b",
+            "../server-key.cbor",
+            "blobs/a",
+            "blobs/a/b/c",
+            "/etc/passwd",
+            "blobs/a/b.tmp",
+        ] {
             assert!(!allowed_name(bad), "{bad}");
         }
     }

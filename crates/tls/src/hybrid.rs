@@ -188,9 +188,7 @@ mod tests {
         assert_eq!(group, NamedGroup::X25519);
         assert_eq!(x25519, &client.pub_key()[MLKEM768_ENCAPSULATION_KEY_LEN..]);
 
-        let server = X25519MLKEM768
-            .start_and_complete(client.pub_key())
-            .unwrap();
+        let server = X25519MLKEM768.start_and_complete(client.pub_key()).unwrap();
         assert_eq!(server.group, NamedGroup::X25519MLKEM768);
         assert_eq!(server.pub_key.len(), MLKEM768_CIPHERTEXT_LEN + X25519_LEN);
         let server_secret = server.secret.secret_bytes().to_vec();

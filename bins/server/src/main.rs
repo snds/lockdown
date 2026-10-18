@@ -49,7 +49,12 @@ use lockdown_server::{AppState, Config};
 
 /// The Lockdown server: one binary for cloud and self-host.
 #[derive(Parser, Debug)]
-#[command(name = "lockdown-server", version, about, args_conflicts_with_subcommands = true)]
+#[command(
+    name = "lockdown-server",
+    version,
+    about,
+    args_conflicts_with_subcommands = true
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
@@ -137,10 +142,20 @@ struct ServeArgs {
     #[arg(long, env = "LOCKDOWN_SERVER_KEY", value_name = "PATH")]
     server_key: Option<PathBuf>,
     /// The certificate chain (PEM) for TLS on the server itself.
-    #[arg(long, env = "LOCKDOWN_TLS_CERT", value_name = "PEM", requires = "tls_key")]
+    #[arg(
+        long,
+        env = "LOCKDOWN_TLS_CERT",
+        value_name = "PEM",
+        requires = "tls_key"
+    )]
     tls_cert: Option<PathBuf>,
     /// The certificate's private key (PEM: PKCS#8, SEC1 or PKCS#1).
-    #[arg(long, env = "LOCKDOWN_TLS_KEY", value_name = "PEM", requires = "tls_cert")]
+    #[arg(
+        long,
+        env = "LOCKDOWN_TLS_KEY",
+        value_name = "PEM",
+        requires = "tls_cert"
+    )]
     tls_key: Option<PathBuf>,
     /// Accept only the hybrid post-quantum key exchange (X25519MLKEM768);
     /// clients without it get no connection.
@@ -154,14 +169,24 @@ struct ServeArgs {
     #[arg(long, env = "LOCKDOWN_HSTS_MAX_AGE", default_value_t = 31_536_000)]
     hsts_max_age: u64,
     /// Also listen for plain HTTP here and redirect it to HTTPS.
-    #[arg(long, env = "LOCKDOWN_REDIRECT_HTTP", value_name = "ADDR", requires = "tls_cert")]
+    #[arg(
+        long,
+        env = "LOCKDOWN_REDIRECT_HTTP",
+        value_name = "ADDR",
+        requires = "tls_cert"
+    )]
     redirect_http: Option<String>,
     /// Allow plain HTTP on an address other than this machine's: only when
     /// a reverse proxy in front of the server does TLS.
     #[arg(long, env = "LOCKDOWN_INSECURE_HTTP")]
     insecure_http: bool,
     /// A reverse proxy (IP or CIDR) whose `X-Forwarded-For` is believed.
-    #[arg(long = "trusted-proxy", env = "LOCKDOWN_TRUSTED_PROXIES", value_delimiter = ',', value_name = "CIDR")]
+    #[arg(
+        long = "trusted-proxy",
+        env = "LOCKDOWN_TRUSTED_PROXIES",
+        value_delimiter = ',',
+        value_name = "CIDR"
+    )]
     trusted_proxies: Vec<String>,
     /// Keep attachment bodies as files here instead of in the database.
     #[arg(long, env = "LOCKDOWN_BLOB_DIR", value_name = "DIR")]
@@ -227,13 +252,16 @@ fn default_data_dir() -> Option<PathBuf> {
 fn data_dir(data: Option<PathBuf>) -> Result<PathBuf, String> {
     match data {
         Some(d) => Ok(d),
-        None => default_data_dir().ok_or_else(|| "no data directory: pass --data or set LOCKDOWN_DATA".into()),
+        None => default_data_dir()
+            .ok_or_else(|| "no data directory: pass --data or set LOCKDOWN_DATA".into()),
     }
 }
 
-fn open_storage(data: &std::path::Path, blob_dir: Option<&std::path::Path>) -> Result<SqliteStorage, String> {
-    let storage =
-        SqliteStorage::open(&data.join(backup::DB_NAME)).map_err(|e| e.to_string())?;
+fn open_storage(
+    data: &std::path::Path,
+    blob_dir: Option<&std::path::Path>,
+) -> Result<SqliteStorage, String> {
+    let storage = SqliteStorage::open(&data.join(backup::DB_NAME)).map_err(|e| e.to_string())?;
     match blob_dir {
         Some(dir) => storage.with_blob_dir(dir).map_err(|e| e.to_string()),
         None => Ok(storage),
@@ -280,12 +308,8 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
     let tls_files = cli.tls_cert.zip(cli.tls_key);
     let cert = match &tls_files {
         Some((cert, key)) => Some(
-            lockdown_tls::ReloadingCert::load(
-                cert,
-                key,
-                Arc::new(lockdown_tls::provider(groups)),
-            )
-            .map_err(|e| e.to_string())?,
+            lockdown_tls::ReloadingCert::load(cert, key, Arc::new(lockdown_tls::provider(groups)))
+                .map_err(|e| e.to_string())?,
         ),
         None => None,
     };
@@ -429,7 +453,9 @@ fn run_backup(command: BackupCommand) -> Result<(), String> {
 
 fn healthcheck(url: Option<String>, listen: &str, tls: bool) -> Result<(), String> {
     let url = url.unwrap_or_else(|| {
-        let addr = listen.replace("0.0.0.0", "127.0.0.1").replace("[::]", "[::1]");
+        let addr = listen
+            .replace("0.0.0.0", "127.0.0.1")
+            .replace("[::]", "[::1]");
         format!("{}://{addr}/healthz", if tls { "https" } else { "http" })
     });
     lockdown_tls::install_default_provider();

@@ -230,9 +230,7 @@ pub fn client_address(parts: &Parts, state: &AppState) -> Option<String> {
         .headers
         .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok());
-    Some(
-        crate::client_addr::client_ip(peer, forwarded, &state.config.trusted_proxies).to_string(),
-    )
+    Some(crate::client_addr::client_ip(peer, forwarded, &state.config.trusted_proxies).to_string())
 }
 
 impl FromRequestParts<Arc<AppState>> for Peer {

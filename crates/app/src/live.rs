@@ -77,7 +77,9 @@ impl Drop for LiveHandle {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::SeqCst);
         let (lock, cv) = &*self.wake;
-        *lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = true;
+        *lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
         cv.notify_all();
     }
 }
@@ -219,7 +221,9 @@ impl App {
 
 fn wait(stop: &AtomicBool, wake: &(Mutex<bool>, Condvar), d: Duration) {
     let (lock, cv) = wake;
-    let guard = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let guard = lock
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if stop.load(Ordering::SeqCst) {
         return;
     }
@@ -230,16 +234,22 @@ fn sync_side(app: App, stop: Arc<AtomicBool>, wake: Arc<(Mutex<bool>, Condvar)>,
     let (lock, cv) = &*wake;
     loop {
         {
-            let mut due = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut due = lock
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             while !*due && !stop.load(Ordering::SeqCst) {
-                due = cv.wait(due).unwrap_or_else(std::sync::PoisonError::into_inner);
+                due = cv
+                    .wait(due)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
             }
             if stop.load(Ordering::SeqCst) {
                 return;
             }
         }
         std::thread::sleep(GATHER);
-        *lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = false;
+        *lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = false;
         if stop.load(Ordering::SeqCst) {
             return;
         }
@@ -256,7 +266,12 @@ fn sync_side(app: App, stop: Arc<AtomicBool>, wake: Arc<(Mutex<bool>, Condvar)>,
     }
 }
 
-fn channel_side(app: App, stop: Arc<AtomicBool>, wake: Arc<(Mutex<bool>, Condvar)>, sink: LiveSink) {
+fn channel_side(
+    app: App,
+    stop: Arc<AtomicBool>,
+    wake: Arc<(Mutex<bool>, Condvar)>,
+    sink: LiveSink,
+) {
     let mut pause = Duration::from_secs(2);
     // A token the server said was ended: don't knock again with it.
     let mut ended: Option<String> = None;
@@ -290,7 +305,9 @@ fn channel_side(app: App, stop: Arc<AtomicBool>, wake: Arc<(Mutex<bool>, Condvar
                 Ok(Some(SseItem::Event(e))) => match e.kind {
                     LiveKind::Sync => {
                         let (lock, cv) = &*wake;
-                        *lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = true;
+                        *lock
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
                         cv.notify_all();
                     }
                     LiveKind::Alerts => sink(LiveNotice::Alerts),

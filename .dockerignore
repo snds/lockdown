@@ -1,0 +1,9 @@
+# The image is built from sources only; nothing local or generated goes in.
+.git
+target
+**/node_modules
+**/dist
+apps/desktop/.dsa
+extension/test-results
+docs
+*.ldbk

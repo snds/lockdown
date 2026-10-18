@@ -162,7 +162,9 @@ pub fn spawn_reloader(cert: Arc<ReloadingCert>, every: Option<Duration>) {
         tokio::spawn(async move {
             use tokio::signal::unix::{SignalKind, signal};
             let Ok(mut hup) = signal(SignalKind::hangup()) else {
-                eprintln!("lockdown-server: SIGHUP can't be watched; certificates reload on change only");
+                eprintln!(
+                    "lockdown-server: SIGHUP can't be watched; certificates reload on change only"
+                );
                 return;
             };
             while hup.recv().await.is_some() {
@@ -182,7 +184,9 @@ pub fn spawn_reloader(cert: Arc<ReloadingCert>, every: Option<Duration>) {
             loop {
                 tick.tick().await;
                 match cert.reload_if_changed() {
-                    Ok(true) => eprintln!("lockdown-server: certificate reloaded (the files changed)"),
+                    Ok(true) => {
+                        eprintln!("lockdown-server: certificate reloaded (the files changed)")
+                    }
                     Ok(false) => {}
                     Err(e) => eprintln!(
                         "lockdown-server: the certificate files changed but didn't load, the old one stays: {e}"
@@ -230,9 +234,7 @@ pub fn redirect_target(host: Option<&str>, uri: &Uri, https_port: u16) -> Option
     let name = if let Some(rest) = host.strip_prefix('[') {
         format!("[{}]", rest.split(']').next()?)
     } else {
-        host.rsplit_once(':')
-            .map_or(host, |(h, _)| h)
-            .to_string()
+        host.rsplit_once(':').map_or(host, |(h, _)| h).to_string()
     };
     let path = uri.path_and_query().map_or("/", |p| p.as_str());
     Some(if https_port == 443 {
@@ -254,7 +256,9 @@ pub fn redirect_app(https_port: u16) -> Router {
                 .and_then(|v| v.to_str().ok());
             match redirect_target(host, req.uri(), https_port) {
                 Some(to) => match HeaderValue::from_str(&to) {
-                    Ok(v) => (StatusCode::PERMANENT_REDIRECT, [(header::LOCATION, v)]).into_response(),
+                    Ok(v) => {
+                        (StatusCode::PERMANENT_REDIRECT, [(header::LOCATION, v)]).into_response()
+                    }
                     Err(_) => (StatusCode::BAD_REQUEST, "use https").into_response(),
                 },
                 None => (StatusCode::BAD_REQUEST, "use https").into_response(),
