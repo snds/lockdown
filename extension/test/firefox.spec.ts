@@ -133,9 +133,17 @@ async function openPopup(): Promise<Page> {
   const { addons } = (await rdp.ask("root", "listAddons")) as { addons: { actor: string; id: string }[] };
   const addon = addons.find((a) => a.id === ADDON_ID);
   expect(addon, JSON.stringify(addons)).toBeTruthy();
-  const target = (await rdp.ask(addon!.actor, "getTarget")) as { form?: { consoleActor?: string } };
-  const consoleActor = target.form?.consoleActor;
-  expect(consoleActor, JSON.stringify(target)).toBeTruthy();
+  // The descriptor's request for its target has been `getTarget` and,
+  // in older releases, `connect`; Playwright's Firefox answers one of them.
+  let consoleActor: string | undefined;
+  const tried: unknown[] = [addon];
+  for (const type of ["getTarget", "connect"]) {
+    const answer = (await rdp.ask(addon!.actor, type)) as { form?: { consoleActor?: string }; consoleActor?: string };
+    tried.push(answer);
+    consoleActor = answer.form?.consoleActor ?? answer.consoleActor;
+    if (consoleActor) break;
+  }
+  expect(consoleActor, JSON.stringify(tried)).toBeTruthy();
   const opened = ctx.waitForEvent("page", { timeout: 30_000 });
   await rdp.ask(consoleActor!, "evaluateJSAsync", { text: `browser.tabs.create({ url: "/popup.html" })` });
   const page = await opened;
