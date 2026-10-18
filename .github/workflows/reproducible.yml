@@ -186,15 +186,16 @@ jobs:
           path: |
             out/flatpak-hashes.txt
             out/flatpak-files.txt
+            out/flatpak-manifest.json
 
   desktop-compare:
     name: desktop packages, same bytes both times
-    needs: [desktop, flatpak]
+    needs: desktop
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: "{desktop,flatpak}-hashes-*"
+          pattern: desktop-hashes-*
       - name: Compare
         run: |
           a=desktop-hashes-ubuntu-24.04/desktop-hashes.txt
@@ -204,24 +205,35 @@ jobs:
             echo "::error::a desktop package differs between the two runners (lines above)"
             exit 1
           fi
-          fa=flatpak-hashes-ubuntu-24.04/flatpak-hashes.txt
-          fb=flatpak-hashes-ubuntu-22.04/flatpak-hashes.txt
-          cat "$fa" "$fb"
+          echo "reproducible: $(wc -l < "$a") desktop files, identical on both runners"
+
+  flatpak-compare:
+    name: flatpak, same files both times
+    needs: flatpak
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: flatpak-hashes-*
+      - name: Compare
+        run: |
+          fa=flatpak-hashes-ubuntu-24.04
+          fb=flatpak-hashes-ubuntu-22.04
+          cat "$fa/flatpak-hashes.txt" "$fb/flatpak-hashes.txt"
+          diff -u "$fa/flatpak-manifest.json" "$fb/flatpak-manifest.json" || true
           # Required: the Flatpak's files (OSTree stores no file times).
-          if [ "$(grep flatpak:content "$fa")" != "$(grep flatpak:content "$fb")" ]; then
-            diff -u flatpak-hashes-ubuntu-24.04/flatpak-files.txt flatpak-hashes-ubuntu-22.04/flatpak-files.txt || true
+          if ! diff -u "$fa/flatpak-files.txt" "$fb/flatpak-files.txt"; then
             echo "::error::the Flatpak's files differ between the two runners"
             exit 1
           fi
           # Reported: the commit and the bundle file.
           for what in commit bundle; do
-            if [ "$(grep "flatpak:$what" "$fa")" = "$(grep "flatpak:$what" "$fb")" ]; then
+            if [ "$(grep "flatpak:$what" "$fa/flatpak-hashes.txt")" = "$(grep "flatpak:$what" "$fb/flatpak-hashes.txt")" ]; then
               echo "flatpak $what: identical on both runners"
             else
-              echo "::warning::the Flatpak $what differs between the runners (reported, not required; docs/plan/29-release-polish.md §1)"
+              echo "flatpak $what: differs between the runners (reported, not required; docs/plan/29-release-polish.md §1)"
             fi
           done
-          echo "reproducible: $(wc -l < "$a") desktop files and the Flatpak's files, identical on both runners"
 
   # macOS and Windows bundles on two runner images each, compared and
   # reported (never failing the run): built on pushes to main and by hand,

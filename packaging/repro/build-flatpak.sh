@@ -50,4 +50,6 @@ content="$(ostree --repo="$work/repro" ls -R -C "$ref" | sha256sum | cut -d' ' -
 } >"$out/flatpak-hashes.txt"
 ostree --repo="$work/repro" show "$ref"
 ostree --repo="$work/repro" ls -R -C "$ref" >"$out/flatpak-files.txt"
+# flatpak-builder's own record of the build, the one file not from stage/.
+ostree --repo="$work/repro" cat "$ref" /files/manifest.json >"$out/flatpak-manifest.json"
 cat "$out/flatpak-hashes.txt"
