@@ -733,13 +733,44 @@ impl EventStream {
     /// Keep-alives are skipped, and so are events of another name or with
     /// data that isn't a [`wire::LiveEvent`].
     pub fn next_event(&mut self) -> Result<Option<wire::LiveEvent>> {
-        next_sse_event(&mut self.reader)
+        loop {
+            match read_sse(&mut self.reader)? {
+                None => return Ok(None),
+                Some(SseItem::Event(e)) => return Ok(Some(e)),
+                Some(SseItem::KeepAlive) => {}
+            }
+        }
     }
+
+    /// The next event or keep-alive (about every 20 s), so a reader can
+    /// look up between events; `Ok(None)` when the server closed.
+    pub fn next_item(&mut self) -> Result<Option<SseItem>> {
+        read_sse(&mut self.reader)
+    }
+}
+
+/// What the live channel delivered.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SseItem {
+    /// An event.
+    Event(wire::LiveEvent),
+    /// A keep-alive comment: the connection is alive, nothing changed.
+    KeepAlive,
 }
 
 /// Reads server-sent events from `reader` until one named `lockdown`
 /// carries a [`wire::LiveEvent`].
 pub fn next_sse_event(reader: &mut impl std::io::BufRead) -> Result<Option<wire::LiveEvent>> {
+    loop {
+        match read_sse(reader)? {
+            None => return Ok(None),
+            Some(SseItem::Event(e)) => return Ok(Some(e)),
+            Some(SseItem::KeepAlive) => {}
+        }
+    }
+}
+
+fn read_sse(reader: &mut impl std::io::BufRead) -> Result<Option<SseItem>> {
     let mut name = String::new();
     let mut data = String::new();
     let mut line = Vec::new();
@@ -766,11 +797,14 @@ pub fn next_sse_event(reader: &mut impl std::io::BufRead) -> Result<Option<wire:
             name.clear();
             data.clear();
             if let Some(event) = event {
-                return Ok(Some(event));
+                return Ok(Some(SseItem::Event(event)));
             }
             continue;
         }
         if text.starts_with(':') {
+            if name.is_empty() && data.is_empty() {
+                return Ok(Some(SseItem::KeepAlive));
+            }
             continue;
         }
         let (field, value) = text.split_once(':').unwrap_or((text, ""));
