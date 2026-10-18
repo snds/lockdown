@@ -1,5 +1,5 @@
 {
- "as_of": "0151bea",
+ "as_of": "a7c49c6",
  "source": "docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)",
  "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, a web vault the server serves (the same core on wasm32-wasip1 in a worker, doc 17), and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Lockdown's clients and server speak TLS 1.3 with the hybrid X25519MLKEM768 group first (crates/tls, doc 20); plain HTTP is refused away from loopback. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and the web vault refuses some features in words for now (doc 17 §10). OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.",
  "non_v1_built": [
@@ -344,12 +344,15 @@
    "name": "Global quick-access palette",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
+    "core",
     "desktop",
-    "web"
+    "web",
+    "extension",
+    "cli"
    ],
-   "left": "The system-wide hotkey outside the window, fill and show-code actions, and a shared Rust search index (search runs over summaries in TypeScript).",
+   "left": "The system-wide shortcut on Wayland, which has no global-shortcut API for apps (OS-level); macOS, Windows and X11 have it.",
    "evidence": [
     "apps/desktop/src/features/palette/quick-palette.tsx:47 (Cmd/Ctrl+K inside the window)",
     "apps/desktop/src/features/palette/quick-palette.test.tsx:141",
@@ -430,7 +433,7 @@
     "desktop",
     "extension"
    ],
-   "left": "Store packaging, a popup on unicron, a Firefox test run, Windows (named-pipe transport); Safari waits on OS-level work.",
+   "left": "Store packaging, a Firefox test run and the Windows named-pipe transport (the release slice); Safari waits on OS-level work. The popup is on unicron.",
    "evidence": [
     "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)",
     "crates/wasm/src/lib.rs:312 the_wire_functions_answer_without_a_browser",
@@ -774,12 +777,12 @@
    "name": "Automatic passkey upgrade",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "extension"
    ],
-   "left": "The OS-level automatic upgrade (deferred); in the extension it works only right after Lockdown filled that login's password on that site.",
+   "left": "The OS-level automatic upgrade (deferred); in the extension it follows any sign-in Lockdown saw.",
    "evidence": [
     "crates/ffi/src/lib.rs:4 (UniFFI facade is a skeleton; no Swift or Kotlin app exists)"
    ],
@@ -892,13 +895,14 @@
    "name": "Code display aids",
    "target": "beat",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
-    "web"
+    "web",
+    "extension"
    ],
-   "left": "Search focus on launch; the clock check against the account server is built (haptics are a phone item).",
+   "left": "Nothing for desktop and web; haptics are a phone item.",
    "evidence": [
     "apps/desktop/src/features/codes/codes-view.test.tsx:34 (next code in the last seconds)",
     "docs/plan/10-desktop-shell.md:201 (skew notice dormant until the core measures skew)"
@@ -956,9 +960,11 @@
    "status": "partial",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web",
+    "extension"
    ],
-   "left": "The scanner, the activation-page allow-list, opening the real page with the code and autofill, and the core producing approval requests (the sheet is a seam).",
+   "left": "Checking the allow-list's parameter names against the live vendor pages, and exercising the desktop camera in a real engine; scan, allow-list, approval, opening the page and filling are built and tested in Chromium.",
    "evidence": [
     "crates/approval/src/lib.rs:24 (ApprovalKind::DeviceCode, skeleton)",
     "apps/desktop/src/features/approvals/approval-sheet.test.tsx:50 (a scanned device code keeps the approve path)",
@@ -973,12 +979,13 @@
    "name": "Anti-phishing approval gate",
    "target": "novel",
    "review": true,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
-    "desktop"
+    "desktop",
+    "web"
    ],
-   "left": "Wire the gate into real device-code, Steam QR and passkey QR flows; nothing calls it yet.",
+   "left": "Nothing for desktop and web: device codes, passkey QR and Steam QR go through the gate (only a camera scan passes).",
    "evidence": [
     "crates/approval/src/lib.rs:209 a_pasted_device_code_is_refused_by_the_proximity_rule",
     "apps/desktop/src/features/approvals/approval-sheet.test.tsx:42"
@@ -1440,7 +1447,7 @@
     "desktop",
     "web"
    ],
-   "left": "Keep copies out of Windows clipboard history and cloud clipboard, and block screen capture on reveal screens.",
+   "left": "Verifying the Windows and macOS marks on those platforms (built, not yet run there); Linux has no capture-blocking call.",
    "evidence": [
     "apps/desktop/src-tauri/src/clipboard.rs:124 clears_only_its_own_copy_while_it_is_still_there",
     "D85"
@@ -1787,7 +1794,7 @@
     "server",
     "web"
    ],
-   "left": "Log mirrors, and a contacts screen in the web vault to scan a QR into; phrase-verified checks are built.",
+   "left": "Log mirrors; phrase-verified checks and the People screen in the web vault are built.",
    "evidence": [
     "crates/sync/src/kt.rs:798 a_swapped_device_key_an_unknown_device_and_hidden_changes_are_caught",
     "bins/cli/tests/transparency.rs:243 a_forked_log_is_caught_by_the_citation_in_the_vault_head",
@@ -1871,7 +1878,7 @@
     "desktop",
     "web"
    ],
-   "left": "ML-DSA on device signatures, vault heads and the key-transparency log (they stay Ed25519); new wraps go to hybrid keys and identity manifests carry ML-DSA-65. Every device needs this release before any publishes its post-quantum key.",
+   "left": "ML-DSA on device signatures, vault heads and the key-transparency log (they stay Ed25519; plan in doc 26 §10); hybrid wraps, ML-DSA-65 on identity manifests and the D248 rollout rule are built.",
    "evidence": [
     "crates/crypto/src/kem.rs:35 x_wing_round_trip",
     "D23, D30 (X-Wing peer wraps in the identity crate)",
@@ -1950,7 +1957,7 @@
     "desktop",
     "web"
    ],
-   "left": "Locked memory pages kept out of swap; the webview still holds typed and revealed strings briefly (D91).",
+   "left": "Locking the identity crate's own key types, and measuring web engines other than Chromium; secret pages are out of swap, core dumps are off, and typed secrets clear on hide and after a minute out of focus.",
    "evidence": [
     "crates/app/src/revealed.rs:86 the_buffer_is_zeroed_before_it_is_freed",
     "crates/crypto/src/secret.rs:7 (secrecy SecretBox)",
