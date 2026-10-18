@@ -90,11 +90,6 @@ fn every_sample_file_previews_then_lands() {
     );
     assert!(detail.place.organization.favourite);
     // KeePass's nested groups became nested folders; 1Password's tags, tags.
-    let bank = rows
-        .iter()
-        .find(|r| r.title == "Example Bank" && r.kind == "login")
-        .unwrap();
-    let bank = app.show(&bank.id, false).unwrap();
     assert!(
         folders.iter().any(|f| f.path == "Internet / Banking"),
         "{folders:?}"

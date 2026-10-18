@@ -239,6 +239,9 @@ pub(crate) mod commands {
     /// after the `Reveal` gate. A plain file needs `plain_confirmed`. The
     /// chosen place stays held until the write succeeds, so the gate can
     /// ask and call again.
+    // Two of the eight are Tauri's injected states; the six the webview
+    // sends are the place, the format, the password, the yes, the vault, the gate.
+    #[allow(clippy::too_many_arguments)]
     #[tauri::command]
     pub(crate) async fn export_save(
         app: State<'_, App>,
