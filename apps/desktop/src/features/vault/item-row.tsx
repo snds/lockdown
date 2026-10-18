@@ -1,6 +1,8 @@
 import { Badge, Icon, IconButton, Item, ItemActions, ItemContent, ItemDescription, ItemMain, ItemMedia, ItemTitle, type IconName } from "@unicron/ui"
 import { CrownJewelMark } from "@unicron/ui/security/crown-jewel"
 
+import type { ReactNode } from "react"
+
 import type { ItemSummary } from "@/core/types"
 
 import { kindIcon } from "./list-model"
@@ -11,6 +13,8 @@ interface ItemRowProps {
   onSelect: (id: string) => void
   /** The row's own copy button (password, code, Wi-Fi password, card number), through the core. */
   onCopy?: (row: ItemSummary) => void
+  /** The row's own menu (favourite, folder, tags, vault, archive). */
+  actions?: ReactNode
 }
 
 /** The three sign-in methods a Login row can carry (brief §1 promise A). */
@@ -28,7 +32,7 @@ const METHODS: Record<string, [IconName, string]> = {
  * copy button stays a separate control beside it. Rows take the density
  * knobs through `data-row`.
  */
-export function ItemRow({ row, selected, onSelect, onCopy }: ItemRowProps) {
+export function ItemRow({ row, selected, onSelect, onCopy, actions }: ItemRowProps) {
   const subtitle = row.subtitle || [row.username, row.site].filter(Boolean).join(" · ")
   const copy = onCopy && row.copy && row.state !== "trashed" ? row.copy : null
   return (
@@ -40,9 +44,11 @@ export function ItemRow({ row, selected, onSelect, onCopy }: ItemRowProps) {
         <ItemContent>
           <ItemTitle>
             <span className="truncate">{row.title || row.site || row.id}</span>
+            {row.favourite && <Icon name="star" fill label="favourite" />}
             {row.crown_jewel && <CrownJewelMark size="sm" />}
             {row.conflict_copy && <Badge variant="secondary">Conflict copy</Badge>}
             {row.state === "trashed" && <Badge variant="secondary">In the trash</Badge>}
+            {row.state === "archived" && <Badge variant="secondary">Archived</Badge>}
           </ItemTitle>
           {(subtitle || row.methods.length > 0) && (
             <ItemDescription>
@@ -59,9 +65,10 @@ export function ItemRow({ row, selected, onSelect, onCopy }: ItemRowProps) {
           )}
         </ItemContent>
       </ItemMain>
-      {copy && (
+      {(copy || actions) && (
         <ItemActions>
-          <IconButton label={`Copy ${copy.label}`} icon="content_copy" size="icon-sm" onClick={() => onCopy?.(row)} />
+          {copy && <IconButton label={`Copy ${copy.label}`} icon="content_copy" size="icon-sm" onClick={() => onCopy?.(row)} />}
+          {actions}
         </ItemActions>
       )}
     </Item>

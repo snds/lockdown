@@ -12,7 +12,11 @@
 //! { "field_id": "user", "action": "set", "text": "me" }
 //! { "field_id": "wifi.hidden", "action": "set", "flag": true }
 //! { "label": "Door code", "kind": "hidden", "action": "set", "secret": […] }
+//! { "field_id": "url.1", "action": "set", "text": "shop.example", "match_rule": "base_domain" }
 //! ```
+//!
+//! `match_rule` goes with a web address's `text` only (one of
+//! `lockdown_vault::compose::MATCH_RULES`; the core checks it).
 //!
 //! A secret is a byte array, never a string, and is wiped when the input
 //! drops; `set` carries exactly one of `text`, `secret` or `flag`.
@@ -31,6 +35,8 @@ pub struct FieldChangeInput {
     text: Option<String>,
     secret: Option<Vec<u8>>,
     flag: Option<bool>,
+    #[serde(default)]
+    match_rule: Option<String>,
 }
 
 impl Drop for FieldChangeInput {
@@ -62,6 +68,11 @@ impl FieldChangeInput {
         .filter(|v| **v)
         .count();
         let change = match self.action.as_str() {
+            _ if self.match_rule.is_some() && self.text.is_none() => {
+                return Err(refused(format!(
+                    "{name}: a match rule goes with a web address's text"
+                )));
+            }
             "keep" | "generate" | "remove" if values > 0 => {
                 return Err(refused(format!(
                     "{name}: '{}' carries no value",
@@ -80,7 +91,13 @@ impl FieldChangeInput {
                 if let Some(bytes) = self.secret.take() {
                     Change::Set(FieldInput::Secret(Zeroizing::new(bytes)))
                 } else if let Some(text) = self.text.take() {
-                    Change::Set(FieldInput::Text(text))
+                    match self.match_rule.take() {
+                        Some(match_rule) => Change::Set(FieldInput::Url {
+                            value: text,
+                            match_rule,
+                        }),
+                        None => Change::Set(FieldInput::Text(text)),
+                    }
                 } else {
                     Change::Set(FieldInput::Flag(self.flag.unwrap_or(false)))
                 }
@@ -152,6 +169,26 @@ mod tests {
     }
 
     #[test]
+    fn a_web_address_carries_its_match_rule() {
+        let changes = parse(
+            r#"[{"field_id": "url.1", "action": "set", "text": "shop.example", "match_rule": "base_domain"},
+                {"field_id": "url.0", "action": "set", "text": "a.example"}]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            changes[0].change,
+            Change::Set(FieldInput::Url {
+                value: "shop.example".into(),
+                match_rule: "base_domain".into()
+            })
+        );
+        assert_eq!(
+            changes[1].change,
+            Change::Set(FieldInput::Text("a.example".into()))
+        );
+    }
+
+    #[test]
     fn a_malformed_change_is_refused_with_its_name() {
         for (json, words) in [
             (r#"[{"field_id": "pw", "action": "set"}]"#, "exactly one"),
@@ -174,6 +211,10 @@ mod tests {
             (
                 r#"[{"label": "x", "kind": "passkey", "action": "set", "text": "a"}]"#,
                 "can add",
+            ),
+            (
+                r#"[{"field_id": "url.0", "action": "keep", "match_rule": "never"}]"#,
+                "match rule",
             ),
         ] {
             let err = parse(json).unwrap_err();

@@ -129,7 +129,13 @@ export function ItemField({ itemId, field, onNotice, format = "plain", largeType
       </ItemContent>
       <ItemActions>
         {field.kind === "url" && field.value ? (
-          <Button variant="ghost" size="sm" onClick={() => client.openSite(field.value!).catch((e) => setError(describeError(e)))}>
+          <Button variant="ghost" size="sm" onClick={() =>
+              client
+                .openSite(field.value!)
+                .then(() => client.noteUse(itemId).catch(() => {}))
+                .catch((e) => setError(describeError(e)))
+            }
+          >
             <Icon name="open_in_new" data-icon="inline-start" />
             Open
           </Button>

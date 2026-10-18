@@ -13,6 +13,13 @@ import { ItemSecurity } from "@/features/security/item-security"
 import { ItemCodeDisplay } from "./code-display"
 import { RiskTierBadge } from "@unicron/ui/security/risk-tier-badge"
 
+import { FilesPanel } from "@/features/organization/files-panel"
+import { MarkdownView } from "@/features/organization/markdown-view"
+import { matchRuleWords } from "@/features/organization/org-model"
+import { PlacePanel } from "@/features/organization/place-panel"
+import { useVaults } from "@/features/organization/vaults-context"
+import { useGate } from "@/app/gate"
+
 import { ItemCrownJewel } from "./crown-jewel"
 import { sectionsOf } from "./detail-model"
 import { conflictPair, kindLabel } from "./list-model"
@@ -29,6 +36,8 @@ interface DetailPaneProps {
   /** The item came back from the trash, or a conflict was resolved: reload, keep the selection. */
   onChanged: (notice: string) => void
   onNotice: (text: string) => void
+  /** The item was sealed again under a new id (moved to another vault, or its class changed). */
+  onReplaced?: (id: string, notice: string) => void
 }
 
 type Resolve = "keep-this" | "keep-other" 
@@ -45,8 +54,11 @@ type Resolve = "keep-this" | "keep-other"
  * offers Restore; a conflict (D58) offers to keep this copy or the other,
  * which trashes the loser after a confirm, so nothing is destroyed.
  */
-export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice }: DetailPaneProps) {
+export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, onReplaced }: DetailPaneProps) {
   const client = useClient()
+  const gate = useGate()
+  const { vaults } = useVaults()
+  const [purging, setPurging] = useState(false)
   const { forKind, fieldOf } = useTemplates()
   const [item, setItem] = useState<ItemDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -87,16 +99,31 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice }:
     }
   }
 
-  /** Keep one copy of a conflict: the other goes to the trash, readable there through its grace period. */
+  /** Delete a trashed item for good now, after a confirm (a crown jewel's asks it's you). */
+  const purge = async () => {
+    setPurging(false)
+    try {
+      await gate.run((g) => client.purge(id, g))
+      onTrashed()
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }
+
+  /**
+   * Keep one copy of a conflict: the other goes to the trash, readable
+   * there through its grace period; a kept conflict copy takes the item's
+   * own title back (`resolve_conflict`).
+   */
   const resolve = async (which: Resolve) => {
     if (!other) return
     setResolving(null)
     try {
       if (which === "keep-this") {
-        await client.trash(other.id)
+        await client.resolveConflict(id, other.id)
         onChanged("Kept this copy; the other is in the trash.")
       } else {
-        await client.trash(id)
+        await client.resolveConflict(other.id, id)
         onTrashed()
       }
     } catch (e) {
@@ -174,6 +201,10 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice }:
               <Icon name="restore_from_trash" data-icon="inline-start" />
               Restore
             </Button>
+            <Button variant="ghost-destructive" size="sm" onClick={() => setPurging(true)}>
+              <Icon name="delete_forever" data-icon="inline-start" />
+              Delete now
+            </Button>
           </div>
         )}
         {!trashed && (
@@ -191,6 +222,14 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice }:
           </div>
         )}
       </header>
+      <PlacePanel
+        item={item}
+        title={title}
+        rows={rows}
+        onChanged={onChanged}
+        onReplaced={(newId, text) => (onReplaced ? onReplaced(newId, text) : onChanged(text))}
+        onError={setError}
+      />
       {!trashed && other && (
         <section aria-label="Resolve the conflict" className="flex flex-col gap-2 rounded-xl border p-3 text-sm">
           <p className="flex items-center gap-2">
@@ -215,6 +254,25 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice }:
       )}
       {!trashed && <ItemSecurity key={`${item.id}:${item.version}`} itemId={item.id} onNotice={onNotice} />}
       {item.crown_jewel ? <ItemCrownJewel title={title}>{body}</ItemCrownJewel> : body}
+      <FilesPanel itemId={item.id} files={item.attachments ?? []} editable={!trashed && Boolean(template?.creatable)} onChanged={onChanged} onNotice={onNotice} />
+      <Dialog open={purging} onOpenChange={setPurging}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete "{title}" for good?</DialogTitle>
+            <DialogDescription>
+              Its keys are destroyed now, here and on every device at the next sync, so no copy anywhere can be read again. This can't be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogActions>
+            <DialogAction kind="cancel" onClick={() => setPurging(false)}>
+              Cancel
+            </DialogAction>
+            <DialogAction kind="destructive" onClick={() => void purge()}>
+              Delete for good
+            </DialogAction>
+          </DialogActions>
+        </DialogContent>
+      </Dialog>
       <Dialog open={resolving !== null} onOpenChange={(o) => !o && setResolving(null)}>
         <DialogContent>
           <DialogHeader>
@@ -238,7 +296,10 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice }:
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Move to the trash?</DialogTitle>
-            <DialogDescription>"{title}" leaves the list and stays readable in Deleted through its grace period. Nothing is destroyed yet.</DialogDescription>
+            <DialogDescription>
+              "{title}" leaves the list and stays readable in Deleted for {vaults.find((v) => v.id === item.vault_id)?.trash_days ?? 30} days, then it is purged on every
+              device. Nothing is destroyed yet.
+            </DialogDescription>
           </DialogHeader>
           <DialogActions>
             <DialogAction kind="cancel" onClick={() => setConfirm(false)}>
@@ -286,11 +347,20 @@ function layoutFor(item: ItemDetail, template: TemplateView | null, field: Field
       const password = fields.find((f) => f.field_id === "pw")
       const passkeys = fields.filter((f) => f.kind === "passkey")
       const urls = fields.filter(isUrl)
-      const rest = fields.filter((f) => !isMethod(f) && !isUrl(f) && f.field_id !== "user")
+      const isSignIn = (f: FieldView) => f.field_id === "sign_in_method" || f.field_id === "sign_in_provider"
+      const rest = fields.filter((f) => !isMethod(f) && !isUrl(f) && !isSignIn(f) && f.field_id !== "user")
       const user = fields.find((f) => f.field_id === "user")
+      const method = fields.find((f) => f.field_id === "sign_in_method")?.value
+      const provider = fields.find((f) => f.field_id === "sign_in_provider")?.value
       return (
         <>
           <Block title="Sign-in methods">
+            {(method || provider) && (
+              <p className="flex items-center gap-2 px-3 text-sm">
+                <Badge variant="secondary">{method ?? "Another account"}</Badge>
+                {provider && <span className="text-muted-foreground">through {provider}</span>}
+              </p>
+            )}
             {user && field(user)}
             {password ? field(password) : <p className="text-sm text-muted-foreground">No password; this login uses other methods.</p>}
             {passkeys.map((p) => (
@@ -304,7 +374,16 @@ function layoutFor(item: ItemDetail, template: TemplateView | null, field: Field
             ))}
             {codeBlocks}
           </Block>
-          {urls.length > 0 && <Block title="Websites">{urls.map((u) => field(u))}</Block>}
+          {urls.length > 0 && (
+            <Block title="Websites">
+              {urls.map((u) => (
+                <div key={u.field_id} className="flex flex-col">
+                  {field(u)}
+                  <p className="px-3 text-xs text-muted-foreground">Offered on: {matchRuleWords(u.match_rule).toLowerCase()}</p>
+                </div>
+              ))}
+            </Block>
+          )}
           {rest.length > 0 && sections(rest)}
         </>
       )
@@ -328,7 +407,7 @@ function layoutFor(item: ItemDetail, template: TemplateView | null, field: Field
         <>
           {body?.value ? (
             <section aria-label="Note" className="rounded-md border p-3">
-              <pre className="font-sans text-sm whitespace-pre-wrap">{body.value}</pre>
+              <MarkdownView text={body.value} />
             </section>
           ) : (
             <p className="text-sm text-muted-foreground">An empty note. Edit it to write something.</p>

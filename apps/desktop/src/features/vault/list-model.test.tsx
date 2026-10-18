@@ -57,7 +57,7 @@ describe("the vault list (D93)", () => {
     expect(rowsIn(rows, "deleted").map((r) => r.id)).toEqual(["5"])
     expect(rowsIn(rows, "codes").map((r) => r.id)).toEqual(["1"])
     expect(rowsIn(rows, "attention").map((r) => r.id)).toEqual(["4"])
-    expect(countViews(rows)).toEqual({ all: 5, passkeys: 1, codes: 1, "wi-fi": 1, expiring: 1, attention: 1, deleted: 1 })
+    expect(countViews(rows)).toEqual({ all: 5, passkeys: 1, codes: 1, "wi-fi": 1, expiring: 1, attention: 1, deleted: 1, favourites: 0, archived: 0 })
   })
 
   it("searches titles, sites and usernames inside the view", () => {

@@ -58,6 +58,7 @@ pub fn templates() -> Vec<TemplateView> {
                     section: f.section.to_string(),
                     grouped: f.grouped,
                     hint: f.hint.to_string(),
+                    repeats: f.repeats,
                 })
                 .collect(),
         })
@@ -246,8 +247,22 @@ impl Session {
         kind: &str,
         title: Option<&str>,
         crown_jewel: bool,
+        changes: Vec<FieldChange>,
+    ) -> Result<Id, String> {
+        let first = self.vault().context().vault_id;
+        self.add_item_in(first, kind, title, crown_jewel, changes)
+    }
+
+    /// [`Self::add_item`] into the vault `vault_id` of the persona.
+    pub fn add_item_in(
+        &mut self,
+        vault_id: Id,
+        kind: &str,
+        title: Option<&str>,
+        crown_jewel: bool,
         mut changes: Vec<FieldChange>,
     ) -> Result<Id, String> {
+        self.check_folder(vault_id, &changes)?;
         let kind = kind_named(kind)?;
         let given = title.map(str::trim).filter(|t| !t.is_empty());
         normalize_codes(kind, &mut changes, given)?;
@@ -256,8 +271,7 @@ impl Session {
             None => derived_title(kind, &changes).unwrap_or_default(),
         };
         let id = self
-            .opened
-            .vault
+            .vault_by_id_mut(vault_id)?
             .add_item(kind, &title, crown_jewel, changes)
             .map_err(|e| e.to_string())?;
         self.save()?;
@@ -273,9 +287,18 @@ impl Session {
         mut changes: Vec<FieldChange>,
     ) -> Result<u64, String> {
         let item_id = parse_id(id)?;
-        let kind = self.vault().item(item_id).map_err(|e| e.to_string())?.kind;
+        let vault_id = self.holding(item_id)?.context().vault_id;
+        self.check_folder(vault_id, &changes)?;
+        let kind = self
+            .holding(item_id)?
+            .item(item_id)
+            .map_err(|e| e.to_string())?
+            .kind;
         let existing_title = text_of(
-            &self.vault().open_item(item_id).map_err(|e| e.to_string())?,
+            &self
+                .holding(item_id)?
+                .open_item(item_id)
+                .map_err(|e| e.to_string())?,
             "title",
         );
         let issuer = title
@@ -285,8 +308,7 @@ impl Session {
             .or(existing_title);
         normalize_codes(kind, &mut changes, issuer.as_deref())?;
         let n = self
-            .opened
-            .vault
+            .holding_mut(item_id)?
             .edit_item(item_id, title, changes)
             .map_err(|e| e.to_string())?;
         self.save()?;
@@ -300,7 +322,10 @@ impl Session {
         item_id: Id,
         set: Vec<FieldChange>,
     ) -> Result<Vec<FieldChange>, String> {
-        let fields = self.vault().open_item(item_id).map_err(|e| e.to_string())?;
+        let fields = self
+            .holding(item_id)?
+            .open_item(item_id)
+            .map_err(|e| e.to_string())?;
         let mut changes: Vec<FieldChange> = fields
             .iter()
             .filter(|f| f.field_id != "title")

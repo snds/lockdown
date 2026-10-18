@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 import { Button, Icon, NativeSelect, NativeSelectOption, Separator, type IconName } from "@unicron/ui"
 
 import type { PersonaInfo } from "@/core/types"
+import type { Scope } from "@/features/organization/org-model"
 import { VIEW_LABELS, type ListView } from "@/features/vault/list-model"
 
 /** The areas of the window (brief §3): the vault's views, and four screens. */
@@ -12,6 +13,8 @@ export interface Nav {
   area: Area
   /** Which list the vault shows; only read while `area` is `vault`. */
   view: ListView
+  /** A vault, folder or tag the list is narrowed to (features/organization). */
+  scope?: Scope
 }
 
 interface AppShellProps {
@@ -20,16 +23,20 @@ interface AppShellProps {
   counts: Record<ListView, number>
   onNavigate: (nav: Nav) => void
   onLock: () => void
+  /** The vaults, folders and tags sections, under the smart views. */
+  organization?: ReactNode
   children: ReactNode
 }
 
 const VIEWS: Array<[ListView, IconName]> = [
   ["all", "inventory_2"],
+  ["favourites", "star"],
   ["passkeys", "passkey"],
   ["codes", "timer"],
   ["wi-fi", "wifi"],
   ["expiring", "schedule"],
   ["attention", "warning"],
+  ["archived", "archive"],
   ["deleted", "delete"],
 ]
 
@@ -48,7 +55,7 @@ const SCREENS: Array<[Area, IconName, string]> = [
  * own screen, because a code is usually part of a Login (brief §3). Rows
  * take the density knobs through `data-row`.
  */
-export function AppShell({ nav, personas, counts, onNavigate, onLock, children }: AppShellProps) {
+export function AppShell({ nav, personas, counts, onNavigate, onLock, organization, children }: AppShellProps) {
   const active = personas.find((p) => p.active)
   return (
     <div className="flex h-full min-h-0 flex-col md:flex-row">
@@ -77,11 +84,12 @@ export function AppShell({ nav, personas, counts, onNavigate, onLock, children }
             icon={icon}
             label={VIEW_LABELS[view]}
             count={counts[view]}
-            current={view === "codes" ? nav.area === "codes" : nav.area === "vault" && nav.view === view}
+            current={view === "codes" ? nav.area === "codes" : nav.area === "vault" && nav.view === view && !nav.scope}
             tone={view === "codes" ? "codes" : view === "attention" && counts.attention > 0 ? "attention" : undefined}
             onClick={() => onNavigate(view === "codes" ? { area: "codes", view: "codes" } : { area: "vault", view })}
           />
         ))}
+        {organization}
         <Separator className="my-1 hidden md:block" />
         {SCREENS.map(([area, icon, label]) => (
           <NavRow key={area} icon={icon} label={label} current={nav.area === area} onClick={() => onNavigate({ area, view: nav.view })} />
@@ -101,11 +109,13 @@ interface NavRowProps {
   count?: number
   current: boolean
   tone?: "codes" | "attention"
+  /** How many levels deep (a folder inside a folder, a nested tag). */
+  depth?: number
   onClick: () => void
 }
 
 /** One sidebar entry. The count is spoken as words, never shown alone. */
-function NavRow({ icon, label, count, current, tone, onClick }: NavRowProps) {
+export function NavRow({ icon, label, count, current, tone, depth = 0, onClick }: NavRowProps) {
   return (
     <Button
       variant={current ? "secondary" : "ghost"}
@@ -116,6 +126,7 @@ function NavRow({ icon, label, count, current, tone, onClick }: NavRowProps) {
       aria-current={current ? "page" : undefined}
       onClick={onClick}
     >
+      {depth > 0 && <span aria-hidden="true" className="inline-block shrink-0" style={{ width: `${depth * 0.75}rem` }} />}
       <Icon name={icon} data-icon="inline-start" />
       <span className="flex-1 truncate text-left">{label}</span>
       {count !== undefined && count > 0 && (

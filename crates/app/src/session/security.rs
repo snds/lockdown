@@ -89,9 +89,8 @@ impl Session {
         &self,
         mut each_password: impl FnMut(&ItemFacts, &str, &str, &[u8]),
     ) -> Result<Vec<ItemFacts>, String> {
-        let vault = self.vault();
         let mut out = Vec::new();
-        for item in vault.items() {
+        for (vault, item) in self.vaults().flat_map(|v| v.items().map(move |i| (v, i))) {
             if item.kind.hidden() || item.state != ItemState::Live {
                 continue;
             }
@@ -143,14 +142,20 @@ impl Session {
         dismissal: Option<Dismissal>,
     ) -> Result<u64, String> {
         let item_id = parse_id(id)?;
-        let item = self.vault().item(item_id).map_err(|e| e.to_string())?;
+        let item = self
+            .holding(item_id)?
+            .item(item_id)
+            .map_err(|e| e.to_string())?;
         if !matches!(item.state, ItemState::Live | ItemState::Archived) {
             return Err("this item is in the trash; restore it first".into());
         }
         if key.is_empty() || key.len() > 64 || !key.bytes().all(|b| b.is_ascii_graphic()) {
             return Err(format!("'{key}' isn't a finding"));
         }
-        let mut fields = self.vault().open_item(item_id).map_err(|e| e.to_string())?;
+        let mut fields = self
+            .holding(item_id)?
+            .open_item(item_id)
+            .map_err(|e| e.to_string())?;
         let mut security = ItemSecurity::read(&fields);
         let changed = match dismissal {
             Some(d) => security.dismissed.insert(key.to_string(), d) != Some(d),
@@ -165,8 +170,7 @@ impl Session {
             fields.push(PlainField::text(SECURITY_FIELD, SECURITY_LABEL, &text));
         }
         let n = self
-            .opened
-            .vault
+            .holding_mut(item_id)?
             .update_item(item_id, fields)
             .map_err(|e| e.to_string())?;
         self.save()?;
@@ -176,7 +180,10 @@ impl Session {
     /// The first web address saved on a live item, for "Change password".
     pub(crate) fn security_site(&self, id: &str) -> Result<Option<String>, String> {
         let item_id = parse_id(id)?;
-        let fields = self.vault().open_item(item_id).map_err(|e| e.to_string())?;
+        let fields = self
+            .holding(item_id)?
+            .open_item(item_id)
+            .map_err(|e| e.to_string())?;
         Ok(fields.iter().find_map(|f| match &f.value {
             FieldValue::Url { value, .. } if f.kind == FieldKind::Url => Some(value.clone()),
             _ => None,

@@ -5,7 +5,7 @@ import type { ItemSummary, SmartView } from "@/core/types"
 /** What the list shows: everything, or one smart view (D93; brief §3). */
 export type ListView = "all" | SmartView
 
-export type SortKey = "title" | "changed"
+export type SortKey = "title" | "changed" | "used"
 export type GroupBy = "kind" | "none"
 
 /** The defaults Sean decided (D93): alphabetical by title, grouped by kind. */
@@ -73,38 +73,51 @@ export const VIEW_LABELS: Record<ListView, string> = {
   expiring: "Expiring",
   attention: "Needs attention",
   deleted: "Deleted",
+  favourites: "Favourites",
+  archived: "Archived",
 }
 
-/** The rows a view holds. "All" leaves trashed items to the Deleted view. */
+/** The rows a view holds. "All" leaves trashed and archived items to their own views. */
 export function rowsIn(rows: ItemSummary[], view: ListView): ItemSummary[] {
-  if (view === "all") return rows.filter((r) => r.state !== "trashed")
+  if (view === "all") return rows.filter((r) => r.state !== "trashed" && r.state !== "archived")
   return rows.filter((r) => r.views.includes(view))
 }
 
 /** How many rows each view holds, for the sidebar's counts. */
 export function countViews(rows: ItemSummary[]): Record<ListView, number> {
-  const counts: Record<ListView, number> = { all: 0, passkeys: 0, codes: 0, "wi-fi": 0, expiring: 0, attention: 0, deleted: 0 }
+  const counts: Record<ListView, number> = { all: 0, passkeys: 0, codes: 0, "wi-fi": 0, expiring: 0, attention: 0, deleted: 0, favourites: 0, archived: 0 }
   for (const r of rows) {
-    if (r.state !== "trashed") counts.all += 1
+    if (r.state !== "trashed" && r.state !== "archived") counts.all += 1
     for (const v of r.views) counts[v] += 1
   }
   return counts
 }
 
-/** A search over the words a row shows: title, site, username, and the subtitle its template names (a network, a card's holder). */
-export function searchRows(rows: ItemSummary[], query: string): ItemSummary[] {
+/**
+ * A search over the words a row shows: title, site, username, the subtitle
+ * its template names (a network, a card's holder), and its tags and
+ * folder (`folders`: a folder's path by id). A crown jewel is found by its
+ * title alone (02-model §3: "never in search previews").
+ */
+export function searchRows(rows: ItemSummary[], query: string, folders?: Map<string, string>): ItemSummary[] {
   const q = query.trim().toLowerCase()
   if (!q) return rows
-  return rows.filter((r) => [r.title, r.site, r.username, r.subtitle].some((s) => s.toLowerCase().includes(q)))
+  return rows.filter((r) => {
+    const words = r.crown_jewel
+      ? [r.title]
+      : [r.title, r.site, r.username, r.subtitle, ...(r.tags ?? []).map((t) => `#${t}`), (r.folder && folders?.get(r.folder)) || ""]
+    return words.some((s) => s.toLowerCase().includes(q))
+  })
 }
 
 const byTitle = (a: ItemSummary, b: ItemSummary) =>
   a.title.localeCompare(b.title, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id)
 
-/** A stable sort: title A–Z, or newest change first (ties by title). */
+/** A stable sort: title A–Z, newest change first, or most recently used on this device first (ties by title). */
 export function sortRows(rows: ItemSummary[], sort: SortKey): ItemSummary[] {
   const out = [...rows]
   if (sort === "title") return out.sort(byTitle)
+  if (sort === "used") return out.sort((a, b) => (b.last_used ?? 0) - (a.last_used ?? 0) || byTitle(a, b))
   return out.sort((a, b) => b.edited_at - a.edited_at || byTitle(a, b))
 }
 
@@ -134,8 +147,8 @@ export function groupRows(rows: ItemSummary[], groupBy: GroupBy): RowGroup[] {
 }
 
 /** The whole pipeline: view → search → sort → group. */
-export function buildList(rows: ItemSummary[], view: ListView, query: string, sort: SortKey, groupBy: GroupBy): RowGroup[] {
-  return groupRows(sortRows(searchRows(rowsIn(rows, view), query), sort), groupBy)
+export function buildList(rows: ItemSummary[], view: ListView, query: string, sort: SortKey, groupBy: GroupBy, folders?: Map<string, string>): RowGroup[] {
+  return groupRows(sortRows(searchRows(rowsIn(rows, view), query, folders), sort), groupBy)
 }
 
 /** The marker a conflict copy's title carries (`lockdown_app::views::CONFLICT_MARK`, D58). */

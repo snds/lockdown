@@ -151,6 +151,9 @@ pub struct FieldTemplate {
     pub grouped: bool,
     /// One line of help under the control, or empty.
     pub hint: &'static str,
+    /// The field may appear more than once, numbered from `.0` (a Login's
+    /// websites: `url.0`, `url.1`, …); every copy takes this template.
+    pub repeats: bool,
 }
 
 const fn field(field_id: &'static str, label: &'static str, control: Control) -> FieldTemplate {
@@ -166,6 +169,7 @@ const fn field(field_id: &'static str, label: &'static str, control: Control) ->
         section: "Details",
         grouped: false,
         hint: "",
+        repeats: false,
     }
 }
 
@@ -202,6 +206,42 @@ impl FieldTemplate {
         self.hint = hint;
         self
     }
+    const fn repeats(mut self) -> Self {
+        self.repeats = true;
+        self
+    }
+
+    /// The `<n>`th copy's id of a repeating field (`url.0` → `url.<n>`).
+    pub fn numbered(&self, n: usize) -> Option<String> {
+        if !self.repeats {
+            return None;
+        }
+        let stem = self.field_id.strip_suffix(".0")?;
+        Some(format!("{stem}.{n}"))
+    }
+}
+
+/// The fields every item carries whatever its kind (02-model §4 "common to
+/// every type"): its folder, its tags and whether it is a favourite. They
+/// are sealed like any field, never listed in a kind's template (a shell
+/// draws them as the item's organization, not as its details), and an
+/// edit that leaves them out keeps them (`crate::compose`).
+pub const COMMON: &[FieldTemplate] = &[
+    field(crate::organization::ORG_FOLDER, "Folder", Control::Text).section("Organization"),
+    field(crate::organization::ORG_TAGS, "Tags", Control::Multiline)
+        .section("Organization")
+        .hint("One tag per line; a slash nests one under another (work/clients)."),
+    field(
+        crate::organization::ORG_FAVOURITE,
+        "Favourite",
+        Control::Boolean,
+    )
+    .section("Organization"),
+];
+
+/// A common field by id.
+pub fn common_field(field_id: &str) -> Option<&'static FieldTemplate> {
+    COMMON.iter().find(|f| f.field_id == field_id)
 }
 
 /// Markdown notes, last on every template but a Note's (02-model §4 "common to every type").
@@ -231,7 +271,22 @@ pub struct Template {
 impl Template {
     /// One field by id.
     pub fn field(&self, field_id: &str) -> Option<&'static FieldTemplate> {
-        self.fields.iter().find(|f| f.field_id == field_id)
+        if let Some(f) = self.fields.iter().find(|f| f.field_id == field_id) {
+            return Some(f);
+        }
+        // A later copy of a repeating field (`url.3`) takes the first's template.
+        let (stem, n) = field_id.rsplit_once('.')?;
+        if n.is_empty() || n == "0" || !n.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        self.fields
+            .iter()
+            .find(|f| f.repeats && f.field_id.strip_suffix(".0") == Some(stem))
+    }
+
+    /// One field by id, or a field every item carries ([`COMMON`]).
+    pub fn field_or_common(&self, field_id: &str) -> Option<&'static FieldTemplate> {
+        self.field(field_id).or_else(|| common_field(field_id))
     }
 
     /// Whether an item of this kind is a crown jewel by default (02-model
@@ -272,9 +327,22 @@ const LOGIN: &[FieldTemplate] = &[
         .fill(Fill::Confirm)
         .section("Sign-in")
         .hint("Paste the otpauth:// link or the set-up key the site showed."),
-    field("url.0", "Website", Control::Url).section("Websites"),
+    field("sign_in_method", "Sign-in method", Control::Select)
+        .options(SIGN_IN_METHODS)
+        .section("Sign-in")
+        .hint("How you get into this account; left empty, a password."),
+    field("sign_in_provider", "Signed in with", Control::Text)
+        .section("Sign-in")
+        .hint("The account or company you sign in through, like Google, Apple or your work."),
+    field("url.0", "Website", Control::Url)
+        .repeats()
+        .section("Websites"),
     NOTES,
 ];
+
+/// How a Login is entered (02-model §4 `sign_in_method`), in plain words:
+/// password, passkey, federated (another account) and single sign-on.
+pub const SIGN_IN_METHODS: &[&str] = &["Password", "Passkey", "Another account", "Single sign-on"];
 
 const PASSKEY: &[FieldTemplate] = &[
     field("passkey.0.rp_id", "Website", Control::Text).section("Passkey"),
@@ -550,7 +618,7 @@ const fn template(
 
 /// Every kind's template, in the order a "New item" list shows them (the
 /// hub type first, then the order people reach for them).
-pub const TEMPLATES: [Template; 18] = [
+pub const TEMPLATES: [Template; 19] = [
     template(
         ItemKind::Login,
         "Login",
@@ -701,6 +769,17 @@ pub const TEMPLATES: [Template; 18] = [
             None,
         )
     },
+    Template {
+        creatable: false,
+        ..template(
+            ItemKind::VaultInfo,
+            "Vault details",
+            "The vault's own name, folders and trash setting",
+            &[],
+            None,
+            None,
+        )
+    },
 ];
 
 /// The template for `kind`.
@@ -766,7 +845,34 @@ mod tests {
         }
         assert!(!template_for(ItemKind::Passkey).creatable);
         assert!(!template_for(ItemKind::Consent).creatable);
+        assert!(!template_for(ItemKind::VaultInfo).creatable);
         assert_eq!(TEMPLATES.iter().filter(|t| t.creatable).count(), 16);
+    }
+
+    #[test]
+    fn a_logins_websites_repeat_and_the_common_fields_resolve() {
+        let login = template_for(ItemKind::Login);
+        let first = login.field("url.0").unwrap();
+        assert!(first.repeats);
+        assert_eq!(login.field("url.4").unwrap().field_id, "url.0");
+        assert_eq!(first.numbered(2).as_deref(), Some("url.2"));
+        // Only repeating fields repeat; `.0` names itself; junk is junk.
+        assert!(login.field("code.1").is_none());
+        assert!(login.field("url.").is_none());
+        assert!(login.field("url.x").is_none());
+        assert!(login.field("org.tags").is_none());
+        assert_eq!(
+            login.field_or_common("org.tags").unwrap().control,
+            Control::Multiline
+        );
+        assert_eq!(
+            login.field("sign_in_method").unwrap().options,
+            SIGN_IN_METHODS
+        );
+        for f in COMMON {
+            assert!(f.field_id.starts_with("org."));
+            assert!(!f.control.is_secret());
+        }
     }
 
     #[test]

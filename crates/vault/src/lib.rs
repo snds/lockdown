@@ -29,6 +29,7 @@
 //! - [`template`] — every kind's fields as data: control, required, crown jewel, fill rule, generator
 //! - [`compose`] — a shell's add or edit checked against the template, with an explicit keep for secrets
 //! - [`manifest`] — the signed, hash-chained manifest head and chain check
+//! - [`organization`] — folders, tags and favourites; the vault's name and folder tree in a hidden item
 //! - [`signer`] — who signs heads and versions: the device's key
 //! - [`store`] — the local store contract a vault loads from and saves to
 //! - [`vault`] — [`Vault`]: create, update, open, purge, commit heads, load, save
@@ -49,6 +50,7 @@ pub mod identity_set;
 pub mod item;
 pub mod keys;
 pub mod manifest;
+pub mod organization;
 pub mod signer;
 pub mod store;
 pub mod template;
@@ -80,8 +82,12 @@ pub use keys::{
 pub use manifest::{
     Checkpoint, ManifestEntry, ManifestHead, Member, check_revocations, verify_chain,
 };
+pub use organization::{Folder, Organization, VaultInfo, is_org_field};
 pub use signer::Signer;
 pub use store::{Store, StoreError, StoreResult, VAULT_RECORD_V, VaultRecord};
-pub use template::{CUSTOM_KINDS, Control, FieldTemplate, Fill, TEMPLATES, Template, template_for};
+pub use template::{
+    COMMON, CUSTOM_KINDS, Control, FieldTemplate, Fill, SIGN_IN_METHODS, TEMPLATES, Template,
+    common_field, template_for,
+};
 pub use transparency::{LogEntry, LogLeaf, SignedTreeHead, SthRef, TreeHead};
 pub use vault::{AttachmentInfo, Unlock, Vault, VaultContext};
