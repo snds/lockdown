@@ -48,6 +48,12 @@ pub struct ServerView {
     /// Unix epoch); `None` in a file written before the field existed.
     #[serde(default)]
     pub checked_at: Option<i64>,
+    /// The server's ML-DSA-65 log key, pinned the first time the server
+    /// offered one (docs/plan/28-pq-signatures.md); from then on every
+    /// tree head must carry its signature too. `None` while the server
+    /// offered none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_log_key: Option<serde_bytes::ByteBuf>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -120,6 +126,11 @@ impl TransparencyMemory {
                     "refusing to remember a different log key for {server}: the pinned one stays"
                 )));
             }
+            if seen.pq_log_key.is_some() && seen.pq_log_key != view.pq_log_key {
+                return Err(StoreError::Backend(format!(
+                    "refusing to drop or change the post-quantum log key pinned for {server}"
+                )));
+            }
             if view.sth.size < seen.sth.size
                 || (view.sth.size == seen.sth.size && view.sth.root != seen.sth.root)
             {
@@ -178,6 +189,7 @@ mod tests {
             identity_logged: None,
             own_device_logged: false,
             checked_at: None,
+            pq_log_key: None,
         };
         memory
             .remember("https://s.example/", view(2, 2, 1))
@@ -196,6 +208,18 @@ mod tests {
         assert!(memory.remember("https://s.example", foreign).is_err());
         memory.remember("https://s.example", view(2, 2, 1)).unwrap();
         memory.remember("https://s.example", view(5, 5, 3)).unwrap();
+        // A post-quantum log key pinned once stays: not dropped, not swapped.
+        let pq = |b: u8| Some(serde_bytes::ByteBuf::from(vec![b; 1952]));
+        let mut upgraded = view(6, 6, 3);
+        upgraded.pq_log_key = pq(1);
+        memory.remember("https://s.example", upgraded).unwrap();
+        assert!(memory.remember("https://s.example", view(7, 7, 3)).is_err());
+        let mut swapped = view(7, 7, 3);
+        swapped.pq_log_key = pq(2);
+        assert!(memory.remember("https://s.example", swapped).is_err());
+        let mut kept = view(7, 7, 3);
+        kept.pq_log_key = pq(1);
+        memory.remember("https://s.example", kept).unwrap();
         // Another server is remembered on its own.
         memory.remember("https://t.example", view(1, 1, 0)).unwrap();
         assert_eq!(memory.view("https://t.example").unwrap().sth.size, 1);

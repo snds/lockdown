@@ -170,6 +170,23 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 [profile.dev.package.sha2]
 opt-level = 3
 
+# ML-DSA-65 runs optimised in development and test builds too: a vault
+# head is signed on every commit and checked on every open and pull, and
+# ML-DSA hashes the whole head (about 1.1 MB for 10,000 items) with
+# SHAKE256 first (docs/plan/28-pq-signatures.md §6). Unoptimised, one
+# signature over such a head took 422 ms and one check 439 ms.
+[profile.dev.package.ml-dsa]
+opt-level = 3
+
+[profile.dev.package.module-lattice]
+opt-level = 3
+
+[profile.dev.package.shake]
+opt-level = 3
+
+[profile.dev.package.keccak]
+opt-level = 3
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
