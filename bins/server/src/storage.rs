@@ -754,6 +754,23 @@ impl SqlStorage {
         self.pg.as_ref()
     }
 
+    /// For a Postgres store, the TLS version its connection speaks
+    /// (`TLSv1.3`), or `None` when it isn't encrypted (this machine only);
+    /// `None` for SQLite.
+    pub fn database_tls(&self) -> Result<Option<String>> {
+        if self.dialect() != Dialect::Postgres {
+            return Ok(None);
+        }
+        Ok(self
+            .conn()
+            .query_opt(
+                "SELECT CAST(version AS TEXT) FROM pg_stat_ssl WHERE pid = pg_backend_pid() AND ssl",
+                params![],
+                |r| r.get::<Option<String>>(0),
+            )?
+            .flatten())
+    }
+
     /// The SQLite file, when the store is one.
     pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()

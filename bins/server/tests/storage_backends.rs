@@ -9,8 +9,13 @@
 //!   snapshot format and restored into another, empty Postgres database;
 //!   one serving server per database.
 //!
+//! - a Postgres with TLS (`LOCKDOWN_TEST_DATABASE_TLS_URL` and its CA in
+//!   `LOCKDOWN_TEST_DATABASE_CA`): the connection is TLS 1.3 and another CA
+//!   is refused.
+//!
 //! Without those variables each test says so and passes; CI sets
-//! `LOCKDOWN_TEST_SERVICES=require` so a missing service fails there.
+//! `LOCKDOWN_TEST_SERVICES=require` so a missing Postgres or bucket fails
+//! there.
 
 use std::sync::Arc;
 
@@ -255,4 +260,28 @@ fn one_serving_server_per_postgres_database() {
     let _held = SqlStorage::open_postgres(first).unwrap();
     let e = SqlStorage::open_postgres(second).unwrap_err().to_string();
     assert!(e.contains("another lockdown-server"), "{e}");
+}
+
+#[test]
+fn a_postgres_store_away_from_plain_text_speaks_tls_and_checks_the_ca() {
+    // Not part of `LOCKDOWN_TEST_SERVICES=require`: CI's Postgres service
+    // has no certificate; run it against a TLS Postgres by hand.
+    let Some(url) = std::env::var("LOCKDOWN_TEST_DATABASE_TLS_URL")
+        .ok()
+        .filter(|u| !u.trim().is_empty())
+    else {
+        eprintln!("LOCKDOWN_TEST_DATABASE_TLS_URL isn't set: this test needs a Postgres with TLS");
+        return;
+    };
+    let ca =
+        std::env::var("LOCKDOWN_TEST_DATABASE_CA").expect("the database CA beside its TLS URL");
+    let mut options = pg(&url, false);
+    options.ca = Some(lockdown_tls::read_certs(std::path::Path::new(&ca)).unwrap());
+    let store = SqlStorage::open_postgres(options).unwrap();
+    let tls = store.database_tls().unwrap();
+    assert_eq!(tls.as_deref(), Some("TLSv1.3"));
+    // Another CA isn't trusted: the connection is refused, never made plain.
+    let mut wrong = pg(&url, false);
+    wrong.ca = Some(vec![lockdown_tls::testing::pki(&["localhost"]).ca_der]);
+    assert!(SqlStorage::open_postgres(wrong).is_err());
 }

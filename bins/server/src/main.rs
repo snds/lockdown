@@ -578,7 +578,10 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
     };
     let web = config.web_vault.is_some();
     let database = match &cli.store.database_url {
-        Some(_) => "Postgres (--database-url)".to_string(),
+        Some(_) => match storage.database_tls() {
+            Ok(Some(v)) => format!("Postgres (--database-url), over {v}"),
+            _ => "Postgres (--database-url), on this machine without TLS".to_string(),
+        },
         None => format!("SQLite, {}", data.join(backup::DB_NAME).display()),
     };
     let attachments = storage
