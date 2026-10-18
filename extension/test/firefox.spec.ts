@@ -96,6 +96,26 @@ class Rdp {
     return new Promise((resolve) => this.waiting.push(resolve));
   }
 
+  send(to: string, type: string, extra: Record<string, unknown> = {}) {
+    const body = Buffer.from(JSON.stringify({ to, type, ...extra }), "utf8");
+    this.sock.write(`${body.length}:`);
+    this.sock.write(body);
+  }
+
+  /** Messages from `from` until `done` says stop or `ms` pass. */
+  async collect(from: string, done: (m: Record<string, unknown>) => boolean, ms: number): Promise<Record<string, unknown>[]> {
+    const seen: Record<string, unknown>[] = [];
+    const deadline = Date.now() + ms;
+    while (Date.now() < deadline) {
+      const m = await Promise.race([this.next(), new Promise<null>((r) => setTimeout(() => r(null), deadline - Date.now()))]);
+      if (!m) break;
+      if (m.from !== from) continue;
+      seen.push(m);
+      if (done(m)) break;
+    }
+    return seen;
+  }
+
   async ask(to: string, type: string, extra: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
     const body = Buffer.from(JSON.stringify({ to, type, ...extra }), "utf8");
     this.sock.write(`${body.length}:`);
@@ -133,8 +153,8 @@ async function openPopup(): Promise<Page> {
   const { addons } = (await rdp.ask("root", "listAddons")) as { addons: { actor: string; id: string }[] };
   const addon = addons.find((a) => a.id === ADDON_ID);
   expect(addon, JSON.stringify(addons)).toBeTruthy();
-  // The descriptor's request for its target has been `getTarget` and,
-  // in older releases, `connect`; Playwright's Firefox answers one of them.
+  // The descriptor's request for its target has been `getTarget`, earlier
+  // `connect`, and now a watcher; whichever this Firefox answers is used.
   let consoleActor: string | undefined;
   const tried: unknown[] = [addon];
   for (const type of ["getTarget", "connect"]) {
@@ -142,6 +162,23 @@ async function openPopup(): Promise<Page> {
     tried.push(answer);
     consoleActor = answer.form?.consoleActor ?? answer.consoleActor;
     if (consoleActor) break;
+  }
+  if (!consoleActor) {
+    // Current Firefox: the descriptor hands out a watcher, and the
+    // background page arrives as a frame target the watcher reports.
+    const watcher = (await rdp.ask(addon!.actor, "getWatcher", { isServerTargetSwitchingEnabled: true })) as { actor?: string };
+    tried.push(watcher);
+    if (watcher.actor) {
+      rdp.send(watcher.actor, "watchTargets", { targetType: "frame" });
+      const seen = await rdp.collect(
+        watcher.actor,
+        (m) => m.type === "target-available-form" && String((m.target as { url?: string }).url).startsWith(ORIGIN),
+        15_000,
+      );
+      tried.push(...seen);
+      const form = seen.find((m) => m.type === "target-available-form" && String((m.target as { url?: string }).url).startsWith(ORIGIN));
+      consoleActor = (form?.target as { consoleActor?: string } | undefined)?.consoleActor;
+    }
   }
   expect(consoleActor, JSON.stringify(tried)).toBeTruthy();
   const opened = ctx.waitForEvent("page", { timeout: 30_000 });
