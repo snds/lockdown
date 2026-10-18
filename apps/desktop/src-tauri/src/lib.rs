@@ -21,6 +21,9 @@ mod commands;
 mod browser_commands;
 
 #[cfg(feature = "shell")]
+mod passkey_commands;
+
+#[cfg(feature = "shell")]
 mod shell {
     use std::path::PathBuf;
     use std::time::Duration;

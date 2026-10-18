@@ -82,6 +82,10 @@ pub struct Settings {
     /// sealed under lives in `backup-key.cbor`, sealed under the vault's
     /// key, never here).
     pub backup: BackupSettings,
+    /// Whether the browser extension offers Lockdown as the passkey
+    /// provider in pages (docs/plan/19-passkeys.md); off, every passkey
+    /// request goes to the browser's own.
+    pub browser_passkeys: bool,
 }
 
 /// Where and how often automatic backups run.
@@ -125,6 +129,7 @@ impl Default for Settings {
             breach_endpoint: None,
             change_password_check: true,
             backup: BackupSettings::default(),
+            browser_passkeys: true,
         }
     }
 }
@@ -324,6 +329,7 @@ mod tests {
             "breach_endpoint",
             "change_password_check",
             "backup",
+            "browser_passkeys",
         ]
         .into_iter()
         .collect();

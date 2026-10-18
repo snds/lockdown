@@ -10,6 +10,7 @@ import { extensionOrigin } from "../shared/messages"
 import type { FillWhat } from "../shared/protocol"
 import { capture, classify, firstLoginField, isInput } from "./detect"
 import { apply } from "./fill"
+import { makeHost } from "./host"
 import { fieldVisibility, hostVisible } from "./visibility"
 
 const ORIGIN = extensionOrigin()
@@ -49,31 +50,6 @@ function forget(n: string) {
 const MENU_W = 320
 const MENU_H = 56
 
-/** A host element the page cannot look into (closed shadow root) holding
- *  an extension-origin frame the page cannot read, raised into the top
- *  layer where the browser supports popovers so page z-indexes cannot
- *  cover it. */
-function makeHost(src: string, label: string): { host: HTMLElement; frame: HTMLIFrameElement } {
-  const host = document.createElement("div")
-  host.style.cssText = `all: initial; position: fixed; z-index: 2147483647; width: ${MENU_W}px; height: ${MENU_H}px; margin: 0; padding: 0; border: 0; inset: auto; overflow: visible; background: transparent; display: block;`
-  const root = host.attachShadow({ mode: "closed" })
-  const frame = document.createElement("iframe")
-  frame.src = src
-  frame.title = label
-  frame.setAttribute("scrolling", "no")
-  frame.style.cssText =
-    "all: initial; display: block; width: 100%; height: 100%; border: 0; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.28); color-scheme: normal; background: transparent;"
-  root.append(frame)
-  document.documentElement.append(host)
-  try {
-    host.setAttribute("popover", "manual")
-    ;(host as HTMLElement & { showPopover(): void }).showPopover()
-  } catch {
-    // No popover support: the fixed, top-z-index host stands.
-  }
-  return { host, frame }
-}
-
 /** Puts the menu under the field, or over it when there is more room
  *  there, and never past the edge of this frame: a menu the frame clips is
  *  one IntersectionObserver v2 cannot call visible, so it would never arm. */
@@ -102,7 +78,7 @@ async function openMenu(el: HTMLInputElement, kind: FillWhat, existing?: string)
     if (!existing) forget(n)
     return
   }
-  const { host, frame } = makeHost(chrome.runtime.getURL(`frame.html#menu:${n}`), "Lockdown")
+  const { host, frame } = makeHost(chrome.runtime.getURL(`frame.html#menu:${n}`), "Lockdown", MENU_W, MENU_H)
   menu = { nonce: n, host, frame, el }
   place(host, el)
 }
@@ -117,7 +93,7 @@ function closeMenu() {
 async function showPrompt() {
   if (window.top !== window || prompt) return
   const n = await register(null, "prompt")
-  const { host, frame } = makeHost(chrome.runtime.getURL(`frame.html#prompt:${n}`), "Save to Lockdown")
+  const { host, frame } = makeHost(chrome.runtime.getURL(`frame.html#prompt:${n}`), "Save to Lockdown", MENU_W, MENU_H)
   host.style.top = "12px"
   host.style.right = "12px"
   host.style.left = "auto"

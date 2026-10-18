@@ -48,7 +48,10 @@ export function classify(el: HTMLInputElement): FillWhat | null {
   if (a === "one-time-code" || (CODE_WORDS.test(words) && !/card|cc-/.test(words))) return "code"
   if (codeBoxes(el).length > 1) return "code"
   if (a.startsWith("cc-") || CARD.number.test(words) || CARD.cvc.test(words)) return "card"
-  if (a === "username" || (a === "email" && passwordNear(el))) return "login"
+  // `autocomplete="username webauthn"`: a sign-in field a passkey can
+  // answer (conditional mediation), with or without a password beside it.
+  const tokens = (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/)
+  if (a === "username" || tokens.includes("webauthn") || (a === "email" && passwordNear(el))) return "login"
   if (["given-name", "family-name", "additional-name", "name", "email", "tel", "street-address", "address-line1", "address-level1", "address-level2", "postal-code", "country", "country-name"].includes(a))
     return "identity"
   if (passwordNear(el) && /(user|login|email|account|identifier)/.test(words)) return "login"

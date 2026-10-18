@@ -271,6 +271,8 @@ export interface Settings {
   change_password_check?: boolean
   /** Automatic backups; changed only through the backup calls. The core always sends it. */
   backup?: BackupSettings
+  /** Whether the browser extension offers Lockdown as the passkey provider in pages (docs/plan/19-passkeys.md). Default on. */
+  browser_passkeys?: boolean
 }
 
 export interface BackupSettings {

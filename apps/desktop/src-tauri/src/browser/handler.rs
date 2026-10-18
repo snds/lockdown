@@ -36,7 +36,7 @@ pub struct Refusal {
 }
 
 impl Refusal {
-    fn new(code: &'static str, message: impl Into<String>) -> Self {
+    pub(super) fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
@@ -141,7 +141,7 @@ struct ValueOut<'a> {
     value: &'a str,
 }
 
-fn args<T: for<'de> Deserialize<'de>>(frame: &[u8]) -> Result<T, Refusal> {
+pub(super) fn args<T: for<'de> Deserialize<'de>>(frame: &[u8]) -> Result<T, Refusal> {
     serde_json::from_slice(frame).map_err(|e| Refusal::new("bad_request", e.to_string()))
 }
 
@@ -186,6 +186,8 @@ pub fn handle(shared: &Shared, conn: &mut Conn, frame: &[u8]) -> Zeroizing<Vec<u
             shared.offers().remove(&a.offer_id);
             json!({})
         }),
+        "passkey_options" | "passkey_plan" | "passkey_create" | "passkey_get"
+        | "passkey_signal" => super::passkeys::answer(shared, conn, &head.op, frame),
         other => Err(Refusal::new(
             "unknown_op",
             format!("'{other}' isn't something Lockdown answers"),
@@ -219,6 +221,10 @@ fn status(shared: &Shared, conn: &Conn) -> Value {
         "locked": locked,
         "paired": conn.client.is_some(),
         "app": format!("Lockdown {}", env!("CARGO_PKG_VERSION")),
+        // Whether the extension offers Lockdown as the passkey provider
+        // (docs/plan/19-passkeys.md): the person's setting; no Lockdown OS
+        // provider exists on any platform yet (D122).
+        "passkeys": shared.app.passkeys_in_browser().unwrap_or(false),
     })
 }
 

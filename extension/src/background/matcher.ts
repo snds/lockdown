@@ -56,7 +56,7 @@ export async function check(req: {
   frame: string
   field_visible: boolean
   user_confirmed: boolean
-  kind: FillWhat
+  kind: FillWhat | "passkey"
   decision: Decision
 }): Promise<Verdict> {
   await load()
