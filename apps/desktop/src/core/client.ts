@@ -3,6 +3,12 @@ import { invoke } from "@tauri-apps/api/core"
 
 import type {
   AppError,
+  BackupStatus,
+  Chosen,
+  ExportDone,
+  ExportPreview,
+  ImportFormatView,
+  ImportPreview,
   ApprovalKind,
   ApprovalRoute,
   CodeAdvanced,
@@ -114,6 +120,33 @@ export interface Client {
   openSite(url: string): Promise<void>
   /** Opens the OS date and time settings; `false` where this platform has no way in (Linux). */
   openClockSettings(): Promise<boolean>
+  // --- import, export and backups (docs/plan/14-import-export.md) ---
+  /** The formats the import wizard lists. */
+  importFormats(): Promise<ImportFormatView[]>
+  /** The format a file looks like, from its first bytes and its name; `null` when unsure. */
+  importDetect(bytes: number[], fileName: string): Promise<string | null>
+  /** Parses a file in the core (hostile until proven otherwise) and says what it holds; nothing is kept. */
+  importPreview(input: { bytes: number[]; format: string; fileName: string; password?: number[] }): Promise<ImportPreview>
+  /** Keeps the previewed import. */
+  importCommit(token: number): Promise<ImportReport>
+  importCancel(): Promise<void>
+  /** What an export in `format` would carry and leave out. */
+  exportPreview(format: string): Promise<ExportPreview>
+  /** The OS's save dialog; the place stays in the shell under the returned number. */
+  exportChoose(format: string, sealed: boolean): Promise<Chosen | null>
+  /** The core writes the export to the chosen place, after the `Reveal` gate (D101). */
+  exportSave(input: { target: number; format: string; password?: number[]; plainConfirmed: boolean }, gate?: GateInput): Promise<ExportDone>
+  /** A crown jewel's "include in exports and backups" (D121); on goes through the `Reveal` gate. */
+  setExportOptIn(id: string, on: boolean, gate?: GateInput): Promise<number>
+  backupStatus(): Promise<BackupStatus>
+  /** The OS's folder picker; the folder stays in the shell under the returned number. */
+  backupPickFolder(): Promise<Chosen | null>
+  /** Turns backups on or changes them, behind the `Reveal` gate; `folder` is a `Chosen.token`, or `null` for the folder in use. */
+  backupSetup(input: { folder: number | null; password?: number[]; intervalHours: number; keepLast: number }, gate?: GateInput): Promise<BackupStatus>
+  backupNow(): Promise<BackupStatus>
+  backupOff(forget: boolean): Promise<BackupStatus>
+  /** Opens one of the folder's backups for the import preview (the key kept here, or `password`). */
+  backupRestorePreview(name: string, password?: number[]): Promise<ImportPreview>
 }
 
 /** Whether a rejection is the app's own error shape. */
@@ -183,6 +216,21 @@ export const tauriClient: Client = {
   exportItems: (format, gate) => callBytes("export_items", { format, gate }),
   openSite: (url) => call("open_site", { url }),
   openClockSettings: () => call("open_clock_settings"),
+  importFormats: () => call("import_formats"),
+  importDetect: (bytes, fileName) => call("import_detect", { bytes, fileName }),
+  importPreview: (input) => call("import_preview", input),
+  importCommit: (token) => call("import_commit", { token }),
+  importCancel: () => call("import_cancel"),
+  exportPreview: (format) => call("export_preview", { format }),
+  exportChoose: (format, sealed) => call("export_choose", { format, sealed }),
+  exportSave: (input, gate) => call("export_save", { ...input, gate }),
+  setExportOptIn: (id, on, gate) => call("set_export_opt_in", { id, on, gate }),
+  backupStatus: () => call("backup_status"),
+  backupPickFolder: () => call("backup_pick_folder"),
+  backupSetup: (input, gate) => call("backup_setup", { ...input, gate }),
+  backupNow: () => call("backup_now"),
+  backupOff: (forget) => call("backup_off", { forget }),
+  backupRestorePreview: (name, password) => call("backup_restore_preview", { name, password }),
 }
 
 const ClientContext = createContext<Client>(tauriClient)

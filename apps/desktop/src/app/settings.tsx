@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS: Settings = {
   idle_lock_secs: 600,
   hidden_lock_secs: 300,
   server: null,
+  backup: { enabled: false, folder: null, interval_hours: 24, keep_last: 10 },
 }
 
 interface SettingsContextValue {
