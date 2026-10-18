@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react"
 
 import { describeError, useClient } from "@/core/client"
 import type { Settings } from "@/core/types"
@@ -66,7 +66,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [client])
 
-  useEffect(() => {
+  // Before paint, in the same commit that shows the new settings: a passive
+  // effect could let one frame draw the old row height after the file is read.
+  useLayoutEffect(() => {
     applyDensity(settings.density)
   }, [settings.density])
 
