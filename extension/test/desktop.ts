@@ -39,7 +39,8 @@ export class Desktop {
     this.ready = this.next("ready");
   }
 
-  static start(scratch: string, profile: string, extra: string[] = []): Desktop {
+  /** The endpoint fixture and the native host this suite runs. */
+  static binaries(): { fixture: string; host: string } {
     // LOCKDOWN_TEST_BINS: a folder holding private copies of both, for a
     // machine where several checkouts share one cargo target directory.
     const bins = process.env.LOCKDOWN_TEST_BINS;
@@ -49,6 +50,11 @@ export class Desktop {
     for (const f of [fixture, host]) {
       if (!existsSync(f)) throw new Error(`${f} is missing; run \`pnpm run build:native\` first`);
     }
+    return { fixture, host };
+  }
+
+  static start(scratch: string, profile: string, extra: string[] = []): Desktop {
+    const { fixture, host } = Desktop.binaries();
     const proc = spawn(fixture, ["--dir", scratch, "--host", host, "--profile", profile, ...extra], { stdio: ["pipe", "pipe", "pipe"] });
     return new Desktop(proc);
   }

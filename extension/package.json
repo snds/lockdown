@@ -16,6 +16,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "playwright test",
     "test:headed": "playwright test --headed",
+    "package": "node scripts/pack.mjs",
     "ds:scan": "dsa scan --config dsa.config.json",
     "ds:ratchet": "dsa ratchet --config dsa.config.json"
   },

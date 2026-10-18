@@ -1,0 +1,109 @@
+# Reproducible builds (docs/plan/24-release.md §5): the browser extension's
+# store packages, the server and CLI binaries and the server image are each
+# built twice, on two different runner images, from the same commit, and
+# their SHA-256 must match. The desktop bundles are not in this check yet;
+# the doc says why.
+name: Reproducible
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reproducible-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: build on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-22.04]
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: "0"
+      # The checkout and the cargo home leave the binaries; both runner
+      # images use the same paths, and the remap makes that not matter.
+      RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=/lockdown --remap-path-prefix=/home/runner/.cargo=/cargo
+    steps:
+      - uses: actions/checkout@v4
+      - name: SOURCE_DATE_EPOCH from the commit
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown,wasm32-wasip1
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen-cli@0.2.129
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: extension/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Extension store packages
+        working-directory: extension
+        run: pnpm install --frozen-lockfile && pnpm build:wasm && pnpm build && pnpm run package
+      - uses: docker/setup-buildx-action@v3
+      - name: Web vault (the image carries it; its core built in the pinned image)
+        run: |
+          env -u RUSTFLAGS packaging/repro/build-web.sh
+          cd apps/web && pnpm install --frozen-lockfile && pnpm build
+      - name: Server and CLI binaries
+        run: env -u RUSTFLAGS packaging/repro/build-server.sh out
+      - name: Server image
+        run: env -u RUSTFLAGS packaging/repro/build-image.sh out
+      - name: Hashes
+        run: |
+          {
+            (cd extension/dist/packages && sha256sum *.zip)
+            (cd out && cat SHA256SUMS)
+            echo "$(python3 packaging/repro/oci-file-hash.py out/lockdown-server-image.oci.tar usr/local/bin/lockdown-server)  image:/usr/local/bin/lockdown-server"
+            # The web vault's files, so a difference in the image is easy to place.
+            (cd apps/web/dist && find . -type f -print0 | sort -z | xargs -0 sha256sum | sed 's#  \./#  web:#')
+          } | sort -k 2 > hashes.txt
+          cat hashes.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hashes-${{ matrix.runner }}
+          path: hashes.txt
+      - uses: actions/upload-artifact@v4
+        if: failure() || runner.debug == '1'
+        with:
+          name: outputs-${{ matrix.runner }}
+          path: |
+            extension/dist/packages/*.zip
+            out/lockdown-server
+            out/lockdown
+          if-no-files-found: ignore
+
+  compare:
+    name: same bytes both times
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hashes-*
+      - name: Compare
+        run: |
+          a=hashes-ubuntu-24.04/hashes.txt
+          b=hashes-ubuntu-22.04/hashes.txt
+          cat "$a"
+          if ! diff -u "$a" "$b"; then
+            echo "::error::a build differs between the two runners (lines above)"
+            exit 1
+          fi
+          # The server inside the image is the published binary.
+          server=$(awk '$2 == "lockdown-server" {print $1}' "$a")
+          inside=$(awk '$2 == "image:/usr/local/bin/lockdown-server" {print $1}' "$a")
+          [ -n "$server" ] && [ "$server" = "$inside" ] || { echo "::error::the image's server differs from the binary"; exit 1; }
+          echo "reproducible: $(wc -l < "$a") files, identical on both runners"

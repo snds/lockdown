@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Lockdown
+Comment=Every way you sign in, locked down
+Exec=lockdown-desktop
+Icon=design.snds.lockdown
+Categories=Utility;Security;
+StartupWMClass=lockdown-desktop
+Terminal=false

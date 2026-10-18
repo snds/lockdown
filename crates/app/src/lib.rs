@@ -1715,11 +1715,12 @@ mod tests {
             "title only"
         );
         let json = serde_json::to_string(&rows).unwrap();
-        // The number with its space: a random item id can hold "4111".
+        // The number with its space: a random item id can hold "4111". The
+        // CVC as a whole JSON string: a random id can also end in "123".
         for secret in [
             "4111 1111",
             "4111111111111111",
-            "123\"",
+            "\"123\"",
             phrase,
             generated.as_str(),
             "GEZDGNBV",

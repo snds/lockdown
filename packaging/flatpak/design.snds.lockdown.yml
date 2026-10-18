@@ -1,0 +1,45 @@
+# The Lockdown desktop app as a Flatpak (docs/plan/24-release.md §2).
+#
+# Built from the release binaries the `linux` job of
+# .github/workflows/release.yml makes (the same ones in the deb and rpm),
+# staged into ./stage by that workflow: lockdown-desktop,
+# lockdown-native-host and the 128 px icon. Building Rust inside
+# flatpak-builder would need every crate vendored offline
+# (flatpak-cargo-generator); a Flathub submission will, this CI build
+# doesn't yet.
+#
+#   flatpak-builder --user --install --force-clean build design.snds.lockdown.yml
+#
+# The GNOME runtime carries WebKitGTK 4.1, GTK 3 and libdbus, which is all
+# the app links beyond glibc.
+id: design.snds.lockdown
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
+command: lockdown-desktop
+finish-args:
+  # The window: Wayland first, X11 where there is no Wayland, GPU for WebKit.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Sync with the account server, breach checks, alias services.
+  - --share=network
+  # The session token in the Secret Service keyring (lockdown_app::secrets).
+  - --talk-name=org.freedesktop.secrets
+modules:
+  - name: lockdown
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: stage
+      - type: file
+        path: design.snds.lockdown.desktop
+      - type: file
+        path: design.snds.lockdown.metainfo.xml
+    build-commands:
+      - install -Dm755 lockdown-desktop /app/bin/lockdown-desktop
+      - install -Dm755 lockdown-native-host /app/bin/lockdown-native-host
+      - install -Dm644 icon-128.png /app/share/icons/hicolor/128x128/apps/design.snds.lockdown.png
+      - install -Dm644 design.snds.lockdown.desktop /app/share/applications/design.snds.lockdown.desktop
+      - install -Dm644 design.snds.lockdown.metainfo.xml /app/share/metainfo/design.snds.lockdown.metainfo.xml

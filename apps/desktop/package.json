@@ -20,7 +20,8 @@
     "tauri": "tauri",
     "ds:scan": "dsa scan --config ../../dsa.config.json",
     "ds:patterns": "dsa patterns --config ../../dsa.config.json",
-    "ds:ratchet": "dsa ratchet --config ../../dsa.config.json"
+    "ds:ratchet": "dsa ratchet --config ../../dsa.config.json",
+    "stage:host": "node scripts/stage-host.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

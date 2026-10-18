@@ -40,7 +40,7 @@ shell = [
 ]
 
 [build-dependencies]
-tauri-build = { version = "2.7.2", optional = true }
+tauri-build = { version = "2.7.2", optional = true , features = [] }
 
 [dependencies]
 lockdown-app.workspace = true
@@ -53,7 +53,7 @@ serde.workspace = true
 serde_json.workspace = true
 zeroize.workspace = true
 # The shell proper.
-tauri = { version = "2.12.3", optional = true }
+tauri = { version = "2.12.3", optional = true , features = [] }
 tauri-plugin-log = { version = "2", optional = true }
 # Opens an item's site in the default browser (http and https only).
 tauri-plugin-opener = { version = "2", optional = true }
@@ -90,6 +90,10 @@ hmac.workspace = true
 sha2.workspace = true
 getrandom.workspace = true
 data-encoding.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+# The browser endpoint's named pipe on Windows (docs/plan/24-release.md §3).
+lockdown-pipe.workspace = true
 
 # WebKitGTK keeps getUserMedia off unless the host turns it on: the camera
 # for scanning a TV's code (docs/plan/26-desktop-finish.md §3). The same

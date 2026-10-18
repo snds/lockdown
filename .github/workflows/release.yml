@@ -1,0 +1,563 @@
+# Release (docs/plan/24-release.md): every artifact, SBOMs, checksums and
+# build provenance.
+#
+# - A `v*` tag push is a real release: everything below runs, the signing
+#   steps run where their secrets exist, build provenance is attested with
+#   GitHub's artifact attestations (keyless Sigstore, no stored secret), and
+#   a DRAFT GitHub release is made for Sean to read and publish by hand.
+# - `workflow_dispatch` and pull requests are dry runs: the same builds and
+#   packages, unsigned, with no attestation and no release. Pull requests
+#   run it so CI proves the release path works before anyone tags.
+#
+# Secrets a real run uses when present (none is required; each step that
+# needs one is skipped without it):
+#   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY
+#   APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID              (notarisation)
+#   WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD    (Authenticode)
+#   WINDOWS_MSIX_PUBLISHER                               (the certificate's subject)
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  meta:
+    name: version and build time
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      epoch: ${{ steps.meta.outputs.epoch }}
+      real: ${{ steps.meta.outputs.real }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        name: Read the version; on a tag, check every manifest agrees
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          epoch=$(git log -1 --format=%ct)
+          real=false
+          if [ "${{ github.event_name }}" = push ] && [ "${GITHUB_REF#refs/tags/v}" != "$GITHUB_REF" ]; then
+            real=true
+            tag="${GITHUB_REF#refs/tags/v}"
+            for v in "$version" \
+              "$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)" \
+              "$(jq -r .version extension/manifest.base.json)"; do
+              [ "$v" = "$tag" ] || { echo "::error::tag v$tag but a manifest says $v"; exit 1; }
+            done
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "epoch=$epoch" >> "$GITHUB_OUTPUT"
+          echo "real=$real" >> "$GITHUB_OUTPUT"
+          echo "version $version, SOURCE_DATE_EPOCH $epoch, real release: $real"
+
+  # deb and rpm through Tauri's bundler, on the oldest supported Ubuntu so
+  # the binaries run on older glibc too.
+  linux:
+    name: linux · deb · rpm
+    needs: meta
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install WebKitGTK and friends
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libdbus-1-dev libxdo-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-linux
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - name: Install
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+      - name: Stage the browser host for the bundler
+        working-directory: apps/desktop
+        run: node scripts/stage-host.mjs --release
+      - name: Build and bundle (deb, rpm)
+        working-directory: apps/desktop
+        run: pnpm tauri build --ci --bundles deb,rpm --config src-tauri/tauri.bundle.conf.json
+      - name: Collect
+        run: |
+          mkdir -p out stage
+          cp target/release/bundle/deb/*.deb target/release/bundle/rpm/*.rpm out/
+          # What the Flatpak job packs: the same release binaries.
+          cp target/release/lockdown-desktop target/release/lockdown-native-host stage/
+          cp apps/desktop/src-tauri/icons/128x128.png stage/icon-128.png
+          ls -la out stage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: out/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-flatpak-stage
+          path: stage/*
+          if-no-files-found: error
+
+  # Each package installed in a clean container of its family, then the
+  # smoke test: files, libraries, desktop entry, and the browser host run
+  # from the package.
+  linux-install:
+    name: install · ${{ matrix.image }}
+    needs: linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ubuntu:24.04
+            kind: deb
+          - image: debian:12
+            kind: deb
+          - image: fedora:41
+            kind: rpm
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-packages
+          path: pkgs
+      - name: Install the deb
+        if: matrix.kind == 'deb'
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y ./pkgs/*.deb
+      - name: Install the rpm
+        if: matrix.kind == 'rpm'
+        run: dnf install -y ./pkgs/*.rpm
+      - name: Smoke test
+        run: sh packaging/linux/smoke.sh
+      - name: The window starts and stays up (virtual display)
+        if: matrix.image == 'ubuntu:24.04'
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb xauth dbus-x11
+          export LOCKDOWN_ROOT="$(mktemp -d)/snds/identity"
+          set +e
+          timeout 20 dbus-run-session -- xvfb-run -a lockdown-desktop
+          code=$?
+          set -e
+          # 124: still running when the timer stopped it, which is the pass.
+          [ "$code" = 124 ] || { echo "lockdown-desktop exited with $code"; exit 1; }
+
+  flatpak:
+    name: flatpak
+    needs: [meta, linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-47
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-flatpak-stage
+          path: packaging/flatpak/stage
+      - run: chmod +x packaging/flatpak/stage/lockdown-*
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: packaging/flatpak/design.snds.lockdown.yml
+          bundle: lockdown-${{ needs.meta.outputs.version || 'dev' }}.flatpak
+          cache: false
+          upload-artifact: false
+      - name: Install the bundle and run the host from it
+        run: |
+          flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak --user install -y --noninteractive flathub org.gnome.Platform//47
+          flatpak --user install -y --noninteractive --bundle lockdown-*.flatpak
+          out=$(flatpak run --command=lockdown-native-host design.snds.lockdown </dev/null 2>/dev/null | tail -c +5 || true)
+          echo "$out"
+          echo "$out" | grep -q '"event":"refused"'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-flatpak
+          path: lockdown-*.flatpak
+          if-no-files-found: error
+
+  # Apple silicon and Intel in one universal app and dmg. Unsigned unless
+  # the signing secrets exist; notarised only when the notarisation
+  # secrets exist too.
+  macos:
+    name: macos · universal
+    needs: meta
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
+      HAVE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_SIGNING_IDENTITY != '' }}
+      HAVE_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-macos
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - name: Install
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+      - name: Signing identity (only with the secrets)
+        if: env.HAVE_SIGNING == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          keychain="$RUNNER_TEMP/lockdown-signing.keychain-db"
+          pass="$(openssl rand -hex 16)"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$pass" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$pass" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$pass" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+      - name: Notarisation account (only with the secrets)
+        if: env.HAVE_SIGNING == 'true' && env.HAVE_NOTARY == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          echo "APPLE_ID=$APPLE_ID" >> "$GITHUB_ENV"
+          echo "APPLE_PASSWORD=$APPLE_PASSWORD" >> "$GITHUB_ENV"
+          echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> "$GITHUB_ENV"
+      - name: Stage the browser host (universal, lipo)
+        working-directory: apps/desktop
+        run: node scripts/stage-host.mjs --universal --release
+      - name: Build and bundle (app, dmg)
+        working-directory: apps/desktop
+        run: pnpm tauri build --ci --target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.bundle.conf.json
+      - name: Check both architectures and the signature state
+        run: |
+          app="$(ls -d target/universal-apple-darwin/release/bundle/macos/*.app | head -n 1)"
+          for bin in "$app/Contents/MacOS/lockdown-desktop" "$app/Contents/MacOS/lockdown-native-host"; do
+            archs="$(lipo -archs "$bin")"
+            echo "$bin: $archs"
+            case "$archs" in *x86_64*arm64*|*arm64*x86_64*) ;; *) echo "::error::$bin is not universal"; exit 1 ;; esac
+          done
+          codesign -dv "$app" 2>&1 || true
+          if [ "$HAVE_SIGNING" = true ]; then
+            codesign --verify --deep --strict --verbose=2 "$app"
+          fi
+          if [ "$HAVE_SIGNING" = true ] && [ "$HAVE_NOTARY" = true ]; then
+            xcrun stapler validate "$app"
+            spctl -a -vvv -t exec "$app"
+          fi
+      - name: Collect
+        run: |
+          mkdir -p out
+          cp target/universal-apple-darwin/release/bundle/dmg/*.dmg out/
+          app="$(ls -d target/universal-apple-darwin/release/bundle/macos/*.app | head -n 1)"
+          ditto -c -k --keepParent "$app" "out/Lockdown_${{ needs.meta.outputs.version }}_universal.app.zip"
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: out/*
+          if-no-files-found: error
+
+  # MSI and NSIS installers through Tauri's bundler, and the MSIX layout
+  # packed unsigned (a dry run of the package; the Store submission and the
+  # passkey plug-in that needs it are OS-level work, D122).
+  windows:
+    name: windows · msi · nsis · msix layout
+    needs: meta
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
+      HAVE_SIGNING: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-windows
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - name: Install
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+      - name: Code-signing certificate (only with the secret)
+        if: env.HAVE_SIGNING == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "cert.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $pass = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $pass
+          Remove-Item $pfx
+          $conf = @{ bundle = @{ windows = @{ certificateThumbprint = $cert.Thumbprint; digestAlgorithm = "sha256"; timestampUrl = "http://timestamp.digicert.com" } } } | ConvertTo-Json -Depth 5
+          Set-Content -Path apps/desktop/src-tauri/tauri.sign.conf.json -Value $conf
+          "SIGN_CONFIG=--config src-tauri/tauri.sign.conf.json" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Stage the browser host for the bundler
+        working-directory: apps/desktop
+        run: node scripts/stage-host.mjs --release
+      - name: Build and bundle (msi, nsis)
+        working-directory: apps/desktop
+        run: pnpm tauri build --ci --bundles msi,nsis --config src-tauri/tauri.bundle.conf.json $SIGN_CONFIG
+      - name: MSIX layout, packed unsigned
+        shell: pwsh
+        env:
+          WINDOWS_MSIX_PUBLISHER: ${{ secrets.WINDOWS_MSIX_PUBLISHER }}
+        run: |
+          $publisher = if ($env:WINDOWS_MSIX_PUBLISHER) { $env:WINDOWS_MSIX_PUBLISHER } else { "CN=Sean Sands" }
+          pwsh packaging/msix/build-layout.ps1 -Version "${{ needs.meta.outputs.version }}" -AppExe target/release/lockdown-desktop.exe -HostExe target/release/lockdown-native-host.exe -Out out/msix -Publisher $publisher
+      - name: Sign the MSIX (only with the secret)
+        if: env.HAVE_SIGNING == 'true'
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe | Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
+          & $signtool.FullName sign /sha1 $env:CERT_THUMBPRINT /fd sha256 /tr http://timestamp.digicert.com /td sha256 (Get-ChildItem out/msix/*.msix).FullName
+      - name: Collect
+        run: |
+          mkdir -p out/release
+          cp target/release/bundle/msi/*.msi target/release/bundle/nsis/*.exe out/msix/*.msix out/release/
+          ls -la out/release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installers
+          path: out/release/*
+          if-no-files-found: error
+
+  # The store packages, reproducible (scripts/pack.mjs), and the source
+  # archive addons.mozilla.org asks for with a bundled add-on.
+  extension:
+    name: extension · store packages
+    needs: meta
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
+      RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=/lockdown --remap-path-prefix=/home/runner/.cargo=/cargo
+    defaults:
+      run:
+        working-directory: extension
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen-cli@0.2.129
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: extension/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: extension/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:wasm
+      - run: pnpm build
+      - run: pnpm run package
+      - name: Source archive for review
+        run: |
+          git -C .. archive --format=zip -o "extension/dist/packages/lockdown-extension-source-${{ needs.meta.outputs.version }}.zip" HEAD \
+            extension crates Cargo.toml Cargo.lock rust-toolchain.toml LICENSE NOTICE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension-packages
+          path: extension/dist/packages/*.zip
+          if-no-files-found: error
+
+  # The server and CLI binaries and the server image, each reproducible
+  # (packaging/repro/); the image is an OCI archive, never pushed.
+  server:
+    name: server · cli · image
+    needs: meta
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - uses: docker/setup-buildx-action@v3
+      - name: The web vault the image serves (its core built in the pinned image)
+        run: |
+          packaging/repro/build-web.sh
+          cd apps/web && pnpm install --frozen-lockfile && pnpm build
+      - name: Server and CLI binaries
+        run: packaging/repro/build-server.sh out
+      - name: Server image (OCI archive)
+        run: packaging/repro/build-image.sh out "lockdown-server:${{ needs.meta.outputs.version }}"
+      - name: The image carries the same server binary
+        run: |
+          image=$(python3 packaging/repro/oci-file-hash.py out/lockdown-server-image.oci.tar usr/local/bin/lockdown-server)
+          binary=$(sha256sum out/lockdown-server | cut -d' ' -f1)
+          echo "image $image, binary $binary"
+          [ "$image" = "$binary" ]
+      - name: Name and pack
+        run: |
+          v=${{ needs.meta.outputs.version }}
+          mkdir -p release
+          tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner \
+            -C out -cf - lockdown-server lockdown | gzip -n -9 > "release/lockdown-$v-x86_64-linux.tar.gz"
+          cp out/lockdown-server-image.oci.tar "release/lockdown-server-$v-image.oci.tar"
+          ls -la release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server
+          path: release/*
+          if-no-files-found: error
+
+  # CycloneDX SBOMs: the Rust workspace (every crate, every feature, from
+  # Cargo.lock) and each JavaScript app (from its pnpm lock file).
+  sbom:
+    name: SBOMs (CycloneDX)
+    needs: meta
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-cyclonedx@0.5.9
+      - name: Rust workspace
+        run: |
+          cargo cyclonedx --all-features --format json --spec-version 1.5
+          mkdir -p sbom
+          find . -name '*.cdx.json' -not -path './target/*' -not -path '*/node_modules/*' -exec cp {} sbom/ \;
+          ls sbom
+      - name: Desktop UI (apps/desktop)
+        uses: anchore/sbom-action@v0
+        with:
+          path: apps/desktop
+          format: cyclonedx-json
+          output-file: sbom/lockdown-desktop-ui.cdx.json
+          upload-artifact: false
+      - name: Web vault (apps/web)
+        uses: anchore/sbom-action@v0
+        with:
+          path: apps/web
+          format: cyclonedx-json
+          output-file: sbom/lockdown-web-vault.cdx.json
+          upload-artifact: false
+      - name: Browser extension (extension)
+        uses: anchore/sbom-action@v0
+        with:
+          path: extension
+          format: cyclonedx-json
+          output-file: sbom/lockdown-extension.cdx.json
+          upload-artifact: false
+      - name: Every SBOM parses; each shipped program's lists its components
+        run: |
+          for f in sbom/*.cdx.json; do
+            jq -e '.bomFormat == "CycloneDX"' "$f" > /dev/null || { echo "::error::$f is not CycloneDX"; exit 1; }
+          done
+          for f in lockdown-desktop lockdown-server lockdown-cli lockdown-native-host lockdown-desktop-ui lockdown-web-vault lockdown-extension; do
+            jq -e '(.components | length) > 0' "sbom/$f.cdx.json" > /dev/null || { echo "::error::sbom/$f.cdx.json lists no components"; exit 1; }
+          done
+          tar --sort=name --mtime="@$(git log -1 --format=%ct)" --owner=0 --group=0 --numeric-owner \
+            -C sbom -cf - . | gzip -n -9 > "lockdown-${{ needs.meta.outputs.version }}-sbom.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: lockdown-*-sbom.tar.gz
+          if-no-files-found: error
+
+  # Checksums over everything; on a tag push, build provenance for every
+  # file and a draft release. Nothing is published by this workflow: Sean
+  # reads the draft and publishes it.
+  publish:
+    name: checksums · provenance · draft release
+    needs: [meta, linux, linux-install, flatpak, macos, windows, extension, server, sbom]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+          pattern: "{linux-packages,linux-flatpak,macos-universal,windows-installers,extension-packages,server,sbom}"
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum $(ls | sort) > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ needs.meta.outputs.version }}
+          path: dist/*
+          if-no-files-found: error
+      - name: Build provenance (tag pushes only)
+        if: needs.meta.outputs.real == 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*
+      - name: Draft release (tag pushes only)
+        if: needs.meta.outputs.real == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "Lockdown ${{ needs.meta.outputs.version }}" \
+            --notes "Draft made by the release workflow. Check the files against SHA256SUMS and with \`gh attestation verify <file> --repo $GITHUB_REPOSITORY\` (docs/verify.md) before publishing." \
+            dist/*

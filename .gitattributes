@@ -1,0 +1,5 @@
+# Every file is checked out byte for byte as committed, on every platform:
+# no line-ending conversion (a Windows runner's core.autocrlf would
+# otherwise turn LF into CRLF in data files the tests hash or compare, and
+# a rebuild from a Windows checkout would not match; docs/plan/24-release.md).
+* -text

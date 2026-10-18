@@ -119,8 +119,10 @@ fn tls_healthcheck_redirect_and_a_certificate_renewed_on_sighup() {
             files.key.to_str().unwrap(),
             "--redirect-http",
             &redirect_addr,
+            // Windows has no SIGHUP: there the renewal below is picked up
+            // by the file check instead.
             "--tls-reload-secs",
-            "0",
+            if cfg!(unix) { "0" } else { "1" },
         ],
         &dir.path().join("data"),
     );
@@ -158,18 +160,22 @@ fn tls_healthcheck_redirect_and_a_certificate_renewed_on_sighup() {
         format!("https://localhost:{port}/v1/kt/sth?x=1")
     );
 
-    // Renew: new files in place, SIGHUP, and new clients see the new CA.
+    // Renew: new files in place, SIGHUP (the file check on Windows), and
+    // new clients see the new CA.
     let second = pki(&["localhost", "127.0.0.1"]);
     std::fs::write(&files.cert, &second.chain_pem).unwrap();
     std::fs::write(&files.key, &second.key_pem).unwrap();
-    let pid = s.child.id().to_string();
-    assert!(
-        Command::new("kill")
-            .args(["-HUP", &pid])
-            .status()
-            .unwrap()
-            .success()
-    );
+    #[cfg(unix)]
+    {
+        let pid = s.child.id().to_string();
+        assert!(
+            Command::new("kill")
+                .args(["-HUP", &pid])
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
     let trusts_second = Trust::Only(vec![second.ca_der.clone()]);
     let mut renewed = false;
     for _ in 0..100 {

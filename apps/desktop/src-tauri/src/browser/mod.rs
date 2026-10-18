@@ -8,8 +8,8 @@
 //!   the per-connection proof.
 //! - [`handler`]: one request, answered.
 //! - [`serve`]: one connection, from the host's hello to its close.
-//! - [`Endpoint::start`] (Unix): the socket, the endpoint file, the accept
-//!   loop.
+//! - [`Endpoint::start`]: the Unix socket (Linux, macOS) or the named pipe
+//!   (Windows, `lockdown-pipe`), the endpoint file, the accept loop.
 //!
 //! Nothing here needs Tauri: the shell gives it the [`App`] and a
 //! [`CopySink`] for its clipboard path, and its commands call
@@ -314,7 +314,7 @@ pub struct Endpoint {
     shared: Arc<Shared>,
     config: EndpointConfig,
     problem: Option<String>,
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     stop: Arc<std::sync::atomic::AtomicBool>,
 }
 
@@ -327,7 +327,7 @@ impl Endpoint {
             shared,
             config,
             problem: Some(problem),
-            #[cfg(unix)]
+            #[cfg(any(unix, windows))]
             stop: Arc::new(std::sync::atomic::AtomicBool::new(true)),
         }
     }
@@ -348,14 +348,11 @@ impl Endpoint {
         })
     }
 
-    #[cfg(unix)]
-    fn listen(shared: Arc<Shared>, config: &EndpointConfig) -> Result<Self, String> {
-        use std::sync::atomic::{AtomicBool, Ordering};
-
-        use ecosystem_identity::handshake::unix::UnixSocketTransport;
-        use ecosystem_identity::handshake::verify::AllowedBinary;
-        use ecosystem_identity::handshake::{PeerTransport, ProcessIdentityVerifier};
-        use lockdown_native_messaging::endpoint::{ENDPOINT_V, EndpointFile, socket_path};
+    /// The checks both transports share before they listen: the host is
+    /// installed, and the hashes of the host and of this app.
+    #[cfg(any(unix, windows))]
+    fn hashes(config: &EndpointConfig) -> Result<([u8; 32], [u8; 32]), String> {
+        use ecosystem_identity::handshake::ProcessIdentityVerifier;
 
         if !config.host_binary.is_file() {
             return Err(format!(
@@ -367,24 +364,46 @@ impl Endpoint {
             .map_err(|e| format!("couldn't read the browser host: {e}"))?;
         let app_hash = ProcessIdentityVerifier::hash_of(&config.app_exe)
             .map_err(|e| format!("couldn't read the app's own file: {e}"))?;
-        let socket = socket_path(&config.data);
-        let transport = UnixSocketTransport::at(&socket);
-        transport
-            .listen()
-            .map_err(|e| format!("couldn't open the browser socket: {e}"))?;
+        Ok((host_hash, app_hash))
+    }
+
+    /// Writes the endpoint file naming `socket` (a socket path, or a pipe
+    /// name on Windows) and this app by path and hash.
+    #[cfg(any(unix, windows))]
+    fn write_endpoint(
+        config: &EndpointConfig,
+        socket: PathBuf,
+        app_hash: &[u8; 32],
+    ) -> Result<(), String> {
+        use lockdown_native_messaging::endpoint::{ENDPOINT_V, EndpointFile};
+
         EndpointFile {
             v: ENDPOINT_V,
             socket,
             app_exe: config.app_exe.clone(),
-            app_sha256: data_encoding::HEXLOWER.encode(&app_hash),
+            app_sha256: data_encoding::HEXLOWER.encode(app_hash),
         }
         .write(&config.data)
-        .map_err(|e| format!("couldn't write the endpoint file: {e}"))?;
-        let verifier = Arc::new(ProcessIdentityVerifier::new(vec![AllowedBinary {
-            app: "native-host".into(),
-            path: config.host_binary.clone(),
-            sha256: Some(host_hash),
-        }]));
+        .map_err(|e| format!("couldn't write the endpoint file: {e}"))
+    }
+
+    /// Accepts connections on `transport` until the endpoint stops, each
+    /// served on its own thread after `verifier_for` made its check.
+    #[cfg(any(unix, windows))]
+    fn accept_loop<T, V, F>(
+        shared: Arc<Shared>,
+        config: &EndpointConfig,
+        transport: T,
+        verifier_for: F,
+    ) -> Result<Self, String>
+    where
+        T: ecosystem_identity::handshake::PeerTransport + Send + 'static,
+        T::Channel: Send + 'static,
+        V: PeerVerifier + Send + 'static,
+        F: Fn(&T::Channel) -> V + Send + 'static,
+    {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
         let stop = Arc::new(AtomicBool::new(false));
         let (stop2, shared2) = (Arc::clone(&stop), Arc::clone(&shared));
         std::thread::Builder::new()
@@ -393,16 +412,18 @@ impl Endpoint {
                 while !stop2.load(Ordering::SeqCst) {
                     match transport.accept(Duration::from_millis(250)) {
                         Ok(ch) => {
-                            let (shared, verifier) = (Arc::clone(&shared2), Arc::clone(&verifier));
+                            let shared = Arc::clone(&shared2);
+                            let verifier = verifier_for(&ch);
                             let _ = std::thread::Builder::new()
                                 .name("lockdown-browser-conn".into())
-                                .spawn(move || serve(&shared, verifier.as_ref(), ch));
+                                .spawn(move || serve(&shared, &verifier, ch));
                         }
                         Err(ecosystem_identity::Error::Timeout) => {}
                         Err(_) => std::thread::sleep(Duration::from_millis(250)),
                     }
                 }
-                // Dropping the transport removes the socket file.
+                // Dropping the transport removes the socket file (Unix) or
+                // closes the pipe's waiting instance (Windows).
                 drop(transport);
             })
             .map_err(|e| format!("couldn't start the browser endpoint: {e}"))?;
@@ -414,9 +435,55 @@ impl Endpoint {
         })
     }
 
-    #[cfg(not(unix))]
+    #[cfg(unix)]
+    fn listen(shared: Arc<Shared>, config: &EndpointConfig) -> Result<Self, String> {
+        use ecosystem_identity::handshake::ProcessIdentityVerifier;
+        use ecosystem_identity::handshake::unix::UnixSocketTransport;
+        use ecosystem_identity::handshake::verify::AllowedBinary;
+        use lockdown_native_messaging::endpoint::socket_path;
+
+        let (host_hash, app_hash) = Self::hashes(config)?;
+        let socket = socket_path(&config.data);
+        let transport = UnixSocketTransport::at(&socket);
+        transport
+            .listen()
+            .map_err(|e| format!("couldn't open the browser socket: {e}"))?;
+        Self::write_endpoint(config, socket, &app_hash)?;
+        let verifier = ProcessIdentityVerifier::new(vec![AllowedBinary {
+            app: "native-host".into(),
+            path: config.host_binary.clone(),
+            sha256: Some(host_hash),
+        }]);
+        Self::accept_loop(shared, config, transport, move |_| verifier.clone())
+    }
+
+    /// Windows: the named pipe (`lockdown-pipe`), user-only, checked by the
+    /// same rules as the socket: user, path and SHA-256 of the host.
+    #[cfg(windows)]
+    fn listen(shared: Arc<Shared>, config: &EndpointConfig) -> Result<Self, String> {
+        use ecosystem_identity::handshake::verify::AllowedBinary;
+        use lockdown_pipe::{PipeTransport, PipeVerifier, pipe_name};
+
+        let (host_hash, app_hash) = Self::hashes(config)?;
+        let name = pipe_name(&config.data);
+        let transport = PipeTransport::at(&name);
+        transport
+            .listen()
+            .map_err(|e| format!("couldn't open the browser pipe: {e}"))?;
+        Self::write_endpoint(config, PathBuf::from(&name), &app_hash)?;
+        let verifier = PipeVerifier::new(vec![AllowedBinary {
+            app: "native-host".into(),
+            path: config.host_binary.clone(),
+            sha256: Some(host_hash),
+        }]);
+        Self::accept_loop(shared, config, transport, move |ch| {
+            verifier.bind(ch.peer_process())
+        })
+    }
+
+    #[cfg(not(any(unix, windows)))]
     fn listen(_shared: Arc<Shared>, _config: &EndpointConfig) -> Result<Self, String> {
-        Err("the browser extension can't reach the app on this system yet (no named-pipe transport)".into())
+        Err("the browser extension can't reach the app on this system".into())
     }
 
     /// Requests waiting for the person.
@@ -496,8 +563,16 @@ impl Endpoint {
         wanted
             .into_iter()
             .map(|b| {
-                manifest::install(os, b, &homes, &self.config.host_binary)
-                    .map_err(|e| format!("couldn't connect {}: {e}", b.name()))
+                let target = manifest::install(os, b, &homes, &self.config.host_binary)
+                    .map_err(|e| format!("couldn't connect {}: {e}", b.name()))?;
+                // Windows: the browser finds the manifest through a
+                // per-user registry value naming it.
+                #[cfg(windows)]
+                if let Some(key) = &target.registry_key {
+                    lockdown_pipe::registry::set_default(key, &target.manifest.to_string_lossy())
+                        .map_err(|e| format!("couldn't connect {}: {e}", b.name()))?;
+                }
+                Ok(target)
             })
             .collect()
     }
@@ -505,7 +580,7 @@ impl Endpoint {
 
 impl Drop for Endpoint {
     fn drop(&mut self) {
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         {
             self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
             if self.problem.is_none() {

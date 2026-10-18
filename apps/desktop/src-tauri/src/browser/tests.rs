@@ -434,6 +434,92 @@ fn over_the_real_socket_the_host_binary_is_checked_by_process_identity() {
     );
 }
 
+/// The Windows half of the test above: the endpoint on the named pipe
+/// (`lockdown-pipe`), the same checks by user, path and SHA-256.
+#[cfg(windows)]
+#[test]
+fn over_the_real_pipe_the_host_binary_is_checked_by_process_identity() {
+    use lockdown_native_messaging::endpoint::EndpointFile;
+    use lockdown_pipe::{PIPE_PREFIX, PipeTransport};
+
+    let dir = tempfile::tempdir().unwrap();
+    let paths = Paths::resolve(Some(dir.path().join("snds/identity")), None).unwrap();
+    let data = paths.data.clone();
+    let app = App::start(paths, None, LockPolicy::default());
+    app.open_or_create(true).unwrap();
+    let me = std::env::current_exe().unwrap();
+    let config = EndpointConfig {
+        data: data.clone(),
+        host_binary: me.clone(),
+        app_exe: me.clone(),
+    };
+    let endpoint = Endpoint::start(app, Arc::new(FakeClipboard::default()), config).unwrap();
+    assert!(
+        endpoint.status().listening,
+        "{:?}",
+        endpoint.status().problem
+    );
+    let file = EndpointFile::read(&data).unwrap();
+    let name = file.socket.to_string_lossy().into_owned();
+    assert!(name.starts_with(PIPE_PREFIX), "{name}");
+    let mut ch = PipeTransport::at(&name)
+        .connect(Duration::from_secs(5))
+        .expect("the endpoint's pipe accepts a connection");
+    // The app on the other end is this test binary, by the pipe's own view.
+    let server = ch
+        .peer_process()
+        .cloned()
+        .expect("the pipe names its server");
+    assert_eq!(server.pid, std::process::id());
+    assert!(server.same_user);
+    ch.send(&serde_json::to_vec(&HostHello::new(chrome())).unwrap())
+        .unwrap();
+    let ready: Value = serde_json::from_slice(&ch.recv(Duration::from_secs(90)).unwrap()).unwrap();
+    assert_eq!(ready["event"], "ready", "{ready}");
+    ch.send(br#"{"id":1,"op":"status"}"#).unwrap();
+    let status: Value = serde_json::from_slice(&ch.recv(Duration::from_secs(30)).unwrap()).unwrap();
+    assert_eq!(status["result"]["paired"], false);
+    drop(ch);
+    drop(endpoint);
+    assert!(
+        EndpointFile::read(&data).is_err(),
+        "the endpoint file goes with the app"
+    );
+}
+
+/// On Windows an endpoint that allows only another program as its host
+/// refuses this one over the pipe before it reads a hello.
+#[cfg(windows)]
+#[test]
+fn over_the_real_pipe_another_program_is_refused() {
+    use lockdown_native_messaging::endpoint::EndpointFile;
+    use lockdown_pipe::PipeTransport;
+
+    let dir = tempfile::tempdir().unwrap();
+    let paths = Paths::resolve(Some(dir.path().join("snds/identity")), None).unwrap();
+    let data = paths.data.clone();
+    let app = App::start(paths, None, LockPolicy::default());
+    app.open_or_create(true).unwrap();
+    let me = std::env::current_exe().unwrap();
+    // A stand-in host: a real file that isn't this test binary.
+    let other = dir.path().join("lockdown-native-host.exe");
+    std::fs::write(&other, b"not the host").unwrap();
+    let config = EndpointConfig {
+        data: data.clone(),
+        host_binary: other,
+        app_exe: me,
+    };
+    let endpoint = Endpoint::start(app, Arc::new(FakeClipboard::default()), config).unwrap();
+    let file = EndpointFile::read(&data).unwrap();
+    let mut ch = PipeTransport::at(&file.socket.to_string_lossy())
+        .connect(Duration::from_secs(5))
+        .unwrap();
+    let refused: Value =
+        serde_json::from_slice(&ch.recv(Duration::from_secs(30)).unwrap()).unwrap();
+    assert_eq!(refused["event"], "refused", "{refused}");
+    drop(endpoint);
+}
+
 /// The passkey ops over the protocol (docs/plan/19-passkeys.md §4): a plan,
 /// the create's two steps, the offer, the get's two steps, a Signal, and
 /// the setting that turns them off. Nothing secret is in any answer.
