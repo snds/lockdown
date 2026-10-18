@@ -133,3 +133,62 @@ export interface SheetData {
   options: PasskeyOption[]
   plan: PasskeyPlan | null
 }
+
+// --- bridges (docs/plan/23-bridges.md) ------------------------------------------
+
+/** What a fill fix may call a field. */
+export type FieldRole = "username" | "password" | "new_password" | "code" | "ignore"
+
+/** A field named by its own attributes, exactly; never a selector. */
+export interface FieldMatch {
+  id?: string | null
+  name?: string | null
+  autocomplete?: string | null
+}
+
+/** A fix as the person sets it from the popup: kept on the site's logins. */
+export interface FillFix {
+  never: boolean
+  fields: { match: FieldMatch; role: FieldRole }[]
+}
+
+/** What applies on one page: the person's fixes over the community's. */
+export interface SiteFixView {
+  host: string
+  never: boolean
+  never_source: "yours" | "community" | null
+  fields: { match: FieldMatch; role: FieldRole; source: "yours" | "community" }[]
+  note: string | null
+  yours: number
+}
+
+/** One field on the page, as the popup lists it for a fix (never its value). */
+export interface PageField {
+  id: string
+  name: string
+  autocomplete: string
+  type: string
+  label: string
+  /** What Lockdown takes it for now, or `null` for an ordinary field. */
+  role: FieldRole | null
+}
+
+/** The sign-in providers and their sign-in pages, from the signed site data. */
+export interface FederationHints {
+  providers: { id: string; name: string; pages: [string, string][] }[]
+}
+
+/** The security center's change-password link for a login. */
+export interface ChangeLink {
+  url: string
+  kind: "well_known" | "site_root" | "recipe"
+  checked: boolean
+  note?: string | null
+}
+
+/** An alias service set up in Lockdown, as the popup offers it. */
+export interface AliasOption {
+  item_id: string
+  name: string
+  domain: string | null
+}

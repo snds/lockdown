@@ -189,6 +189,26 @@ fn page_origin(frame: &str) -> AppResult<Origin> {
     Ok(o)
 }
 
+/// Why nothing fills on `frame`, when a fix says never: the person's own
+/// on a login for the site, or the community's. Asked by every fill the
+/// browser asks for ([`App::fill`]), so a "never" holds whatever the
+/// extension does.
+pub(crate) fn never_here(core: &mut crate::Core, frame: &str) -> AppResult<Option<String>> {
+    let Ok(page) = page_origin(frame) else {
+        return Ok(None);
+    };
+    let logins = core.session()?.bridge_logins().map_err(AppError::refused)?;
+    let view = view_for(&page, &logins, SiteData::builtin());
+    Ok(match view.never_source {
+        Some("yours") => Some(format!("you told Lockdown never to fill on {}", view.host)),
+        Some(_) => Some(format!(
+            "Lockdown doesn't fill on {}: the site's sign-in breaks when it is filled",
+            view.host
+        )),
+        None => None,
+    })
+}
+
 impl App {
     /// The fix that applies on `frame` (a page address from the browser).
     pub fn site_fix_for(&self, frame: &str) -> AppResult<SiteFixView> {

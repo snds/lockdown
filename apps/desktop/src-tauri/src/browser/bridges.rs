@@ -9,9 +9,9 @@
 //! Windows Hello) answers it from the browser, else the extension is told
 //! to use the app, as a crown jewel's fill is (D98).
 
-use lockdown_app::GateInput;
 use lockdown_app::bridges::federation::FederatedEvidence;
 use lockdown_app::bridges::fixes::FillFix;
+use lockdown_app::{ErrorCode, GateInput};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -99,7 +99,15 @@ pub fn answer(shared: &Shared, op: &str, frame: &[u8]) -> Result<Value, Refusal>
         }
         "alias_create" => {
             let a: AliasCreate = args(frame)?;
-            let made = app.alias_generate(&a.item_id, &host_of(&a.frame), GateInput::default())?;
+            let made = app
+                .alias_generate(&a.item_id, &host_of(&a.frame), GateInput::default())
+                .map_err(|e| match e.code {
+                    ErrorCode::ApprovalNeeded => Refusal::new(
+                        "approval_needed",
+                        "an alias needs your OK, and Lockdown can't ask for it from the browser on this computer; make one in Lockdown's editor",
+                    ),
+                    _ => Refusal::from(e),
+                })?;
             Ok(json!({ "address": made.address, "service": made.service_name }))
         }
         other => Err(Refusal::new(

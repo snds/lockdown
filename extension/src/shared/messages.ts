@@ -5,7 +5,7 @@
 // a frame's and the popup's is the extension's own origin, and a frame may
 // only act for a nonce the content script in the same tab registered.
 
-import type { FillValue, FillWhat } from "./protocol"
+import type { FillFix, FillValue, FillWhat } from "./protocol"
 
 /** What a menu or prompt is for. */
 export type MenuKind = FillWhat | "prompt"
@@ -20,6 +20,8 @@ export type ToBackground =
   | { t: "unregister"; nonce: string }
   | { t: "offer_save"; username: string; password: string }
   | { t: "top_ready" }
+  | { t: "fixes" }
+  | { t: "provider_button"; name: string }
   // from the menu or prompt frame
   | { t: "menu_data"; nonce: string }
   | { t: "menu_pick"; nonce: string; item_id: string; what: PickWhat; field?: string | null; confirmed: boolean; frame_visible: boolean | null }
@@ -34,7 +36,11 @@ export type ToBackground =
   | { t: "copy"; item_id: string; tab_id?: number }
   | { t: "site"; tab_id?: number }
   | { t: "fill_tab"; tab_id: number; item_id: string }
-  | { t: "change_password"; origin: string }
+  | { t: "change_link"; item_id: string }
+  | { t: "fix_fields"; tab_id: number }
+  | { t: "fix_set"; tab_id: number; fix: FillFix }
+  | { t: "alias_options" }
+  | { t: "alias_fill"; tab_id: number; item_id: string }
   // from the passkey bridge in a tab's top frame (docs/plan/19-passkeys.md)
   | { t: "pk_begin"; op: "create" | "get"; mediation: string; request: Record<string, unknown> }
   | { t: "pk_abort"; rid: string }
@@ -56,6 +62,10 @@ export type ToContent =
   | { t: "target_login" }
   | { t: "show_prompt" }
   | { t: "open_menu"; nonce: string }
+  // bridges (docs/plan/23-bridges.md): fill fixes and aliases
+  | { t: "fixes_changed" }
+  | { t: "list_fields" }
+  | { t: "fill_email"; address: string }
   // to the passkey bridge
   | { t: "pk_done"; rid: string; credential?: unknown; error?: { name: string; message: string }; handoff?: "same" | "modal" }
   | { t: "pk_measure"; rid: string }

@@ -62,3 +62,9 @@ h2 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); font-weight: 600;
 .row .text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .code { font: 600 28px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.08em; margin: 8px 0; }
 .live { color: var(--muted); margin: 8px 0 0; min-height: 1em; }
+/* Bridges in the popup (docs/plan/23-bridges.md): "Fix this page" and "Hide my email". */
+details.fix { margin: 8px 0 0; }
+details.fix summary { cursor: pointer; color: var(--accent); padding: 4px 0; }
+.fix-body .row .text select { margin-top: 4px; font: inherit; min-height: 28px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--fg); }
+.fix-body label.check { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
+.fix-body button.primary { margin-top: 8px; }

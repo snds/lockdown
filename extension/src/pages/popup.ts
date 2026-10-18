@@ -3,7 +3,7 @@
 // clipboard path (the value never comes to the browser). It shows
 // summaries only: title, username, site, kind (D113 for crown jewels).
 
-import type { LinkState, PageMatches, PickAnswer, SearchItem } from "../shared/protocol"
+import type { AliasOption, ChangeLink, FieldMatch, FieldRole, FillFix, LinkState, PageField, PageMatches, PickAnswer, SearchItem, SiteFixView } from "../shared/protocol"
 
 const root = document.getElementById("app") as HTMLElement
 const params = new URLSearchParams(location.search)
@@ -82,8 +82,148 @@ async function renderSite(section: HTMLElement) {
       say(r?.done ? `Filled ${c.title}.` : (r?.confirm ?? r?.refuse ?? r?.error ?? "Lockdown didn't fill."))
     })
     const change = el("button", "link", "Change password")
-    change.addEventListener("click", () => void send({ t: "change_password", origin: site.url }))
+    change.addEventListener("click", () => void changePassword(c.item_id, c.title || m.host))
     li.append(text, fill, change)
+    ul.append(li)
+  }
+  section.append(ul)
+  section.append(fixSection())
+}
+
+// --- the security center's checked change-password link (docs/plan/23-bridges.md §7)
+
+type Opened = { kind: ChangeLink["kind"]; checked: boolean; note: string | null; host: string; error?: string }
+
+async function changePassword(itemId: string, title: string) {
+  const r = await send<Opened>({ t: "change_link", item_id: itemId })
+  if (!r || r.error) {
+    say(r?.error ?? "Lockdown couldn't find where to change it.")
+    return
+  }
+  if (r.kind === "well_known") say(`Opened the change-password page for ${title}.`)
+  else if (r.kind === "recipe") say(`Opened the page where ${r.host} changes passwords.${r.note ? ` ${r.note}` : ""}`)
+  else say(r.checked ? `${r.host} has no change-password page Lockdown could find, so its front page is open.` : `Opened ${r.host}; look for its password settings.`)
+}
+
+// --- "Fix this page": per-site fill fixes (§5) -------------------------------
+
+const ROLES: [FieldRole | "", string][] = [
+  ["", "Lockdown decides"],
+  ["username", "Username or email"],
+  ["password", "Password"],
+  ["new_password", "New password"],
+  ["code", "One-time code"],
+  ["ignore", "Not a sign-in field"],
+]
+
+function fieldName(f: PageField): string {
+  return f.label || f.name || f.id || f.autocomplete
+}
+
+/** How a fix names a field: its id and name, or its autocomplete when it has neither. */
+function matchFor(f: PageField): FieldMatch {
+  return { id: f.id || null, name: f.name || null, autocomplete: f.id || f.name ? null : f.autocomplete || null }
+}
+
+function sameMatch(a: FieldMatch, b: FieldMatch): boolean {
+  return (a.id ?? null) === (b.id ?? null) && (a.name ?? null) === (b.name ?? null) && (a.autocomplete ?? null) === (b.autocomplete ?? null)
+}
+
+function fixSection(): HTMLElement {
+  const box = el("details", "fix")
+  box.append(el("summary", undefined, "Fix this page"))
+  let loaded = false
+  box.addEventListener("toggle", () => {
+    if (box.open && !loaded) {
+      loaded = true
+      void renderFix(box)
+    }
+  })
+  return box
+}
+
+async function renderFix(box: HTMLElement) {
+  const r = await send<{ host: string; fields: PageField[]; view: SiteFixView | null; error?: string }>({ t: "fix_fields", tab_id: site.tab_id })
+  const body = el("div", "fix-body")
+  box.querySelector(".fix-body")?.remove()
+  box.append(body)
+  if (!r || r.error) {
+    body.append(el("p", "msg", r?.error ?? "Lockdown couldn't read this page."))
+    return
+  }
+  body.append(el("p", "msg", "If Lockdown fills the wrong field here, say which is which. It's kept with your logins for this site and syncs with them."))
+  const neverLabel = el("label", "check")
+  const never = el("input")
+  never.type = "checkbox"
+  never.checked = r.view?.never === true && r.view.never_source === "yours"
+  neverLabel.append(never, document.createTextNode(` Never fill on ${r.host}`))
+  body.append(neverLabel)
+  if (r.view?.never_source === "community") body.append(el("p", "msg", `Lockdown's list says not to fill on ${r.host}.${r.view.note ? ` ${r.view.note}` : ""}`))
+  const choices: { field: PageField; select: HTMLSelectElement }[] = []
+  const list = el("ul", "rows")
+  list.setAttribute("aria-label", "Fields on this page")
+  for (const f of r.fields) {
+    const li = el("li", "row")
+    const label = el("label", "text")
+    const sel = el("select")
+    for (const [value, words] of ROLES) {
+      const o = el("option", undefined, words)
+      o.value = value
+      sel.append(o)
+    }
+    const mine = r.view?.fields.find((x) => x.source === "yours" && sameMatch(x.match, matchFor(f)))
+    sel.value = mine?.role ?? ""
+    label.append(el("span", "title", fieldName(f)), el("span", "sub", `${f.type} · now ${ROLES.find(([v]) => v === (f.role ?? ""))?.[1].toLowerCase() ?? "an ordinary field"}`), sel)
+    li.append(label)
+    list.append(li)
+    choices.push({ field: f, select: sel })
+  }
+  if (r.fields.length) body.append(list)
+  else body.append(el("p", "msg", "This page has no fields Lockdown can name."))
+  const save = el("button", "primary", "Save fix")
+  save.addEventListener("click", async () => {
+    const fix: FillFix = {
+      never: never.checked,
+      fields: choices
+        .filter((c) => c.select.value)
+        .map((c) => ({
+          match: matchFor(c.field),
+          role: c.select.value as FieldRole,
+        })),
+    }
+    save.disabled = true
+    const done = await send<{ logins?: number; error?: string }>({ t: "fix_set", tab_id: site.tab_id, fix })
+    save.disabled = false
+    if (!done || done.error) say(done?.error ?? "Lockdown didn't keep the fix.")
+    else say(`Kept the fix with ${done.logins} ${done.logins === 1 ? "login" : "logins"} for ${r.host}. It works on the page now.`)
+  })
+  body.append(save)
+}
+
+// --- "Hide my email": an alias for a sign-up form (§5) ------------------------
+
+async function renderAliases(section: HTMLElement) {
+  if (!site.url || !/^https?:/.test(site.url)) return
+  const r = await send<{ services?: AliasOption[]; error?: string }>({ t: "alias_options" })
+  const services = r?.services ?? []
+  if (services.length === 0) return
+  section.append(el("h2", undefined, "Hide my email"))
+  const ul = el("ul", "rows")
+  for (const svc of services) {
+    const li = el("li", "row")
+    const text = el("div", "text")
+    text.append(el("span", "title", svc.name), el("span", "sub", svc.domain ? `on ${svc.domain}` : "a new address that forwards to you"))
+    const b = el("button", "secondary", "New alias")
+    b.setAttribute("aria-label", `New alias from ${svc.name}`)
+    b.addEventListener("click", async () => {
+      b.disabled = true
+      say(`Asking ${svc.name} for a new address…`)
+      const made = await send<{ address?: string; filled?: boolean; error?: string }>({ t: "alias_fill", tab_id: site.tab_id, item_id: svc.item_id })
+      b.disabled = false
+      if (!made || made.error || !made.address) say(made?.error ?? "No alias was made.")
+      else say(made.filled ? `Made ${made.address} and put it in the email field.` : `Made ${made.address}. This page has no email field to put it in; copy it from here.`)
+    })
+    li.append(text, b)
     ul.append(li)
   }
   section.append(ul)
@@ -113,8 +253,9 @@ function renderMain() {
     clearTimeout(timer)
     timer = setTimeout(() => void run(), 120)
   })
-  root.append(siteSection, search, results, live)
-  void renderSite(siteSection)
+  const aliasSection = el("section", "aliases")
+  root.append(siteSection, aliasSection, search, results, live)
+  void renderSite(siteSection).then(() => renderAliases(aliasSection))
   void run()
   search.focus()
 }

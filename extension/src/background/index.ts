@@ -6,12 +6,15 @@
 import type { ToBackground, ToContent, Measured, MenuKind, PickWhat } from "../shared/messages"
 import { extensionOrigin } from "../shared/messages"
 import type { FillAnswer, LinkState, LoginCandidate, MenuData, PageMatches, PickAnswer, SaveOffer, WalletEntry } from "../shared/protocol"
+import * as bridges from "./bridges"
 import { DesktopError, Link } from "./link"
 import * as matcher from "./matcher"
 import { Passkeys } from "./passkeys"
 
 const link = new Link()
 const passkeys = new Passkeys(link)
+const fixes = new bridges.Fixes(link)
+const federation = new bridges.Federation(link)
 
 /** One open menu or prompt, registered by the content script that owns the
  *  field. The frame the extension shows inside the page may act only for a
@@ -94,6 +97,13 @@ async function menuData(m: Menu): Promise<MenuData> {
   const kind = m.kind === "prompt" ? "login" : m.kind
   const base: MenuData = { kind, link: await linkState(), host, logins: [], wallet: [], lookalike_of: [], note: null, passkeys: [] }
   try {
+    const never = await fixes.neverWhy(m.frameUrl)
+    if (never) {
+      base.note = never
+      m.offered = new Map()
+      m.passkeys = new Set()
+      return base
+    }
     if (kind === "login" || kind === "code") {
       const pm = await matchesFor(m.frameUrl)
       base.lookalike_of = pm.lookalike_of
@@ -130,6 +140,9 @@ async function pickPasskey(m: Menu, itemId: string, credentialId: string, confir
 
 /** One fill, from a pick in the menu, the popup or the shortcut. */
 async function pick(m: Menu, itemId: string, what: PickWhat, field: string | null, confirmed: boolean, frameVisible: boolean | null): Promise<PickAnswer> {
+  // A "never fill here" fix (the app refuses such a fill too).
+  const never = await fixes.neverWhy(m.frameUrl)
+  if (never) return { refuse: never }
   if (frameVisible === false) return { refuse: "Something on the page covers Lockdown's menu, so Lockdown won't fill." }
   if (what === "passkey") return pickPasskey(m, itemId, field ?? "", confirmed, frameVisible)
   const offered = m.offered.get(itemId)
@@ -240,7 +253,17 @@ async function route(msg: ToBackground, sender: chrome.runtime.MessageSender): P
       return offerSave(String(msg.username ?? ""), msg.password, sender)
     case "top_ready":
       if (!isContentScript(sender) || sender.frameId !== 0) return { prompt: false }
+      // The federated map: a provider's sign-in page loading in this tab
+      // (or in a window it opened) after a site's page.
+      void federation.topLoaded(sender.tab!, sender.url!).catch(() => undefined)
       return { prompt: pendingOffer(sender.tab!.id!) !== null }
+    case "fixes":
+      if (!isContentScript(sender)) throw new Error("refused")
+      return fixes.forFrame(sender.url!)
+    case "provider_button":
+      if (!isContentScript(sender)) throw new Error("refused")
+      await federation.button(sender.tab!, String(msg.name ?? ""))
+      return { ok: true }
 
     // --- the menu and prompt frames -----------------------------------------
     case "menu_data":
@@ -320,6 +343,8 @@ async function route(msg: ToBackground, sender: chrome.runtime.MessageSender): P
     }
     case "fill_tab": {
       if (!isExtensionPage(sender, "popup.html")) throw new Error("refused")
+      const never = await fixes.neverWhy((await activeTab(msg.tab_id))?.url ?? "")
+      if (never) return { refuse: never }
       const m = await targetLogin(msg.tab_id)
       if (!m) return { refuse: "There's no sign-in field on this page." }
       const data = await menuData(m)
@@ -330,16 +355,26 @@ async function route(msg: ToBackground, sender: chrome.runtime.MessageSender): P
         return { refuse: words(e) }
       }
     }
-    case "change_password": {
+    case "change_link":
       if (!isExtensionPage(sender, "popup.html")) throw new Error("refused")
-      // The site's own origin, then the well-known path every browser and
-      // manager uses (W3C "A Well-Known URL for Changing Passwords"); a
-      // site without one redirects or answers 404, and the person is on
-      // the right site either way.
-      const origin = new URL(String(msg.origin ?? "")).origin
-      if (!/^https?:\/\//.test(origin)) throw new Error("not a web address")
-      await chrome.tabs.create({ url: `${origin}/.well-known/change-password` })
-      return { ok: true }
+      return bridges.openChangeLink(link, String(msg.item_id ?? ""))
+    case "fix_fields": {
+      if (!isExtensionPage(sender, "popup.html")) throw new Error("refused")
+      const tab = await activeTab(msg.tab_id)
+      return fixes.fields(tab)
+    }
+    case "fix_set": {
+      if (!isExtensionPage(sender, "popup.html")) throw new Error("refused")
+      const tab = await activeTab(msg.tab_id)
+      return fixes.set(tab, msg.fix)
+    }
+    case "alias_options":
+      if (!isExtensionPage(sender, "popup.html")) throw new Error("refused")
+      return link.call("alias_options")
+    case "alias_fill": {
+      if (!isExtensionPage(sender, "popup.html")) throw new Error("refused")
+      const tab = await activeTab(msg.tab_id)
+      return bridges.aliasFill(link, tab, String(msg.item_id ?? ""))
     }
 
     // --- passkeys (docs/plan/19-passkeys.md) --------------------------------
@@ -392,6 +427,7 @@ chrome.runtime.onMessage.addListener((msg: ToBackground, sender, sendResponse) =
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   offers.delete(tabId)
+  federation.forgetTab(tabId)
   passkeys.forgetTab(tabId)
   for (const [n, m] of menus) if (m.tabId === tabId) menus.delete(n)
 })

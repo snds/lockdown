@@ -461,6 +461,9 @@ impl App {
         let (item_id, field) = (item_id.to_string(), field.map(str::to_string));
         self.call(move |core| {
             core.clock.touch(Instant::now());
+            if let Some(why) = crate::bridges::fixes::never_here(core, &facts.frame)? {
+                return Ok(FillOutcome::Refuse(why));
+            }
             match decide_fill(core, &item_id, what, field.as_deref(), &facts)? {
                 Ok(plan) => {
                     let values = read_values(core, &item_id, plan)?;

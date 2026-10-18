@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use lockdown_app::bridges::federation::FederatedEvidence;
 use lockdown_app::bridges::fixes::FillFix;
+use lockdown_app::browser::{FillOutcome, FillWhat, PageFacts};
 use lockdown_app::{App, ErrorCode, FieldChange, GateInput, LockPolicy, Paths};
 use lockdown_security::site_data::{FieldFix, FieldMatch};
 use lockdown_server::{AppState, Config, run_in_background};
@@ -311,7 +312,37 @@ fn fill_fixes_live_on_the_login_and_join_the_community_list() {
     )
     .unwrap();
     assert!(app.site_fix_for("https://shop.example").unwrap().never);
+    // Every fill the browser asks for is refused there, whatever the
+    // extension does; another site still fills.
+    let facts = |page: &str| PageFacts {
+        top: page.into(),
+        frame: page.into(),
+        field_visible: true,
+        user_confirmed: true,
+    };
+    match app
+        .fill(
+            &b,
+            FillWhat::Login,
+            None,
+            facts("https://www.shop.example/login"),
+        )
+        .unwrap()
+    {
+        FillOutcome::Refuse(why) => assert!(why.contains("never to fill"), "{why}"),
+        other => panic!("filled on a never site: {other:?}"),
+    }
     app.site_fix_set(&a, FillFix::default()).unwrap();
+    assert!(matches!(
+        app.fill(
+            &b,
+            FillWhat::Login,
+            None,
+            facts("https://www.shop.example/login")
+        )
+        .unwrap(),
+        FillOutcome::Fill(_)
+    ));
     app.site_fix_set(&b, FillFix::default()).unwrap();
     let view = app.site_fix_for("https://shop.example").unwrap();
     assert!(!view.never && view.fields.is_empty());
