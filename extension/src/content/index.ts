@@ -8,8 +8,9 @@
 import type { MenuKind, ToContent } from "../shared/messages"
 import { extensionOrigin } from "../shared/messages"
 import type { FillWhat } from "../shared/protocol"
-import { capture, classify, firstLoginField, isInput, isNewPassword } from "./detect"
-import { apply, applyNewPassword } from "./fill"
+import { capture, classify, emailField, firstLoginField, isInput, isNewPassword, pageFields } from "./detect"
+import { apply, applyNewPassword, write } from "./fill"
+import { ensureFixes, resetFixes } from "./fixes"
 import { makeHost } from "./host"
 import { fieldVisibility, hostVisible } from "./visibility"
 
@@ -68,10 +69,12 @@ function place(host: HTMLElement, el: HTMLInputElement, wanted?: number) {
   host.style.left = `${Math.round(left)}px`
 }
 
-async function openMenu(el: HTMLInputElement, kind: FillWhat, existing?: string) {
+async function openMenu(el: HTMLInputElement, kind: FillWhat, existing?: string, valueAtFocus?: string) {
   if (menu && menu.el === el) return
   closeMenu()
-  const before = el.value
+  // The value when the person arrived, read before any await: typing that
+  // lands while the fixes or the registration are pending must still count.
+  const before = valueAtFocus ?? el.value
   const n = existing ?? (await register(el, kind, kind === "login" && isNewPassword(el)))
   // The person moved on, or started typing, while the menu was being set up.
   if (document.activeElement !== el || el.value !== before) {
@@ -118,8 +121,14 @@ document.addEventListener(
   (e) => {
     const el = e.target
     if (filling || !isInput(el) || !e.isTrusted) return
-    const kind = classify(el)
-    if (kind) void openMenu(el, kind)
+    const valueAtFocus = el.value
+    // The site's fill fixes first: they can say what the field is, or
+    // that nothing fills here.
+    void ensureFixes().then(() => {
+      if (document.activeElement !== el) return
+      const kind = classify(el)
+      if (kind) void openMenu(el, kind, undefined, valueAtFocus)
+    })
   },
   true,
 )
@@ -221,6 +230,27 @@ document.addEventListener(
   true,
 )
 
+// --- "Sign in with …" (the federated sign-in map, docs/plan/23-bridges.md §4) ---
+
+/** A button's words: "Sign in with Google", "Continue with Apple". The
+ *  page wrote them, so they only ever start a question for the person
+ *  (the background matches the name against the signed provider list, and
+ *  the app keeps it waiting for their yes). */
+const WITH = /^(?:sign in|log in|login|sign up|continue|connect)\s+(?:with|using|via)\s+([\p{L}\p{N} .-]{2,30})$/iu
+
+document.addEventListener(
+  "click",
+  (e) => {
+    if (!e.isTrusted || !(e.target instanceof Element)) return
+    const t = e.target.closest("button, a, [role=button], input[type=submit], input[type=button]")
+    if (!t) return
+    const text = (t instanceof HTMLInputElement ? t.value : (t.getAttribute("aria-label") ?? t.textContent ?? "")).replace(/\s+/g, " ").trim()
+    const m = text.length <= 60 ? WITH.exec(text) : null
+    if (m) void chrome.runtime.sendMessage({ t: "provider_button", name: m[1].trim() }).catch(() => undefined)
+  },
+  true,
+)
+
 // --- what the background asks ------------------------------------------------
 
 chrome.runtime.onMessage.addListener((msg: ToContent, sender, sendResponse) => {
@@ -273,20 +303,46 @@ chrome.runtime.onMessage.addListener((msg: ToContent, sender, sendResponse) => {
     case "hotkey": {
       const el = document.activeElement
       if (!document.hasFocus() || !isInput(el)) return false
-      const kind = classify(el)
-      if (!kind) return false
-      void register(el, kind).then((n) => sendResponse({ nonce: n }))
+      void ensureFixes().then(async () => {
+        const kind = classify(el)
+        sendResponse(kind ? { nonce: await register(el, kind) } : {})
+      })
       return true
     }
     case "target_login": {
       if (window.top !== window) return false
-      const el = firstLoginField()
-      if (!el) {
-        sendResponse({})
+      void ensureFixes().then(async () => {
+        const el = firstLoginField()
+        sendResponse(el ? { nonce: await register(el, "login") } : {})
+      })
+      return true
+    }
+    case "fixes_changed":
+      resetFixes()
+      closeMenu()
+      sendResponse({ ok: true })
+      return false
+    case "list_fields": {
+      if (window.top !== window) return false
+      void ensureFixes().then(() => sendResponse({ fields: pageFields() }))
+      return true
+    }
+    case "fill_email": {
+      if (window.top !== window) return false
+      const el = emailField()
+      const address = typeof msg.address === "string" ? msg.address : ""
+      // An address only: one `@`, no spaces, short.
+      if (!el || !/^[^\s@]{1,64}@[^\s@]{1,190}$/.test(address)) {
+        sendResponse({ filled: false })
         return false
       }
-      void register(el, "login").then((n) => sendResponse({ nonce: n }))
-      return true
+      filling = true
+      try {
+        sendResponse({ filled: write(el, address) })
+      } finally {
+        filling = false
+      }
+      return false
     }
     case "show_prompt": {
       void showPrompt()

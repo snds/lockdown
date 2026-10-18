@@ -326,6 +326,7 @@ impl Session {
                 .1 += 1;
             preview.attachments += item.attachments.len();
             let crown = item.kept.is_some_and(|k| k.class == ItemClass::CrownJewel)
+                || item.crown_jewel
                 || crown_by_template(item.kind, &item.fields);
             if crown {
                 preview.crown_jewels += 1;
@@ -438,7 +439,7 @@ impl Session {
                     report.updated += 1;
                 }
                 Landing::New => {
-                    let crown = crown_by_template(item.kind, &fields);
+                    let crown = item.crown_jewel || crown_by_template(item.kind, &fields);
                     let (item_id, class, state) = match item.kept {
                         Some(k) if vault.item(k.item_id).is_err() => {
                             (Some(k.item_id), k.class, k.state)
@@ -624,7 +625,7 @@ impl Session {
         Ok(())
     }
 
-    fn vault_choice(&self, vault: Option<&str>) -> Result<Option<Id>, String> {
+    pub(crate) fn vault_choice(&self, vault: Option<&str>) -> Result<Option<Id>, String> {
         match vault {
             None => Ok(None),
             Some(v) => {

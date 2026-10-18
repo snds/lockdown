@@ -6,6 +6,7 @@
 //! bytes, `copy_secret` never answers with the value at all.
 
 pub mod approver;
+pub mod bridges;
 pub mod browser;
 pub mod clipboard;
 pub mod codes;

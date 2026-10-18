@@ -16,7 +16,9 @@ pub mod kdbx;
 pub mod keeper;
 pub mod lastpass;
 pub mod onepux;
+pub mod otp;
 pub mod proton;
+pub mod steam;
 
 use lockdown_vault::FieldValue;
 
@@ -48,11 +50,30 @@ pub enum Format {
     Enpass,
     /// Any CSV with the usual login columns.
     Csv,
+    /// Google Authenticator's transfer links (`otpauth-migration://`).
+    GoogleAuthenticator,
+    /// Aegis's vault export, plain or encrypted.
+    Aegis,
+    /// A 2FAS backup, plain or encrypted.
+    TwoFas,
+    /// Ente Auth's export, plain text or encrypted.
+    Ente,
+    /// Proton Authenticator's export.
+    ProtonAuthenticator,
+    /// Bitwarden Authenticator's JSON or CSV.
+    BitwardenAuthenticator,
+    /// Steam Guard: SDA maFiles (one, or the folder as a ZIP), the Steam
+    /// app's JSON.
+    Steam,
+    /// WinAuth's text export.
+    WinAuth,
+    /// Any file of `otpauth://` links, one per line.
+    OtpLinks,
 }
 
 impl Format {
     /// Every format, in the order the import wizard lists them.
-    pub const ALL: [Format; 11] = [
+    pub const ALL: [Format; 20] = [
         Format::OnePux,
         Format::Bitwarden,
         Format::Proton,
@@ -64,6 +85,15 @@ impl Format {
         Format::Cxf,
         Format::Csv,
         Format::Lockdown,
+        Format::GoogleAuthenticator,
+        Format::Aegis,
+        Format::TwoFas,
+        Format::Ente,
+        Format::ProtonAuthenticator,
+        Format::BitwardenAuthenticator,
+        Format::Steam,
+        Format::WinAuth,
+        Format::OtpLinks,
     ];
 
     /// The name a shell sends.
@@ -80,6 +110,15 @@ impl Format {
             Self::LastPass => "lastpass",
             Self::Enpass => "enpass",
             Self::Csv => "csv",
+            Self::GoogleAuthenticator => "google-authenticator",
+            Self::Aegis => "aegis",
+            Self::TwoFas => "2fas",
+            Self::Ente => "ente",
+            Self::ProtonAuthenticator => "proton-authenticator",
+            Self::BitwardenAuthenticator => "bitwarden-authenticator",
+            Self::Steam => "steam",
+            Self::WinAuth => "winauth",
+            Self::OtpLinks => "otpauth",
         }
     }
 
@@ -102,6 +141,15 @@ impl Format {
             Self::LastPass => "LastPass (.csv)",
             Self::Enpass => "Enpass (.json)",
             Self::Csv => "Another app's CSV",
+            Self::GoogleAuthenticator => "Google Authenticator (transfer codes)",
+            Self::Aegis => "Aegis (.json)",
+            Self::TwoFas => "2FAS (.2fas)",
+            Self::Ente => "Ente Auth (.txt or encrypted file)",
+            Self::ProtonAuthenticator => "Proton Authenticator (.json)",
+            Self::BitwardenAuthenticator => "Bitwarden Authenticator (.json or .csv)",
+            Self::Steam => "Steam Guard (SDA maFiles or the Steam app's file)",
+            Self::WinAuth => "WinAuth (.txt)",
+            Self::OtpLinks => "A list of otpauth:// links",
         }
     }
 
@@ -125,12 +173,44 @@ impl Format {
             Self::LastPass => "In LastPass: Advanced options, Export, and save the CSV.",
             Self::Enpass => "In Enpass: File, Export, .json.",
             Self::Csv => "A CSV with columns like name, url, username, password, notes and totp.",
+            Self::GoogleAuthenticator => {
+                "In Google Authenticator: Transfer accounts, Export. Scan each QR code with your camera app and paste the otpauth-migration:// links into a text file, one per line."
+            }
+            Self::Aegis => {
+                "In Aegis: Settings, Import & Export, Export, JSON. An encrypted export works too; you'll type its password here."
+            }
+            Self::TwoFas => {
+                "In 2FAS: Settings, 2FAS Backup, Export to file. A password-protected file works too."
+            }
+            Self::Ente => {
+                "In Ente Auth: Settings, Data, Export codes. A plain text file or an encrypted one; you'll type its password here."
+            }
+            Self::ProtonAuthenticator => {
+                "In Proton Authenticator: Settings, Export, without a password."
+            }
+            Self::BitwardenAuthenticator => {
+                "In Bitwarden Authenticator: Settings, Export, as JSON or CSV."
+            }
+            Self::Steam => {
+                "From Steam Desktop Authenticator: ZIP the whole maFiles folder (with manifest.json) or pick one .maFile. An encrypted folder needs its passkey."
+            }
+            Self::WinAuth => "In WinAuth: right-click, Export, as a text file without a password.",
+            Self::OtpLinks => "A text file with one otpauth:// link per line.",
         }
     }
 
     /// Whether the file may be locked with a password of its own.
     pub fn may_need_password(self) -> bool {
-        matches!(self, Self::Lockdown | Self::Bitwarden | Self::Kdbx)
+        matches!(
+            self,
+            Self::Lockdown
+                | Self::Bitwarden
+                | Self::Kdbx
+                | Self::Aegis
+                | Self::TwoFas
+                | Self::Ente
+                | Self::Steam
+        )
     }
 }
 
@@ -172,17 +252,26 @@ pub fn detect(bytes: &[u8], file_name: &str) -> Option<Format> {
     if bytes.starts_with(&kdbx::MAGIC) {
         return Some(Format::Kdbx);
     }
-    if archive::is_sealed(bytes) {
+    if archive::is_sealed(bytes)
+        || bytes.starts_with(b"age-encryption.org/v1\n")
+        || bytes.starts_with(b"-----BEGIN AGE ENCRYPTED FILE-----")
+    {
         return Some(Format::Lockdown);
     }
     if name.ends_with(".1pux") {
         return Some(Format::OnePux);
+    }
+    if let Some(f) = detect_authenticator(bytes, &name) {
+        return Some(f);
     }
     if unzip::is_zip(bytes) {
         let entries = unzip::read(bytes, &Limits::default()).ok()?;
         let has = |f: &dyn Fn(&str) -> bool| entries.iter().any(|e| f(&e.name));
         if has(&|n| n == "export.data") {
             return Some(Format::OnePux);
+        }
+        if has(&|n| n.ends_with(".maFile")) {
+            return Some(Format::Steam);
         }
         if has(&|n| n.contains("Proton Pass/")) {
             return Some(Format::Proton);
@@ -229,6 +318,47 @@ pub fn detect(bytes: &[u8], file_name: &str) -> Option<Format> {
     None
 }
 
+/// The authenticator apps' files, by their own marks (docs/plan/23-bridges.md §1).
+fn detect_authenticator(bytes: &[u8], name: &str) -> Option<Format> {
+    let head = String::from_utf8_lossy(&bytes[..bytes.len().min(4096)]);
+    let trimmed = head.trim_start_matches('\u{feff}').trim_start();
+    if trimmed.starts_with("otpauth-migration://") {
+        return Some(Format::GoogleAuthenticator);
+    }
+    if trimmed.starts_with("otpauth://") || trimmed.starts_with("steam://") {
+        return Some(Format::OtpLinks);
+    }
+    if name.ends_with(".mafile") {
+        return Some(Format::Steam);
+    }
+    if !trimmed.starts_with('{') && !trimmed.starts_with('[') {
+        return None;
+    }
+    let keys: std::collections::BTreeMap<String, serde::de::IgnoredAny> =
+        serde_json::from_slice(bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes)).ok()?;
+    let has = |k: &str| keys.contains_key(k);
+    if has("header") && has("db") {
+        Some(Format::Aegis)
+    } else if has("schemaVersion") && (has("services") || has("servicesEncrypted")) {
+        Some(Format::TwoFas)
+    } else if has("kdfParams") && has("encryptedData") {
+        Some(Format::Ente)
+    } else if has("version") && has("entries") && head.contains("\"uri\"") {
+        Some(Format::ProtonAuthenticator)
+    } else if has("encrypted")
+        && has("items")
+        && !has("folders")
+        && !has("collections")
+        && head.contains("\"totp\"")
+    {
+        Some(Format::BitwardenAuthenticator)
+    } else if steam::is_steam_json(&keys) {
+        Some(Format::Steam)
+    } else {
+        None
+    }
+}
+
 /// Reads `bytes` as `format`. `password` opens a file that has one (a
 /// sealed Lockdown backup, a password-protected Bitwarden export, a
 /// KeePass database); without it such a file answers
@@ -273,6 +403,15 @@ pub fn read(
                 items: csv::import_logins(&csv::parse(bytes, limits)?),
                 ..Parsed::default()
             }),
+            Format::GoogleAuthenticator => otp::read_google(bytes),
+            Format::Aegis => otp::read_aegis(bytes, password, limits),
+            Format::TwoFas => otp::read_2fas(bytes, password),
+            Format::Ente => otp::read_ente(bytes, password),
+            Format::ProtonAuthenticator => otp::read_proton_authenticator(bytes),
+            Format::BitwardenAuthenticator => otp::read_bitwarden_authenticator(bytes, limits),
+            Format::Steam => steam::read(bytes, password, limits),
+            Format::WinAuth => otp::read_otpauth_lines(bytes, "WinAuth"),
+            Format::OtpLinks => otp::read_otpauth_lines(bytes, "otpauth links"),
         }
     };
     let mut parsed =
@@ -295,7 +434,7 @@ pub fn read(
     Ok(parsed)
 }
 
-fn looks_like_json(bytes: &[u8]) -> bool {
+pub(crate) fn looks_like_json(bytes: &[u8]) -> bool {
     bytes
         .iter()
         .find(|b| !b.is_ascii_whitespace() && **b != 0xef && **b != 0xbb && **b != 0xbf)

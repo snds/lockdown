@@ -925,6 +925,86 @@ fn read_sse(reader: &mut impl std::io::BufRead) -> Result<Option<SseItem>> {
     }
 }
 
+/// One look at the server's clock, for code clock-skew correction
+/// (docs/plan/23-bridges.md §8): when the request left and the answer came
+/// back, by this device's clock in milliseconds, and the answer's `Date`
+/// header as the server wrote it. Checked by `lockdown_codes::skew`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClockSample {
+    /// The `Date` header, when the answer had one.
+    pub date: Option<String>,
+    /// This device's clock when the request left (ms since the epoch).
+    pub sent_ms: u64,
+    /// This device's clock when the answer arrived (ms since the epoch).
+    pub received_ms: u64,
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
+}
+
+/// The server's clock and the monitored addresses (docs/plan/23-bridges.md).
+/// Inherent, like the alerts.
+impl HttpTransport {
+    /// `GET /healthz`, timed, with the answer's `Date` header. Through a
+    /// host's hook there are no headers to read, so it says so.
+    pub fn clock_sample(&self) -> Result<ClockSample> {
+        if HTTP_HOOK.get().is_some() {
+            return Err(TransportError::Network(
+                "this build reads no headers, so it can't check the server's clock".into(),
+            ));
+        }
+        #[cfg(feature = "http")]
+        {
+            let sent_ms = now_ms();
+            let res = self
+                .client
+                .get(format!("{}/healthz", self.base))
+                .send()
+                .map_err(|e| TransportError::Network(e.to_string()))?;
+            let received_ms = now_ms();
+            let date = res
+                .headers()
+                .get(reqwest::header::DATE)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string);
+            Ok(ClockSample {
+                date,
+                sent_ms,
+                received_ms,
+            })
+        }
+        #[cfg(not(feature = "http"))]
+        {
+            let _ = now_ms();
+            Err(TransportError::Network(
+                "this build has no HTTP client and the host installed none".into(),
+            ))
+        }
+    }
+
+    /// `GET /v1/account/monitored`.
+    pub fn monitored(&self, token: &str) -> Result<wire::MonitoredAddresses> {
+        self.call::<(), _>(Method::Get, "/v1/account/monitored", Some(token), None)
+    }
+
+    /// `PUT /v1/account/monitored`: replaces the list.
+    pub fn set_monitored(
+        &self,
+        token: &str,
+        list: &wire::MonitoredAddresses,
+    ) -> Result<wire::MonitoredAddresses> {
+        self.call(
+            Method::Put,
+            "/v1/account/monitored",
+            Some(token),
+            Some(list),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

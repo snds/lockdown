@@ -86,6 +86,14 @@ pub struct Settings {
     /// provider in pages (docs/plan/19-passkeys.md); off, every passkey
     /// request goes to the browser's own.
     pub browser_passkeys: bool,
+    /// Whether one-time codes are worked out from the account server's
+    /// time when this computer's clock is off by up to five minutes
+    /// (docs/plan/23-bridges.md §8).
+    pub code_clock_correction: bool,
+    /// Whether the account's server watches the person's email aliases for
+    /// breaches (it then holds the list; off by default; changed only
+    /// through `alias_monitoring_set`, docs/plan/23-bridges.md §9).
+    pub alias_monitoring: bool,
 }
 
 /// Where and how often automatic backups run.
@@ -130,6 +138,8 @@ impl Default for Settings {
             change_password_check: true,
             backup: BackupSettings::default(),
             browser_passkeys: true,
+            code_clock_correction: true,
+            alias_monitoring: false,
         }
     }
 }
@@ -330,6 +340,8 @@ mod tests {
             "change_password_check",
             "backup",
             "browser_passkeys",
+            "code_clock_correction",
+            "alias_monitoring",
         ]
         .into_iter()
         .collect();

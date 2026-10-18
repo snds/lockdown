@@ -369,6 +369,10 @@ pub fn app(state: Arc<AppState>) -> Router {
         )
         .route("/v1/events", get(live::events))
         .route("/v1/account/storage", get(api::account_storage))
+        .route(
+            "/v1/account/monitored",
+            get(api::monitored).put(api::set_monitored),
+        )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             live::notify_writes,

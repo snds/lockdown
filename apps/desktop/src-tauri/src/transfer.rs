@@ -16,6 +16,7 @@ pub fn extension_for(format: &str, sealed: bool) -> &'static str {
         ("cxf", _) => "cxf.json",
         ("csv", _) => "csv",
         ("kdbx", _) => "kdbx",
+        ("age", _) => "lockdown.age",
         _ => "bin",
     }
 }
@@ -33,6 +34,7 @@ pub fn filter_for(format: &str, sealed: bool) -> (&'static str, &'static [&'stat
         ("cxf", _) => ("CXF file (plain text)", &["json"]),
         ("csv", _) => ("CSV file (plain text)", &["csv"]),
         ("kdbx", _) => ("KeePass database", &["kdbx"]),
+        ("age", _) => ("Lockdown export locked to a public key", &["age"]),
         _ => ("File", &["*"]),
     }
 }

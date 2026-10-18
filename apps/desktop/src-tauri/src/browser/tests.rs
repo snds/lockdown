@@ -593,3 +593,129 @@ fn a_new_password_field_is_offered_a_strong_password_under_the_sites_rules() {
     rig.app.lock().unwrap();
     assert_eq!(host.err("suggest", json!({ "frame": page })), "locked");
 }
+
+#[test]
+fn the_bridges_ops_need_the_pairing_and_answer_through_the_core() {
+    let rig = rig();
+    let (mut stranger, _) = connect(
+        Arc::clone(&rig.endpoint.shared),
+        Box::new(AllowAll),
+        chrome(),
+    );
+    for op in [
+        "federation_hints",
+        "federation_seen",
+        "site_fixes",
+        "fix_set",
+        "change_link",
+        "alias_options",
+        "alias_create",
+    ] {
+        assert_eq!(stranger.err(op, json!({})), "not_paired", "{op}");
+    }
+    let shop = rig
+        .app
+        .add_item(
+            "login",
+            Some("Shop"),
+            false,
+            vec![lockdown_app::FieldChange::text(
+                "url.0",
+                "https://shop.example",
+            )],
+        )
+        .unwrap();
+    let jewel = rig
+        .app
+        .add_item(
+            "login",
+            Some("Bank"),
+            true,
+            vec![lockdown_app::FieldChange::text(
+                "url.0",
+                "https://bank.example",
+            )],
+        )
+        .unwrap();
+    let mut host = paired(&rig);
+    let hints = host.ok("federation_hints", json!({}));
+    assert!(
+        hints["providers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["id"] == "google")
+    );
+    let seen = host.ok(
+        "federation_seen",
+        json!({
+            "provider": "google",
+            "page": "https://shop.example/login",
+            "auth_url": "https://accounts.google.com/o/oauth2/auth?redirect_uri=https%3A%2F%2Fshop.example%2Fcb"
+        }),
+    );
+    assert_eq!(seen["recorded"][0], shop.as_str());
+    assert_eq!(
+        host.err(
+            "federation_seen",
+            json!({ "provider": "nobody", "page": "https://shop.example" })
+        ),
+        "refused"
+    );
+    // A fix set from the popup comes back for the page.
+    let fix = json!({ "never": false, "fields": [{ "match": { "name": "login_id" }, "role": "username" }] });
+    assert_eq!(
+        host.ok(
+            "fix_set",
+            json!({ "frame": "https://shop.example/x", "fix": fix })
+        )["logins"],
+        1
+    );
+    let fixes = host.ok(
+        "site_fixes",
+        json!({ "frame": "https://shop.example/login" }),
+    );
+    assert_eq!(fixes["fields"][0]["role"], "username");
+    assert_eq!(fixes["fields"][0]["source"], "yours");
+    // The checked change-password link; a crown jewel's is the app's.
+    let mut s = rig.app.settings().unwrap();
+    s.change_password_check = false;
+    rig.app.set_settings(s).unwrap();
+    let link = host.ok("change_link", json!({ "item_id": shop }));
+    assert_eq!(
+        link["url"],
+        "https://shop.example/.well-known/change-password"
+    );
+    assert_eq!(
+        host.err("change_link", json!({ "item_id": jewel })),
+        "refused"
+    );
+    // No alias service set up: none offered. One set up: making an alias
+    // asks for the Use gate, which only the platform check answers here.
+    assert!(
+        host.ok("alias_options", json!({}))["services"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let svc = rig
+        .app
+        .alias_service_add(
+            "duck_duck_go",
+            b"ddg-key".to_vec(),
+            Some("http://127.0.0.1:9"),
+            None,
+        )
+        .unwrap();
+    let opts = host.ok("alias_options", json!({}));
+    assert_eq!(opts["services"][0]["item_id"], svc.as_str());
+    assert_eq!(opts["services"][0]["name"], "DuckDuckGo");
+    assert!(!opts.to_string().contains("ddg-key"));
+    assert_eq!(
+        host.err(
+            "alias_create",
+            json!({ "item_id": svc, "frame": "https://shop.example/signup" })
+        ),
+        "approval_needed"
+    );
+}

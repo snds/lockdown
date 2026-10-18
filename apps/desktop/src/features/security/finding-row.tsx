@@ -17,6 +17,8 @@ import {
 import type { Finding } from "@/core/types"
 import { whenLocal } from "@/lib/format"
 
+import { GuideButton } from "@/features/bridges/setup-guide"
+
 import { FindingFix } from "./finding-actions"
 import { KIND_ICONS, SNOOZES, dismissedWords, snoozeUntil } from "./security-model"
 
@@ -63,6 +65,7 @@ export function FindingRow({ finding: f, busy, onWhatToDo, onOpenItem, onDismiss
               What to do
             </Button>
             <FindingFix finding={f} onNotice={onNotice} onDevices={onDevices} />
+            {f.kind === "missing_2fa" && f.item_id && <GuideButton itemId={f.item_id} onNotice={onNotice} />}
             {f.item_id && (
               <Button size="sm" variant="ghost" onClick={() => f.item_id && onOpenItem(f.item_id)}>
                 Open item

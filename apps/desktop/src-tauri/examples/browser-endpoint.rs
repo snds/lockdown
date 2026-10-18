@@ -15,6 +15,10 @@
 //! time it is asked, so the passkey suite (extension/test/passkeys.spec.ts)
 //! can see user verification happen.
 //!
+//! The bridges suite (extension/test/bridges.spec.ts) adds logins, an
+//! alias service pointed at its own fixture server, and reads back the
+//! sign-in map and a login's fill fix the same way.
+//!
 //! Never built into the app: it is an example of `lockdown-desktop`, and
 //! it prints a test vault's own test values when asked, which the app
 //! never does.
@@ -273,6 +277,32 @@ fn main() {
                 settings.browser_passkeys = *on == "on";
                 app.set_settings(settings).unwrap();
                 emit(json!({ "event": "browser_passkeys", "on": *on == "on" }));
+            }
+            // The bridges suite (extension/test/bridges.spec.ts).
+            ["login", url, user, pw, title @ ..] => {
+                let title = title.join(" ");
+                let r = app.add_login(url, user, pw.as_bytes().to_vec(), Some(&title));
+                emit(json!({ "event": "login", "id": r.ok() }));
+            }
+            ["alias-service", service, base] => {
+                let r =
+                    app.alias_service_add(service, b"fixture-alias-key".to_vec(), Some(base), None);
+                emit(json!({ "event": "alias_service", "id": r.ok() }));
+            }
+            ["aliases"] => {
+                emit(json!({ "event": "aliases", "overview": app.alias_overview().ok() }));
+            }
+            ["federation"] => {
+                emit(json!({ "event": "federation", "map": app.federation_map().ok() }));
+            }
+            ["fix", item] => {
+                emit(json!({ "event": "fix", "fix": app.site_fix(item).ok() }));
+            }
+            ["change-check", on] => {
+                let mut settings = app.settings().unwrap();
+                settings.change_password_check = *on == "on";
+                app.set_settings(settings).unwrap();
+                emit(json!({ "event": "change_check", "on": *on == "on" }));
             }
             ["quit"] => break,
             _ => emit(json!({ "event": "unknown", "line": line })),

@@ -3,7 +3,9 @@
 // launches, the real desktop endpoint and core over a throwaway vault, and
 // local fixture pages. Pairing, every fill row, the red team against the
 // real fill path, save and update, the shortcut, Basic Auth and the popup,
-// and a strong password suggested under a site's own rules.
+// and a strong password suggested under a site's own rules. Bridges (fill
+// fixes, the sign-in map, change-password links, aliases) have their own
+// suite: bridges.spec.ts.
 import { chromium, expect, test, type BrowserContext, type Frame, type Page, type Worker } from "@playwright/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -45,6 +47,8 @@ test.beforeAll(async () => {
     args: [
       `--disable-extensions-except=${dist}`,
       `--load-extension=${dist}`,
+      // No proxy: the mapped names below must land on this machine.
+      "--no-proxy-server",
       "--host-resolver-rules=MAP *.test 127.0.0.1, MAP *.evil.net 127.0.0.1, MAP www.paypal.com 127.0.0.1, MAP www.1800flowers.com 127.0.0.1",
     ],
   });
@@ -284,7 +288,9 @@ test("the popup searches summaries and copies through the app", async () => {
   await p.close();
 });
 
-test("the popup fills the page in front and links to its change-password page", async () => {
+test("the popup fills the page in front", async () => {
+  // Its change-password link is the security center's checked one:
+  // bridges.spec.ts.
   const page = await ctx.newPage();
   await page.goto(at("localhost", "/ext/login.html"));
   const tab = await tabId(`*://localhost/*`);
@@ -292,12 +298,6 @@ test("the popup fills the page in front and links to its change-password page", 
   await expect(p.getByRole("heading", { name: /For localhost/ })).toBeVisible();
   await p.getByRole("button", { name: "Fill" }).click();
   await expect(page.locator("#pass")).toHaveValue("correct-horse-1");
-  const opened = ctx.waitForEvent("page");
-  await p.getByRole("button", { name: "Change password" }).click();
-  const change = await opened;
-  await change.waitForLoadState();
-  expect(change.url()).toBe(`http://localhost:${port}/.well-known/change-password`);
-  await change.close();
   await p.close();
   await page.close();
 });

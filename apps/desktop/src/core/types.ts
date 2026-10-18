@@ -306,6 +306,10 @@ export interface Settings {
   backup?: BackupSettings
   /** Whether the browser extension offers Lockdown as the passkey provider in pages (docs/plan/19-passkeys.md). Default on. */
   browser_passkeys?: boolean
+  /** Whether codes use the account server's time when this clock is off by up to five minutes (docs/plan/23-bridges.md §8). Default on. */
+  code_clock_correction?: boolean
+  /** Whether the server watches your email aliases for breaches; changed only through `aliasMonitoringSet`. Default off. */
+  alias_monitoring?: boolean
 }
 
 export interface BackupSettings {
@@ -564,8 +568,11 @@ export interface Playbook {
 /** The page "Change password" opened. */
 export interface ChangeLink {
   url: string
-  kind: "well_known" | "site_root"
+  /** `recipe`: a curated page for the site from Lockdown's signed site data (docs/plan/23-bridges.md §7). */
+  kind: "well_known" | "site_root" | "recipe"
   checked: boolean
+  /** What to do on a curated page that isn't the form itself. */
+  note?: string
 }
 
 // --- import, export and backups (docs/plan/14-import-export.md) -----------------

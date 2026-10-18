@@ -1,0 +1,49 @@
+{
+  "services": [
+    {
+      "name": "Example",
+      "secret": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+      "updatedAt": 1760000000000,
+      "otp": {
+        "label": "Example:sean@example.com",
+        "account": "sean@example.com",
+        "issuer": "Example",
+        "digits": 6,
+        "period": 30,
+        "algorithm": "SHA1",
+        "tokenType": "TOTP",
+        "source": "Link"
+      },
+      "order": {
+        "position": 0
+      },
+      "groupId": "g1"
+    },
+    {
+      "name": "Steam",
+      "secret": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+      "otp": {
+        "account": "gaben",
+        "issuer": "Steam",
+        "digits": 5,
+        "period": 30,
+        "algorithm": "SHA1",
+        "tokenType": "STEAM"
+      },
+      "order": {
+        "position": 1
+      }
+    }
+  ],
+  "groups": [
+    {
+      "id": "g1",
+      "name": "Personal",
+      "isExpanded": true
+    }
+  ],
+  "updatedAt": 1760000000000,
+  "schemaVersion": 4,
+  "appVersionCode": 5000000,
+  "appOrigin": "android"
+}

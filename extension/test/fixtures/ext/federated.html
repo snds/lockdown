@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Shop</title><link rel="stylesheet" href="style.css"></head>
+<body>
+  <h1>Shop</h1>
+  <!-- The federated sign-in map's fixture. `?provider=google` links to
+       Google's sign-in page (answered by the suite, never the internet)
+       with a return address on this site; `?return=` sends it elsewhere.
+       "Continue with Apple" does nothing but be clicked; the suite has the
+       page itself "click" the Microsoft one, which must not count. -->
+  <p><a id="google" href="#">Sign in with Google</a></p>
+  <p><button id="apple" type="button">Continue with Apple</button></p>
+  <p><button id="microsoft" type="button">Sign in with Microsoft</button></p>
+  <script>
+    const q = new URLSearchParams(location.search);
+    const back = q.get("return") || `https://${location.hostname}/auth/callback`;
+    document.getElementById("google").href =
+      "https://accounts.google.com/o/oauth2/v2/auth?client_id=fixture&response_type=code&scope=openid&redirect_uri=" + encodeURIComponent(back);
+  </script>
+</body>
+</html>

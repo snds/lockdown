@@ -24,12 +24,31 @@ const types: Record<string, string> = {
 export interface Served {
   server: Server;
   port: number;
+  /** What the stand-in alias service was asked (bridges.spec.ts). */
+  aliasCalls: { hostname: string; key: string }[];
   close(): Promise<void>;
 }
 
 export async function serve(): Promise<Served> {
+  const aliasCalls: Served["aliasCalls"] = [];
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://x");
+    if (url.pathname === "/.well-known/change-password") {
+      // A site with a change-password page (W3C well-known URL).
+      res.writeHead(302, { location: "/ext/change.html" }).end();
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/alias/random/new") {
+      // A stand-in for SimpleLogin's API, for the alias rows.
+      const key = String(req.headers.authentication ?? "");
+      aliasCalls.push({ hostname: url.searchParams.get("hostname") ?? "", key });
+      if (key !== "fixture-alias-key") {
+        res.writeHead(401, { "content-type": "application/json" }).end('{"error":"wrong key"}');
+        return;
+      }
+      res.writeHead(201, { "content-type": "application/json" }).end(JSON.stringify({ alias: `fixture.${aliasCalls.length}@aliases.test` }));
+      return;
+    }
     let path = normalize(decodeURIComponent(url.pathname));
     if (path.includes("..")) {
       res.writeHead(400).end();
@@ -65,6 +84,7 @@ export async function serve(): Promise<Served> {
   return {
     server,
     port: address.port,
+    aliasCalls,
     close: () => new Promise((resolve) => server.close(() => resolve())),
   };
 }

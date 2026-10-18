@@ -27,6 +27,7 @@ import {
 } from "@unicron/ui"
 
 import { PaneHeader } from "@/components/master-detail"
+import { ClockBanner } from "@/features/bridges/clock"
 import { describeError, useClient } from "@/core/client"
 import type { ItemSummary } from "@/core/types"
 import { CodeDisplayList } from "@unicron/ui/security/code-display"
@@ -67,6 +68,7 @@ export function CodesView({ rows, onChanged }: CodesViewProps) {
         </Button>
       </PaneHeader>
       <div className="flex flex-col gap-2 px-4 pb-4">
+        <ClockBanner />
         <Input type="search" placeholder="Search issuers and accounts" aria-label="Search codes" value={query} onChange={(e) => setQuery(e.target.value)} />
         {error && (
           <p role="alert" className="text-sm text-destructive">

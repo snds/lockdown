@@ -14,6 +14,7 @@
 //! engineering trap). Clock skew is handled by [`Code::verify`], which
 //! accepts a code from a window of neighbouring steps and reports which.
 
+pub mod skew;
 pub mod uri;
 
 use std::fmt;

@@ -246,9 +246,9 @@ pub fn to_canonical_cbor<T: Serialize>(value: &T) -> Result<Vec<u8>, DataError> 
     Ok(out)
 }
 
-fn signed_message(payload: &[u8]) -> Vec<u8> {
-    let mut m = Vec::with_capacity(SIGNING_PREFIX.len() + payload.len());
-    m.extend_from_slice(SIGNING_PREFIX);
+fn prefixed(prefix: &[u8], payload: &[u8]) -> Vec<u8> {
+    let mut m = Vec::with_capacity(prefix.len() + payload.len());
+    m.extend_from_slice(prefix);
     m.extend_from_slice(payload);
     m
 }
@@ -261,16 +261,71 @@ pub fn sign(
     key: &SigningKey,
     key_id: &str,
 ) -> Result<Vec<u8>, DataError> {
-    let payload_bytes = to_canonical_cbor(payload)?;
-    let signature: Signature = key.sign(&signed_message(&payload_bytes));
+    sign_envelope(
+        FORMAT,
+        SIGNING_PREFIX,
+        &to_canonical_cbor(payload)?,
+        key,
+        key_id,
+    )
+}
+
+/// The same envelope around any canonical payload, for other signed data
+/// files that share the publisher keys (the security center's site data,
+/// docs/plan/23-bridges.md §3): `format` names the file and `prefix` is its
+/// own domain separation, so a signature over one kind of file is never
+/// accepted as another.
+pub fn sign_envelope(
+    format: &str,
+    prefix: &[u8],
+    payload_bytes: &[u8],
+    key: &SigningKey,
+    key_id: &str,
+) -> Result<Vec<u8>, DataError> {
+    let signature: Signature = key.sign(&prefixed(prefix, payload_bytes));
     let env = Envelope {
-        format: FORMAT.into(),
+        format: format.into(),
         v: ENVELOPE_VERSION,
         key_id: key_id.into(),
-        payload: payload_bytes,
+        payload: payload_bytes.to_vec(),
         signature: signature.to_bytes().to_vec(),
     };
     to_canonical_cbor(&env)
+}
+
+/// Verifies an envelope of `format` (version [`ENVELOPE_VERSION`]) signed
+/// over `prefix` and its payload by a key in `keys`, and answers the
+/// signer's id and the payload bytes, still unparsed. The rules are
+/// [`verify`]'s: exactly one CBOR item, the format checked by name before
+/// the key is looked up, `verify_strict`.
+pub fn verify_envelope(
+    bytes: &[u8],
+    format: &'static str,
+    prefix: &[u8],
+    keys: &TrustedKeys,
+) -> Result<(String, Vec<u8>), DataError> {
+    let env: Envelope = from_exact_cbor(bytes).map_err(|_| DataError::NotAnEnvelope)?;
+    if env.format != format || env.v != ENVELOPE_VERSION {
+        return Err(DataError::UnsupportedFormat {
+            format: env.format,
+            v: env.v,
+            expected: format,
+            expected_v: ENVELOPE_VERSION,
+        });
+    }
+    let key = keys
+        .get(&env.key_id)
+        .ok_or_else(|| DataError::UnknownKey(env.key_id.clone()))?;
+    let signature = Signature::from_slice(&env.signature).map_err(|_| DataError::BadSignature)?;
+    key.verify_strict(&prefixed(prefix, &env.payload), &signature)
+        .map_err(|_| DataError::BadSignature)?;
+    Ok((env.key_id, env.payload))
+}
+
+/// Decodes exactly one CBOR item that fills `bytes` (no trailing bytes),
+/// for a payload [`verify_envelope`] handed back.
+pub fn decode_exact<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> Result<T, DataError> {
+    from_exact_cbor(bytes).map_err(DataError::BadPayload)
 }
 
 /// A verified file: who signed it and what it says.
@@ -299,26 +354,9 @@ fn from_exact_cbor<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> Result<T, Stri
 /// Verifies envelope bytes against `keys`. Nothing in the payload is read
 /// before the signature checks out.
 pub fn verify(bytes: &[u8], keys: &TrustedKeys) -> Result<Verified, DataError> {
-    let env: Envelope = from_exact_cbor(bytes).map_err(|_| DataError::NotAnEnvelope)?;
-    if env.format != FORMAT || env.v != ENVELOPE_VERSION {
-        return Err(DataError::UnsupportedFormat {
-            format: env.format,
-            v: env.v,
-            expected: FORMAT,
-            expected_v: ENVELOPE_VERSION,
-        });
-    }
-    let key = keys
-        .get(&env.key_id)
-        .ok_or_else(|| DataError::UnknownKey(env.key_id.clone()))?;
-    let signature = Signature::from_slice(&env.signature).map_err(|_| DataError::BadSignature)?;
-    key.verify_strict(&signed_message(&env.payload), &signature)
-        .map_err(|_| DataError::BadSignature)?;
-    let payload: MatcherPayload = from_exact_cbor(&env.payload).map_err(DataError::BadPayload)?;
-    Ok(Verified {
-        key_id: env.key_id,
-        payload,
-    })
+    let (key_id, payload) = verify_envelope(bytes, FORMAT, SIGNING_PREFIX, keys)?;
+    let payload: MatcherPayload = from_exact_cbor(&payload).map_err(DataError::BadPayload)?;
+    Ok(Verified { key_id, payload })
 }
 
 /// The data in force: the groups and the table, compiled for lookups.

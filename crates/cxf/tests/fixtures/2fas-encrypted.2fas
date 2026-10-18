@@ -1,0 +1,16 @@
+{
+  "services": [],
+  "groups": [
+    {
+      "id": "g1",
+      "name": "Personal",
+      "isExpanded": true
+    }
+  ],
+  "updatedAt": 1760000000000,
+  "schemaVersion": 4,
+  "appVersionCode": 5000000,
+  "appOrigin": "android",
+  "servicesEncrypted": "4gEGBu2mVxhCscxyTuOoShycjCaJ1iZ2VWe6HqelTToBymxTDCMyFhwedfTkFVceTIgCpbObNvLEwr5DgPbWzDAtcbInUO3ZsRTutVPoEcOhFy9yoMq4ebmMLYQTh3eHVLND8lfxeu79RqDzHq9mmMvztNECZ7Blhm3q+q4lCqshVZfsevZrvK/60Q+ugyfQ5F5vlyO1SfBrDw2yuVL+LWtE8E9fQjPJITMqBgCiTn1kd55Ku+3wa+CJk0c3MXelk132wvG3C8NYHocz0wL12/4qK0m9VmI+t6fgSLS+7lOU6YcM3lGevdsRV8VGdJ2LZDmL0dBnkWQmDJPf9pj92ZOyFmR75lf42AX4VrBY+eVc0kAyRpkPgxqJY2wneLfrqpyXZ0INWdMN4fpSIZV/fRrIVsFVgv7x1nN4S/PvdEteTEZ/YnCx6LfRQN+O7DGAVGpuGKtKHMkJMyUtyPoa9rotrp66zoNOHY4uFnP0w+liNnTRqFDmRrZHt6dS58Q0oIaH3CvEbcd7IdI65m5bOx4husUPaVQT14TY1dglqn80CXaVi27CPvxufEWsrQlC9DU9Z/dbsXjpYXfe/cGNXGS5xheVLIKDE6YpwnUJaUPOAAhoQmhmFuzC+ePtO2odn4TYDzfOlGgYfmEWbn6RZqp3F3PA/f2Q7PAlBGVuU5TRIi7CBQK882tiFkXyrgNr3JGYjAsABqYcieFXdw6I/t6YWDI=:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=:AAECAwQFBgcICQoL",
+  "reference": "yx9CDf6uXFkd0L3aOjvWvOu7MknWYTPiHw==:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=:AAECAwQFBgcICQoL"
+}
