@@ -55,6 +55,9 @@ struct Saved {
     upstream: String,
     #[serde(with = "serde_bytes")]
     log_key: [u8; 32],
+    /// The post-quantum log key, pinned when first offered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pq_log_key: Option<serde_bytes::ByteBuf>,
     /// The newest verified heads, oldest first.
     heads: Vec<SignedTreeHead>,
     copied: u64,
@@ -147,6 +150,7 @@ impl Mirror {
                 upstream: s.upstream.clone(),
                 log_key: s.log_key,
                 sth: s.heads.last()?.clone(),
+                pq_log_key: s.pq_log_key.clone(),
                 checked_at: s.checked_at,
                 copied: s.copied,
                 problem: s.problem.clone(),
@@ -168,6 +172,7 @@ impl Mirror {
             v: 1,
             upstream: self.upstream.clone(),
             log_key: wire.log_key,
+            pq_log_key: None,
             heads: Vec::new(),
             copied: 0,
             checked_at: now,
@@ -182,15 +187,27 @@ impl Mirror {
                 self.upstream
             ));
             "the upstream's log key changed".into()
-        } else if VerifyingKey::from_bytes(&wire.log_key)
-            .map_err(|e| e.to_string())
-            .and_then(|k| wire.sth.verify(&k).map_err(|e| e.to_string()))
-            .is_err()
-        {
+        } else if saved.pq_log_key.is_some() && wire.pq_log_key.is_none() {
+            saved.problem = Some(format!(
+                "{} dropped the post-quantum log key the mirror pinned",
+                self.upstream
+            ));
+            "the upstream dropped its post-quantum log key".into()
+        } else if saved.pq_log_key.is_some() && wire.pq_log_key != saved.pq_log_key {
+            saved.problem = Some(format!(
+                "{} changed its post-quantum log key since the mirror pinned it",
+                self.upstream
+            ));
+            "the upstream's post-quantum log key changed".into()
+        } else if !signed_by(&wire) {
             // Not signed by the key: not the server's word at all, so it
             // proves nothing either way. Nothing is copied.
             "the upstream's head isn't signed by its log key; nothing copied".into()
         } else {
+            // Pinned the first time the upstream offers one.
+            if saved.pq_log_key.is_none() {
+                saved.pq_log_key = wire.pq_log_key.clone();
+            }
             match saved.heads.last() {
                 None => {
                     saved.heads.push(wire.sth.clone());
@@ -259,6 +276,22 @@ impl Mirror {
             })
             .map(|_| ())
     }
+}
+
+/// Whether the upstream's head is signed by the keys it names (both, when
+/// it names a post-quantum one).
+fn signed_by(wire: &lockdown_sync::kt::SthWire) -> bool {
+    let Ok(key) = VerifyingKey::from_bytes(&wire.log_key) else {
+        return false;
+    };
+    let pq = match wire.pq_log_key.as_ref() {
+        None => None,
+        Some(b) => match lockdown_crypto::pq_sign::PqVerifyingKey::from_bytes(b) {
+            Ok(k) => Some(k),
+            Err(_) => return false,
+        },
+    };
+    wire.sth.verify_hybrid(&key, pq.as_ref()).is_ok()
 }
 
 /// The mirror parts of the server's state.
@@ -397,6 +430,7 @@ mod tests {
             v: 1,
             upstream: "https://b.example".into(),
             log_key: [0; 32],
+            pq_log_key: None,
             heads: Vec::new(),
             copied: 0,
             checked_at: 0,

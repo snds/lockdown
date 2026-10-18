@@ -26,6 +26,7 @@
 
 use lockdown_crypto::VerifyingKey;
 use lockdown_crypto::merkle;
+use lockdown_crypto::pq_sign::PqVerifyingKey;
 use lockdown_vault::transparency::{SignedTreeHead, SthRef};
 use serde::{Deserialize, Serialize};
 
@@ -54,6 +55,11 @@ pub struct MirrorHead {
     pub log_key: [u8; 32],
     /// The newest head it verified as a continuation of every head before.
     pub sth: SignedTreeHead,
+    /// The post-quantum log key it pinned when the server first offered
+    /// one (docs/plan/28-pq-signatures.md); its heads are then signed by
+    /// both keys.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_log_key: Option<serde_bytes::ByteBuf>,
     /// When it last fetched the account server's head (seconds).
     pub checked_at: i64,
     /// How many heads it has copied since it began.
@@ -142,11 +148,40 @@ pub fn compare(kt: &KtSession<'_>, server: &str, mirror: &MirrorHead, now: i64) 
             message: "Split view: the mirror saw this server sign its log with another key than the one this device pinned".into(),
         };
     }
+    match (&kt.view.pq_log_key, &mirror.pq_log_key) {
+        (Some(mine), Some(theirs)) if mine != theirs => {
+            return MirrorVerdict::Split {
+                message: "Split view: the mirror saw this server sign its log with another post-quantum key than the one this device pinned".into(),
+            };
+        }
+        (Some(_), None) => {
+            return MirrorVerdict::Split {
+                message: "Split view: the mirror saw this server's log without the post-quantum key this device pinned".into(),
+            };
+        }
+        (None, Some(_)) => {
+            return MirrorVerdict::Split {
+                message: "Split view: the mirror saw this server sign its log with a post-quantum key it never showed this device".into(),
+            };
+        }
+        _ => {}
+    }
     let Ok(key) = VerifyingKey::from_bytes(&mirror.log_key) else {
         return unusable("its log key isn't an Ed25519 public key".into());
     };
-    if mirror.sth.verify(&key).is_err() {
-        return unusable("its copy isn't signed by this server's log key".into());
+    let pq_key = match mirror
+        .pq_log_key
+        .as_ref()
+        .map(|b| PqVerifyingKey::from_bytes(b))
+    {
+        None => None,
+        Some(Ok(k)) => Some(k),
+        Some(Err(_)) => {
+            return unusable("its post-quantum log key isn't an ML-DSA-65 public key".into());
+        }
+    };
+    if mirror.sth.verify_hybrid(&key, pq_key.as_ref()).is_err() {
+        return unusable("its copy isn't signed by this server's log keys".into());
     }
     let mine = kt.sth().as_ref();
     let theirs = mirror.sth.as_ref();

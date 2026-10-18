@@ -268,3 +268,88 @@ fn a_mirror_the_server_stops_naming_is_still_checked() {
         outcome.transparency.mirrors
     );
 }
+
+/// A mirror server over a copy of `from`'s state file with its
+/// post-quantum key changed by `bend`.
+fn bent_mirror(
+    from: &std::path::Path,
+    to: &std::path::Path,
+    upstream: &str,
+    bend: impl Fn(&mut Vec<(ciborium::Value, ciborium::Value)>),
+) -> RunningServer {
+    let bytes = std::fs::read(from.join(lockdown_server::mirror::STATE_FILE)).unwrap();
+    let mut value: ciborium::Value = ciborium::de::from_reader(&bytes[..]).unwrap();
+    let ciborium::Value::Map(map) = &mut value else {
+        panic!("the mirror's file is a map")
+    };
+    bend(map);
+    std::fs::create_dir_all(to).unwrap();
+    let mut out = Vec::new();
+    ciborium::ser::into_writer(&value, &mut out).unwrap();
+    std::fs::write(to.join(lockdown_server::mirror::STATE_FILE), out).unwrap();
+    let state = Arc::new(AppState::in_memory(Config::default()).unwrap());
+    let mirror = Arc::new(Mirror::open(upstream, to, None, Duration::from_secs(60)).unwrap());
+    state.mirrors.set_mirror(mirror);
+    run_in_background(state).unwrap()
+}
+
+#[test]
+fn a_mirror_that_saw_another_or_no_post_quantum_log_key_is_a_split() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_account, running) = account_server(&dir.path().join("account"));
+    let url = running.url();
+    let (mirror, _mirror_running) =
+        mirror_server(&dir.path().join("mirror"), &url, &dir.path().join("static"));
+    let a = device(dir.path(), "a");
+    a.open_or_create(true).unwrap();
+    a.account_register(&url, "a@example.com", PASSWORD, None)
+        .unwrap();
+    a.sync().unwrap();
+    mirror.poll_once(now()).unwrap();
+    assert!(
+        mirror.head().unwrap().pq_log_key.is_some(),
+        "the mirror pinned it"
+    );
+    let key = ciborium::Value::Text("pq_log_key".into());
+    let other = bent_mirror(
+        &dir.path().join("mirror"),
+        &dir.path().join("other"),
+        &url,
+        |m| {
+            for (k, v) in m.iter_mut() {
+                if *k == key
+                    && let ciborium::Value::Bytes(b) = v
+                {
+                    b[0] ^= 1;
+                }
+            }
+        },
+    );
+    let none = bent_mirror(
+        &dir.path().join("mirror"),
+        &dir.path().join("none"),
+        &url,
+        |m| m.retain(|(k, _)| *k != key),
+    );
+    a.set_kt_mirrors(vec![other.url(), none.url()]).unwrap();
+    let outcome = a.sync().unwrap();
+    let words: Vec<String> = outcome
+        .transparency
+        .mirrors
+        .iter()
+        .map(|c| match &c.verdict {
+            MirrorVerdict::Split { message } => message.clone(),
+            v => panic!("{} should be a split, got {v:?}", c.url),
+        })
+        .collect();
+    assert!(
+        words[0].contains("another post-quantum key"),
+        "{}",
+        words[0]
+    );
+    assert!(
+        words[1].contains("without the post-quantum key"),
+        "{}",
+        words[1]
+    );
+}
