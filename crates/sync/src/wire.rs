@@ -523,6 +523,21 @@ pub fn decode<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, lockdow
     Ok(lockdown_crypto::cbor::from_slice(bytes)?)
 }
 
+// --- monitored addresses (docs/plan/23-bridges.md §9) -------------------------
+
+/// `GET` / `PUT /v1/account/monitored`: the addresses beside the account's
+/// own login that the server's breach job asks its feed about (the
+/// person's email aliases). The client sends the whole list each time; an
+/// empty list stops it.
+#[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub struct MonitoredAddresses {
+    /// Lowercase email addresses, sorted, each at most 254 bytes.
+    pub addresses: Vec<String>,
+}
+
+/// The most addresses one account may have monitored.
+pub const MAX_MONITORED: usize = 200;
+
 #[cfg(test)]
 mod tests {
     use super::*;

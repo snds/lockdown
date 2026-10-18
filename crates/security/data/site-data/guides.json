@@ -1,0 +1,9587 @@
+{
+ "guides": [
+  {
+   "apps": [
+    "1822TAN+"
+   ],
+   "d": [
+    "1822direkt.de"
+   ],
+   "n": "1822direkt",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "1password.com",
+    "1password.ca",
+    "1password.eu"
+   ],
+   "devices": [
+    "Yubico OTP",
+    "Duo D100 Token"
+   ],
+   "n": "1Password",
+   "notes": "Teams using Duo with 1Password can't enable other 2FA methods. Non-U2F Hardware tokens and custom software methods are only available through Duo.",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.1password.com/two-factor-authentication/",
+   "recovery": "https://support.1password.com/recovery/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "3commas.io"
+   ],
+   "n": "3Commas",
+   "recovery": "https://help.3commas.io/en/articles/3108967",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "HMRC App"
+   ],
+   "d": [
+    "access.service.gov.uk",
+    "tax.service.gov.uk"
+   ],
+   "n": "HMRC (Government Gateway)",
+   "recovery": "https://www.gov.uk/log-in-register-hmrc-online-services/problems-signing-in",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "accounts.firefox.com"
+   ],
+   "n": "Mozilla",
+   "recovery": "https://support.mozilla.org/en-US/kb/what-if-im-locked-out-two-step-authentication",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "accounts.nintendo.com"
+   ],
+   "n": "Nintendo Account",
+   "notes": "2FA not available for child accounts (users 12 years of age or younger) or supervised accounts (users 13 years of age or older attached to a parent account).",
+   "passkey": "passwordless",
+   "passkey_doc": "https://en-americas-support.nintendo.com/app/answers/detail/a_id/62531",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "acorns.com"
+   ],
+   "n": "Acorns",
+   "notes": "You will need to verify email or phone in order to activate 2FA.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "acquia.com"
+   ],
+   "n": "Acquia",
+   "notes": "SMS 2FA is only available for US or Canada phone numbers.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "actionnetwork.org"
+   ],
+   "n": "Action Network",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "activecampaign.com"
+   ],
+   "n": "ActiveCampaign",
+   "recovery": "https://help.activecampaign.com/hc/en-us/articles/360019871579",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "adafruit.com"
+   ],
+   "n": "Adafruit",
+   "passkey": "mfa",
+   "passkey_doc": "https://learn.adafruit.com/how-to-set-up-2-factor-authentication-on-adafruit",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Addiko Mobile App"
+   ],
+   "d": [
+    "addiko.hr"
+   ],
+   "n": "Addiko Bank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Adobe Account Access"
+   ],
+   "d": [
+    "adobe.com"
+   ],
+   "n": "Adobe",
+   "passkey": "passwordless",
+   "passkey_doc": "https://helpx.adobe.com/manage-account/using/secure-sign-in-with-passkey.html",
+   "recovery": "https://helpx.adobe.com/x-productkb/global/2-step-verification-account-security.html",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "aero.zip"
+   ],
+   "n": "aero.zip",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://aero.zip/faq/can-i-log-in-with-passkey",
+   "recovery": "https://aero.zip/faq/2fa-backup-codes",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Token AFIP",
+    "AFIP OTP"
+   ],
+   "d": [
+    "afip.gob.ar"
+   ],
+   "n": "AFIP",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "aha.io"
+   ],
+   "n": "Aha!",
+   "notes": "2FA is only available through Duo.",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.aha.io/support/ideas/ideas/settings/account-settings#security-and-single-sign-on",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "airasia.com"
+   ],
+   "n": "AirAsia",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "My Air"
+   ],
+   "d": [
+    "airbank.cz"
+   ],
+   "n": "AirBank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "airbnb.com"
+   ],
+   "n": "Airbnb",
+   "notes": "Airbnb decides when 2FA is required; user cannot enable 2FA for every login.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "airship.com"
+   ],
+   "n": "Airship",
+   "notes": "2FA is only available upon request for customers on their Essential and Comprehensive plans.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "airtable.com"
+   ],
+   "n": "Airtable",
+   "notes": "SMS must be enabled first and software 2FA can be bypassed by SMS.",
+   "recovery": "https://support.airtable.com/docs/enabling-two-factor-authentication#faqs",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "alchemer.com"
+   ],
+   "n": "Alchemer",
+   "notes": "SMS 2FA is only available for Enterprise accounts with an SMS 2FA provision.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "algolia.com"
+   ],
+   "n": "Algolia",
+   "recovery": "https://support.algolia.com/hc/en-us/articles/4406975223569",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "aliexpress.com"
+   ],
+   "n": "AliExpress",
+   "passkey": "mfa",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "allegro.pl"
+   ],
+   "n": "Allegro",
+   "notes": "SMS 2FA cannot be disabled even when TOTP is enabled.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "altcointrader.co.za"
+   ],
+   "n": "AltCoinTrader",
+   "recovery": "https://altcointrader.zendesk.com/hc/en-gb/articles/360007225480",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "amazon.com",
+    "amazon.ae",
+    "amazon.ca",
+    "amazon.cn",
+    "amazon.co.jp",
+    "amazon.co.uk",
+    "amazon.com.au",
+    "amazon.com.br",
+    "amazon.com.mx",
+    "amazon.com.tr",
+    "amazon.de",
+    "amazon.es",
+    "amazon.fr",
+    "amazon.in",
+    "amazon.it",
+    "amazon.nl",
+    "amazon.sa",
+    "amazon.se",
+    "amazon.sg"
+   ],
+   "n": "Amazon",
+   "notes": "SMS or phone call required to enable 2FA. Enabling on Amazon.com activates 2FA on other regional Amazon sites, such as UK and DE.",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.amazon.com/gp/help/customer/display.html?nodeId=TPphmhSWBgcI9Ak87p",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Ameriprise Financial app"
+   ],
+   "d": [
+    "ameriprise.com"
+   ],
+   "n": "Ameriprise Financial",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.ameriprise.com/customer-service/passkey-faq",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "ancestry.com"
+   ],
+   "n": "Ancestry",
+   "notes": "SMS 2FA is currently only available for customers with a U.S. based phone number.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Ankama Authenticator"
+   ],
+   "d": [
+    "ankama.com"
+   ],
+   "n": "Ankama",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "apoTAN"
+   ],
+   "d": [
+    "apobank.de"
+   ],
+   "n": "Deutsche Apotheker- und &Auml;rztebank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "app.sendloop.com"
+   ],
+   "n": "Sendloop",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Apple Device Push Notification"
+   ],
+   "d": [
+    "appleid.apple.com"
+   ],
+   "n": "Apple",
+   "notes": "U2F requires a minimum of two security keys to be registered.",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://support.apple.com/en-us/HT204915",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Aqara Home App"
+   ],
+   "d": [
+    "aqara.com"
+   ],
+   "n": "Aqara",
+   "notes": "Email 2FA is always available as a backup.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "arbeitsagentur.de"
+   ],
+   "n": "Bundesagentur für Arbeit",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.arbeitsagentur.de/passkey",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Arlo Secure App"
+   ],
+   "d": [
+    "arlo.com"
+   ],
+   "n": "Arlo",
+   "notes": "Email 2FA is always available as a backup.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "ArtStation app"
+   ],
+   "d": [
+    "artstation.com"
+   ],
+   "n": "ArtStation",
+   "notes": "2FA must be enabled from the app and requires email confirmation to setup.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Aruba OTP"
+   ],
+   "d": [
+    "arubacloud.com"
+   ],
+   "n": "Aruba Cloud",
+   "notes": "Only the control panel supports 2FA (the main client area does not).",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "asu.edu"
+   ],
+   "n": "Arizona State University",
+   "passkey": "mfa",
+   "passkey_doc": "https://getprotected.asu.edu/services/identity-and-access-management/duo-two-factor-authentication",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "atera.com"
+   ],
+   "n": "Atera",
+   "notes": "2FA must be enabled by an admin before use.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "atlas-myrmv.massdot.state.ma.us"
+   ],
+   "n": "myRMV",
+   "recovery": "https://www.mass.gov/how-to/update-your-myrmv-account",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "atu.edu"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "Arkansas Tech University",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Auth0 Guardian"
+   ],
+   "d": [
+    "auth0.com"
+   ],
+   "n": "Auth0",
+   "passkey": "mfa",
+   "passkey_doc": "https://auth0.com/docs/secure/multi-factor-authentication/enable-mfa",
+   "recovery": "https://auth0.com/docs/secure/multi-factor-authentication/reset-user-mfa",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "availity.com"
+   ],
+   "n": "Availity Essentials",
+   "notes": "Availity decides when 2FA is required; users cannot enable 2FA for every login.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "avanza.se"
+   ],
+   "n": "Avanza",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "aws.amazon.com"
+   ],
+   "devices": [
+    "SafeNet IDProve 110 6-digit OTP Token",
+    "SafeNet IDProve 700 OTP Card"
+   ],
+   "n": "Amazon Web Services",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://aws.amazon.com/iam/features/mfa/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "azure.microsoft.com"
+   ],
+   "n": "Microsoft Azure",
+   "passkey": "passwordless",
+   "passkey_doc": "https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-passwordless",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "backblaze.com"
+   ],
+   "n": "Backblaze",
+   "recovery": "https://help.backblaze.com/hc/en-us/articles/114094512533",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Entrust Identity"
+   ],
+   "d": [
+    "bancoguayaquil.com"
+   ],
+   "n": "Banco Guayaquil",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Entrust Identity"
+   ],
+   "d": [
+    "bancointernacional.com.ec"
+   ],
+   "n": "Banco Internacional",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "okay99"
+   ],
+   "d": [
+    "bank99.at"
+   ],
+   "n": "bank99",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "bankofamerica.com",
+    "bofa.com",
+    "mbna.com"
+   ],
+   "n": "Bank of America",
+   "notes": "Mobile apps only use SMS 2FA",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Bank of Scotland Mobile App"
+   ],
+   "d": [
+    "bankofscotland.co.uk"
+   ],
+   "n": "Bank of Scotland",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Barclays App PINsentry"
+   ],
+   "d": [
+    "barclays.co.uk"
+   ],
+   "devices": [
+    "PINsentry card reader"
+   ],
+   "n": "Barclays [UK]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "baremetrics.com"
+   ],
+   "n": "Baremetrics",
+   "recovery": "https://help.baremetrics.com/en/articles/5380609",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "basecamp.com"
+   ],
+   "n": "Basecamp",
+   "passkey": "mfa",
+   "passkey_doc": "https://3.basecamp-help.com/article/443--",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "BBBank SecureGo+"
+   ],
+   "d": [
+    "bbbank.de"
+   ],
+   "devices": [
+    "Sm@rt-TAN card reader"
+   ],
+   "n": "BBBank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "bca.co.id"
+   ],
+   "devices": [
+    "KeyBCA token"
+   ],
+   "n": "Bank Central Asia (BCA)",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Bendigo Bank app",
+    "Symantec VIP Access"
+   ],
+   "d": [
+    "bendigobank.com.au",
+    "adelaidebank.com.au",
+    "adelaidebendigo.com.au"
+   ],
+   "n": "Bendigo Bank",
+   "notes": "If the app hasn't been setup, only SMS and email tokens will work. If the app has been setup, only the app will work.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "berkeley.edu"
+   ],
+   "devices": [
+    "Duo D100 Token",
+    "Feitian OTP c100 Token"
+   ],
+   "n": "University of California, Berkeley",
+   "passkey": "mfa",
+   "passkey_doc": "https://calnetweb.berkeley.edu/calnet-2-step",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "bestbuy.com"
+   ],
+   "n": "Best Buy [US]",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "bethesda.net"
+   ],
+   "n": "Bethesda",
+   "notes": "SMS requires TOTP to be set up",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Symantec VIP"
+   ],
+   "d": [
+    "beyondbank.com.au"
+   ],
+   "n": "Beyond Bank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "bglcorp.com"
+   ],
+   "n": "BGL Corporate Solutions",
+   "notes": "2FA covers Simple Fund 360, CAS 360, BGL API and BGL Account. It doesn't cover BGL Client Centre.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "bigcommerce.com",
+    "bigcommerce.ca",
+    "bigcommerce.co.uk",
+    "bigcommerce.com.au",
+    "bigcommerce.de",
+    "bigcommerce.es",
+    "bigcommerce.fr",
+    "bigcommerce.it",
+    "bigcommerce.nl"
+   ],
+   "n": "BigCommerce",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "bill.com"
+   ],
+   "n": "Bill",
+   "notes": "2FA via phone call is available for US and CA only.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "binance.com"
+   ],
+   "n": "Binance",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://www.binance.com/en/support/faq/c-1?navId=1#11",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "bitbns.com"
+   ],
+   "n": "Bitbns",
+   "notes": "SMS 2FA must be enabled before TOTP 2FA.",
+   "recovery": "https://bitbns.freshdesk.com/support/solutions/articles/35000046996",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "bitbucket.org"
+   ],
+   "n": "Bitbucket",
+   "notes": "An SSH key must be associated with your account to enable 2FA.",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.atlassian.com/bitbucket-cloud/docs/enable-two-step-verification/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "bitbuy.ca"
+   ],
+   "n": "Bitbuy",
+   "notes": "SMS 2FA is only available for country code +1 (North America)",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "bitcoin.de"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Bitcoin.de",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "bitfinex.com"
+   ],
+   "n": "Bitfinex",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.bitfinex.com/hc/en-us/sections/900000097443",
+   "recovery": "https://support.bitfinex.com/hc/en-us/articles/360021325054",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "bitget.com"
+   ],
+   "n": "Bitget",
+   "recovery": "https://www.bitget.com/support/articles/12560603808511",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "bitgo.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "BitGo",
+   "passkey": "mfa",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "bitmex.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "BitMEX",
+   "notes": "At most one 2FA method can be enabled at any time.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "bitski.com"
+   ],
+   "n": "Bitski",
+   "recovery": "https://bitski.zendesk.com/hc/en-us/articles/4415800939028",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "bitskins.com"
+   ],
+   "n": "BitSkins",
+   "notes": "You need to verify your email address before enabling 2FA.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "bitwarden.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Bitwarden",
+   "notes": "2FA methods vary depending on price plan. SMS & Call requires Duo integration",
+   "passkey": "mfa",
+   "passkey_doc": "https://bitwarden.com/help/setup-two-step-login-fido/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "blackbaud.com"
+   ],
+   "n": "Blackbaud",
+   "recovery": "https://docs.blackbaud.com/bbid-docs/faq/multi-factor-auth",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Battle.net app"
+   ],
+   "d": [
+    "blizzard.com",
+    "battle.net"
+   ],
+   "n": "Blizzard/Battle.net",
+   "passkey": "passwordless",
+   "passkey_doc": "https://support.blizzard.com/help/article/380922",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "blockchain.com",
+    "blockchain.info"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Blockchain.com",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "bluesnap.com"
+   ],
+   "n": "BlueSnap",
+   "notes": "2FA must be enabled by an admin before use.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Mediolanum app"
+   ],
+   "d": [
+    "bmedonline.it"
+   ],
+   "n": "Banca Mediolanum",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BMO App Push Notification"
+   ],
+   "d": [
+    "bmo.com"
+   ],
+   "n": "BMO Bank of Montreal",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "bochk.com"
+   ],
+   "devices": [
+    "BOCHK Mobile Banking app"
+   ],
+   "n": "Bank of China [HK]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "bokio.se"
+   ],
+   "n": "Bokio [SE]",
+   "notes": "BankID only available for users using banking features",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "bolt.eu"
+   ],
+   "n": "Bolt",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "booking.com"
+   ],
+   "n": "Booking.com",
+   "notes": "Setup requires SMS verification. Email is available via 'other options' at login.",
+   "passkey": "passwordless",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "boursorama.com"
+   ],
+   "n": "Boursorama",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.boursobank.com/aide-en-ligne/securite/proteger-mon-espace-client/question/5165516",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "braintreepayments.com"
+   ],
+   "n": "Braintree",
+   "passkey": "mfa",
+   "passkey_doc": "https://articles.braintreepayments.com/reference/security/two-factor-authentication",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "braunhousehold.com",
+    "delonghi.com",
+    "kenwoodworld.com"
+   ],
+   "n": "Braun",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "braze.com"
+   ],
+   "n": "Braze",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "bridgecrest.com"
+   ],
+   "n": "Bridgecrest",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "britishairways.com"
+   ],
+   "n": "British Airways",
+   "notes": "Set-up requires linking one of the following services with your BA account: Qatar, Iberia, Uber",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Okta Verify",
+    "Symantec VIP"
+   ],
+   "d": [
+    "broadcom.com",
+    "vmware.com"
+   ],
+   "n": "Broadcom",
+   "recovery": "https://knowledge.broadcom.com/external/article/213025",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "bt.com"
+   ],
+   "n": "BT",
+   "notes": "2FA can only be enabled via the website.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "btcmarkets.net"
+   ],
+   "n": "BTC Markets",
+   "notes": "A mobile phone number is required to reset two-factor authentication.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "bu.edu"
+   ],
+   "n": "Boston University",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.bu.edu/tech/support/duo/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "buddy.works"
+   ],
+   "n": "Buddy",
+   "notes": "2FA is only available to users on paid plans.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "bugzilla.mozilla.org"
+   ],
+   "n": "Bugzilla@Mozilla",
+   "notes": "Proprietary 2FA methods are only available for Mozilla employees.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "bumble.com"
+   ],
+   "n": "Bumble",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "BW-pushTAN"
+   ],
+   "d": [
+    "bw-bank.de"
+   ],
+   "devices": [
+    "chipTAN-QR card reader"
+   ],
+   "n": "Baden-Württembergische Bank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "byu.edu"
+   ],
+   "devices": [
+    "Duo D100 Token",
+    "Yubico OTP"
+   ],
+   "n": "Brigham Young University",
+   "passkey": "mfa",
+   "passkey_doc": "https://duo.byu.edu/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "calpoly.edu"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "Cal Poly",
+   "passkey": "mfa",
+   "passkey_doc": "https://calpoly.atlassian.net/wiki/spaces/CPKB/pages/3539066",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "caltech.edu"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "California Institute of Technology (CalTech)",
+   "notes": "SMS-capable phone required for initial setup.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "cam.ac.uk"
+   ],
+   "devices": [
+    "SafeID token"
+   ],
+   "n": "University of Cambridge",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "canadiantire.ca",
+    "triangle.com",
+    "sportchek.ca",
+    "marks.com",
+    "partycity.ca"
+   ],
+   "n": "Canadian Tire",
+   "passkey": "passwordless",
+   "passkey_doc": "https://triangle.canadiantire.ca/en/my-account/account-settings/passkey.html",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "canva.com"
+   ],
+   "n": "Canva",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.canva.com/help/passkey-log-in/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Capital One App"
+   ],
+   "d": [
+    "capitalone.com"
+   ],
+   "n": "Capital One",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.capitalone.com/help-center/credit-cards/passkey-support/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "cardmarket.com"
+   ],
+   "n": "Cardmarket",
+   "recovery": "https://cardmarket.com/en/Login/LostDevice",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "caremark.com"
+   ],
+   "n": "CVS Caremark",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "RBC Caribbean app",
+    "Entrust Identity Guard"
+   ],
+   "d": [
+    "caribbean.rbcroyalbank.com"
+   ],
+   "devices": [
+    "RSA SecurID"
+   ],
+   "n": "RBC Caribbean",
+   "notes": "Hardware 2FA methods are only available for business customers.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo Mobile"
+   ],
+   "d": [
+    "carleton.ca"
+   ],
+   "devices": [
+    "Duo token"
+   ],
+   "n": "Carleton University",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "carnival.com"
+   ],
+   "n": "Carnival",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "cashrewards.com.au"
+   ],
+   "n": "Cashrewards",
+   "notes": "Enabling 2FA requires email confirmation",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "cbq.qa"
+   ],
+   "n": "Commercial Bank of Qatar",
+   "notes": "An SMS capable phone with a Qatar phone number is required.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "cex.io"
+   ],
+   "n": "CEX.IO",
+   "recovery": "https://support.cex.io/en/articles/5029000",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "changelly.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Changelly",
+   "recovery": "https://support.changelly.com/en/support/solutions/articles/14000111548",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Chase app"
+   ],
+   "d": [
+    "chase.com"
+   ],
+   "devices": [
+    "RSA SecurID"
+   ],
+   "n": "Chase",
+   "notes": "Hardware tokens can be obtained through Chase support for high-risk accounts",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.chase.com/digital/resources/privacy-security/security/how-you-can-protect",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Google Prompts",
+    "Google Smart Lock"
+   ],
+   "d": [
+    "chat.google.com"
+   ],
+   "n": "Google Chat",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://safety.google/authentication/passkey/",
+   "recovery": "https://support.google.com/accounts/answer/185834",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "chatwork.com"
+   ],
+   "n": "Chatwork",
+   "notes": "SMS 2FA is only available to users on paid plans",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "CIBC app"
+   ],
+   "d": [
+    "cibc.com"
+   ],
+   "n": "CIBC",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Citadel App"
+   ],
+   "d": [
+    "citadelbanking.com"
+   ],
+   "n": "Citadel Credit Union",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "classlink.com"
+   ],
+   "n": "ClassLink",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.classlink.com/solutions/multi-factor-authentication",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "clemson.edu"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "Clemson University",
+   "passkey": "mfa",
+   "passkey_doc": "https://2fa.app.clemson.edu/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "clever.com"
+   ],
+   "n": "Clever",
+   "notes": "2FA is only available for district admins",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "clickup.com"
+   ],
+   "n": "ClickUp",
+   "notes": "SMS only available on Business and Enterprise price plans.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "cliniko.com"
+   ],
+   "n": "Cliniko",
+   "notes": "Setting up 2FA requires adding a phone number.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "clio.com"
+   ],
+   "n": "Clio",
+   "recovery": "https://help.clio.com/hc/en-us/articles/9284748707739",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Google Prompts",
+    "Google Smart Lock"
+   ],
+   "d": [
+    "cloud.google.com"
+   ],
+   "n": "Google Cloud Platform",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://safety.google/authentication/passkey/",
+   "recovery": "https://support.google.com/accounts/answer/185834",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "cloud.ibm.com"
+   ],
+   "n": "IBM Cloud",
+   "passkey": "mfa",
+   "passkey_doc": "https://cloud.ibm.com/docs/account?topic=account-enablemfa",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo",
+    "Oracle Mobile Authenticator"
+   ],
+   "d": [
+    "cloud.oracle.com",
+    "oraclecloud.com"
+   ],
+   "n": "Oracle Cloud Infrastructure",
+   "passkey": "mfa",
+   "passkey_doc": "https://docs.oracle.com/en/cloud/paas/identity-cloud/uaids/configure-authentication-factors.html",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "cloud66.com"
+   ],
+   "n": "Cloud 66",
+   "passkey": "mfa",
+   "passkey_doc": "https://help.cloud66.com/node/account/two-factor-authentication.html",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "cloudamqp.com"
+   ],
+   "n": "CloudAMQP",
+   "notes": "SMS is required as a backup method",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "cloudflare.com"
+   ],
+   "n": "Cloudflare",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.cloudflare.com/hc/en-us/articles/200167906",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "cloze.com"
+   ],
+   "n": "Cloze",
+   "passkey": "passwordless",
+   "passkey_doc": "https://help.cloze.com/article/2729-how-do-i-sign-in-with-a-passkey",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "CM Authenticator"
+   ],
+   "d": [
+    "cm.com"
+   ],
+   "n": "CM",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "cmu.edu"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "Carnegie Mellon University",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.cmu.edu/computing/services/security/identity-access/authentication/how-to/use2fa-weblogin.html",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "codeberg.org"
+   ],
+   "n": "Codeberg",
+   "passkey": "mfa",
+   "passkey_doc": "https://docs.codeberg.org/security/2fa/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "codeclimate.com"
+   ],
+   "n": "Code Climate",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "coinbase.com"
+   ],
+   "n": "Coinbase",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://help.coinbase.com/en/coinbase/getting-started/verify-my-account/how-do-i-set-up-2-factor-authentication",
+   "recovery": "https://help.coinbase.com/en/coinbase/managing-my-account/get-back-into-my-account/2-step-verification-troubleshooting",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "coinberry.com"
+   ],
+   "n": "Coinberry",
+   "recovery": "https://help.coinberry.com/hc/en-us/articles/4506298382993",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "coingate.com"
+   ],
+   "n": "CoinGate",
+   "recovery": "https://support.coingate.com/hc/en-us/articles/4402503851026",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "coinify.com"
+   ],
+   "n": "Coinify",
+   "notes": "2FA is only available for merchant accounts. myCoinify trading accounts do not support 2FA.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "coinpayments.net"
+   ],
+   "n": "CoinPayments",
+   "recovery": "https://www.coinpayments.net/supwiz-login-tfa",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "coinpayu.com"
+   ],
+   "n": "CoinPayU",
+   "notes": "You need to verify email address before enable 2FA.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "cointracking.info"
+   ],
+   "n": "CoinTracking",
+   "recovery": "https://cointracking.freshdesk.com/en/support/solutions/articles/29000021946",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "colorado.edu"
+   ],
+   "n": "University of Colorado Boulder",
+   "notes": "SMS required to setup TOTP 2FA.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "columbia.edu"
+   ],
+   "n": "Columbia University",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "comdirect photoTAN"
+   ],
+   "d": [
+    "comdirect.de"
+   ],
+   "devices": [
+    "photoTAN card reader"
+   ],
+   "n": "comdirect",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "CommBank app"
+   ],
+   "d": [
+    "commbank.com.au",
+    "netbank.com.au"
+   ],
+   "n": "Commonwealth Bank of Australia",
+   "notes": "SMS is only available when setting up CommBank app.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Metro Bank Authenticator app"
+   ],
+   "d": [
+    "commercial.metrobankonline.co.uk"
+   ],
+   "devices": [
+    "Security device"
+   ],
+   "n": "Metro Bank Commercial",
+   "notes": "Only available for Business Online Plus and Commercial Banking customers. Setup for authenticator app requires SMS verification. Only UK phone numbers can be used.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Commerzbank photoTAN"
+   ],
+   "d": [
+    "commerzbank.de"
+   ],
+   "devices": [
+    "photoTAN card reader"
+   ],
+   "n": "Commerzbank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "comodo.com"
+   ],
+   "n": "Comodo",
+   "notes": "SMS is only available for accounts with more than 50 devices.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "compose.com"
+   ],
+   "n": "Compose",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.compose.com/articles/introducing-fido-universal-2nd-factor-authentication/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "comviq.se"
+   ],
+   "n": "Comviq",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Okta Verify"
+   ],
+   "d": [
+    "coned.com"
+   ],
+   "n": "Con Edison",
+   "notes": "Requires phone number to set up. Can be bypassed by customer support.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "connectwise.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "ConnectWise Control (ScreenConnect)",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Consorsbank SecurePlus"
+   ],
+   "d": [
+    "consorsbank.de"
+   ],
+   "devices": [
+    "SecurePlus card reader"
+   ],
+   "n": "Consorsbank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "contentstack.com"
+   ],
+   "n": "Contentstack",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "cornell.edu"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "Cornell University",
+   "passkey": "mfa",
+   "passkey_doc": "https://it.cornell.edu/twostep",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "cpp.edu"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "Cal Poly Pomona",
+   "passkey": "mfa",
+   "passkey_doc": "https://cpp.service-now.com/ehelp?id=kb_article&sys_id=ed4dcbc3dbeb1f449bba68461b96198e",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "cqu.edu.au"
+   ],
+   "n": "CQUniversity",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "crashplan.com",
+    "crashplanpro.com"
+   ],
+   "n": "CrashPlan",
+   "recovery": "https://support.crashplan.com/hc/articles/43858283887373",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "credly.com"
+   ],
+   "n": "Credly",
+   "notes": "Password reset also disables 2FA.",
+   "recovery": "https://support.credly.com/hc/articles/360039330612",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "cron-job.org"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "cron-job.org",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "crowdin.com"
+   ],
+   "n": "Crowdin",
+   "passkey": "passwordless+mfa",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "crowdsupply.com"
+   ],
+   "n": "Crowd Supply",
+   "passkey": "mfa",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Telegram"
+   ],
+   "d": [
+    "cryptonator.com"
+   ],
+   "n": "Cryptonator",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "George Ceska Sporitelna"
+   ],
+   "d": [
+    "csas.cz"
+   ],
+   "n": "Ceska Sporitelna",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "csn.se"
+   ],
+   "n": "CSN",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "ČSOB Smart key"
+   ],
+   "d": [
+    "csob.cz"
+   ],
+   "n": "ČSOB (Czech)",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "currencycloud.com"
+   ],
+   "n": "Currencycloud",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "current-rms.com"
+   ],
+   "n": "Current RMS",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "cvs.com"
+   ],
+   "n": "CVS",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "DAB SecurePlus app"
+   ],
+   "d": [
+    "dab-bank.de"
+   ],
+   "devices": [
+    "QR TAN reader"
+   ],
+   "n": "DAB BNP Paribas",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "NemID app"
+   ],
+   "d": [
+    "danskebank.dk"
+   ],
+   "devices": [
+    "NemID code token"
+   ],
+   "n": "Danske Bank [DK]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "danskebank.se"
+   ],
+   "n": "Danske Bank [SE]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "datadoghq.com"
+   ],
+   "n": "Datadog",
+   "recovery": "https://docs.datadoghq.com/account_management/multi-factor_authentication/#mfa-recovery",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "datev.de"
+   ],
+   "devices": [
+    "National identity card"
+   ],
+   "n": "DATEV",
+   "notes": "2FA only available for DATEV Arbeitnehmer online",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "datto.com"
+   ],
+   "n": "Datto",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "dbs.com.sg"
+   ],
+   "devices": [
+    "DBS iB Secure Device"
+   ],
+   "n": "DBS Bank [SG]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "deakin.edu.au"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "Deakin University",
+   "passkey": "mfa",
+   "passkey_doc": "https://help.deakin.edu.au/ithelp?id=kb_article&sysparm_article=KB0014662",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "deepl.com"
+   ],
+   "n": "DeepL",
+   "recovery": "https://support.deepl.com/hc/articles/17765746756636",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Degussa Bank Banking+Brokerage"
+   ],
+   "d": [
+    "degussa-bank.de"
+   ],
+   "devices": [
+    "Biometrics (via app)"
+   ],
+   "n": "Degussa Bank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Okta Verify"
+   ],
+   "d": [
+    "delaware.gov"
+   ],
+   "n": "Delaware.gov",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo Push"
+   ],
+   "d": [
+    "delinea.com"
+   ],
+   "n": "Delinea",
+   "passkey": "mfa",
+   "passkey_doc": "https://docs.delinea.com/ss/10.8.0/authentication/two-factor-authentication",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "dell.com"
+   ],
+   "n": "Dell",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.dell.com/en-uk/lp/protect-your-account-faq",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Fly Delta app"
+   ],
+   "d": [
+    "delta.com"
+   ],
+   "n": "Delta",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "depop.com"
+   ],
+   "n": "Depop",
+   "notes": "2FA can only be enabled via the app. Recovery codes can only be used via the app.",
+   "recovery": "https://depophelp.zendesk.com/hc/en-gb/articles/360017003737",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "deputy.com"
+   ],
+   "n": "Deputy",
+   "recovery": "https://help.deputy.com/hc/en-us/articles/5082880153615",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Desjardins Mobile Services App"
+   ],
+   "d": [
+    "desjardins.com"
+   ],
+   "n": "Desjardins",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Deutsche Bank Mobile"
+   ],
+   "d": [
+    "deutsche-bank.de"
+   ],
+   "devices": [
+    "photoTAN card reader"
+   ],
+   "n": "Deutsche Bank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "deutsche-rentenversicherung.de"
+   ],
+   "devices": [
+    "National identity card",
+    "Signature card"
+   ],
+   "n": "Deutsche Rentenversicherung",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "deviantart.com"
+   ],
+   "n": "DeviantArt",
+   "notes": "2FA can only be setup if you have a Core membership. 2FA setup is required in order to withdraw earnings regardless of membership status",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "didiglobal.com",
+    "99app.com",
+    "didimobility.co.jp"
+   ],
+   "n": "DiDi",
+   "notes": "DiDi decides when 2FA is required; user cannot enable 2FA for every login.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "DigiD"
+   ],
+   "d": [
+    "digid.nl"
+   ],
+   "n": "DigiD",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "digitalsurge.com.au"
+   ],
+   "n": "Digital Surge",
+   "notes": "A mobile phone number is required to set up two-factor authentication.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "dinero.dk"
+   ],
+   "n": "Dinero",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://dinero.dk/support/to-faktor-login",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "directnic.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Directnic",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "discord.com",
+    "discordapp.com"
+   ],
+   "n": "Discord",
+   "passkey": "passwordless",
+   "passkey_doc": "https://support.discord.com/hc/articles/25966860846231",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Yandex.Key"
+   ],
+   "d": [
+    "disk.yandex.com"
+   ],
+   "n": "Yandex.Disk",
+   "notes": "SMS-capable phone required for initial setup.",
+   "recovery": "https://yandex.com/support/id/authorization/twofa-restore.html",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "DKB app",
+    "DKB-Banking",
+    "DKB-TAN2go"
+   ],
+   "d": [
+    "dkb.de"
+   ],
+   "devices": [
+    "chipTAN card reader"
+   ],
+   "n": "Deutsche Kreditbank (DKB)",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "dmarcian.com"
+   ],
+   "n": "dmarcian",
+   "passkey": "mfa",
+   "passkey_doc": "https://dmarcian.com/secure-dmarcian-2fa/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "dmm.com"
+   ],
+   "n": "DMM",
+   "recovery": "https://support.dmm.com/accounts/article/46834",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID app"
+   ],
+   "d": [
+    "dnb.no"
+   ],
+   "devices": [
+    "BankID card reader"
+   ],
+   "n": "DNB",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "dnsimple.com"
+   ],
+   "n": "DNSimple",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.dnsimple.com/articles/two-factor-authentication/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "docker.com"
+   ],
+   "n": "Docker",
+   "recovery": "https://docs.docker.com/docker-hub/2fa/recover-hub-account/",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "docusign.com"
+   ],
+   "n": "DocuSign",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://support.docusign.com/s/document-item?bundleId=jux1643235969954&topicId=niw1651694673085.html",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "domain.com.au"
+   ],
+   "n": "Domain",
+   "notes": "2FA is not available on the app.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "domeneshop.no"
+   ],
+   "n": "Domeneshop",
+   "notes": "SMS available only to customers in Norway, Sweden and Denmark.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "doppler.com"
+   ],
+   "n": "Doppler",
+   "passkey": "mfa",
+   "passkey_doc": "https://docs.doppler.com/docs/security-fact-sheet#user-authentication",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "drchrono.com"
+   ],
+   "n": "DrChrono",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "dreamhost.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Dreamhost",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Google Prompts",
+    "Google Smart Lock"
+   ],
+   "d": [
+    "drive.google.com"
+   ],
+   "n": "Google Drive",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://safety.google/authentication/passkey/",
+   "recovery": "https://support.google.com/accounts/answer/185834",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "dropbox.com",
+    "getdropbox.com"
+   ],
+   "n": "Dropbox",
+   "notes": "Hardware 2FA requires also enabling Software or SMS 2FA as a back-up.",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://help.dropbox.com/account-access/enable-2-factor-authentication",
+   "recovery": "https://help.dropbox.com/account-access/issues-2-factor-authentication",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "drs.ct.gov"
+   ],
+   "n": "Connecticut DRS myconneCT",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://portal.ct.gov/drs/myconnect/myconnect-2/faq",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "duke.edu"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Duke University",
+   "passkey": "passwordless",
+   "passkey_doc": "https://oit.duke.edu/service/duke-unlock/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "dynadot.com"
+   ],
+   "n": "Dynadot",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.dynadot.com/community/help/question/2-step-verification",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "easybank Security App"
+   ],
+   "d": [
+    "easybank.at"
+   ],
+   "n": "easybank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "SecureGo plus"
+   ],
+   "d": [
+    "eb.de"
+   ],
+   "devices": [
+    "photoTAN generator"
+   ],
+   "n": "Evangelische Bank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "eBay app"
+   ],
+   "d": [
+    "ebay.com",
+    "ebay.com.au",
+    "ebay.at",
+    "ebay.be",
+    "ebay.ca",
+    "ebay.cn",
+    "ebay.fr",
+    "ebay.de",
+    "ebay.com.hk",
+    "ebay.in",
+    "ebay.ie",
+    "ebay.it",
+    "ebay.co.jp",
+    "ebay.com.my",
+    "ebay.nl",
+    "ebay.ph",
+    "ebay.pl",
+    "ebay.com.sg",
+    "ebay.es",
+    "ebay.ch",
+    "ebay.com.tw",
+    "ebay.co.uk",
+    "gmarket.co.kr"
+   ],
+   "n": "eBay",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.ebay.com/help/account/signing-account/signing-account?id=4189#section2",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "eduid.ch"
+   ],
+   "n": "SWITCH edu-ID",
+   "recovery": "https://help.switch.ch/eduid/faqs/?lang=en#mfa-lost-mobile",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "ee.co.uk"
+   ],
+   "n": "EE",
+   "notes": "Once enabled you cannot disable it again. You can only change the phone number you receive the code on.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "FirstBank App"
+   ],
+   "d": [
+    "efirstbank.com"
+   ],
+   "n": "FirstBank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "egnyte.com"
+   ],
+   "n": "Egnyte",
+   "notes": "Availability of 2FA options depends on your account type.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "ElsterSecure"
+   ],
+   "d": [
+    "elster.de"
+   ],
+   "devices": [
+    "National identity card",
+    "G&D StarSign Crypto Key",
+    "Signature card"
+   ],
+   "n": "Elster",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "emich.edu"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "Eastern Michigan University",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Entrust IdentityGuard"
+   ],
+   "d": [
+    "entrust.net"
+   ],
+   "devices": [
+    "eGrid"
+   ],
+   "n": "Entrust",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "epayslips.co.uk"
+   ],
+   "n": "Epayslips",
+   "passkey": "mfa",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Epic Games app",
+    "Epic Games Store app"
+   ],
+   "d": [
+    "epicgames.com",
+    "fortnite.com",
+    "fallguys.com",
+    "rocketleague.com"
+   ],
+   "n": "Epic Games",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "erau.edu"
+   ],
+   "n": "Embry-Riddle Aeronautical University",
+   "passkey": "mfa",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "George App"
+   ],
+   "d": [
+    "erstebank.hr"
+   ],
+   "devices": [
+    "Display card"
+   ],
+   "n": "Erste Bank [HR]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Symantec VIP Access"
+   ],
+   "d": [
+    "etrade.com"
+   ],
+   "devices": [
+    "Symantec hardware token"
+   ],
+   "n": "E*Trade",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "evernote.com"
+   ],
+   "n": "Evernote",
+   "notes": "SMS and phone call are always enabled as backup methods for TOTP.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "facebook.com",
+    "messenger.com"
+   ],
+   "n": "Facebook",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://www.facebook.com/help/1181045243159511",
+   "recovery": "https://www.facebook.com/help/147926301947841",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "fastmail.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Fastmail",
+   "notes": "Setup requires SMS verification.",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.fastmail.com/help/account/2fa.html",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "faucetpay.io"
+   ],
+   "n": "FaucetPay",
+   "recovery": "https://faq.faucetpay.io/knowledge-base/i-accidentally-removed-the-2fa-application-from-my-mobile-what-should-do-i-now/",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Google Prompts",
+    "Google Smart Lock"
+   ],
+   "d": [
+    "fi.google.com"
+   ],
+   "n": "Google Fi",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://safety.google/authentication/passkey/",
+   "recovery": "https://support.google.com/accounts/answer/185834",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Google Prompts",
+    "Google Smart Lock"
+   ],
+   "d": [
+    "fiber.google.com"
+   ],
+   "n": "Google Fiber",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://safety.google/authentication/passkey/",
+   "recovery": "https://support.google.com/accounts/answer/185834",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Fidelity Investments app"
+   ],
+   "d": [
+    "fidelity.com"
+   ],
+   "n": "Fidelity Investments",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "files.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Files.com",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.files.com/docs/features/twofactor-authentication-2fa",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "finary.com"
+   ],
+   "n": "Finary",
+   "recovery": "https://help.finary.com/en/articles/6519234",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Fineco app"
+   ],
+   "d": [
+    "finecobank.com"
+   ],
+   "n": "Fineco Bank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Fio Smartbanking CZ"
+   ],
+   "d": [
+    "fio.cz"
+   ],
+   "n": "Fio banka",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "firmex.com"
+   ],
+   "n": "Firmex VDR",
+   "notes": "2FA must be enabled by a site administrator before use.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Digital Secure Key (first direct app)"
+   ],
+   "d": [
+    "firstdirect.com"
+   ],
+   "devices": [
+    "Physical Secure Key"
+   ],
+   "n": "first direct",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Entrust Identity Guard"
+   ],
+   "d": [
+    "firsttechfed.com"
+   ],
+   "devices": [
+    "Entrust Hardware Token"
+   ],
+   "n": "First Tech Federal Credit Union",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Google Prompts",
+    "Google Smart Lock"
+   ],
+   "d": [
+    "fit.google.com"
+   ],
+   "n": "Google Fit",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://safety.google/authentication/passkey/",
+   "recovery": "https://support.google.com/accounts/answer/185834",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "flexera.com"
+   ],
+   "n": "Flexera",
+   "recovery": "https://docs.flexera.com/svm/Content/helplibrary/Two_Factor_Authentication_Recovery.htm",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "formsite.com"
+   ],
+   "n": "Formsite",
+   "notes": "2FA is only available for Pro 3 accounts or higher.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "fragdenstaat.de"
+   ],
+   "n": "FragDenStaat",
+   "passkey": "mfa",
+   "passkey_doc": "https://fragdenstaat.de/hilfe/ihr-konto-verwalten/zwei-faktor-login/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "frame.io"
+   ],
+   "n": "Frame.io",
+   "notes": "2FA is only available for Enterprise users with mandated 2FA.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "frontify.com"
+   ],
+   "n": "Frontify",
+   "notes": "2FA is only available for Enterprise users with a security package.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "fusionauth.io"
+   ],
+   "n": "FusionAuth",
+   "passkey": "passwordless",
+   "passkey_doc": "https://fusionauth.io/docs/lifecycle/manage-users/account-management/add-webauthn",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Gaijin Pass"
+   ],
+   "d": [
+    "gaijin.net"
+   ],
+   "n": "Gaijin Entertainment",
+   "notes": "Software 2FA requires linking a phone number.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "gandi.net"
+   ],
+   "n": "Gandi",
+   "passkey": "mfa",
+   "passkey_doc": "https://docs.gandi.net/en/account_management/security/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Garena Authenticator"
+   ],
+   "d": [
+    "garena.sg"
+   ],
+   "n": "Garena Online",
+   "notes": "A mobile phone is required for 2FA.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "gatech.edu"
+   ],
+   "n": "Georgia Institute of Technology",
+   "passkey": "mfa",
+   "passkey_doc": "https://oit.gatech.edu/two-factor-authentication",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "geforce.com",
+    "nvidia.com",
+    "login.nvgs.nvidia.com"
+   ],
+   "n": "GeForce (Nvidia)",
+   "notes": "Email 2FA is always enabled.",
+   "passkey": "mfa",
+   "passkey_doc": "https://login.nvgs.nvidia.com/v1/help/nfactor",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "georgetown.edu"
+   ],
+   "n": "Georgetown University",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "getpocket.com"
+   ],
+   "n": "Pocket",
+   "recovery": "https://support.mozilla.org/en-US/kb/what-if-im-locked-out-two-step-authentication",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "GetResponse app"
+   ],
+   "d": [
+    "getresponse.com"
+   ],
+   "n": "GetResponse",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Telegram"
+   ],
+   "d": [
+    "getscreen.me"
+   ],
+   "n": "Getscreen.me",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "GitHub Mobile"
+   ],
+   "d": [
+    "github.com"
+   ],
+   "n": "GitHub",
+   "notes": "Hardware tokens must have a backup method, either SMS or software token.",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://docs.github.com/en/authentication/authenticating-with-a-passkey/about-passkeys",
+   "recovery": "https://docs.github.com/en/github/authenticating-to-github/securing-your-account-with-two-factor-authentication-2fa/recovering-your-account-if-you-lose-your-2fa-credentials",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "gitlab.com"
+   ],
+   "n": "GitLab",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://docs.gitlab.com/auth/passkeys/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "SecureGo plus"
+   ],
+   "d": [
+    "gls.de"
+   ],
+   "devices": [
+    "Sm@rtTAN"
+   ],
+   "n": "GLS Gemeinschaftsbank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "gm.com",
+    "chevrolet.com",
+    "buick.com",
+    "gmc.com",
+    "cadillac.com"
+   ],
+   "n": "General Motors",
+   "notes": "Automatically turned on for email. You are only allowed to have one method turned on at a time.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "gmu.edu"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "George Mason University",
+   "recovery": "https://its.gmu.edu/knowledge-base/how-to-request-a-bypass-code-emergency/",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "gmx.com"
+   ],
+   "n": "GMX.com",
+   "notes": "Setup requires SMS verification.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "gmx.net",
+    "gmx.at"
+   ],
+   "n": "GMX.net",
+   "notes": "Setup requires SMS verification.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "godaddy.com"
+   ],
+   "n": "GoDaddy",
+   "notes": "If hardware 2FA enabled, customer support by phone requires enabling back-up method.",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.godaddy.com/help/enable-two-step-verification-7502",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "gofundme.com"
+   ],
+   "n": "GoFundMe",
+   "notes": "2FA only for North American customers that create Personal campaigns.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "gog.com"
+   ],
+   "n": "GOG.com",
+   "notes": "Only one method of authentication can be used at a time.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "gopro.com"
+   ],
+   "n": "GoPro",
+   "notes": "2FA only applies on the GoPro website, not the app.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "gosuslugi.ru"
+   ],
+   "devices": [
+    "Electronic Digital Signature (EDS) device"
+   ],
+   "n": "Госуслуги (Gosuslugi)",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "goteleport.com"
+   ],
+   "n": "Teleport",
+   "passkey": "mfa",
+   "passkey_doc": "https://goteleport.com/docs/access-controls/guides/webauthn/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "gov.uk"
+   ],
+   "n": "GOV.UK",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.gov.uk/guidance/using-a-passkey-to-sign-in-to-govuk-one-login",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "grab.com"
+   ],
+   "n": "Grab",
+   "passkey": "passwordless",
+   "passkey_doc": "https://engineering.grab.com/embracing-passwordless-authentication-with-passkey",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "groupme.com"
+   ],
+   "n": "GroupMe",
+   "passkey": "passwordless",
+   "passkey_doc": "https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "guildwars2.com",
+    "arena.net"
+   ],
+   "n": "Guild Wars 2",
+   "recovery": "https://help.guildwars2.com/hc/en-us/articles/360000819168",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "gwu.edu"
+   ],
+   "n": "George Washington University",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "hackerone.com"
+   ],
+   "n": "HackerOne",
+   "notes": "SMS-capable phone required for initial setup.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "hackthebox.com",
+    "hackthebox.eu"
+   ],
+   "n": "Hack The Box",
+   "recovery": "https://help.hackthebox.com/articles/5208737",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "halebop.se"
+   ],
+   "n": "Halebop",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "hallon.se"
+   ],
+   "n": "Hallon",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "handelsbanken.se"
+   ],
+   "n": "Handelsbanken",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo",
+    "Okta Verify"
+   ],
+   "d": [
+    "harvard.edu"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Harvard University",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://harvard.service-now.com/ithelp?id=kb_article&sys_id=7d56d80347875650b4aa0f6c416d4309",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "hcaptcha.com"
+   ],
+   "n": "hCaptcha",
+   "passkey": "passwordless+mfa",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Google Prompts",
+    "Google Smart Lock"
+   ],
+   "d": [
+    "healthapp.google",
+    "fitbit.com"
+   ],
+   "n": "Google Health",
+   "recovery": "https://support.google.com/accounts/answer/185834",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "heap.io"
+   ],
+   "n": "Heap",
+   "notes": "2FA is only available for users on the Business plan.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "hellosign.com"
+   ],
+   "n": "Dropbox Sign",
+   "notes": "SMS Two-factor authentication is only available to paid Business plan senders and above.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Salesforce Authenticator"
+   ],
+   "d": [
+    "heroku.com"
+   ],
+   "devices": [
+    "Built-in Authenticator (Biometrics)"
+   ],
+   "n": "Heroku",
+   "passkey": "mfa",
+   "passkey_doc": "https://devcenter.heroku.com/articles/multi-factor-authentication",
+   "recovery": "https://devcenter.heroku.com/articles/recovery-codes",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "hetzner.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Hetzner",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "hey.com"
+   ],
+   "n": "HEY",
+   "passkey": "mfa",
+   "passkey_doc": "https://hey.com/security/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "hmc.edu"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "Harvey Mudd College",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.hmc.edu/cis/duo-two-factor-authentication/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Holvi app"
+   ],
+   "d": [
+    "holvi.com"
+   ],
+   "n": "Holvi",
+   "notes": "Setup requires SMS verification.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Saxo app"
+   ],
+   "d": [
+    "home.saxo",
+    "saxotrader.com",
+    "saxobank.com",
+    "bgsaxo.it"
+   ],
+   "n": "Saxo Bank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "home.sophos.com",
+    "my.sophos.com"
+   ],
+   "n": "Sophos Home",
+   "notes": "Email and SMS 2FA can only be enabled as backup methods.",
+   "recovery": "https://support.home.sophos.com/hc/en-us/articles/360032204591",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "homedepot.com"
+   ],
+   "n": "Home Depot",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "hootsuite.com"
+   ],
+   "n": "HootSuite",
+   "notes": "Email is always enabled as backup method for Software Token.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "hostinger.com"
+   ],
+   "n": "Hostinger",
+   "notes": "You can only have one 2FA option enabled at a time.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "hostiso.com"
+   ],
+   "n": "Hostiso",
+   "notes": "While both the main client area and the shared hosting panel support 2FA, each system is separate and requires its own setup.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "hotjar.com"
+   ],
+   "n": "Hotjar",
+   "notes": "2FA is not available for SAML SSO logins",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Okta Verify"
+   ],
+   "d": [
+    "hpe.com",
+    "hewlettpackardenterprise.com"
+   ],
+   "n": "Hewlett Packard Enterprise",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "HSBC UK Mobile Banking"
+   ],
+   "d": [
+    "hsbc.co.uk"
+   ],
+   "devices": [
+    "HSBC Physical Secure Key"
+   ],
+   "n": "HSBC [UK]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "HSBC Australia"
+   ],
+   "d": [
+    "hsbc.com.au"
+   ],
+   "n": "HSBC [AU]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "hyatt.com"
+   ],
+   "n": "Hyatt",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.hyatt.com/member/passkey/what-is-passkey",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "hypixel.net"
+   ],
+   "n": "Hypixel",
+   "notes": "In-game 2FA is limited to Hypixel staff and players with the [YOUTUBE] rank; website 2FA is available to anyone.",
+   "passkey": "passwordless",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "HVB Mobile Banking"
+   ],
+   "d": [
+    "hypovereinsbank.de"
+   ],
+   "devices": [
+    "photoTAN card reader"
+   ],
+   "n": "HypoVereinsbank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "hytale.com",
+    "hytale.net"
+   ],
+   "n": "Hytale",
+   "notes": "If totp is set-up, email cannot be enabled.",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.hytale.com/hc/articles/44212029550491",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "icabanken.se"
+   ],
+   "n": "ICA Banken",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "icedrive.net"
+   ],
+   "n": "Icedrive",
+   "passkey": "mfa",
+   "passkey_doc": "https://twitter.com/icedrivecloud/status/1412044506447364097",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Apple Device Push Notification"
+   ],
+   "d": [
+    "icloud.com"
+   ],
+   "n": "Apple iCloud",
+   "notes": "U2F requires a minimum of two security keys to be registered.",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.apple.com/en-us/HT204915",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "id.atlassian.com"
+   ],
+   "n": "Atlassian Cloud",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://support.atlassian.com/atlassian-account/docs/access-your-atlassian-account-with-a-passkey/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "ID.me Authenticator"
+   ],
+   "d": [
+    "id.me"
+   ],
+   "n": "ID.me",
+   "passkey": "mfa",
+   "passkey_doc": "https://help.id.me/hc/en-us/articles/360018113053",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "IG Authentication"
+   ],
+   "d": [
+    "ig.com"
+   ],
+   "n": "IG",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "immobilienscout24.de"
+   ],
+   "n": "ImmobilienScout24",
+   "notes": "SMS is only available to commercial real estate providers.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "immowelt.de"
+   ],
+   "n": "Immowelt",
+   "notes": "2FA is only available for commercial partners.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Infomaniak Auth"
+   ],
+   "d": [
+    "infomaniak.com"
+   ],
+   "n": "Infomaniak",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "ING Banking to go"
+   ],
+   "d": [
+    "ing.de"
+   ],
+   "devices": [
+    "photoTAN reader"
+   ],
+   "n": "ING-DiBa [DE]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "ING Italia"
+   ],
+   "d": [
+    "ing.it"
+   ],
+   "n": "ING Italia",
+   "notes": "The SMS One-Time Password service is available for a fee of €0.50/month.",
+   "recovery": "https://www.ing.it/faq/sicurezza-e-phishing/cosa-fare-perdita-furto-cellulare.html",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "LuxTrust Mobile App"
+   ],
+   "d": [
+    "ing.lu"
+   ],
+   "devices": [
+    "LuxTrust Token"
+   ],
+   "n": "ING [LU]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Moje ING App"
+   ],
+   "d": [
+    "ing.pl"
+   ],
+   "n": "ING Bank Slaski [PL]",
+   "notes": "The first U2F key requires confirmation at a bank branch.",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.ing.pl/indywidualni/bankowosc-internetowa/bezpieczenstwo/klucze-zabezpieczen-u2f",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "instacart.com"
+   ],
+   "n": "Instacart",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.instacart.com/company/shopper-community/new-features-to-make-your-experience-seamless/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "intelli.zoolz.com"
+   ],
+   "n": "Zoolz",
+   "notes": "Only available for business accounts.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "IBKR Mobile"
+   ],
+   "d": [
+    "interactivebrokers.com",
+    "interactivebrokers.ca",
+    "interactivebrokers.co.in",
+    "interactivebrokers.co.jp",
+    "interactivebrokers.co.uk",
+    "interactivebrokers.com.au",
+    "interactivebrokers.com.hk",
+    "interactivebrokers.hu",
+    "interactivebrokers.ie",
+    "interactivebrokers.sg"
+   ],
+   "devices": [
+    "Digital Security Card+"
+   ],
+   "n": "Interactive Brokers",
+   "notes": "SMS 2FA only works as long as no other method has been enabled. Hardware 2FA is only available for certain customers.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Intesa Sanpaolo Mobile app"
+   ],
+   "d": [
+    "intesasanpaolo.com"
+   ],
+   "n": "Intesa Sanpaolo",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "invictuscapital.com"
+   ],
+   "n": "Invictus Capital",
+   "recovery": "https://help.invictuscapital.com/en/articles/3561870",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "invoiced.com"
+   ],
+   "n": "Invoiced",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "IONOS Mobile App"
+   ],
+   "d": [
+    "ionos.com"
+   ],
+   "n": "IONOS",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "ID.me Authenticator"
+   ],
+   "d": [
+    "irs.gov"
+   ],
+   "n": "US Internal Revenue Service",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.irs.gov/privacy-disclosure/secure-access-how-to-register-for-certain-online-self-help-tools",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "islonline.com"
+   ],
+   "n": "ISL Online",
+   "passkey": "mfa",
+   "passkey_doc": "https://help.islonline.com/35746/286527",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "itslearning.com"
+   ],
+   "n": "itslearning",
+   "notes": "Only available to system administrators",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "iwantmyname.com"
+   ],
+   "n": "iWantMyName",
+   "recovery": "https://help.iwantmyname.com/hc/en-gb/articles/360014825318",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "JEP Token"
+   ],
+   "d": [
+    "jep.coop"
+   ],
+   "n": "Cooperativa JEP",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "jetbrains.com"
+   ],
+   "n": "JetBrains",
+   "recovery": "https://sales.jetbrains.com/hc/en-gb/articles/360013090420",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "WeChat"
+   ],
+   "d": [
+    "jianguoyun.com"
+   ],
+   "n": "Nutstore",
+   "notes": "SMS 2FA only available on certain pricing plans",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "join-lemmy.org"
+   ],
+   "n": "Lemmy",
+   "notes": "2FA is only available on Lemmy instances using version 0.18 or later.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "joinmastodon.org",
+    "mastodon.social"
+   ],
+   "n": "Mastodon",
+   "notes": "TOTP must be enabled to use a hardware token.",
+   "passkey": "mfa",
+   "passkey_doc": "https://github.com/McKael/mastodon-documentation/blob/master/Using-Mastodon/2FA.md",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "jumpcloud.com"
+   ],
+   "n": "JumpCloud",
+   "passkey": "mfa",
+   "passkey_doc": "https://jumpcloud.com/support/set-up-authenticator-app-for-user-account",
+   "recovery": "https://jumpcloud.com/support/reset-mfa-in-user-portal",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "kahoot.com",
+    "kahoot.it"
+   ],
+   "n": "Kahoot!",
+   "recovery": "https://support.kahoot.com/hc/articles/43448661146771#h_01K1T92TGK4XSAWRF8597BE0ZB",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "KakaoTalk app"
+   ],
+   "d": [
+    "kakao.com"
+   ],
+   "n": "Kakao",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "kaspersky.com"
+   ],
+   "n": "Kaspersky",
+   "notes": "SMS 2FA must be enabled before TOTP 2FA can be set up. SMS 2FA cannot be disabled even when TOTP is enabled.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "kayak.com",
+    "kayak.co.in",
+    "kayak.co.jp",
+    "kayak.co.uk",
+    "kayak.com.au",
+    "kayak.com.mx",
+    "kayak.de",
+    "kayak.es",
+    "kayak.fr",
+    "kayak.ie",
+    "kayak.it",
+    "kayak.nl",
+    "kayak.no",
+    "kayak.ru",
+    "kayak.se",
+    "kayak.sg"
+   ],
+   "n": "KAYAK",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "keepersecurity.com"
+   ],
+   "n": "Keeper",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.keepersecurity.com/security#twoFactor",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "kickex.com"
+   ],
+   "n": "KickEX",
+   "recovery": "https://support.kickex.com/hc/en-us/articles/360019525000",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "kickstarter.com"
+   ],
+   "n": "Kickstarter",
+   "notes": "Software 2FA requires setting up SMS 2FA as a fallback.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "kintone.com"
+   ],
+   "n": "Kintone",
+   "notes": "2FA must be enabled by an admin before use.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "kit.edu"
+   ],
+   "devices": [
+    "Yubico OTP",
+    "KIT Token"
+   ],
+   "n": "Karlsruher Institut für Technologie",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "klarna.com"
+   ],
+   "n": "Klarna",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.klarna.com/help/account-and-settings/how-do-i-log-in/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "klarna.no"
+   ],
+   "n": "Klarna [NO]",
+   "recovery": "https://www.klarna.com/no/kundeservice/jeg-kan-ikke-logge-inn-hva-kan-jeg-gjore/",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "klarna.se"
+   ],
+   "n": "Klarna [SE]",
+   "recovery": "https://www.klarna.com/se/kundservice/jag-kan-inte-logga-in-vad-kan-jag-gora/",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "ko-fi.com"
+   ],
+   "n": "Ko-fi",
+   "notes": "TOTP is only available with SMS as a backup",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "kraken.com"
+   ],
+   "devices": [
+    "OATH OTP keys"
+   ],
+   "n": "Kraken",
+   "notes": "Email 2FA is mandatory for all users but only requested for unknown devices",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.kraken.com/hc/en-us/articles/360000426923",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "kriptomat.io"
+   ],
+   "n": "Kriptomat",
+   "recovery": "https://help.kriptomat.io/en/articles/3650094",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "lansforsakringar.se"
+   ],
+   "n": "Länsförsäkringar",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "LastPass Authenticator",
+    "Duo",
+    "RSA SecurID",
+    "Symantec VIP",
+    "SecureAuth Authenticate"
+   ],
+   "d": [
+    "lastpass.com"
+   ],
+   "devices": [
+    "Yubico OTP",
+    "Windows Fingerprint",
+    "Smart Card"
+   ],
+   "n": "LastPass",
+   "notes": "Availability of 2FA options depends on your account type. U2F is available through Duo integration on all plans. Yubico OTP is only available on paid plans.",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.logmeininc.com/lastpass/help/enable-multifactor-authentication-lp010002",
+   "recovery": "https://support.logmeininc.com/lastpass/help/i-lost-my-phone-ndash-how-do-i-disable-multifactor-authentication-for-lastpass",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "latrobe.edu.au",
+    "ltu.edu.au"
+   ],
+   "n": "La Trobe University",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "launchpad.net"
+   ],
+   "devices": [
+    "Feitian OTP c100 Token",
+    "HOTP Token",
+    "OATH Token"
+   ],
+   "n": "Launchpad",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "LeetCode App"
+   ],
+   "d": [
+    "leetcode.com",
+    "leetcode.cn"
+   ],
+   "n": "LeetCode",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "lexoffice.de"
+   ],
+   "n": "lexoffice",
+   "recovery": "https://support.lexoffice.de/de-form/articles/5250370",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "SmartID"
+   ],
+   "d": [
+    "lhv.ee"
+   ],
+   "devices": [
+    "ID-card",
+    "mobile-ID",
+    "Security token"
+   ],
+   "n": "LHV",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "L'Identité Numérique La Poste app"
+   ],
+   "d": [
+    "lidentitenumerique.laposte.fr"
+   ],
+   "n": "L'Identité Numérique (IDN)",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "VR SecureGo plus"
+   ],
+   "d": [
+    "ligabank.de"
+   ],
+   "devices": [
+    "Sm@rt-TAN card reader"
+   ],
+   "n": "LIGA Bank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "link.com"
+   ],
+   "n": "Link",
+   "passkey": "passwordless",
+   "passkey_doc": "https://support.link.com/questions/passkeys-on-link",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "LinkedIn App"
+   ],
+   "d": [
+    "linkedin.com"
+   ],
+   "n": "LinkedIn",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.linkedin.com/help/linkedin/answer/a1621596",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "litebit.eu"
+   ],
+   "n": "LiteBit",
+   "recovery": "https://support.litebit.eu/hc/en-us/articles/360001555699",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "litmus.com"
+   ],
+   "n": "Litmus",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Lloyds Bank Mobile Banking"
+   ],
+   "d": [
+    "lloydsbank.com"
+   ],
+   "n": "Lloyds Bank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Lake Michigan CU Mobile"
+   ],
+   "d": [
+    "lmcu.org"
+   ],
+   "n": "Lake Michigan Credit Union",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "lnk.bio"
+   ],
+   "n": "Lnk.Bio",
+   "passkey": "passwordless",
+   "passkey_doc": "https://lnk.bio/linkin/log-in-with-passkeys-to-lnkbio",
+   "recovery": "https://help.lnk.bio/en/articles/8377209",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "logicmonitor.com"
+   ],
+   "n": "LogicMonitor",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "login.gov"
+   ],
+   "devices": [
+    "PIV/CAC"
+   ],
+   "n": "Login.gov",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.login.gov/help/creating-an-account/two-factor-authentication/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "lonestar.edu"
+   ],
+   "n": "Lone Star College",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "loopia.se"
+   ],
+   "n": "Loopia",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "lowes.com"
+   ],
+   "n": "Lowe's",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "luno.com"
+   ],
+   "n": "Luno",
+   "notes": "A mobile phone number is required to set up two-factor authentication.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Macquarie Authenticator"
+   ],
+   "d": [
+    "macquarie.com.au"
+   ],
+   "n": "Macquarie Bank",
+   "notes": "An SMS-capable phone is required for initial setup.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "mail.163.com",
+    "126.com",
+    "yeah.net"
+   ],
+   "n": "NetEase Mail",
+   "notes": "SMS is required as a backup method",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "mail.aol.com"
+   ],
+   "n": "Aol Mail",
+   "passkey": "mfa",
+   "passkey_doc": "https://help.aol.com/articles/2-step-verification-stronger-than-your-password-alone",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "mail.com"
+   ],
+   "n": "Mail.com",
+   "notes": "A verified phone number is required to set up 2FA.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "mail.de"
+   ],
+   "n": "mail.de",
+   "passkey": "mfa",
+   "passkey_doc": "https://mail.de/hilfe/u2f-authenticator",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Google Prompts",
+    "Google Smart Lock"
+   ],
+   "d": [
+    "mail.google.com",
+    "gmail.com",
+    "googlemail.com"
+   ],
+   "n": "Gmail",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://safety.google/authentication/passkey/",
+   "recovery": "https://support.google.com/accounts/answer/185834",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "mail.ru"
+   ],
+   "n": "Mail.Ru",
+   "passkey": "mfa",
+   "passkey_doc": "https://help.mail.ru/mail/settings/2fa",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "mail.sapo.pt"
+   ],
+   "n": "SAPO Mail",
+   "passkey": "mfa",
+   "passkey_doc": "https://ajuda.sapo.pt/id-67553",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Yandex.Key"
+   ],
+   "d": [
+    "mail.yandex.com"
+   ],
+   "n": "Yandex.Mail",
+   "notes": "SMS-capable phone required for initial setup.",
+   "recovery": "https://yandex.com/support/id/authorization/twofa-restore.html",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "mailbox.org"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "mailbox.org",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Mailo app"
+   ],
+   "d": [
+    "mailo.com"
+   ],
+   "n": "Mailo",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "mangadex.org"
+   ],
+   "n": "MangaDex",
+   "passkey": "passwordless+mfa",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Symantec VIP"
+   ],
+   "d": [
+    "markmonitor.com"
+   ],
+   "devices": [
+    "Symantec VIP Token"
+   ],
+   "n": "MarkMonitor",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "MBNA Card Services App"
+   ],
+   "d": [
+    "mbna.co.uk"
+   ],
+   "n": "MBNA [UK]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "mcgill.ca"
+   ],
+   "n": "McGill University",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Google Prompts",
+    "Google Smart Lock"
+   ],
+   "d": [
+    "meet.google.com"
+   ],
+   "n": "Google Meet",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://safety.google/authentication/passkey/",
+   "recovery": "https://support.google.com/accounts/answer/185834",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "mercadobitcoin.com.br"
+   ],
+   "n": "Mercado Bitcoin",
+   "recovery": "https://suporte.mercadobitcoin.com.br/hc/pt-br/articles/360059201631",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "mercadopago.com"
+   ],
+   "n": "Mercado Pago",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "mercury.com"
+   ],
+   "n": "Mercury",
+   "passkey": "mfa",
+   "passkey_doc": "https://help.mercury.com/t/m1h3d07",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "messagebird.com"
+   ],
+   "n": "MessageBird",
+   "notes": "Only one 2FA method can be active at any given time",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "miamioh.edu"
+   ],
+   "devices": [
+    "Feitian OTP c100 Token"
+   ],
+   "n": "Miami University",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.miamioh.edu/it-services/special-groups/info-security/duo/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Migros Access app"
+   ],
+   "d": [
+    "migros.ch"
+   ],
+   "n": "Migros",
+   "passkey": "passwordless",
+   "passkey_doc": "https://account.migros.ch/help#faqPasskeyPrio",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "minecraft.net",
+    "mojang.com"
+   ],
+   "n": "Minecraft",
+   "notes": "2FA phone calls may not be available in all regions",
+   "passkey": "passwordless",
+   "passkey_doc": "https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-passwordless",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "mines.edu"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "Colorado School of Mines",
+   "passkey": "mfa",
+   "passkey_doc": "https://its.mines.edu/mfa/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "mint.intuit.com"
+   ],
+   "n": "Mint",
+   "notes": "Software 2FA requires enabling SMS or phone call as a back-up.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "miro.com"
+   ],
+   "n": "Miro",
+   "notes": "Only available for Enterprise plan accounts and must be enabled by a Company Admin",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "SecureGo"
+   ],
+   "d": [
+    "mlp.de"
+   ],
+   "devices": [
+    "TAN generator"
+   ],
+   "n": "MLP",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "eGovernment Mobile Key"
+   ],
+   "d": [
+    "mojedatovaschranka.cz"
+   ],
+   "n": "Datové schránky",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Okta Verify"
+   ],
+   "d": [
+    "monash.edu",
+    "monash.edu.my"
+   ],
+   "n": "Monash University",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.monash.edu/esolutions/accounts-passwords/multi-factor-authentication",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "monday.com"
+   ],
+   "n": "Monday.com",
+   "notes": "Team admins must enable 2FA before members can use it.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Okta Verify"
+   ],
+   "d": [
+    "mongodb.com"
+   ],
+   "n": "MongoDB",
+   "passkey": "mfa",
+   "passkey_doc": "https://docs.atlas.mongodb.com/security-multi-factor-authentication/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "morganstanley.com"
+   ],
+   "n": "Morgan Stanley",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.morganstanley.com/what-we-do/wealth-management/online-security/authentication",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Okta Verify"
+   ],
+   "d": [
+    "msu.edu"
+   ],
+   "n": "Michigan State University",
+   "passkey": "mfa",
+   "passkey_doc": "https://secureit.msu.edu/multi-factor/index.html",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "M&T Mobile app"
+   ],
+   "d": [
+    "mtb.com",
+    "mandtbank.com"
+   ],
+   "n": "M&T Bank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Salesforce Authenticator"
+   ],
+   "d": [
+    "mulesoft.com"
+   ],
+   "n": "MuleSoft",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "muni.cz"
+   ],
+   "n": "Masaryk University",
+   "passkey": "mfa",
+   "passkey_doc": "https://it.muni.cz/en/services/muni-unified-login/multi-factor-authentication",
+   "recovery": "https://service.support.muni.cz/servicedesk/customer/portal/1/group/52/create/937",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "mxtoolbox.com"
+   ],
+   "n": "MxToolbox",
+   "notes": "2FA is only available on paid plans.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "my.gov.au"
+   ],
+   "n": "myGov",
+   "passkey": "passwordless",
+   "passkey_doc": "https://my.gov.au/en/about/help/mygov-website/sign-in-to-mygov/use-passkeys",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Okta Verify"
+   ],
+   "d": [
+    "my.ny.gov"
+   ],
+   "n": "NY.gov ID",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "myfritz.net"
+   ],
+   "devices": [
+    "Smartphone biometrics (fingerprint, face recognition)"
+   ],
+   "n": "MyFRITZ!Net",
+   "passkey": "mfa",
+   "passkey_doc": "https://en.avm.de/myfritz/faqs/security-tips-for-using-myfritz/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "myob.com",
+    "myob.com.au",
+    "myob.co.nz"
+   ],
+   "n": "MYOB",
+   "notes": "SMS available to selected new customers only.",
+   "recovery": "https://help.myob.com/wiki/x/1ogHAQ",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "N26 app"
+   ],
+   "d": [
+    "n26.com"
+   ],
+   "n": "N26",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "naga.com"
+   ],
+   "n": "NAGA",
+   "notes": "MFA can only be set up from the NAGA Web platform and not on iOS or Android Apps",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "namebase.io"
+   ],
+   "n": "Namebase",
+   "recovery": "https://www.namebase.io/faq/#how-do-i-reset-my-2fa",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "namecheap.com"
+   ],
+   "n": "Namecheap",
+   "notes": "Only one 2FA method can be active at any given time",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.namecheap.com/security/2fa-two-factor-authentication/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "nationwide.co.uk"
+   ],
+   "devices": [
+    "Card reader"
+   ],
+   "n": "Nationwide Building Society",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "natwest.com"
+   ],
+   "devices": [
+    "Card reader"
+   ],
+   "n": "NatWest",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "NAVER app"
+   ],
+   "d": [
+    "naver.com"
+   ],
+   "n": "NAVER",
+   "recovery": "https://help.naver.com/service/5640/contents/21129?lang=en",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Navy Federal App"
+   ],
+   "d": [
+    "navyfederal.org"
+   ],
+   "n": "Navy Federal Credit Union",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "ncsu.edu"
+   ],
+   "n": "North Carolina State University",
+   "passkey": "mfa",
+   "passkey_doc": "https://oit.ncsu.edu/it-security/2fa/",
+   "recovery": "https://go.ncsu.edu/2fa-bypass",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Okta Verify"
+   ],
+   "d": [
+    "nd.edu"
+   ],
+   "n": "University of Notre Dame",
+   "passkey": "mfa",
+   "passkey_doc": "https://nd.service-now.com/nd_portal?id=kb_article_view&sysparm_article=KB0017218",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Google Prompts",
+    "Google Smart Lock"
+   ],
+   "d": [
+    "nest.com",
+    "nest.google.com"
+   ],
+   "n": "Google Nest",
+   "notes": "Non-migrated accounts only have SMS & Email 2FA available.",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.google.com/googlenest/answer/9295081",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "netacad.com"
+   ],
+   "n": "Cisco Network Academy",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Sumishin SBI Net Bank app"
+   ],
+   "d": [
+    "netbk.co.jp"
+   ],
+   "n": "SBI Sumishin Net Bank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "NETTELLER mobile"
+   ],
+   "d": [
+    "neteller.com"
+   ],
+   "n": "NETELLER",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "nhs.uk"
+   ],
+   "n": "NHS",
+   "passkey": "passwordless",
+   "passkey_doc": "https://help.login.nhs.uk/manage/passkeys/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "nicehash.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "NiceHash",
+   "recovery": "https://www.nicehash.com/support/general-help/security/lost-password-or-2fa-code",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "nimbusweb.me",
+    "thefusebase.com"
+   ],
+   "n": "FuseBase",
+   "notes": "Available for Pro and Business users only.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Nordea ID"
+   ],
+   "d": [
+    "nordea.fi"
+   ],
+   "devices": [
+    "Code calculator"
+   ],
+   "n": "Nordea [FI]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "nordea.se"
+   ],
+   "n": "Nordea [SE]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "nordlocker.com",
+    "nordaccount.com"
+   ],
+   "n": "NordLocker",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.nordpass.com/hc/en-us/articles/360002770497",
+   "recovery": "https://support.nordvpn.com/hc/articles/20323778989969",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "nordnet.se"
+   ],
+   "n": "Nordnet [SE]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "nordpass.com",
+    "nordaccount.com"
+   ],
+   "n": "NordPass",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.nordpass.com/hc/en-us/articles/360002770497",
+   "recovery": "https://support.nordpass.com/hc/articles/360009699017",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "nordvpn.com",
+    "nordaccount.com"
+   ],
+   "n": "NordVPN",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.nordvpn.com/1755768802/",
+   "recovery": "https://support.nordvpn.com/hc/articles/20323778989969",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "norisbank photoTAN"
+   ],
+   "d": [
+    "norisbank.de"
+   ],
+   "devices": [
+    "photoTAN card reader"
+   ],
+   "n": "norisbank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "norton.com"
+   ],
+   "n": "Norton",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.norton.com/sp/en/us/home/current/solutions/v100023155_NortonM_Retail_1_en_us",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "notejoy.com"
+   ],
+   "n": "Notejoy",
+   "notes": "2FA is not available to Free plan users and is not available on the Android app.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "notion.so"
+   ],
+   "n": "Notion",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.notion.com/help/passkeys",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "npmjs.com"
+   ],
+   "n": "npm",
+   "passkey": "mfa",
+   "passkey_doc": "https://docs.npmjs.com/configuring-two-factor-authentication",
+   "recovery": "https://docs.npmjs.com/recovering-your-2fa-enabled-account",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "nuget.org"
+   ],
+   "n": "NuGet",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-passwordless",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "nulab.com"
+   ],
+   "n": "Nulab",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.nulab.com/hc/en-us/articles/7732936736537",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "nyu.edu"
+   ],
+   "n": "New York University",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "1login od WP"
+   ],
+   "d": [
+    "o2.pl"
+   ],
+   "n": "o2",
+   "passkey": "mfa",
+   "passkey_doc": "https://pomoc.o2.pl/1login/jak-wlaczyc-i-wylaczyc-logowanie-dwustopniowe",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "o2switch.fr"
+   ],
+   "n": "o2switch",
+   "notes": "Email 2FA is always enabled on the billing panel. On the cPanel, only TOTP is available, and using SSH/FTP won't prompt for 2FA",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Okta Verify"
+   ],
+   "d": [
+    "okta.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Okta",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://help.okta.com/en-us/content/topics/security/mfa/mfa-factors.htm",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "okx.com"
+   ],
+   "n": "OKX",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.okx.com/help/how-do-i-create-passkeys-web",
+   "recovery": "https://www.okx.com/help/what-if-mobile-email-google-verification-cannot-be-used",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "OLB appTAN",
+    "OLB photoTAN"
+   ],
+   "d": [
+    "olb.de"
+   ],
+   "devices": [
+    "photoTAN reader"
+   ],
+   "n": "Oldenburgische Landesbank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "one.com companion"
+   ],
+   "d": [
+    "one.com"
+   ],
+   "n": "One.com",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "onedrive.live.com"
+   ],
+   "n": "OneDrive",
+   "notes": "2FA phone calls may not be available in all regions.",
+   "passkey": "passwordless",
+   "passkey_doc": "https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-passwordless",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "onehub.com"
+   ],
+   "n": "Onehub",
+   "notes": "Software 2FA requires adding a phone number as a fallback.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "onelog.ch"
+   ],
+   "n": "OneLog",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "OneLogin Protect",
+    "Duo",
+    "RSA SecurID",
+    "Symantec VIP"
+   ],
+   "d": [
+    "onelogin.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "OneLogin",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.onelogin.com/kb/4266569",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "onet.pl"
+   ],
+   "n": "Onet",
+   "passkey": "mfa",
+   "passkey_doc": "https://pomoc.poczta.onet.pl/baza-wiedzy/czym-jest-weryfikacja-dwuetapowa/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "SBI Secure OTP"
+   ],
+   "d": [
+    "onlinesbi.com"
+   ],
+   "n": "State Bank of India",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "openapply.com"
+   ],
+   "n": "OpenApply",
+   "notes": "2FA can only be enabled for Admin users",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "opencollective.com"
+   ],
+   "n": "Open Collective",
+   "passkey": "mfa",
+   "passkey_doc": "https://docs.opencollective.com/help/product/two-factor-authentication",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "opendns.com"
+   ],
+   "n": "OpenDNS",
+   "notes": "Only available for enterprise accounts.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "openprovider.com",
+    "openprovider.eu"
+   ],
+   "n": "Openprovider",
+   "recovery": "https://support.openprovider.eu/hc/en-us/articles/360001802288#h_01EHBRPT4STSYK9G5XFM7MFQ5Q",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "opensea.io"
+   ],
+   "n": "OpenSea",
+   "notes": "SMS texts sent to your mobile device if you reside in the U.S. or Canada.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "oregonstate.edu"
+   ],
+   "devices": [
+    "Feitian OTP c100 Token"
+   ],
+   "n": "Oregon State University",
+   "passkey": "mfa",
+   "passkey_doc": "https://oregonstate.teamdynamix.com/TDClient/1935/Portal/KB/?CategoryID=8235",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "osu.edu"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "The Ohio State University",
+   "passkey": "mfa",
+   "passkey_doc": "https://buckeyepass.osu.edu",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator push notification",
+    "Authy"
+   ],
+   "d": [
+    "otago.ac.nz"
+   ],
+   "n": "University of Otago",
+   "notes": "U2F is available to staff only",
+   "passkey": "mfa",
+   "passkey_doc": "https://otago.custhelp.com/app/answers/detail/a_id/3073",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "otpbanka.hr"
+   ],
+   "devices": [
+    "OTP token device"
+   ],
+   "n": "OTP banka",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "outlook.com",
+    "outlook.live.com",
+    "hotmail.com"
+   ],
+   "n": "Outlook.com",
+   "notes": "2FA phone calls may not be available in all regions",
+   "passkey": "passwordless",
+   "passkey_doc": "https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-passwordless",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "ovh.com"
+   ],
+   "n": "OVH",
+   "passkey": "mfa",
+   "passkey_doc": "https://docs.ovh.com/gb/en/customer/secure-account-with-2FA/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "ox.ac.uk"
+   ],
+   "n": "University of Oxford",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "park.io"
+   ],
+   "n": "Park.io",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "passpack.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Passpack",
+   "recovery": "https://passpack.com/support/faq/",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Okta Verify"
+   ],
+   "d": [
+    "patient.labcorp.com"
+   ],
+   "n": "Labcorp Patient",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "paxful.com"
+   ],
+   "n": "Paxful",
+   "recovery": "https://paxful.com/support/en-us/articles/360024668994",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "pay.amazon.com"
+   ],
+   "n": "Amazon Pay",
+   "notes": "SMS or phone call required to enable 2FA. Enabling on Amazon.com activates 2FA on other regional Amazon sites, such as UK and DE.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Google Prompts",
+    "Google Smart Lock"
+   ],
+   "d": [
+    "pay.google.com"
+   ],
+   "n": "Google Pay",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://safety.google/authentication/passkey/",
+   "recovery": "https://support.google.com/accounts/answer/185834",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Payback App"
+   ],
+   "d": [
+    "payback.de"
+   ],
+   "n": "Payback",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Telegram"
+   ],
+   "d": [
+    "payeer.com"
+   ],
+   "n": "PAYEER",
+   "notes": "2FA via SMS costs 25¢ USD per message.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "payfit.com"
+   ],
+   "n": "PayFit",
+   "passkey": "passwordless",
+   "passkey_doc": "https://support.payfit.com/en/articles/73141#h_ac4cfb3047",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "paypal.com",
+    "paypal-search.com"
+   ],
+   "n": "PayPal",
+   "notes": "2FA can only be setup on the website. A backup 2FA method is needed to setup security key.",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.paypal.com/us/cshelp/article/help997",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "PaysafeCard app"
+   ],
+   "d": [
+    "paysafecard.com"
+   ],
+   "n": "PaysafeCard",
+   "recovery": "https://www.paysafecard.com/en/support/question/41/",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "pcloud.com"
+   ],
+   "n": "PCloud",
+   "recovery": "https://www.pcloud.com/help/general-help-center/troubleshooting-guide-for-two-factor-authentication",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "PenFed App"
+   ],
+   "d": [
+    "penfed.org"
+   ],
+   "n": "PenFed",
+   "passkey": "passwordless",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Perimeter 81 App Push Notification",
+    "Duo"
+   ],
+   "d": [
+    "perimeter81.com"
+   ],
+   "n": "Perimeter 81",
+   "notes": "Hardware 2FA is only available via Duo.",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.perimeter81.com/docs/two-factor-authentication",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Personal Capital App"
+   ],
+   "d": [
+    "personalcapital.com"
+   ],
+   "n": "Personal Capital",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "personalinvesting.jpmorgan.com",
+    "nutmeg.com"
+   ],
+   "n": "J.P. Morgan Personal Investing",
+   "recovery": "https://support.personalinvesting.jpmorgan.com/?article=115002025671-Troubleshooting-2-step-verification-issues",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "personifyhealth.com",
+    "healthcomp.com"
+   ],
+   "n": "Personify Health",
+   "notes": "SMS 2FA is only available for US and Canada phone numbers.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Pichincha Token"
+   ],
+   "d": [
+    "pichincha.com"
+   ],
+   "n": "Banco Pichincha",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "pinterest.com"
+   ],
+   "n": "Pinterest",
+   "notes": "SMS-capable phone required for initial setup.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "pivotaltracker.com"
+   ],
+   "n": "Pivotal Tracker",
+   "notes": "2FA only works on the web version. If enabled, you will not be able to use the mobile apps.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "piwik.pro"
+   ],
+   "n": "Piwik PRO",
+   "notes": "Contact customer support to enable 2FA.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "pixiv.net"
+   ],
+   "n": "Pixiv",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.pixiv.help/hc/articles/32291223415449",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "IKO App"
+   ],
+   "d": [
+    "pkobp.pl",
+    "ipko.pl"
+   ],
+   "n": "PKO Bank Polski",
+   "notes": "You can only register one U2F security key to your bank account",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "plaid.com"
+   ],
+   "n": "Plaid",
+   "notes": "Software token is only available for developer accounts. It is not available for the my.plaid.com user portal.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "play.eslgaming.com"
+   ],
+   "n": "ESL Play",
+   "passkey": "mfa",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Google Prompts",
+    "Google Smart Lock"
+   ],
+   "d": [
+    "play.google.com"
+   ],
+   "n": "Google Play",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://safety.google/authentication/passkey/",
+   "recovery": "https://support.google.com/accounts/answer/185834",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "playstation.com",
+    "sonyentertainmentnetwork.com"
+   ],
+   "n": "PlayStation",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.playstation.com/passkey/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "pobox.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Pobox",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "porkbun.com"
+   ],
+   "n": "Porkbun",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://kb.porkbun.com/article/19--",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Postbank BestSign"
+   ],
+   "d": [
+    "postbank.de"
+   ],
+   "devices": [
+    "Seal One dongle"
+   ],
+   "n": "Postbank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "PosteItaliane App"
+   ],
+   "d": [
+    "poste.it"
+   ],
+   "n": "PosteItaliane",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "posteo.de"
+   ],
+   "n": "Posteo",
+   "passkey": "passwordless",
+   "passkey_doc": "https://posteo.de/hilfe/passkey-erstellen-und-benutzen",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "postman.com"
+   ],
+   "n": "Postman",
+   "notes": "Can only be used with username/password accounts, not SSO or Google login accounts",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "postmarkapp.com"
+   ],
+   "n": "Postmarkapp",
+   "notes": "Setup requires SMS verification.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "postype.com"
+   ],
+   "n": "Postype",
+   "recovery": "https://help.postype.com/hc/ko/articles/21876052282009#01H8NMJNY1KWFB5H5YZ49HBC0J",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "premisehealth.com"
+   ],
+   "n": "Premise Health",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.mypremisehealth.com/MyChart/Authentication/Login?mode=stdfile&option=faq#Technical_2",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "probit.com"
+   ],
+   "n": "ProBit",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.probit.com/en-us/hc/360018127111",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Entrust Identity"
+   ],
+   "d": [
+    "produbanco.com.ec"
+   ],
+   "n": "ProduBanco",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "proton.me",
+    "pm.me",
+    "protonmail.com",
+    "protonvpn.com"
+   ],
+   "n": "Proton",
+   "notes": "TOTP must be enabled to use a hardware token.",
+   "passkey": "mfa",
+   "passkey_doc": "https://proton.me/support/two-factor-authentication-2fa",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "psnprofiles.com"
+   ],
+   "n": "PSNProfiles",
+   "notes": "2FA is configured via your linked PSNProfiles forum profile settings.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "psu.edu"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "Pennsylvania State University",
+   "passkey": "mfa",
+   "passkey_doc": "https://get2fa.psu.edu",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "publishers.basicattentiontoken.org"
+   ],
+   "n": "Basic Attention Token",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.brave.com/hc/en-us/articles/360021649491",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "purdue.edu"
+   ],
+   "devices": [
+    "BoilerKey Hardware OTP"
+   ],
+   "n": "Purdue University",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "put.io"
+   ],
+   "n": "put.io",
+   "recovery": "https://help.put.io/en/articles/4783180-two-factor-authentication-2fa#h_634b28a1c9",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "pypi.org"
+   ],
+   "n": "PyPI",
+   "passkey": "mfa",
+   "passkey_doc": "https://pypi.org/help/#twofa",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "mObywatel app"
+   ],
+   "d": [
+    "pz.gov.pl"
+   ],
+   "n": "Profil zaufany",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "qantas.com"
+   ],
+   "n": "Qantas",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.qantas.com/au/en/frequent-flyer/member-account-security.html#passkeys-frequently-asked-questions",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "quickbooks.intuit.com"
+   ],
+   "n": "Quickbooks Online",
+   "notes": "TOTP 2FA only available after enabling SMS or phone 2FA.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "rabobank.com.au"
+   ],
+   "devices": [
+    "Digipass"
+   ],
+   "n": "Rabobank [AU]",
+   "recovery": "https://www.rabobank.com.au/help-and-support/digipass#i-have-lost-my-digipass-how-do-i-get-a-new-one",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "rabobank.nl"
+   ],
+   "devices": [
+    "Rabo Scanner"
+   ],
+   "n": "Rabobank [NL]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "RBC App Push Notification"
+   ],
+   "d": [
+    "rbcroyalbank.com"
+   ],
+   "n": "RBC Royal Bank",
+   "notes": "2FA can only be enabled via the app",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "rebel.com"
+   ],
+   "n": "Rebel.com",
+   "notes": "You must contact customer support to enable 2FA.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "reddit.com"
+   ],
+   "n": "Reddit",
+   "passkey": "passwordless",
+   "passkey_doc": "https://support.reddithelp.com/hc/articles/49063461551252",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "redis.com",
+    "redislabs.com"
+   ],
+   "n": "Redis Enterprise Cloud",
+   "notes": "SMS 2FA must be enabled before TOTP 2FA can be enabled. SMS 2FA cannot be disabled even when TOTP is enabled.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "refersion.com"
+   ],
+   "n": "Refersion",
+   "notes": "SMS 2FA is not available in all regions.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "registro.br"
+   ],
+   "n": "Registro.br",
+   "passkey": "mfa",
+   "passkey_doc": "https://registro.br/ajuda/gerenciamento-de-conta/token/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Remitly app"
+   ],
+   "d": [
+    "remitly.com"
+   ],
+   "n": "Remitly",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "remotedesktopmanager.com"
+   ],
+   "n": "Remote Desktop Manager",
+   "notes": "2FA is only available on the Enterprise Edition",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "repairshopr.com"
+   ],
+   "n": "Repairshopr",
+   "notes": "SMS only available as a backup to Google Authenticator.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "report-uri.com"
+   ],
+   "n": "Report URI",
+   "passkey": "mfa",
+   "passkey_doc": "https://docs.report-uri.com/help/passkeys/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Revolut App"
+   ],
+   "d": [
+    "revolut.com"
+   ],
+   "n": "Revolut",
+   "passkey": "passwordless",
+   "passkey_doc": "https://help.revolut.com/help/profile-and-plan/log-in-issues/what-are-passkeys/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "rmit.edu.au"
+   ],
+   "n": "RMIT University",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Robinhood app"
+   ],
+   "d": [
+    "robinhood.com"
+   ],
+   "n": "Robinhood",
+   "passkey": "passwordless",
+   "passkey_doc": "https://robinhood.com/us/en/support/articles/passkeys/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "roblox.com"
+   ],
+   "n": "Roblox",
+   "notes": "U2F requires TOTP to be setup. U2F is currently only supported in web browsers.",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://en.help.roblox.com/hc/articles/20669991483156",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "sailpoint.com"
+   ],
+   "devices": [
+    "RSA SecurID",
+    "Symantec VIP"
+   ],
+   "n": "SailPoint",
+   "notes": "Applies to IdentityIQ and IdentityNow.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "sailthru.com"
+   ],
+   "n": "Sailthru",
+   "notes": "You must contact Sailthru support to enable 2FA.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Salesforce Authenticator"
+   ],
+   "d": [
+    "salesforce.com"
+   ],
+   "n": "Salesforce",
+   "passkey": "mfa",
+   "passkey_doc": "https://help.salesforce.com/s/articleView?id=sf.register_built_in_authenticator.htm",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "samsung.com"
+   ],
+   "n": "Samsung",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "SantanderSign"
+   ],
+   "d": [
+    "santander.de"
+   ],
+   "n": "Santander [DE]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Santander mobile app"
+   ],
+   "d": [
+    "santander.pl"
+   ],
+   "n": "Santander [PL]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Scalable Capital app"
+   ],
+   "d": [
+    "scalable.capital"
+   ],
+   "n": "Scalable Capital",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "scalefusion.com"
+   ],
+   "n": "Scalefusion",
+   "notes": "Only account owners and co-account owners can enable 2FA.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "schibsted.com",
+    "adressa.no",
+    "aftenbladet.no",
+    "aftenposten.no",
+    "aftonbladet.se",
+    "bt.no",
+    "e24.no",
+    "fvn.no",
+    "godt.no",
+    "klart.se",
+    "minmote.no",
+    "omni.se",
+    "pent.no",
+    "podme.com",
+    "schibsted.dk",
+    "schibsted.fi",
+    "schibsted.no",
+    "schibsted.se",
+    "svd.se",
+    "tek.no",
+    "tronderbladet.no",
+    "tv.nu",
+    "vg.no"
+   ],
+   "n": "Schibsted",
+   "recovery": "https://payment.schibsted.no/profile-pages/faq#how-to-activate-and-deactivate-2fa:~:text=Mistet%20autentiseringsenhet%3F",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Symantec VIP"
+   ],
+   "d": [
+    "schwab.com",
+    "schwabplan.com"
+   ],
+   "devices": [
+    "Symantec VIP token"
+   ],
+   "n": "Charles Schwab",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Scotiabank App"
+   ],
+   "d": [
+    "scotiabank.com"
+   ],
+   "n": "Scotiabank [CA]",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "scu.edu"
+   ],
+   "n": "Santa Clara University",
+   "passkey": "mfa",
+   "passkey_doc": "https://scu.edu/technology/get-connected/duo/learn-more-about-2fa/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "sdccd.edu",
+    "sdcity.edu",
+    "sdmesa.edu",
+    "sdmiramar.edu",
+    "sdcce.edu"
+   ],
+   "devices": [
+    "SafeID token"
+   ],
+   "n": "San Diego Community College District",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "seb.se"
+   ],
+   "n": "SEB",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "securesafe.com"
+   ],
+   "n": "SecureSafe",
+   "notes": "2FA is only available on paid plans.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "segment.com",
+    "segment.io"
+   ],
+   "n": "Segment",
+   "notes": "SMS 2FA is only available for US and Canada phone numbers.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "sendgrid.com"
+   ],
+   "n": "SendGrid",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "sendsafely.com"
+   ],
+   "n": "SendSafely",
+   "notes": "TOTP 2FA requires SMS as a backup option",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "senko.digital"
+   ],
+   "n": "Senko Digital",
+   "notes": "While both the main client area and game panel support 2FA, each system is separate and requires its own setup.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "sentry.io"
+   ],
+   "n": "Sentry",
+   "passkey": "mfa",
+   "passkey_doc": "https://blog.sentry.io/2016/06/22/introducing-2fa",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "server.nitrado.net"
+   ],
+   "n": "Nitrado",
+   "passkey": "mfa",
+   "passkey_doc": "https://server.nitrado.net/en-US/guides/two-factor-authentication-en",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Service NSW app"
+   ],
+   "d": [
+    "service.nsw.gov.au"
+   ],
+   "n": "Service NSW",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "serviceportal.hamburg.de"
+   ],
+   "devices": [
+    "National identity card"
+   ],
+   "n": "Hamburg Serviceportal",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Seznam.cz mobile app"
+   ],
+   "d": [
+    "seznam.cz"
+   ],
+   "n": "Seznam.cz",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "sezzle.com"
+   ],
+   "n": "Sezzle",
+   "notes": "MFA is available for merchants only.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "sfu.ca"
+   ],
+   "devices": [
+    "HyperOTP"
+   ],
+   "n": "Simon Fraser University",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "shadow.tech"
+   ],
+   "n": "Shadow",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.shadow.tech/hc/en-us/articles/8741331563676",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "shop.app"
+   ],
+   "n": "Shop",
+   "passkey": "passwordless",
+   "passkey_doc": "https://help.shop.app/en/shop/shop-pay-settings/security/passkeys",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "shopify.com"
+   ],
+   "n": "Shopify",
+   "notes": "U2F requires using a Shopify ID. U2F can't be used on the Shopify mobile app, the Shopify POS app, or the Shopify Inbox app.",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://help.shopify.com/en/manual/your-account/logging-in/passkeys",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "shu.edu"
+   ],
+   "n": "Seton Hall University",
+   "passkey": "mfa",
+   "passkey_doc": "https://tech-shu-edu.refined.site/space/PUBLICKBA/2096431118/Guide%20to%20Enrolling%20a%20Device%20in%20Duo",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "simplelogin.io"
+   ],
+   "n": "SimpleLogin",
+   "passkey": "mfa",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Simplii App Push Notification"
+   ],
+   "d": [
+    "simplii.com"
+   ],
+   "n": "Simplii Financial",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "simplybook.me"
+   ],
+   "n": "SimplyBook",
+   "notes": "2FA is only available as a 'custom feature' and must be enabled by an admin before use.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "singlekey-id.com"
+   ],
+   "n": "SingleKey ID",
+   "passkey": "passwordless",
+   "passkey_doc": "https://singlekey-id.com/en-gb/frequently-asked-questions#passkeys",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Singpass app"
+   ],
+   "d": [
+    "singpass.gov.sg"
+   ],
+   "devices": [
+    "Biometrics"
+   ],
+   "n": "SingPass",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "sjsu.edu",
+    "sjsu.okta.com"
+   ],
+   "devices": [
+    "Feitian OTP c100 Token"
+   ],
+   "n": "San José State University",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "skandia.se"
+   ],
+   "n": "Skandia",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "sketch.com"
+   ],
+   "n": "Sketch",
+   "recovery": "https://help.sketch.com/manage-account/two-factor-auth",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Skrill App Push Notification"
+   ],
+   "d": [
+    "skrill.com"
+   ],
+   "n": "Skrill",
+   "notes": "Email method requires an additional PIN",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "smartsimple.com"
+   ],
+   "devices": [
+    "RSA token"
+   ],
+   "n": "SmartSimple",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "smartsurvey.co.uk"
+   ],
+   "n": "SmartSurvey",
+   "notes": "SMS 2FA is only available for Enterprise users.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "snapchat.com"
+   ],
+   "n": "Snapchat",
+   "passkey": "passwordless",
+   "passkey_doc": "https://help.snapchat.com/hc/articles/27317385968532",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "SpardaSecureApp"
+   ],
+   "d": [
+    "sparda.de"
+   ],
+   "devices": [
+    "chipTAN card reader"
+   ],
+   "n": "Sparda Banken",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "S-pushTAN"
+   ],
+   "d": [
+    "sparkasse.de"
+   ],
+   "devices": [
+    "chipTAN card reader"
+   ],
+   "n": "Sparkasse",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "SQUARE ENIX Software Token"
+   ],
+   "d": [
+    "square-enix-games.com",
+    "square-enix.com"
+   ],
+   "devices": [
+    "SQUARE ENIX Security Token"
+   ],
+   "n": "Square Enix",
+   "notes": "The proprietary software implementation requires you to have purchased either Final Fantasy XI or Final Fantasy XIV and registered the game. Only one method is allowed at a time.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "squarespace.com"
+   ],
+   "n": "Squarespace",
+   "recovery": "https://support.squarespace.com/hc/en-us/articles/360023033671",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "squareup.com",
+    "weebly.com",
+    "square.site",
+    "square.com"
+   ],
+   "n": "Square",
+   "notes": "SMS only supported in US and Canada. Only Square-linked Weebly have 2FA.",
+   "passkey": "passwordless",
+   "passkey_doc": "https://squareup.com/help/article/8460",
+   "recovery": "https://squareup.com/help/gb/en/article/5594",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "standardnotes.com"
+   ],
+   "n": "Standard Notes",
+   "notes": "Professional Subscription required to use hardware security key.",
+   "passkey": "mfa",
+   "passkey_doc": "https://standardnotes.com/help/25",
+   "recovery": "https://standardnotes.com/help/22",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "stanford.edu"
+   ],
+   "devices": [
+    "Fortitoken"
+   ],
+   "n": "Stanford University",
+   "passkey": "mfa",
+   "passkey_doc": "https://uit.stanford.edu/service/webauth/twostep",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "status.io"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Status.io",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Steam Mobile"
+   ],
+   "d": [
+    "store.steampowered.com"
+   ],
+   "n": "Steam",
+   "notes": "A phone number is required as a fallback for Steam Mobile 2FA.",
+   "recovery": "https://help.steampowered.com/en/wizard/HelpWithSteamIssue/?issueid=809",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "stripe.com"
+   ],
+   "n": "Stripe",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.stripe.com/questions/how-do-i-enable-two-step-verification",
+   "recovery": "https://support.stripe.com/questions/can-t-complete-two-step-authentication",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "subito.it"
+   ],
+   "n": "Subito",
+   "recovery": "https://assistenza.subito.it/hc/articles/11599185074077",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "substack.com"
+   ],
+   "n": "Substack",
+   "recovery": "https://support.substack.com/hc/en-us/articles/5742110666132",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "SugarSync App"
+   ],
+   "d": [
+    "sugarsync.com"
+   ],
+   "n": "SugarSync",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "swedbank.se"
+   ],
+   "n": "Swedbank & Sparbankerna",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "swinburne.edu.au"
+   ],
+   "n": "Swinburne University of Technology",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Mobile ID"
+   ],
+   "d": [
+    "swisscom.ch"
+   ],
+   "n": "Swisscom",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "The Old Republic Security Key App"
+   ],
+   "d": [
+    "swtor.com"
+   ],
+   "n": "Star Wars: The Old Republic",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "swyftx.com",
+    "swyftx.com.au"
+   ],
+   "n": "Swyftx",
+   "recovery": "https://support.swyftx.com/hc/articles/12836682944153",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Okta Verify"
+   ],
+   "d": [
+    "sydney.edu.au"
+   ],
+   "n": "The University of Sydney",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.sydney.edu.au/students/log-in-to-university-systems.html",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "synology.com"
+   ],
+   "n": "Synology",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://kb.synology.com/en-us/DSM/help/DSM/SecureSignIn/hardware_security_key",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "t-mobile.com"
+   ],
+   "devices": [
+    "Biometrics via T-Mobile App"
+   ],
+   "n": "T-Mobile",
+   "notes": "Backup methods of SMS or recovery questions can't be disabled.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "t-online.de"
+   ],
+   "n": "T-Online",
+   "notes": "SMS 2FA is always required",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Salesforce Authenticator"
+   ],
+   "d": [
+    "tableau.com"
+   ],
+   "n": "Tableau",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "tailscale.com"
+   ],
+   "n": "Tailscale",
+   "passkey": "passwordless",
+   "passkey_doc": "https://tailscale.com/kb/1269",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "talkdesk.com"
+   ],
+   "n": "Talkdesk",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.talkdesk.com/hc/en-us/articles/360015179592",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "tamu.edu"
+   ],
+   "devices": [
+    "Yubico OTP",
+    "Duo D100 Token"
+   ],
+   "n": "Texas A&M University",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "target.com"
+   ],
+   "n": "Target",
+   "passkey": "passwordless",
+   "passkey_doc": "https://help.target.com/help/TargetGuestHelpArticleDetail?articleId=ka95d0000008R16AAE",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "TARGOBANK Mobile Banking"
+   ],
+   "d": [
+    "targobank.de"
+   ],
+   "devices": [
+    "photoTAN card reader"
+   ],
+   "n": "TARGOBANK",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "TD Authenticate"
+   ],
+   "d": [
+    "td.com"
+   ],
+   "n": "TD Bank",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "teams.live.com",
+    "skype.com"
+   ],
+   "n": "Microsoft Teams",
+   "notes": "2FA phone calls may not be available in all regions.",
+   "passkey": "passwordless",
+   "passkey_doc": "https://learn.microsoft.com/entra/identity/authentication/concept-authentication-passwordless",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "tebex.io"
+   ],
+   "n": "Tebex",
+   "notes": "SMS is only a backup for TOTP 2FA.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "technicpack.net"
+   ],
+   "n": "Technic",
+   "recovery": "https://www.technicpack.net/tfa/remove",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "tele2.se"
+   ],
+   "n": "Tele2",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "telegram.org"
+   ],
+   "n": "Telegram",
+   "passkey": "passwordless",
+   "passkey_doc": "https://telegram.org/faq/#q-what-is-a-passkey",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "telekom.de"
+   ],
+   "n": "Deutsche Telekom",
+   "notes": "Software 2FA requires setting up SMS 2FA as a fallback.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "telenor.se"
+   ],
+   "n": "Telenor",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "telia.se"
+   ],
+   "n": "Telia",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "My Telstra app"
+   ],
+   "d": [
+    "telstra.com.au",
+    "telstra.com",
+    "bigpond.com",
+    "bigpond.com.au"
+   ],
+   "n": "Telstra",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.telstra.com.au/support/account-payment/set-up-and-manage-a-passkey",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "My TELUS App"
+   ],
+   "d": [
+    "telus.com"
+   ],
+   "n": "Telus",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "temple.edu"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "Temple University",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "termius.com"
+   ],
+   "n": "Termius",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "threatlocker.com"
+   ],
+   "n": "ThreatLocker",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "ticketmaster.com"
+   ],
+   "n": "Ticketmaster",
+   "passkey": "passwordless",
+   "passkey_doc": "https://help.ticketmaster.com/hc/articles/37580664256145",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "tiktok.com"
+   ],
+   "n": "TikTok",
+   "passkey": "passwordless",
+   "passkey_doc": "https://support.tiktok.com/en/log-in-troubleshoot/log-in/log-in-with-a-passkey",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "tilaa.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Tilaa",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "TK-App"
+   ],
+   "d": [
+    "tk.de"
+   ],
+   "n": "Techniker Krankenkasse",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "to-do.office.com",
+    "to-do.live.com"
+   ],
+   "n": "Microsoft To-Do",
+   "notes": "2FA phone calls may not be available in all regions",
+   "passkey": "passwordless",
+   "passkey_doc": "https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-passwordless",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "toggl.com"
+   ],
+   "n": "Toggl",
+   "passkey": "passwordless",
+   "passkey_doc": "https://support.toggl.com/how-to-set-up-and-log-in-with-a-passkey",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "torontomu.ca"
+   ],
+   "n": "Toronto Metropolitan University",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.torontomu.ca/ccs/services/ITSecurity/protecting-your-identity/two-factor-authentication/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "trading212.com"
+   ],
+   "n": "Trading 212",
+   "recovery": "https://helpcentre.trading212.com/hc/en-us/articles/360012493998",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "transip.nl"
+   ],
+   "n": "TransIP",
+   "notes": "While both the main control panel and STACK support 2FA, each system is separate and requires its own setup.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Transperth app"
+   ],
+   "d": [
+    "transperth.wa.gov.au"
+   ],
+   "n": "Transperth",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "tre.se"
+   ],
+   "n": "Tre",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "tresorit.com"
+   ],
+   "n": "Tresorit",
+   "notes": "Requires enabling at least two 2FA methods.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Glyph Auth"
+   ],
+   "d": [
+    "trionworlds.com"
+   ],
+   "n": "Trion Worlds",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "True Key Push Notification"
+   ],
+   "d": [
+    "truekey.com"
+   ],
+   "devices": [
+    "Biometrics"
+   ],
+   "n": "True Key",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "truist.com"
+   ],
+   "n": "Truist",
+   "notes": "They have a custom app, but users on both iOS and Android report that it doesn't work.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "tu-darmstadt.de"
+   ],
+   "devices": [
+    "HOTP"
+   ],
+   "n": "Technische Universität Darmstadt",
+   "notes": "Only protects services that use the Identity Provider",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "tu.berlin",
+    "tu-berlin.de"
+   ],
+   "n": "Technische Universität Berlin",
+   "notes": "2FA is only available for selected services",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "turbosquid.com"
+   ],
+   "n": "TurboSquid",
+   "notes": "2FA is only available with a verified email address",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "turbotax.intuit.com"
+   ],
+   "n": "Intuit TurboTax",
+   "notes": "Software 2FA requires enabling SMS or phone call as a back-up.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "tuta.com",
+    "tutanota.com"
+   ],
+   "n": "Tutanota",
+   "passkey": "mfa",
+   "passkey_doc": "https://tutanota.com/howto/#2fa",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "twilio.com"
+   ],
+   "n": "Twilio",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "twitch.tv"
+   ],
+   "n": "Twitch",
+   "notes": "To activate two factor authentication, you must provide a mobile phone number.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "ub.edu"
+   ],
+   "n": "Universitat de Barcelona",
+   "notes": "VPNTècnic only supports TOTP.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "ubank.com.au"
+   ],
+   "n": "UBank",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.ubank.com.au/help/current/app-and-online-banking/passkeys/how-do-i-add-passkeys-to-sign-in-to-my-ubank-app",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo Mobile"
+   ],
+   "d": [
+    "ubc.ca"
+   ],
+   "devices": [
+    "Duo token"
+   ],
+   "n": "University of British Columbia",
+   "passkey": "mfa",
+   "passkey_doc": "https://privacymatters.ubc.ca/test-faqs",
+   "recovery": "https://ubc.service-now.com/kb_view.do?sysparm_article=KB0018759",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "uber.com"
+   ],
+   "n": "Uber",
+   "notes": "2FA can only be enabled via the app",
+   "passkey": "passwordless",
+   "passkey_doc": "https://help.uber.com/riders/article/-?nodeId=61701cda-3615-43b2-8187-1440e91035d8",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "ubereats.com"
+   ],
+   "n": "Uber Eats",
+   "notes": "2FA must be enabled via the Uber app, not the Uber Eats app.",
+   "passkey": "passwordless",
+   "passkey_doc": "https://help.uber.com/riders/article/-?nodeId=61701cda-3615-43b2-8187-1440e91035d8",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "ubisoft.com",
+    "ubisoftconnect.com",
+    "ubi.com"
+   ],
+   "n": "Ubisoft/Uplay",
+   "notes": "SMS and TOTP 2FA require adding a phone number as a fallback. SMS 2FA is not available in all regions.",
+   "recovery": "https://www.ubisoft.com/help?article=000063351",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "UBS Access app"
+   ],
+   "d": [
+    "ubs.com"
+   ],
+   "devices": [
+    "Card Reader",
+    "Access Card display"
+   ],
+   "n": "UBS",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "ucalgary.ca"
+   ],
+   "n": "University of Calgary",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "ucdavis.edu"
+   ],
+   "n": "University of California, Davis",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "uci.edu"
+   ],
+   "devices": [
+    "Yubico OTP",
+    "Duo D100 Token"
+   ],
+   "n": "University of California, Irvine",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "ucla.edu"
+   ],
+   "devices": [
+    "Yubico OTP",
+    "Duo D100 Token"
+   ],
+   "n": "University of California, Los Angeles",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "ucmerced.edu"
+   ],
+   "devices": [
+    "Feitian OTP c100 Token"
+   ],
+   "n": "University of California, Merced",
+   "passkey": "mfa",
+   "passkey_doc": "https://it.ucmerced.edu/2FA",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "ucr.edu"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "University of California, Riverside",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "ucsb.edu"
+   ],
+   "devices": [
+    "Feitian OTP c100 Token"
+   ],
+   "n": "University of California, Santa Barbara",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "ucsc.edu"
+   ],
+   "devices": [
+    "Yubico OTP",
+    "Duo D100 Token"
+   ],
+   "n": "University of California, Santa Cruz",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "ucsd.edu"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "University of California, San Diego",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "ucsf.edu"
+   ],
+   "devices": [
+    "Yubico OTP",
+    "Duo D100 Token"
+   ],
+   "n": "University of California, San Francisco",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "udel.edu"
+   ],
+   "devices": [
+    "Feitian OTP c100 Token"
+   ],
+   "n": "University of Delaware",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "UI Verify"
+   ],
+   "d": [
+    "ui.com",
+    "ubnt.com"
+   ],
+   "n": "Ubiquiti UniFi",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "uidaho.edu"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "University of Idaho",
+   "passkey": "mfa",
+   "passkey_doc": "https://support.uidaho.edu/TDClient/KB/ArticleDet?ID=109",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "ukfast.co.uk"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "UKFast",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Telegram Bot"
+   ],
+   "d": [
+    "ukraine.com.ua"
+   ],
+   "n": "Hosting Ukraine",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "umich.edu"
+   ],
+   "devices": [
+    "Feitian OTP c100 Token"
+   ],
+   "n": "University of Michigan",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.safecomputing.umich.edu/two-factor-authentication",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "uni-marburg.de"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Philipps-Universität Marburg",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Okta Verify"
+   ],
+   "d": [
+    "unimelb.edu.au"
+   ],
+   "n": "University of Melbourne",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "unisuper.com.au"
+   ],
+   "n": "UniSuper",
+   "recovery": "https://www.unisuper.com.au/contact-us/accessing-online-accounts",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "united-domains.de"
+   ],
+   "n": "united-domains.de",
+   "notes": "A phone number is required to enable two-factor authentication.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "United App"
+   ],
+   "d": [
+    "united.com"
+   ],
+   "n": "United",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "unity.com",
+    "unity3d.com"
+   ],
+   "n": "Unity",
+   "recovery": "https://support.unity.com/hc/en-us/articles/360034757251",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "unsw.edu.au"
+   ],
+   "n": "UNSW Sydney",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "uottawa.ca"
+   ],
+   "devices": [
+    "SafeID token"
+   ],
+   "n": "uOttawa",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "up.com.au",
+    "up.me"
+   ],
+   "n": "Up",
+   "recovery": "https://up.com.au/how-to/recover-your-account/",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "upcloud.com"
+   ],
+   "n": "UpCloud",
+   "notes": "SMS is required for password recovery.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "upenn.edu"
+   ],
+   "devices": [
+    "SafeID token"
+   ],
+   "n": "University of Pennsylvania",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "uphold.com"
+   ],
+   "n": "Uphold",
+   "recovery": "https://support.uphold.com/hc/en-us/articles/360043633751",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "uq.edu.au"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "The University of Queensland",
+   "passkey": "mfa",
+   "passkey_doc": "https://my.uq.edu.au/information-and-services/information-technology/uq-accounts-and-passwords/multi-factor-authentication-mfa",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Symantec VIP"
+   ],
+   "d": [
+    "usaa.com"
+   ],
+   "n": "USAA",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "usbank.com"
+   ],
+   "n": "U.S. Bank",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.usbank.com/online-mobile-banking/passkey.html",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo Mobile"
+   ],
+   "d": [
+    "utoronto.ca"
+   ],
+   "devices": [
+    "Duo token"
+   ],
+   "n": "University of Toronto",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Okta Verify"
+   ],
+   "d": [
+    "uts.edu.au"
+   ],
+   "n": "University of Technology Sydney",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo Mobile"
+   ],
+   "d": [
+    "uvic.ca"
+   ],
+   "devices": [
+    "Duo token"
+   ],
+   "n": "University of Victoria",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo Mobile"
+   ],
+   "d": [
+    "uwaterloo.ca"
+   ],
+   "devices": [
+    "Duo token"
+   ],
+   "n": "University of Waterloo",
+   "passkey": "mfa",
+   "passkey_doc": "https://uwaterloo.ca/two-factor-authentication/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "ID.me Authenticator"
+   ],
+   "d": [
+    "va.gov"
+   ],
+   "n": "US Veteran Affairs",
+   "passkey": "mfa",
+   "passkey_doc": "https://www.va.gov/resources/verifying-your-identity-on-vagov",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "vanguard.com"
+   ],
+   "devices": [
+    "Voice Verification"
+   ],
+   "n": "Vanguard",
+   "notes": "Security keys can not be used to log in to mobile app or mobile website.",
+   "passkey": "mfa",
+   "passkey_doc": "https://investor.vanguard.com/security/security-keys",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "vcu.edu"
+   ],
+   "devices": [
+    "Duo D100 Token"
+   ],
+   "n": "Virginia Commonwealth University",
+   "passkey": "mfa",
+   "passkey_doc": "https://ts.vcu.edu/askit/essential-computing/information-security/2factor/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "veem.com"
+   ],
+   "n": "Veem",
+   "notes": "2FA via sms is available for US only.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "vend.com",
+    "bilbasen.dk",
+    "blocket.se",
+    "bytbil.com",
+    "dba.dk",
+    "finn.no",
+    "oikotie.fi",
+    "tori.fi",
+    "vend.dk",
+    "vend.fi",
+    "vend.no",
+    "vend.se"
+   ],
+   "n": "Vend",
+   "recovery": "https://account.vend.no/faq#how-to-activate-and-deactivate-2fa:~:text=Mistet%20autentiseringsenhet%3F",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "veracode.com"
+   ],
+   "n": "Veracode",
+   "passkey": "mfa",
+   "passkey_doc": "https://help.veracode.com/r/t_configure_mfa",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "vercel.com"
+   ],
+   "n": "Vercel",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "My Verizon App"
+   ],
+   "d": [
+    "verizon.com"
+   ],
+   "n": "Verizon",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "vicroads.vic.gov.au"
+   ],
+   "n": "VicRoads",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.vicroads.vic.gov.au/online-services/help-centre/personal-help-centre/passkeys",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "BankID"
+   ],
+   "d": [
+    "vimla.se"
+   ],
+   "n": "Vimla",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "virginmedia.com",
+    "o2.co.uk"
+   ],
+   "n": "Virgin Media",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.virginmedia.com/help/account/what-is-device-authentication",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Virgin Money Mobile Banking App"
+   ],
+   "d": [
+    "virginmoney.com"
+   ],
+   "n": "Virgin Money",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "visma.com",
+    "dinero.dk",
+    "easycruit.com",
+    "visma.fi",
+    "visma.net",
+    "visma.no",
+    "visma.se"
+   ],
+   "n": "Visma",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "visualstudio.microsoft.com"
+   ],
+   "n": "Visual Studio Codespaces",
+   "passkey": "passwordless",
+   "passkey_doc": "https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-passwordless",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "vivaldi.com",
+    "vivaldi.net"
+   ],
+   "n": "Vivaldi",
+   "passkey": "mfa",
+   "passkey_doc": "https://help.vivaldi.com/services/account/two-factor-authentication/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "vk.com",
+    "vk.ru"
+   ],
+   "n": "VK",
+   "notes": "SMS is required for TOTP",
+   "passkey": "passwordless",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "voip.ms"
+   ],
+   "n": "VoIP.ms",
+   "notes": "Only one of the 2FA methods can be enabled at the same time.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "VR-SecureGo"
+   ],
+   "d": [
+    "vr.de"
+   ],
+   "devices": [
+    "TAN generator"
+   ],
+   "n": "Volksbanken Raiffeisenbanken",
+   "notes": "Support for 2FA types depends on regional V&R banks.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "vse.cz"
+   ],
+   "n": "Vysoká škola ekonomická v Praze",
+   "passkey": "mfa",
+   "passkey_doc": "https://ci.vse.cz/english/support/procedures/multi-factor-authentication-in-microsoft-365/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "vt.edu"
+   ],
+   "devices": [
+    "Duo D100 Token",
+    "Yubico OTP"
+   ],
+   "n": "Virginia Tech",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "vultr.com"
+   ],
+   "devices": [
+    "Yubico OTP"
+   ],
+   "n": "Vultr",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "VW FS app"
+   ],
+   "d": [
+    "vwfs.de"
+   ],
+   "devices": [
+    "photoTAN reader"
+   ],
+   "n": "Volkswagen Financial Services",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "wageworks.com"
+   ],
+   "n": "WageWorks",
+   "notes": "Employer/plan sponsor may opt to not offer 2FA.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "walmart.com"
+   ],
+   "n": "Walmart",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.walmart.com/help/article/passkeys/79bc4a57374146c497ebe3bf8d4f9b10",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "washington.edu"
+   ],
+   "devices": [
+    "Feitian OTP c100 Token",
+    "Yubico OTP"
+   ],
+   "n": "University of Washington",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "AuthPoint App"
+   ],
+   "d": [
+    "watchguard.com"
+   ],
+   "n": "WatchGuard",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "wealthfront.com"
+   ],
+   "n": "Wealthfront",
+   "recovery": "https://support.wealthfront.com/hc/en-us/articles/211004603",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "wealthsimple.com"
+   ],
+   "n": "Wealthsimple",
+   "passkey": "passwordless",
+   "passkey_doc": "https://help.wealthsimple.com/hc/articles/45953732950939",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "web.de"
+   ],
+   "n": "Web.de",
+   "notes": "Setup requires SMS verification.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "web.mit.edu"
+   ],
+   "devices": [
+    "Yubico OTP",
+    "Duo D100 Token"
+   ],
+   "n": "Massachusetts Institute of Technology",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "EU Login mobile app"
+   ],
+   "d": [
+    "webgate.ec.europa.eu"
+   ],
+   "devices": [
+    "VASCO Token",
+    "DigiPass Token"
+   ],
+   "n": "European Commission",
+   "passkey": "mfa",
+   "passkey_doc": "https://webgate.ec.europa.eu/cas/manuals/EU_Login_Tutorial.pdf",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "webroot.com",
+    "identity.webrootanywhere.com",
+    "my.webrootanywhere.com"
+   ],
+   "n": "Webroot",
+   "recovery": "https://answers.webroot.com/Webroot/ukp.aspx?vw=1&solid=3508",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "weclapp.com"
+   ],
+   "n": "Weclapp",
+   "passkey": "mfa",
+   "passkey_doc": "https://doc.weclapp.com/en/documentation/dein-start-mit-weclapp/2-my-weclapp-personal-master-and-contact-data/2-4-security/2-factor-authentication/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "wefunder.com"
+   ],
+   "n": "Wefunder",
+   "notes": "Setting up 2FA with TOTP or Security Key requires adding a phone number.",
+   "passkey": "mfa",
+   "passkey_doc": "https://help.wefunder.com/en_US/multifactor-authentication",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "wellfound.com",
+    "angel.co"
+   ],
+   "n": "Wellfound",
+   "recovery": "https://help.wellfound.com/article/817--",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Wells Fargo App"
+   ],
+   "d": [
+    "wellsfargo.com",
+    "wf.com",
+    "wellsfargoadvisors.com"
+   ],
+   "devices": [
+    "RSA SecurID Device"
+   ],
+   "n": "Wells Fargo",
+   "passkey": "passwordless",
+   "passkey_doc": "https://www.wellsfargo.com/help/security-and-fraud/passkey-faqs/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Authy"
+   ],
+   "d": [
+    "westernunion.com"
+   ],
+   "n": "Western Union",
+   "notes": "2FA is only available for business accounts.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "wetransfer.com"
+   ],
+   "n": "WeTransfer",
+   "recovery": "https://help.wetransfer.com/hc/en-us/articles/360056666872#h_01EXEFX7G5DKD2GHYDGWH1S0C7",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "wetravel.com"
+   ],
+   "n": "WeTravel",
+   "recovery": "https://help.wetravel.com/articles/5828372#h_7d45ccc474",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "whalefin.com"
+   ],
+   "n": "WhaleFin",
+   "recovery": "https://support.whalefin.com/hc/en-us/articles/8939906306073",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "whatsapp.com"
+   ],
+   "n": "WhatsApp",
+   "passkey": "mfa",
+   "passkey_doc": "https://faq.whatsapp.com/1850567238795036/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "whois.com"
+   ],
+   "n": "Whois",
+   "notes": "TOTP 2FA is only available for resellers.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "wikipedia.org",
+    "wikimedia.org"
+   ],
+   "n": "Wikipedia",
+   "passkey": "mfa",
+   "passkey_doc": "https://meta.wikimedia.org/wiki/Help:Two-factor_authentication",
+   "recovery": "https://meta.wikimedia.org/wiki/Help:Two-factor_authentication#Lost_access_to_device_or_authenticator_app",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Duo"
+   ],
+   "d": [
+    "wisc.edu"
+   ],
+   "devices": [
+    "Duo D100 Token",
+    "Feitian OTP c100 Token"
+   ],
+   "n": "University of Wisconsin Madison",
+   "passkey": "mfa",
+   "passkey_doc": "https://it.wisc.edu/services/duo-multi-factor-authentication-mfa/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Wise App"
+   ],
+   "d": [
+    "wise.com",
+    "transferwise.com"
+   ],
+   "n": "Wise",
+   "notes": "SMS 2FA must be enabled before software methods can be enabled.",
+   "passkey": "passwordless",
+   "passkey_doc": "https://wise.com/help/articles/4OTG2Z93XXyaurUviZRg5O/",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "withings.com"
+   ],
+   "n": "Withings",
+   "notes": "The following apps do not support 2FA: Thermo, WithBaby, Withings Home Security Camera, WiScale.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "wix.com"
+   ],
+   "n": "Wix",
+   "notes": "SMS is only available with Premium plans; email is restricted to selected providers.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "woltlab.com"
+   ],
+   "n": "WoltLab",
+   "passkey": "mfa",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "woolworths.com.au"
+   ],
+   "n": "Woolworths",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "wordpress.com"
+   ],
+   "n": "WordPress.com",
+   "passkey": "mfa",
+   "passkey_doc": "https://en.support.wordpress.com/security/two-step-authentication/",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "1login od WP"
+   ],
+   "d": [
+    "wp.pl"
+   ],
+   "n": "Wirtualna Polska",
+   "passkey": "mfa",
+   "passkey_doc": "https://pomoc.wp.pl/1login/jak-wlaczyc-i-wylaczyc-logowanie-dwustopniowe",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Okta Verify"
+   ],
+   "d": [
+    "wpengine.com"
+   ],
+   "n": "WP Engine",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "wrike.com"
+   ],
+   "n": "Wrike",
+   "notes": "Only accessible to Enterprise accounts and users may need to contact their account administrator to enable 2FA.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "wyze.com"
+   ],
+   "n": "Wyze",
+   "notes": "2FA via SMS is only available for USA and Canada.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "x.com",
+    "twitter.com"
+   ],
+   "n": "X (Twitter)",
+   "notes": "SMS only available on select providers and for X Premium members only.",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://help.x.com/managing-your-account/how-to-use-passkey",
+   "recovery": "https://help.x.com/en/managing-your-account/issues-with-login-authentication",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Microsoft Authenticator"
+   ],
+   "d": [
+    "xbox.com"
+   ],
+   "n": "Xbox Live",
+   "notes": "2FA phone calls may not be available in all regions",
+   "passkey": "passwordless",
+   "passkey_doc": "https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-passwordless",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Xero Verify"
+   ],
+   "d": [
+    "xero.com"
+   ],
+   "n": "Xero",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Xfinity Authenticator"
+   ],
+   "d": [
+    "xfinity.com",
+    "comcast.com"
+   ],
+   "n": "Xfinity",
+   "notes": "Email 2FA requires the use of a non-Comcast.net email address.",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "yahoo.co.jp"
+   ],
+   "n": "Yahoo [JP]",
+   "passkey": "passwordless",
+   "src": [
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "yahoo.com"
+   ],
+   "n": "Yahoo",
+   "notes": "A recovery email or phone number is required for 2FA setup.",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://help.yahoo.com/kb/SLN35635.html",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "ynab.com",
+    "youneedabudget.com"
+   ],
+   "n": "YNAB (You Need A Budget)",
+   "recovery": "https://support.ynab.com/rkKHuLlRc#troubleshoot",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Duo Mobile"
+   ],
+   "d": [
+    "yorku.ca"
+   ],
+   "devices": [
+    "Duo token",
+    "Touch ID"
+   ],
+   "n": "York University",
+   "notes": "2FA via SMS or phone call can only be enabled by the support team.",
+   "passkey": "mfa",
+   "passkey_doc": "https://infosec.yorku.ca/2FA",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "Google Prompts",
+    "Google Smart Lock"
+   ],
+   "d": [
+    "youtube.com"
+   ],
+   "n": "YouTube",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://safety.google/authentication/passkey/",
+   "recovery": "https://support.google.com/accounts/answer/185834",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "apps": [
+    "m-zaba app"
+   ],
+   "d": [
+    "zaba.hr"
+   ],
+   "n": "Zagrebačka banka",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "d": [
+    "zimbra.com"
+   ],
+   "n": "Zimbra",
+   "notes": "Available in Zimbra Collaboration 8.7 and above, Network Edition only",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "ZKB Access"
+   ],
+   "d": [
+    "zkb.ch"
+   ],
+   "devices": [
+    "photoTAN reader"
+   ],
+   "n": "Zurich Cantonal Bank (ZKB)",
+   "src": [
+    "2fa"
+   ]
+  },
+  {
+   "apps": [
+    "Zoho OneAuth"
+   ],
+   "d": [
+    "zoho.com"
+   ],
+   "n": "Zoho",
+   "passkey": "passwordless+mfa",
+   "passkey_doc": "https://help.zoho.com/portal/en/kb/accounts/multi-factor-authentication/articles/mfa-security-key",
+   "src": [
+    "2fa",
+    "passkeys"
+   ]
+  },
+  {
+   "d": [
+    "zondaglobal.com"
+   ],
+   "n": "Zonda",
+   "recovery": "https://zondaglobal.com/en/helpdesk/zonda-exchange/my-account/what-can-be-done-if-google-authenticator-app-is-lost",
+   "src": [
+    "2fa"
+   ]
+  }
+ ],
+ "sources": [
+  {
+   "commit": "9352ff53a84327e9262c5e75c34152467c0c72e7",
+   "date": "2026-10-16",
+   "id": "2fa",
+   "licence": "MIT",
+   "name": "2fa.directory",
+   "url": "https://github.com/2factorauth/twofactorauth"
+  },
+  {
+   "commit": "b711c588aa0a1cace2afb5b5a20a70810bb0433b",
+   "date": "2026-09-03",
+   "id": "passkeys",
+   "licence": "CC BY 4.0",
+   "name": "Passkeys Directory",
+   "url": "https://github.com/2factorauth/passkeys"
+  }
+ ]
+}
