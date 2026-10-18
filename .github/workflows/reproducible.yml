@@ -272,6 +272,9 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           if [ "${RUNNER_OS}" = macOS ]; then
+            # The newest Xcode both macOS images carry, so the comparison
+            # isn't only between two linkers (their defaults are 15.4 and 16.4).
+            sudo xcode-select -s /Applications/Xcode_16.2.app
             node scripts/stage-host.mjs --universal --release
             pnpm tauri build --ci --target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.bundle.conf.json
           else
