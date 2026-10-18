@@ -1,17 +1,17 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `dd7f045`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `152a5ca`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
 **Done** means it works end to end in today's surfaces (core, desktop, CLI, server) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **33** | **45** | **34** | **10** |
-| [Vault & item types](#vault--item-types) | 4 | 8 | 0 | 0 |
+| **All 122 v1 features** | **38** | **43** | **31** | **10** |
+| [Vault & item types](#vault--item-types) | 5 | 7 | 0 | 0 |
 | [Organization & search](#organization--search) | 6 | 1 | 0 | 0 |
 | [Autofill (browser)](#autofill-browser) | 7 | 1 | 1 | 0 |
 | [Autofill (mobile & desktop OS)](#autofill-mobile--desktop-os) | 0 | 0 | 6 | 0 |
-| [Passkeys & WebAuthn](#passkeys--webauthn) | 0 | 2 | 6 | 0 |
+| [Passkeys & WebAuthn](#passkeys--webauthn) | 4 | 1 | 3 | 0 |
 | [Two-factor & authenticator](#two-factor--authenticator) | 2 | 2 | 0 | 0 |
 | [Vendor login bridges](#vendor-login-bridges) | 1 | 4 | 2 | 0 |
 | [Sharing & collaboration](#sharing--collaboration) | 0 | 2 | 4 | 0 |
@@ -32,11 +32,11 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is
 
 ## Vault & item types
 
+- [x] **Logins**: Done · core, desktop, cli, extension. Nothing for desktop and the extension; the web vault and mobile.
 - [x] **Secure notes**: Done · core, desktop. Nothing for desktop; mobile and web views later.
 - [x] **Item expiry reminders**: Done · core, desktop. Renewal kinds for domains and certificates; the signed-date check.
 - [x] **Trash with recovery**: Done · core, desktop. Trash in the CLI.
 - [x] **Item archive**: Done · core, desktop. Nothing for desktop.
-- [ ] **Logins**: Partial · core, desktop, cli. Passkeys made on the record (they can only be imported today).
 - [ ] **Payment cards**: Partial · core, desktop. The card fill itself (extension or OS provider) with the second deliberate action and the optional CVC re-prompt.
 - [ ] **Identities and addresses**: Partial · core, desktop. Typed subtypes (person, address, business, vehicle, passport) and a separate contacts list that is never filled; plus the form fill itself.
 - [ ] **Typed item templates**: Partial · core, desktop. Reach 25+ types (passport and licence are a Document type choice today) and add user-defined templates.
@@ -58,7 +58,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is
 ## Autofill (browser)
 
 - [x] **Inline fill menu**: Done · extension. A Firefox test run; Safari waits on OS-level work.
-- [x] **Clickjacking-hardened fill**: Done · core, extension. Passkey fills once passkeys reach the extension; Firefox has a hit test instead of IntersectionObserver v2.
+- [x] **Clickjacking-hardened fill**: Done · core, extension. Firefox has a hit test instead of IntersectionObserver v2.
 - [x] **Precise URL matching**: Done · core, cli, extension. Per-item match rules in the desktop editor (new sites get exact_host).
 - [x] **Save and update prompts**: Done · core, desktop, extension. A Firefox test run.
 - [x] **Fill keyboard shortcut**: Done · extension. A Firefox test run; letting people change the keys.
@@ -78,14 +78,14 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is
 
 ## Passkeys & WebAuthn
 
-- [ ] **Passkey storage and sync**: Partial · core, desktop, server. Creating and using passkeys (WebAuthn L3 provider on every platform); today a passkey can only be imported, stored, synced and viewed.
-- [ ] **Passkey management view**: Partial · core, desktop. Provider ID (AAGUID), backup flags, last use, and a delete that warns when it is the account's only sign-in.
+- [x] **Passkey storage and sync**: Done · core, desktop, extension. The OS providers (macOS, Windows, iOS, Android) are deferred; through the extension, passkeys are made, used and synced.
+- [x] **Browser passkey fallback**: Done · core, desktop, extension. A Firefox test run; Windows waits on the named-pipe transport; Safari and the OS providers are deferred.
+- [x] **WebAuthn Signal API handling**: Done · core, desktop, extension. A Firefox test run.
+- [x] **Passkey management view**: Done · core, desktop. Last use is per computer, not synced.
+- [ ] **Automatic passkey upgrade**: Partial · core, extension. The OS-level automatic upgrade (deferred); in the extension it works only right after Lockdown filled that login's password on that site.
 - [ ] **Phone as authenticator (iPhone)** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: needs the iOS credential provider.
 - [ ] **Phone as authenticator (Android)** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: needs the Android CredentialProviderService.
 - [ ] **Windows 11 passkey plugin** _(deferred: OS-level, D122)_: Not started · nowhere yet. Everything: the COM IPluginAuthenticator plugin, Windows Hello verification and MSIX packaging.
-- [ ] **Browser passkey fallback**: Not started · nowhere yet. Everything: the WebAuthn override where no OS provider exists, and the coexistence convention.
-- [ ] **Automatic passkey upgrade**: Not started · nowhere yet. Everything: needs the OS providers and passkey creation.
-- [ ] **WebAuthn Signal API handling**: Not started · nowhere yet. Everything: handling the three Signal API calls with soft delete and undo.
 
 ## Two-factor & authenticator
 

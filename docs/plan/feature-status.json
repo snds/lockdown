@@ -1,5 +1,5 @@
 {
- "as_of": "dd7f045",
+ "as_of": "152a5ca",
  "source": "docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)",
  "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is no web vault yet. The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and its web half once the web vault exists. OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.",
  "non_v1_built": [
@@ -27,13 +27,14 @@
    "name": "Logins",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
-    "cli"
+    "cli",
+    "extension"
    ],
-   "left": "Passkeys made on the record (they can only be imported today).",
+   "left": "Nothing for desktop and the extension; the web vault and mobile.",
    "evidence": [
     "crates/vault/src/template.rs:263 (LOGIN: username, password, one code, one website)",
     "crates/app/src/session.rs:617 (methods: password / passkey / code on one row)",
@@ -445,7 +446,7 @@
     "core",
     "extension"
    ],
-   "left": "Passkey fills once passkeys reach the extension; Firefox has a hit test instead of IntersectionObserver v2.",
+   "left": "Firefox has a hit test instead of IntersectionObserver v2.",
    "evidence": [
     "crates/matcher/src/lib.rs:606 never_fill_cross_origin_iframes_without_confirmation",
     "extension/test/fixtures/harness.js:71 (opacity check up the tree)",
@@ -662,13 +663,13 @@
    "name": "Passkey storage and sync",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
-    "server"
+    "extension"
    ],
-   "left": "Creating and using passkeys (WebAuthn L3 provider on every platform); today a passkey can only be imported, stored, synced and viewed.",
+   "left": "The OS providers (macOS, Windows, iOS, Android) are deferred; through the extension, passkeys are made, used and synced.",
    "evidence": [
     "crates/cxf/src/convert.rs:98 (imported passkeys become item fields that sync like any item)",
     "crates/vault/src/template.rs:279 (PASSKEY, view only)",
@@ -728,9 +729,13 @@
    "name": "Browser passkey fallback",
    "target": "beat",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: the WebAuthn override where no OS provider exists, and the coexistence convention.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop",
+    "extension"
+   ],
+   "left": "A Firefox test run; Windows waits on the named-pipe transport; Safari and the OS providers are deferred.",
    "evidence": [
     "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)",
     "crates/matcher/src/related_origins.rs:125 the_five_label_cap_and_freshness (supporting check only)"
@@ -744,9 +749,12 @@
    "name": "Automatic passkey upgrade",
    "target": "parity",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: needs the OS providers and passkey creation.",
+   "status": "partial",
+   "surfaces": [
+    "core",
+    "extension"
+   ],
+   "left": "The OS-level automatic upgrade (deferred); in the extension it works only right after Lockdown filled that login's password on that site.",
    "evidence": [
     "crates/ffi/src/lib.rs:4 (UniFFI facade is a skeleton; no Swift or Kotlin app exists)"
    ],
@@ -759,9 +767,13 @@
    "name": "WebAuthn Signal API handling",
    "target": "beat",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: handling the three Signal API calls with soft delete and undo.",
+   "status": "done",
+   "surfaces": [
+    "core",
+    "desktop",
+    "extension"
+   ],
+   "left": "A Firefox test run.",
    "evidence": [
     "extension/README.md:3 (\"This directory is not the extension\": only the wasm matcher boundary and a red-team harness exist)"
    ],
@@ -774,12 +786,12 @@
    "name": "Passkey management view",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop"
    ],
-   "left": "Provider ID (AAGUID), backup flags, last use, and a delete that warns when it is the account's only sign-in.",
+   "left": "Last use is per computer, not synced.",
    "evidence": [
     "apps/desktop/src/features/vault/detail-pane.test.tsx:54 (passkey detail is view only, key never drawn)",
     "crates/vault/src/template.rs:279 (site, user name, display name)",
