@@ -6,9 +6,10 @@
 //
 //   node scripts/stage-host.mjs [--target <triple> | --universal] [--release]
 //
-// --universal (macOS) builds aarch64-apple-darwin and x86_64-apple-darwin
-// and joins them with lipo as ...-universal-apple-darwin, the name
-// `tauri build --target universal-apple-darwin` looks for. Without
+// --universal (macOS) builds aarch64-apple-darwin and x86_64-apple-darwin,
+// stages each under its own name (each architecture's build checks for it)
+// and joins them with lipo as ...-universal-apple-darwin, the one
+// `tauri build --target universal-apple-darwin` puts in the app. Without
 // --target the host is built for this machine without a --target flag, so
 // it shares the target directory's existing build.
 import { execFileSync } from "node:child_process"
@@ -54,7 +55,10 @@ function stage(from, triple) {
 }
 
 if (universal) {
-  const parts = ["aarch64-apple-darwin", "x86_64-apple-darwin"].map((t) => build(t))
+  // Each architecture's own build also checks for its own sidecar name.
+  const triples = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+  const parts = triples.map((t) => build(t))
+  triples.forEach((t, i) => stage(parts[i], t))
   const out = join(binaries, "lockdown-native-host-universal-apple-darwin")
   execFileSync("lipo", ["-create", "-output", out, ...parts], { stdio: "inherit" })
   execFileSync("lipo", ["-info", out], { stdio: "inherit" })
