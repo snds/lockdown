@@ -271,7 +271,8 @@ jobs:
           {
             rustc --version
             if [ "${RUNNER_OS}" = macOS ]; then
-              xcodebuild -version | head -n 1
+              # sed reads all of it: head would close the pipe and xcodebuild aborts.
+              xcodebuild -version | sed -n 1p
               echo "installed: $(ls /Applications | grep '^Xcode_' | tr '\n' ' ')" >&2
               b=target/universal-apple-darwin/release/bundle
               (cd "$b/dmg" && shasum -a 256 *.dmg | sed 's#  #  dmg:#')

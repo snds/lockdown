@@ -65,7 +65,7 @@ done
 data=$(dirname "$endpoint")
 echo "browser-test: the app's endpoint is up: $endpoint"
 cat "$endpoint"
-flatpak ps --columns=application | grep -qx "$app" || fail "flatpak ps doesn't list $app"
+flatpak ps --columns=instance,pid,child-pid,application || true
 
 wrapper="$data/lockdown-native-host-flatpak"
 sed "s/@APP_ID@/$app/" "$root/crates/native-messaging/src/flatpak-host.sh" >"$wrapper"

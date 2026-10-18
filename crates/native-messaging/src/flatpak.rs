@@ -9,7 +9,7 @@
 //!
 //! ```text
 //! browser ── starts ──▶ ~/.var/app/<id>/data/snds/lockdown/lockdown-native-host-flatpak
-//!                         └─ flatpak enter <id> /app/bin/lockdown-native-host   (app running)
+//!                         └─ flatpak enter <app pid> /app/bin/lockdown-native-host   (app running)
 //!                         └─ flatpak run --command=lockdown-native-host <id>     (not running → "no_app")
 //! ```
 //!
@@ -109,7 +109,8 @@ mod tests {
         assert!(w.starts_with("#!/bin/sh\n"));
         assert!(!w.contains("@APP_ID@"));
         assert!(w.contains("app='design.snds.lockdown'"));
-        assert!(w.contains(r#"exec "$flatpak" enter "$app" /app/bin/lockdown-native-host "$@""#));
+        assert!(w.contains(r#"exec "$flatpak" enter "$pid" /app/bin/lockdown-native-host "$@""#));
+        assert!(w.contains(r#"grep -qsx "name=$app" "$p/root/.flatpak-info""#));
         assert!(w.contains(r#"exec "$flatpak" run --command=lockdown-native-host "$app" "$@""#));
         for bad in ["", "a'b", "a b", "x;rm -rf ~", "$(id)"] {
             assert!(wrapper(bad).is_err(), "{bad:?}");

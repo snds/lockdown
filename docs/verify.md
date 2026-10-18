@@ -46,10 +46,11 @@ Some files are built so that anyone can rebuild them from the same commit and ge
 | `lockdown-chromium-<v>.zip`, `lockdown-firefox-<v>.zip` (browser extension) | `export RUSTFLAGS="--remap-path-prefix=$PWD=/lockdown --remap-path-prefix=$HOME/.cargo=/cargo" SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)`, then `cd extension && pnpm install --frozen-lockfile && pnpm build:wasm && pnpm build && pnpm run package` |
 | `lockdown-<v>-x86_64-linux.tar.gz` (server and CLI) | `packaging/repro/build-server.sh out` (needs Docker) |
 | `lockdown-server-<v>-image.oci.tar` (server image) | build the web vault (`apps/web`: `pnpm build:wasm && pnpm build`), then `packaging/repro/build-image.sh out lockdown-server:<v>` (needs Docker with Buildx) |
+| `Lockdown_<v>_amd64.deb`, `Lockdown-<v>-1.x86_64.rpm` (Linux desktop app) | `packaging/repro/build-desktop.sh out` (needs Docker; a full release build, about half an hour) |
 
 Check out the release's tag first. The extension also needs the same Rust release and `wasm-bindgen` CLI as the workflow used, which the workflow run's log names. The server files are built inside a Rust image pinned by digest, so Docker brings the right compiler. CI proves the same bytes from two machines with the checkout at the same path. A different path should give the same bytes too, because the paths are remapped, but CI does not test that yet. Then compare your hash with the one in `SHA256SUMS`. Lockdown's CI does the same on every change, building each file twice on two different machines (`.github/workflows/reproducible.yml`).
 
-The desktop installers (deb, rpm, Flatpak, dmg, msi, exe, msix) are not reproducible yet. Use steps 1 and 2 for them. [`docs/plan/24-release.md`](plan/24-release.md) §5 explains why.
+The deb and rpm are built inside an Ubuntu 22.04 image pinned by digest, with its packages from a fixed date of Ubuntu's snapshot archive and exact Rust and Node releases, so Docker brings every tool. The other desktop installers (Flatpak, dmg, msi, exe, msix) are not reproducible yet. Use steps 1 and 2 for them. [`docs/plan/29-release-polish.md`](plan/29-release-polish.md) §1 explains why, and what CI compares for each.
 
 ## Signed apps on macOS and Windows
 

@@ -13,7 +13,18 @@
 # which answers that Lockdown isn't running.
 app='@APP_ID@'
 flatpak=$(command -v flatpak 2>/dev/null || echo /usr/bin/flatpak)
-if "$flatpak" ps --columns=application 2>/dev/null | grep -qx "$app"; then
-  exec "$flatpak" enter "$app" /app/bin/lockdown-native-host "$@"
+# The running app: a process whose image is the app's, inside a sandbox of
+# this Flatpak (the sandbox's own /.flatpak-info names it). Found by its
+# process, not by Flatpak's instance records, which can name an instance
+# that has already exited.
+pid=""
+for p in /proc/[0-9]*; do
+  [ "$(readlink "$p/exe" 2>/dev/null)" = /app/bin/lockdown-desktop ] || continue
+  grep -qsx "name=$app" "$p/root/.flatpak-info" || continue
+  pid=${p#/proc/}
+  break
+done
+if [ -n "$pid" ]; then
+  exec "$flatpak" enter "$pid" /app/bin/lockdown-native-host "$@"
 fi
 exec "$flatpak" run --command=lockdown-native-host "$app" "$@"
