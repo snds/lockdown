@@ -88,6 +88,17 @@ mod shell {
             .plugin(tauri_plugin_clipboard_manager::init())
             .plugin(tauri_plugin_dialog::init())
             .plugin(super::quick::commands::plugin())
+            // The camera for scanning, in the main window only; every other
+            // device a page asks for is refused (docs/plan/26-desktop-finish.md §3).
+            .on_permission_request(|webview, kind| {
+                use tauri::webview::{PermissionKind, PermissionResponse};
+                match kind {
+                    PermissionKind::Camera if super::hygiene::allows_camera(webview.label()) => {
+                        PermissionResponse::Allow
+                    }
+                    _ => PermissionResponse::Deny,
+                }
+            })
             .setup(|app| {
                 if cfg!(debug_assertions) {
                     // Nothing logged here ever names a value; the app's
@@ -119,6 +130,17 @@ mod shell {
                 // (docs/plan/26-desktop-finish.md §2, §6).
                 app.manage(super::hygiene::CaptureCount::default());
                 super::quick::commands::start(app.handle(), &core);
+                // WebKitGTK keeps getUserMedia off until the host turns it on;
+                // the permission handler above still answers each request.
+                #[cfg(target_os = "linux")]
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.with_webview(|wv| {
+                        use webkit2gtk::{SettingsExt, WebViewExt};
+                        if let Some(settings) = WebViewExt::settings(&wv.inner()) {
+                            settings.set_enable_media_stream(true);
+                        }
+                    });
+                }
                 Ok(())
             })
             // Losing the window to the dock counts as hidden (the core's

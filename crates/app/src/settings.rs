@@ -347,6 +347,7 @@ mod tests {
             "browser_passkeys",
             "code_clock_correction",
             "alias_monitoring",
+            "quick_access_hotkey",
         ]
         .into_iter()
         .collect();

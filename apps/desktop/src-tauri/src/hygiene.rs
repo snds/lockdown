@@ -49,6 +49,14 @@ pub fn capture_protection_available() -> bool {
     cfg!(any(windows, target_os = "macos"))
 }
 
+/// Whether the webview in window `label` may use the camera: the main
+/// window only, for scanning a TV's code or a contact's QR
+/// (docs/plan/26-desktop-finish.md §3). Every other device permission a
+/// page asks for is refused by the shell.
+pub fn allows_camera(label: &str) -> bool {
+    label == "main"
+}
+
 /// How many reveals are drawn now; protection is on while any is.
 #[derive(Default)]
 pub struct CaptureCount(Mutex<u32>);
@@ -164,6 +172,13 @@ mod tests {
             assert_eq!(marks, ["x-kde-passwordManagerHint"]);
             assert!(!capture_protection_available());
         }
+    }
+
+    #[test]
+    fn only_the_main_window_may_use_the_camera() {
+        assert!(allows_camera("main"));
+        assert!(!allows_camera("quick"));
+        assert!(!allows_camera(""));
     }
 
     #[test]

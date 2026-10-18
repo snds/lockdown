@@ -3397,6 +3397,8 @@ dependencies = [
  "lockdown-platform-auth",
  "lockdown-security",
  "log",
+ "objc2-app-kit",
+ "objc2-foundation",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -3408,6 +3410,7 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-opener",
  "tempfile",
+ "webkit2gtk",
  "zeroize",
 ]
 
