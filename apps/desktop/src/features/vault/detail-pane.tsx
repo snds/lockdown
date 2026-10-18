@@ -13,6 +13,8 @@ import { ItemSecurity } from "@/features/security/item-security"
 import { ItemCodeDisplay } from "./code-display"
 import { RiskTierBadge } from "@unicron/ui/security/risk-tier-badge"
 
+import { ExportOptIn } from "@/features/export/export-opt-in"
+
 import { ItemCrownJewel } from "./crown-jewel"
 import { sectionsOf } from "./detail-model"
 import { conflictPair, kindLabel } from "./list-model"
@@ -215,6 +217,7 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice }:
       )}
       {!trashed && <ItemSecurity key={`${item.id}:${item.version}`} itemId={item.id} onNotice={onNotice} />}
       {item.crown_jewel ? <ItemCrownJewel title={title}>{body}</ItemCrownJewel> : body}
+      {item.crown_jewel && !trashed && <ExportOptIn item={item} onChanged={setItem} onNotice={onNotice} />}
       <Dialog open={resolving !== null} onOpenChange={(o) => !o && setResolving(null)}>
         <DialogContent>
           <DialogHeader>

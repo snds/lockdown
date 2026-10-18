@@ -92,13 +92,13 @@ export function ImportWizard({ open, restore = null, onClose, onImported }: Impo
   }
 
   /** Asks the core what the file holds, with the file's own password when one was typed. */
-  const check = async (password?: number[]) => {
+  const check = async (password?: number[], name = fileName) => {
     setStep("checking")
     setError(null)
     try {
       const p = restore
         ? await client.backupRestorePreview(restore, password)
-        : await client.importPreview({ bytes: Array.from(bytes.current ?? []), format, fileName, password })
+        : await client.importPreview({ bytes: Array.from(bytes.current ?? []), format, fileName: name, password })
       setPreview(p)
       setStep("preview")
     } catch (e) {
@@ -138,7 +138,7 @@ export function ImportWizard({ open, restore = null, onClose, onImported }: Impo
     }
     bytes.current = new Uint8Array(await file.arrayBuffer())
     setFileName(file.name)
-    await check()
+    await check(undefined, file.name)
   }
 
   const unlock = async (e: FormEvent<HTMLFormElement>) => {
@@ -219,7 +219,7 @@ export function ImportWizard({ open, restore = null, onClose, onImported }: Impo
         )}
 
         {step === "password" && (
-          <form onSubmit={unlock} className="flex flex-col gap-4" aria-label="The file's password">
+          <form onSubmit={unlock} className="flex flex-col gap-4" aria-label="Unlock the file">
             <Field>
               <FieldLabel htmlFor="import-password">The file's password</FieldLabel>
               <Input id="import-password" ref={passwordRef} type="password" autoComplete="off" autoFocus />

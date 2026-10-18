@@ -45,7 +45,7 @@ export function ExportDialog({ open, onClose, onNotice }: ExportDialogProps) {
   const client = useClient()
   const gate = useGate()
   const [choiceId, setChoiceId] = useState(EXPORT_CHOICES[0].id)
-  const [preview, setPreview] = useState<ExportPreview | null>(null)
+  const [counted, setCounted] = useState<ExportPreview | null>(null)
   const [plainOk, setPlainOk] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -53,14 +53,14 @@ export function ExportDialog({ open, onClose, onNotice }: ExportDialogProps) {
   const first = useRef<HTMLInputElement>(null)
   const second = useRef<HTMLInputElement>(null)
   const choice = EXPORT_CHOICES.find((c) => c.id === choiceId) ?? EXPORT_CHOICES[0]
+  const preview = counted?.format === choice.format ? counted : null
 
   useEffect(() => {
     if (!open) return
     let live = true
-    setPreview(null)
     client
       .exportPreview(choice.format)
-      .then((p) => live && setPreview(p))
+      .then((p) => live && setCounted(p))
       .catch((e) => live && setError(describeError(e)))
     return () => {
       live = false

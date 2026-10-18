@@ -119,7 +119,6 @@ export interface Client {
   deviceList(): Promise<DeviceInfo[]>
   deviceRevoke(id: string, gate?: GateInput): Promise<string[]>
   importItems(bytes: number[], format: string): Promise<ImportReport>
-  exportItems(format: string, gate?: GateInput): Promise<Uint8Array>
   openSite(url: string): Promise<void>
   /** Opens the OS date and time settings; `false` where this platform has no way in (Linux). */
   openClockSettings(): Promise<boolean>
@@ -230,7 +229,6 @@ export const tauriClient: Client = {
   deviceList: () => call("device_list"),
   deviceRevoke: (id, gate) => call("device_revoke", { id, gate }),
   importItems: (bytes, format) => call("import_items", { bytes, format }),
-  exportItems: (format, gate) => callBytes("export_items", { format, gate }),
   openSite: (url) => call("open_site", { url }),
   openClockSettings: () => call("open_clock_settings"),
   importFormats: () => call("import_formats"),

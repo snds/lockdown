@@ -604,18 +604,6 @@ async fn import_items(
     blocking(&app, move |a| a.import_items(bytes, &format)).await
 }
 
-/// The vault as one file, as raw bytes, behind the `Reveal` gate.
-#[tauri::command]
-async fn export_items(
-    app: State<'_, App>,
-    format: String,
-    gate: Option<GateInput>,
-) -> AppResult<Response> {
-    let gate = gate.unwrap_or_default();
-    let bytes = blocking(&app, move |a| a.export_items(&format, gate)).await?;
-    Ok(Response::new(bytes.into_bytes().to_vec()))
-}
-
 /// Opens an item's site in the default browser. Only http and https: the
 /// webview never gets to launch anything else.
 #[tauri::command]
@@ -769,7 +757,6 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         personas,
         audit,
         import_items,
-        export_items,
         crate::transfer::commands::import_formats,
         crate::transfer::commands::import_detect,
         crate::transfer::commands::import_preview,

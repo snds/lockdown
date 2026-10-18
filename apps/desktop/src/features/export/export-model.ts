@@ -11,7 +11,7 @@ export interface ExportChoice {
   detail: string
 }
 
-export const EXPORT_CHOICES: ExportChoice[] = [
+export const EXPORT_CHOICES: [ExportChoice, ...ExportChoice[]] = [
   {
     id: "lockdown-sealed",
     format: "lockdown",
