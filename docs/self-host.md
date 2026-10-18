@@ -21,6 +21,8 @@ docker compose up -d --build
 
 `compose.yaml` runs it read-only with `/tmp` in memory, no Linux capabilities, a 256 MiB memory limit, the certificate from `./tls` and the data in the `lockdown-data` volume. It listens on port 8443.
 
+To have the image carry the web vault, build the page first (`cd apps/web && pnpm install && pnpm build:wasm && pnpm build`), then `docker compose build`, and add `LOCKDOWN_WEB_VAULT: /usr/share/lockdown/web` to the environment; it is then at `https://<your server>/vault/`.
+
 No image is published to a registry yet; build it from the source you checked out. That way the image is the code you can read.
 
 ### As a plain program

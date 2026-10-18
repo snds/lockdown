@@ -90,6 +90,7 @@ Nothing in an event is trusted. The worst a lying server or a forged event can d
 | Image | `gcr.io/distroless/cc-debian12:nonroot` + the release binary: **53 MB** on disk, **14 MB** compressed |
 | User | 65532:65532 |
 | Writes | `/data` only (database, key file, attachment files, backups); `/tmp` as tmpfs for SQLite's temporary files |
+| Web vault | When `apps/web/dist` is built before `docker build`, the image carries it at `/usr/share/lockdown/web` (served with `LOCKDOWN_WEB_VAULT=/usr/share/lockdown/web`); otherwise that folder is empty. CI's container job doesn't build the page (the web job does), so the smoke-tested image has none. |
 | Defaults | `LOCKDOWN_LISTEN=0.0.0.0:8443`, `LOCKDOWN_DATA=/data`, `LOCKDOWN_SIGNUPS=closed` (05-self-host §9: "ships closed by default") |
 | Memory, idle after start | **5.5 MiB** (`docker stats`, x86-64, release, TLS on) |
 | Memory, after load | **6.2 MiB**: two devices, register, recover, 21 logins, 41 syncs each with its key-transparency checks |
