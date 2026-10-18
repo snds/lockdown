@@ -177,6 +177,7 @@ fn hosts(fields: &[PlainField]) -> Vec<String> {
         .iter()
         .filter(|f| f.kind == FieldKind::Url || f.field_id.starts_with("url."))
         .filter_map(|f| match &f.value {
+            FieldValue::Url { value, .. } => Some(value.clone()),
             FieldValue::Text(t) => Some(t.clone()),
             _ => None,
         })

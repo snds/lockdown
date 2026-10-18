@@ -25,6 +25,7 @@ pub mod devices;
 pub mod live;
 pub mod lock;
 pub mod passkeys;
+mod protection;
 pub mod recency;
 mod revealed;
 pub mod secrets;
@@ -292,6 +293,15 @@ impl Core {
             };
             self.approve(kind, reason, gate)?;
         }
+        // Ask each time (`protection`): every value out of a non-crown item asks.
+        self.exposure_gate(
+            id,
+            match kind {
+                ApprovalKind::Reveal => "show this value",
+                _ => "use this value",
+            },
+            gate,
+        )?;
         let revealed = self
             .session()?
             .reveal(id, field_id)
@@ -359,6 +369,7 @@ impl Core {
         {
             self.approve(ApprovalKind::Use, "copy this protected code", gate)?;
         }
+        self.exposure_gate(id, "use this code", gate)?;
         let now = session::now_secs().max(0) as u64;
         let code = self
             .session()?
@@ -385,6 +396,7 @@ impl Core {
         {
             self.approve(ApprovalKind::Use, "move this protected code on", gate)?;
         }
+        self.exposure_gate(id, "move this code on", gate)?;
         self.session()?
             .advance_code(id, field_id)
             .map_err(AppError::refused)

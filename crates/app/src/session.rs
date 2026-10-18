@@ -63,6 +63,7 @@ mod backup;
 mod codes;
 pub(crate) mod devices_link;
 mod duplicates;
+pub(crate) mod exposure;
 mod history;
 pub mod items;
 mod organize;
