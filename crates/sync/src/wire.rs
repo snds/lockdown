@@ -218,7 +218,7 @@ pub struct LoginStartReply {
     #[serde(with = "serde_bytes")]
     pub response: Vec<u8>,
     /// The stretching the account's password file was made under, when a
-    /// device raised it (`client-kdf`, D246); absent, the suite's default.
+    /// device raised it (`client-kdf`, D249); absent, the suite's default.
     /// An unknown login gets the default too, so this says nothing about
     /// whether the login exists.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -260,7 +260,7 @@ pub struct LoginFinishReply {
     /// The profile the account was registered for.
     pub profile_id: Id,
     /// The password checked out but the account wants a security key from
-    /// a device it hasn't seen (`account-security-keys`, D249): the session
+    /// a device it hasn't seen (`account-security-keys`, D250): the session
     /// comes from `/v1/account/login/second-factor/poll` once a key answered.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub second_factor: Option<crate::account_security::SecondFactorPending>,

@@ -42,7 +42,7 @@ export interface WebSession {
   signIn(input: { server: string; login: string; password: string; secretKey: string }): Promise<Status>
   unlock(password: string): Promise<Status>
   signOut(): Promise<void>
-  /** The WebAuthn request of a sign-in waiting for a security key (D253). */
+  /** The WebAuthn request of a sign-in waiting for a security key (D250). */
   signInWaiting(): Promise<GetRequest>
   /** The key's answer; the server checks it and the sign-in finishes. */
   signInAnswer(answer: GetAnswer): Promise<Status>

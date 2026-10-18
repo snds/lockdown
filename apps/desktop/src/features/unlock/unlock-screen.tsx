@@ -202,7 +202,7 @@ function JoinForm({ mode, onOpened }: { mode: "join" | "recover"; onOpened: (s: 
       form.reset()
       onOpened(await client.openVault(true))
     } catch (err) {
-      // A new device on an account with security keys waits for one (D253).
+      // A new device on an account with security keys waits for one (D250).
       if (needsSecurityKey(err)) {
         form.reset()
         setWaiting(field("server"))

@@ -1,6 +1,6 @@
 //! The recovery drill and the stretching around it (`recovery-kit`,
 //! `recovery-drill`, `client-kdf`; 04-security §4, §9;
-//! docs/plan/22-security-depth.md §5–§6).
+//! docs/plan/22-security-depth.md §5, §7).
 //!
 //! - **The last good drill** is a date on the identity's signed profile
 //!   (`lockdown.drilled_at`, a Lockdown field the identity crate keeps as

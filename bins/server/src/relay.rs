@@ -1,4 +1,4 @@
-//! The relays two ends meet through (docs/plan/22-security-depth.md §2, §7):
+//! The relays two ends meet through (docs/plan/22-security-depth.md §2, §9):
 //!
 //! - a **device link**: an enrolled device opens it with the hash of a
 //!   ten-character code; a new device joins with the code itself and gets

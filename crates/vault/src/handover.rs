@@ -56,7 +56,7 @@ pub fn root_key(identity: &Identity, keystore: &dyn DeviceKeystore) -> Result<(I
 
 /// Checks a device record another device proposes for itself, as the
 /// crate's handshake does (`check_proposed_device`), plus Lockdown's rule
-/// that a new device's receiving key is hybrid (pq-key-wrapping, D253): the
+/// that a new device's receiving key is hybrid (pq-key-wrapping, D248): the
 /// root key is about to be wrapped to it.
 pub fn check_proposed_device(device: &Device, enroller: Id) -> Result<()> {
     let bad = |why: &str| Err(Error::Invalid(why.to_string()));

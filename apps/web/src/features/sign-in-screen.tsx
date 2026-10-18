@@ -106,7 +106,7 @@ function SignInForm({ session, server, onSignedIn, credentials }: Pick<SignInScr
       form.reset()
       onSignedIn(status)
     } catch (err) {
-      // The password passed; the account asks this new device for a key (D253).
+      // The password passed; the account asks this new device for a key (D250).
       if (needsSecurityKey(err)) {
         form.reset()
         setWaiting(await session.signInWaiting())

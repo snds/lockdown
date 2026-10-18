@@ -81,7 +81,7 @@ pub const ACCOUNT_KSF: Argon2Params = if cfg!(feature = "insecure-test-kdf") {
 };
 
 /// The most an account's stretching may cost, whatever a server announces
-/// (D246): a gibibyte of memory, sixteen passes, sixteen lanes, the same
+/// (D249): a gibibyte of memory, sixteen passes, sixteen lanes, the same
 /// ceiling a password-sealed export reads under (D139). A server that names
 /// more is refused before anything is computed, so it cannot pin a device.
 pub const KSF_CEILING: Argon2Params = Argon2Params {
@@ -100,7 +100,7 @@ pub fn ksf_acceptable(params: &Argon2Params) -> bool {
 }
 
 /// Argon2id as OPAQUE's key-stretching function, at [`ACCOUNT_KSF`] by
-/// default or at an account's raised parameters (`client-kdf`, D246). The
+/// default or at an account's raised parameters (`client-kdf`, D249). The
 /// input is the OPRF output (already high-entropy and bound to the
 /// server's OPRF key), so the salt carries nothing and is fixed, as the
 /// `opaque-ke` crate's own Argon2 binding does.
@@ -265,7 +265,7 @@ impl RegistrationClient {
     }
 
     /// [`Self::finish`] with the stretching at `ksf`: the parameters the
-    /// account's password file will be made under (a renegotiation, D246).
+    /// account's password file will be made under (a renegotiation, D249).
     pub fn finish_stretched(
         self,
         password: &str,
@@ -606,7 +606,7 @@ pub struct Session {
     /// The profile the account was registered for.
     pub profile_id: Id,
     /// The account's second factor, when this sign-in needs one
-    /// (`account-security-keys`, D249).
+    /// (`account-security-keys`, D250).
     pub second_factor: Option<SecondFactorNeeded>,
 }
 
@@ -677,7 +677,7 @@ pub struct OpaqueAccountAuth<R: AuthRounds> {
     device: DeviceBinding,
     session: Option<Session>,
     /// The weakest stretching this device will sign in under for this
-    /// account: what it used last (parameters only rise, D246).
+    /// account: what it used last (parameters only rise, D249).
     at_least: Option<Argon2Params>,
     /// What the last sign-in stretched under.
     last_ksf: Option<Argon2Params>,

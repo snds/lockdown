@@ -32,7 +32,7 @@ import { PASSWORD_DAYS, promptFor, useDepthClient, type DrillCheck, type Reminde
 
 /**
  * The reminders around recovery, asked once each time they come due
- * (docs/plan/22-security-depth.md §5–§7): the first run's kit test
+ * (docs/plan/22-security-depth.md §7): the first run's kit test
  * (skipped only with an explicit "I understand"), the account password
  * every 14 days where unlocking never asks for it, and the yearly drill.
  */
