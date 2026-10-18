@@ -69,10 +69,12 @@ function place(host: HTMLElement, el: HTMLInputElement, wanted?: number) {
   host.style.left = `${Math.round(left)}px`
 }
 
-async function openMenu(el: HTMLInputElement, kind: FillWhat, existing?: string) {
+async function openMenu(el: HTMLInputElement, kind: FillWhat, existing?: string, valueAtFocus?: string) {
   if (menu && menu.el === el) return
   closeMenu()
-  const before = el.value
+  // The value when the person arrived, read before any await: typing that
+  // lands while the fixes or the registration are pending must still count.
+  const before = valueAtFocus ?? el.value
   const n = existing ?? (await register(el, kind, kind === "login" && isNewPassword(el)))
   // The person moved on, or started typing, while the menu was being set up.
   if (document.activeElement !== el || el.value !== before) {
@@ -119,12 +121,13 @@ document.addEventListener(
   (e) => {
     const el = e.target
     if (filling || !isInput(el) || !e.isTrusted) return
+    const valueAtFocus = el.value
     // The site's fill fixes first: they can say what the field is, or
     // that nothing fills here.
     void ensureFixes().then(() => {
       if (document.activeElement !== el) return
       const kind = classify(el)
-      if (kind) void openMenu(el, kind)
+      if (kind) void openMenu(el, kind, undefined, valueAtFocus)
     })
   },
   true,
