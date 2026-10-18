@@ -1,0 +1,64 @@
+/* The extension's own surfaces: the in-page menu frame, the save prompt and
+   the popup. Plain CSS for now (docs/plan/16-browser-extension.md §9: the
+   popup moves onto unicron once its tokens ship as a plain stylesheet).
+   Opaque, a minimum size, and never a page's look (03-architecture §9). */
+:root {
+  --bg: #ffffff;
+  --fg: #1b1c1f;
+  --muted: #5d6068;
+  --line: #d9dbe0;
+  --hover: #eef0f4;
+  --accent: #1f4fd1;
+  --accent-fg: #ffffff;
+  --stop-bg: #fde8e8;
+  --stop-fg: #8a1414;
+  font: 14px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1d1f23;
+    --fg: #eceef2;
+    --muted: #a3a7b0;
+    --line: #3a3d44;
+    --hover: #2a2d33;
+    --accent: #8aa9ff;
+    --accent-fg: #0d1430;
+    --stop-bg: #3d1a1a;
+    --stop-fg: #ffc9c9;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); }
+body.frame { overflow: hidden; height: 100vh; border: 1px solid var(--line); border-radius: 10px; }
+body.popup { width: 360px; min-height: 120px; padding: 12px; }
+button { font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid transparent; padding: 6px 10px; min-height: 32px; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: var(--accent-fg); }
+button.secondary { background: transparent; color: var(--fg); border-color: var(--line); }
+button.link { background: transparent; color: var(--accent); padding: 4px; min-height: 24px; text-decoration: underline; }
+button:disabled { opacity: 0.6; cursor: default; }
+.head { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.brand { font-weight: 600; }
+.host { color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.close { background: transparent; color: var(--muted); min-height: 24px; padding: 0 6px; }
+.msg { margin: 8px 10px; }
+.msg.stop, .warn { background: var(--stop-bg); color: var(--stop-fg); border-radius: 6px; padding: 8px 10px; }
+.list { overflow-y: auto; max-height: calc(100vh - 44px); }
+.item { display: flex; flex-direction: column; align-items: flex-start; width: 100%; text-align: left; background: transparent; color: var(--fg); border-radius: 0; border-bottom: 1px solid var(--line); padding: 8px 10px; }
+.item:hover, .item:focus-visible { background: var(--hover); }
+.title { font-weight: 600; display: flex; gap: 6px; align-items: center; }
+.sub { color: var(--muted); font-size: 12px; }
+.sub.block { display: block; margin-top: 4px; }
+.badge { font-weight: 400; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.actions { display: flex; gap: 8px; padding: 0 10px 10px; }
+h1 { font-size: 16px; margin: 0 0 8px; }
+h2 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); font-weight: 600; }
+.search { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; margin-top: 8px; }
+.rows { list-style: none; margin: 8px 0 0; padding: 0; }
+.row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.row .text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.row .text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code { font: 600 28px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.08em; margin: 8px 0; }
+.live { color: var(--muted); margin: 8px 0 0; min-height: 1em; }

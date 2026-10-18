@@ -1,8 +1,8 @@
 {
-  "name": "lockdown-extension-boundary",
+  "name": "lockdown-extension",
   "version": "0.1.0",
   "private": true,
-  "description": "The browser-driven harness for the Lockdown matcher boundary: builds lockdown-wasm and replays the clickjacking red-team cases in Chromium",
+  "description": "The Lockdown browser extension (MV3, Chromium and Firefox from one source), the wasm matcher boundary it stands on, and its browser-driven tests",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
@@ -11,11 +11,17 @@
   "packageManager": "pnpm@10.28.0",
   "scripts": {
     "build:wasm": "bash ./build-wasm.sh",
+    "build": "node scripts/build.mjs",
+    "build:native": "cargo build -p lockdown-native-host && cargo build -p lockdown-desktop --example browser-endpoint",
+    "typecheck": "tsc -p tsconfig.json",
     "test": "playwright test",
     "test:headed": "playwright test --headed"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1",
-    "@types/node": "22.19.0"
+    "@types/chrome": "0.3.4",
+    "@types/node": "22.19.0",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
   }
 }
