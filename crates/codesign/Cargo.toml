@@ -1,0 +1,49 @@
+[package]
+name = "lockdown-codesign"
+description = "Code-signature checks on the local channel: each end of the browser channel checks the other is signed by the same developer (Security framework on macOS, WinVerifyTrust on Windows), over the path and SHA-256 check every build keeps"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# The verifier and channel traits this crate implements, and the frame
+# encoding the socket shares with the identity crate's (D4, D33).
+ecosystem-identity.workspace = true
+# The signer certificate's fingerprints: SHA-256 to compare, SHA-1 for the
+# macOS requirement language's `H"…"` certificate hash.
+sha2.workspace = true
+sha1.workspace = true
+data-encoding.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+# The socket's peer credentials (SO_PEERCRED, getpeereid, LOCAL_PEERPID,
+# LOCAL_PEERTOKEN) and proc_pidpath; the version the identity crate links.
+libc = "0.2.190"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# CFString, CFData and CFDictionary for the Security framework calls (the
+# same version security-framework and keyring already link).
+core-foundation = "0.10.1"
+core-foundation-sys = "0.8.7"
+
+[target.'cfg(windows)'.dependencies]
+# WinVerifyTrust and the signer's certificate, on the line lockdown-pipe
+# already uses.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Cryptography",
+    "Win32_Security_Cryptography_Catalog",
+    "Win32_Security_Cryptography_Sip",
+    "Win32_Security_WinTrust",
+    "Win32_Storage_FileSystem",
+] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[target.'cfg(windows)'.dev-dependencies]
+# The signed-peer test runs over the real named pipe.
+lockdown-pipe.workspace = true

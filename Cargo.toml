@@ -25,6 +25,7 @@ members = [
     "crates/tls",
     "crates/web",
     "crates/pipe",
+    "crates/codesign",
 ]
 # The pure-Rust crates: everything that builds on CI without a platform SDK.
 # `ffi` and `wasm` are built with the shells, which bring UniFFI and the wasm
@@ -53,6 +54,7 @@ default-members = [
     "crates/tls",
     "crates/web",
     "crates/pipe",
+    "crates/codesign",
 ]
 
 [workspace.package]
@@ -89,6 +91,7 @@ lockdown-security = { path = "crates/security", version = "0.1.0" }
 lockdown-passkey = { path = "crates/passkey", version = "0.1.0" }
 lockdown-tls = { path = "crates/tls", version = "0.1.0" }
 lockdown-pipe = { path = "crates/pipe", version = "0.1.0" }
+lockdown-codesign = { path = "crates/codesign", version = "0.1.0" }
 
 # Cryptography: the same crates and versions the identity crate uses, so one
 # copy of each is linked (04-security.md §4–§5, 01-identity.md §10a).

@@ -20,11 +20,14 @@
 //!   file the desktop writes so the host knows which process it may talk to.
 //! - [`manifest`]: the native-messaging host manifest for each browser and
 //!   where each browser looks for it on Linux, macOS and Windows.
+//! - [`flatpak`]: the host-side wrapper a browser starts when the app runs
+//!   inside a Flatpak.
 
 #![forbid(unsafe_code)]
 
 pub mod caller;
 pub mod endpoint;
+pub mod flatpak;
 pub mod framing;
 pub mod manifest;
 

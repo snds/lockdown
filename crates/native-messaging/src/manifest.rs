@@ -108,9 +108,17 @@ impl Homes {
                 .map(PathBuf::from)
         };
         let home = var("HOME").or_else(|| var("USERPROFILE"))?;
+        // Inside a Flatpak, `XDG_CONFIG_HOME` is the app's own folder; the
+        // browsers read the host's, which Flatpak passes as
+        // `HOST_XDG_CONFIG_HOME` when it is set (else `~/.config`).
+        let config_home = if crate::flatpak::sandbox_app().is_some() {
+            var("HOST_XDG_CONFIG_HOME")
+        } else {
+            var("XDG_CONFIG_HOME")
+        };
         Some(Self {
             home,
-            config_home: var("XDG_CONFIG_HOME"),
+            config_home,
             local_app_data: var("LOCALAPPDATA"),
         })
     }

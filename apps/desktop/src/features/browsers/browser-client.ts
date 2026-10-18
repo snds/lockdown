@@ -30,6 +30,12 @@ export interface EndpointStatus {
   problem: string | null
   host_binary: string
   browsers: { browser: BrowserId; name: string; connected: boolean }[]
+  /**
+   * How the browser host is checked (docs/plan/29-release-polish.md §2):
+   * by its code signature on a signed build, by path and SHA-256 on an
+   * unsigned development build or on Linux. Absent from an older app.
+   */
+  peer_check?: { by: "signature" | "path_and_hash" | "refused"; detail: string }
 }
 
 /** Where a browser's host manifest was written. */

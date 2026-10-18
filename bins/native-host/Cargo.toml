@@ -20,6 +20,10 @@ lockdown-native-messaging.workspace = true
 # The Unix socket transport and the process-identity check (D4, D33).
 ecosystem-identity.workspace = true
 serde_json.workspace = true
+# The code-signature check of the app, both ways, on a signed build (macOS,
+# Windows), and the macOS socket that carries the audit token for it
+# (docs/plan/29-release-polish.md §2).
+lockdown-codesign.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 # The named pipe and its peer check on Windows (docs/plan/24-release.md §3).

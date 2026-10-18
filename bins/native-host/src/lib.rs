@@ -11,7 +11,9 @@
 //!    (Windows, `lockdown-pipe`) it names, and checks the process on the
 //!    other end is that executable with that SHA-256
 //!    ([`ProcessIdentityVerifier`], or `lockdown-pipe`'s check by the same
-//!    rules); the desktop checks this host the same way from its side.
+//!    rules) and, on a signed build (macOS, Windows), that it is signed by
+//!    the same developer (`lockdown-codesign`); the desktop checks this
+//!    host the same way from its side.
 //! 3. Sends a [`HostHello`] naming the caller, relays the desktop's first
 //!    frame (ready, or refused) to the browser, and then relays each
 //!    browser message to the desktop and each answer back, one at a time.
@@ -156,9 +158,9 @@ fn the_app(
 }
 
 /// Connects to the desktop named by the endpoint file in `data` and
-/// relays: over the Unix socket it names (Linux, macOS), checked by the
-/// identity crate's process identity.
-#[cfg(unix)]
+/// relays: over the Unix socket it names (Linux), checked by the identity
+/// crate's process identity. Linux has no code signatures.
+#[cfg(all(unix, not(target_os = "macos")))]
 pub fn run<R: Read, W: Write>(
     caller: Caller,
     data: &std::path::Path,
@@ -181,6 +183,39 @@ pub fn run<R: Read, W: Write>(
             return Err("nobody on the socket".into());
         }
     };
+    relay(caller, &verifier, channel, input, output)
+}
+
+/// Connects to the desktop named by the endpoint file in `data` and
+/// relays: over the Unix socket it names (macOS), checked by process
+/// identity (user, path, SHA-256) and, when this host is signed, by the
+/// app's code signature through the audit token the socket reported
+/// (`lockdown-codesign`): the same developer, as `design.snds.lockdown`.
+#[cfg(target_os = "macos")]
+pub fn run<R: Read, W: Write>(
+    caller: Caller,
+    data: &std::path::Path,
+    input: &mut R,
+    output: &mut W,
+) -> Result<(), String> {
+    use ecosystem_identity::handshake::PeerTransport;
+    use lockdown_codesign::{APP_IDENTIFIER, Both, SignatureVerifier, SocketTransport, own_policy};
+
+    let endpoint = endpoint(data, output)?;
+    let process = ProcessIdentityVerifier::new(vec![the_app(&endpoint)?]);
+    let policy = std::sync::Arc::new(own_policy(APP_IDENTIFIER));
+    let channel = match SocketTransport::at(&endpoint.socket).connect(HELLO_TIMEOUT) {
+        Ok(c) => c,
+        Err(_) => {
+            say(
+                output,
+                "no_app",
+                "Lockdown isn't running on this computer; open it and unlock",
+            );
+            return Err("nobody on the socket".into());
+        }
+    };
+    let verifier = Both(process, SignatureVerifier::new(policy, channel.peer_code()));
     relay(caller, &verifier, channel, input, output)
 }
 
@@ -219,7 +254,19 @@ pub fn run<R: Read, W: Write>(
             return Err("nobody on the pipe".into());
         }
     };
-    let bound = verifier.bind(channel.peer_process());
+    // A signed host also checks the app's Authenticode signer
+    // (`lockdown-codesign`); an unsigned development build checks path and
+    // hash only.
+    let signature = lockdown_codesign::SignatureVerifier::new(
+        std::sync::Arc::new(lockdown_codesign::own_policy(
+            lockdown_codesign::APP_IDENTIFIER,
+        )),
+        channel.peer_process().and_then(|p| p.exe.clone()).map_or(
+            lockdown_codesign::PeerCode::Unknown,
+            lockdown_codesign::PeerCode::Image,
+        ),
+    );
+    let bound = lockdown_codesign::Both(verifier.bind(channel.peer_process()), signature);
     relay(caller, &bound, channel, input, output)
 }
 
