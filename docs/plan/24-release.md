@@ -158,6 +158,13 @@ lockdown-native-host ── \\.\pipe\snds-lockdown-browser-<16 hex of SHA-256(da
 | Reproducibility | `reproducible.yml` | the same SHA-256 for both zips, both binaries and the image on two runner images, and the image's server equals the binary |
 | Supply chain | `ci.yml` · `vet` | `cargo vet --locked` |
 
+**Also fixed on the way** (the new runners found them):
+- `crates/app`'s list test looked for the CVC as `123"`, which any random item id ending in 123 also matches (about one run in 4096 per id). It now looks for the whole JSON string `"123"`.
+- The server's TLS renewal test sends SIGHUP. On Windows, which has no signals, it now relies on the file check (`--tls-reload-secs 1`).
+- CI's Rust tests run with `--no-fail-fast`, so one run shows every platform's failures.
+
+Counts: the Rust workspace on Linux went from 613 to 619 tests (`lockdown-pipe`'s 6). Windows adds 9 more that run only there (the pipe's 6, the registry's 1, the endpoint's 2). The extension's Playwright suites went from 48 to 51 (2 package tests, 1 in Firefox).
+
 Run locally:
 - `cargo test -p lockdown-pipe` (the Windows tests need Windows).
 - `cd extension && pnpm build:wasm && pnpm build && pnpm run package && pnpm exec playwright test test/package.spec.ts`.
