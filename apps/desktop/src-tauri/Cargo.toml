@@ -84,6 +84,10 @@ tauri-plugin-notification = { version = "2", optional = true }
 # from the identity crate (D4, D33), the matcher for a result's host, HMAC
 # for the pairing proof, and the OS random source for codes and challenges.
 lockdown-native-messaging.workspace = true
+# The host's code signature on a signed build (macOS, Windows), and the
+# macOS socket carrying the audit token for it
+# (docs/plan/29-release-polish.md §2).
+lockdown-codesign.workspace = true
 lockdown-matcher.workspace = true
 ecosystem-identity.workspace = true
 hmac.workspace = true

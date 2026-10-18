@@ -92,4 +92,16 @@ describe("Settings → Browsers", () => {
     )
     expect(await screen.findByText(/can't reach this app: the browser host isn't installed/)).toBeInTheDocument()
   })
+
+  it("says how the browser host is checked", async () => {
+    const detail = "This is a development build without a code signature, so the other program is checked by its path and SHA-256 only."
+    render(
+      <BrowserClientProvider
+        value={fake({ status: () => Promise.resolve({ listening: true, problem: null, host_binary: "/h", browsers: [], peer_check: { by: "path_and_hash", detail } }) })}
+      >
+        <BrowsersSection onNotice={() => {}} />
+      </BrowserClientProvider>,
+    )
+    expect(await screen.findByText(detail)).toBeInTheDocument()
+  })
 })

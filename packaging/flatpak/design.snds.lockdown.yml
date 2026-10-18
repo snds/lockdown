@@ -27,6 +27,17 @@ finish-args:
   - --share=network
   # The session token in the Secret Service keyring (lockdown_app::secrets).
   - --talk-name=org.freedesktop.secrets
+  # Connecting a browser on the host (docs/plan/29-release-polish.md §4):
+  # the folders each browser reads native-messaging manifests from, and
+  # nothing else of theirs. The manifests name the host-side wrapper the app
+  # writes into its own data folder (~/.var/app/design.snds.lockdown, which
+  # the host sees at the same path); the wrapper runs the host inside the
+  # running app's sandbox with `flatpak enter`.
+  - --filesystem=xdg-config/google-chrome/NativeMessagingHosts:create
+  - --filesystem=xdg-config/chromium/NativeMessagingHosts:create
+  - --filesystem=xdg-config/microsoft-edge/NativeMessagingHosts:create
+  - --filesystem=xdg-config/BraveSoftware/Brave-Browser/NativeMessagingHosts:create
+  - --filesystem=~/.mozilla/native-messaging-hosts:create
 modules:
   - name: lockdown
     buildsystem: simple

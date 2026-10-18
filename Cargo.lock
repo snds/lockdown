@@ -3332,6 +3332,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "lockdown-codesign"
+version = "0.1.0"
+dependencies = [
+ "core-foundation 0.10.1",
+ "core-foundation-sys",
+ "data-encoding",
+ "ecosystem-identity",
+ "libc",
+ "lockdown-pipe",
+ "sha1 0.11.0",
+ "sha2 0.11.1",
+ "tempfile",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "lockdown-crypto"
 version = "0.1.0"
 dependencies = [
@@ -3398,6 +3414,7 @@ dependencies = [
  "hmac 0.13.0",
  "keyring",
  "lockdown-app",
+ "lockdown-codesign",
  "lockdown-crypto",
  "lockdown-matcher",
  "lockdown-native-messaging",
@@ -3458,6 +3475,7 @@ name = "lockdown-native-host"
 version = "0.1.0"
 dependencies = [
  "ecosystem-identity",
+ "lockdown-codesign",
  "lockdown-native-messaging",
  "lockdown-pipe",
  "serde_json",

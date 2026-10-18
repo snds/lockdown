@@ -55,6 +55,9 @@ export function BrowsersSection({ onNotice }: { onNotice: (text: string) => void
             ? "The Lockdown extension can reach this app while it is open. A browser pairs once, with a code you compare here."
             : `The browser extension can't reach this app: ${status.problem ?? "not running"}.`}
       </p>
+      {status?.peer_check && (
+        <p className={status.peer_check.by === "refused" ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>{status.peer_check.detail}</p>
+      )}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

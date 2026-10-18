@@ -350,3 +350,61 @@ jobs:
           LOCKDOWN_TEST_S3_ACCESS_KEY: lockdowntest
           LOCKDOWN_TEST_S3_SECRET_KEY: lockdowntest-secret
         run: cargo test -p lockdown-server -p lockdown-cli -p lockdown-app -p lockdown-web
+
+  # Code signatures on the browser channel (docs/plan/29-release-polish.md
+  # §2): the test binary (playing the app) and copies of a peer (playing
+  # the host) are signed with two throwaway certificates made in the job,
+  # never a real identity; then each signed end must accept the same signer
+  # and refuse another signer, an unsigned peer and (macOS) another
+  # identifier, both ways, over the real socket with its audit token.
+  codesign-macos:
+    name: code signatures (macos)
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the test and the peer
+        run: |
+          cargo build -p lockdown-codesign --example peer
+          test=$(cargo test -p lockdown-codesign --test signed --no-run --message-format=json \
+            | jq -r 'select(.reason == "compiler-artifact" and .target.name == "signed" and .profile.test) | .executable')
+          echo "TEST_BIN=$test" >> "$GITHUB_ENV"
+      - name: Throwaway certificates; sign
+        run: packaging/codesign/throwaway-macos.sh "$RUNNER_TEMP/signed" "$TEST_BIN" target/debug/examples/peer >> "$GITHUB_ENV"
+      - name: Signed ends check each other
+        env:
+          LOCKDOWN_CODESIGN_TEST: require
+        run: '"$LOCKDOWN_CODESIGN_APP_TEST" --nocapture'
+
+  codesign-windows:
+    name: code signatures (windows)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the test and the peer
+        run: |
+          cargo build -p lockdown-codesign --example peer
+          test=$(cargo test -p lockdown-codesign --test signed --no-run --message-format=json \
+            | jq -r 'select(.reason == "compiler-artifact" and .target.name == "signed" and .profile.test) | .executable')
+          echo "TEST_BIN=$test" >> "$GITHUB_ENV"
+      - name: Throwaway certificates; sign
+        shell: pwsh
+        run: pwsh packaging/codesign/throwaway-windows.ps1 -Out "$env:RUNNER_TEMP\signed" -TestBin "$env:TEST_BIN" -PeerBin target\debug\examples\peer.exe
+      - name: Signed ends check each other
+        shell: pwsh
+        env:
+          LOCKDOWN_CODESIGN_TEST: require
+        run: '& $env:LOCKDOWN_CODESIGN_APP_TEST --nocapture'
+      - name: Forget the throwaway certificates
+        if: always()
+        shell: pwsh
+        run: |
+          Get-ChildItem Cert:\LocalMachine\Root, Cert:\CurrentUser\My | Where-Object { $_.Subject -like "CN=Lockdown throwaway test signer*" } | Remove-Item

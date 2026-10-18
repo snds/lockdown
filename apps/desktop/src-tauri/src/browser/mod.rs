@@ -36,6 +36,7 @@ use serde_json::json;
 use zeroize::{Zeroize, Zeroizing};
 
 use handler::{Conn, Refusal, error_frame, handle};
+use lockdown_codesign::{HOST_IDENTIFIER, Policy, own_policy};
 use pairing::{PairedView, Pairings, PendingView, random};
 
 /// The native host's file name beside the app's executable.
@@ -299,6 +300,20 @@ pub struct EndpointStatus {
     /// The browsers whose folders exist for this user, with whether a
     /// manifest for Lockdown is in place.
     pub browsers: Vec<BrowserView>,
+    /// How the host on the other end is checked (added after D62's first
+    /// shape; readers ignore it if they don't know it).
+    pub peer_check: PeerCheckView,
+}
+
+/// How this build checks the browser host it accepts
+/// (docs/plan/29-release-polish.md §2): `signature` (a signed build: the
+/// host must be signed by the same developer, as well as match its path and
+/// SHA-256), `path_and_hash` (an unsigned development build, or Linux), or
+/// `refused` (this build's own signature isn't accepted, so no host is).
+#[derive(Clone, Debug, Serialize)]
+pub struct PeerCheckView {
+    pub by: &'static str,
+    pub detail: String,
 }
 
 /// One browser on this machine.
@@ -314,6 +329,9 @@ pub struct Endpoint {
     shared: Arc<Shared>,
     config: EndpointConfig,
     problem: Option<String>,
+    /// What this build requires of the host's code signature, read once
+    /// from its own signature.
+    policy: Arc<Policy>,
     #[cfg(any(unix, windows))]
     stop: Arc<std::sync::atomic::AtomicBool>,
 }
@@ -327,6 +345,7 @@ impl Endpoint {
             shared,
             config,
             problem: Some(problem),
+            policy: Arc::new(own_policy(HOST_IDENTIFIER)),
             #[cfg(any(unix, windows))]
             stop: Arc::new(std::sync::atomic::AtomicBool::new(true)),
         }
@@ -342,7 +361,8 @@ impl Endpoint {
         std::fs::create_dir_all(&config.data)
             .map_err(|e| format!("couldn't make the data directory: {e}"))?;
         let shared = Arc::new(Shared::new(app, copy, &config.data)?);
-        Ok(match Self::listen(Arc::clone(&shared), &config) {
+        let policy = Arc::new(own_policy(HOST_IDENTIFIER));
+        Ok(match Self::listen(Arc::clone(&shared), &config, policy) {
             Ok(endpoint) => endpoint,
             Err(problem) => Self::idle(shared, config, problem),
         })
@@ -393,6 +413,7 @@ impl Endpoint {
     fn accept_loop<T, V, F>(
         shared: Arc<Shared>,
         config: &EndpointConfig,
+        policy: Arc<Policy>,
         transport: T,
         verifier_for: F,
     ) -> Result<Self, String>
@@ -431,12 +452,19 @@ impl Endpoint {
             shared,
             config: config.clone(),
             problem: None,
+            policy,
             stop,
         })
     }
 
-    #[cfg(unix)]
-    fn listen(shared: Arc<Shared>, config: &EndpointConfig) -> Result<Self, String> {
+    /// Linux: the identity crate's socket, the host checked by process
+    /// identity (user, path, SHA-256); Linux has no code signatures.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    fn listen(
+        shared: Arc<Shared>,
+        config: &EndpointConfig,
+        policy: Arc<Policy>,
+    ) -> Result<Self, String> {
         use ecosystem_identity::handshake::ProcessIdentityVerifier;
         use ecosystem_identity::handshake::unix::UnixSocketTransport;
         use ecosystem_identity::handshake::verify::AllowedBinary;
@@ -454,14 +482,55 @@ impl Endpoint {
             path: config.host_binary.clone(),
             sha256: Some(host_hash),
         }]);
-        Self::accept_loop(shared, config, transport, move |_| verifier.clone())
+        Self::accept_loop(shared, config, policy, transport, move |_| verifier.clone())
+    }
+
+    /// macOS: the socket that carries the host's audit token
+    /// (`lockdown-codesign`), the host checked by process identity and, on a
+    /// signed build, by its code signature (the same developer, as
+    /// `lockdown-native-host`).
+    #[cfg(target_os = "macos")]
+    fn listen(
+        shared: Arc<Shared>,
+        config: &EndpointConfig,
+        policy: Arc<Policy>,
+    ) -> Result<Self, String> {
+        use ecosystem_identity::handshake::ProcessIdentityVerifier;
+        use ecosystem_identity::handshake::verify::AllowedBinary;
+        use lockdown_codesign::{Both, SignatureVerifier, SocketTransport};
+        use lockdown_native_messaging::endpoint::socket_path;
+
+        let (host_hash, app_hash) = Self::hashes(config)?;
+        let socket = socket_path(&config.data);
+        let transport = SocketTransport::at(&socket);
+        transport
+            .listen()
+            .map_err(|e| format!("couldn't open the browser socket: {e}"))?;
+        Self::write_endpoint(config, socket, &app_hash)?;
+        let verifier = ProcessIdentityVerifier::new(vec![AllowedBinary {
+            app: "native-host".into(),
+            path: config.host_binary.clone(),
+            sha256: Some(host_hash),
+        }]);
+        let check = Arc::clone(&policy);
+        Self::accept_loop(shared, config, policy, transport, move |ch| {
+            Both(
+                verifier.clone(),
+                SignatureVerifier::new(Arc::clone(&check), ch.peer_code()),
+            )
+        })
     }
 
     /// Windows: the named pipe (`lockdown-pipe`), user-only, checked by the
     /// same rules as the socket: user, path and SHA-256 of the host.
     #[cfg(windows)]
-    fn listen(shared: Arc<Shared>, config: &EndpointConfig) -> Result<Self, String> {
+    fn listen(
+        shared: Arc<Shared>,
+        config: &EndpointConfig,
+        policy: Arc<Policy>,
+    ) -> Result<Self, String> {
         use ecosystem_identity::handshake::verify::AllowedBinary;
+        use lockdown_codesign::{Both, PeerCode, SignatureVerifier};
         use lockdown_pipe::{PipeTransport, PipeVerifier, pipe_name};
 
         let (host_hash, app_hash) = Self::hashes(config)?;
@@ -476,13 +545,26 @@ impl Endpoint {
             path: config.host_binary.clone(),
             sha256: Some(host_hash),
         }]);
-        Self::accept_loop(shared, config, transport, move |ch| {
-            verifier.bind(ch.peer_process())
+        let check = Arc::clone(&policy);
+        Self::accept_loop(shared, config, policy, transport, move |ch| {
+            // A signed build also checks the host's Authenticode signer.
+            let code = ch
+                .peer_process()
+                .and_then(|p| p.exe.clone())
+                .map_or(PeerCode::Unknown, PeerCode::Image);
+            Both(
+                verifier.bind(ch.peer_process()),
+                SignatureVerifier::new(Arc::clone(&check), code),
+            )
         })
     }
 
     #[cfg(not(any(unix, windows)))]
-    fn listen(_shared: Arc<Shared>, _config: &EndpointConfig) -> Result<Self, String> {
+    fn listen(
+        _shared: Arc<Shared>,
+        _config: &EndpointConfig,
+        _policy: Arc<Policy>,
+    ) -> Result<Self, String> {
         Err("the browser extension can't reach the app on this system".into())
     }
 
@@ -544,6 +626,10 @@ impl Endpoint {
             problem: self.problem.clone(),
             host_binary: self.config.host_binary.display().to_string(),
             browsers,
+            peer_check: PeerCheckView {
+                by: self.policy.kind(),
+                detail: self.policy.describe(),
+            },
         }
     }
 
@@ -560,10 +646,22 @@ impl Endpoint {
         } else {
             browsers.to_vec()
         };
+        // Inside a Flatpak the browser can't start the host in the sandbox
+        // directly: the manifests name the host-side wrapper that enters
+        // the running app's sandbox (docs/plan/29-release-polish.md §4).
+        let host = match lockdown_native_messaging::flatpak::sandbox_app() {
+            Some(app) => lockdown_native_messaging::flatpak::install_wrapper(
+                &self.config.data,
+                &app,
+                &homes.home,
+            )
+            .map_err(|e| format!("couldn't write the Flatpak's browser host: {e}"))?,
+            None => self.config.host_binary.clone(),
+        };
         wanted
             .into_iter()
             .map(|b| {
-                let target = manifest::install(os, b, &homes, &self.config.host_binary)
+                let target = manifest::install(os, b, &homes, &host)
                     .map_err(|e| format!("couldn't connect {}: {e}", b.name()))?;
                 // Windows: the browser finds the manifest through a
                 // per-user registry value naming it.

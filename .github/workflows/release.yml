@@ -195,6 +195,10 @@ jobs:
           out=$(flatpak run --command=lockdown-native-host design.snds.lockdown </dev/null 2>/dev/null | tail -c +5 || true)
           echo "$out"
           echo "$out" | grep -q '"event":"refused"'
+      # A browser on the host reaching the app inside the sandbox through
+      # the host-side wrapper (docs/plan/29-release-polish.md §4).
+      - name: A browser reaches the app inside the Flatpak
+        run: sh packaging/flatpak/browser-test.sh
       - uses: actions/upload-artifact@v4
         with:
           name: linux-flatpak
