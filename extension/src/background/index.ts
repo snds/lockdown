@@ -367,6 +367,10 @@ async function route(msg: ToBackground, sender: chrome.runtime.MessageSender): P
     case "copy":
       if (!isExtensionPage(sender, "popup.html")) throw new Error("refused")
       return link.call("copy", { item_id: msg.item_id })
+    case "code_show":
+      // Quick access's show-code action: the code valid now, through the app's gates.
+      if (!isExtensionPage(sender, "popup.html")) throw new Error("refused")
+      return link.call("code_show", { item_id: msg.item_id })
     case "site": {
       if (!isExtensionPage(sender, "popup.html")) throw new Error("refused")
       const tab = await activeTab(msg.tab_id)

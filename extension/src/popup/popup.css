@@ -1,0 +1,14 @@
+/*
+ * The popup on the shared design system (docs/plan/26-desktop-finish.md §9):
+ * Tailwind, unicron's tokens (the same release as the desktop app), Inter,
+ * the Material Symbols font and the primitives' classes. Nothing of the
+ * in-page frame uses this sheet; it stays plain (static/ui.css).
+ */
+@import "@unicron/ui/styles";
+@source "./";
+
+@layer base {
+  body {
+    background: var(--background);
+  }
+}

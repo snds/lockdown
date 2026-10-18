@@ -185,7 +185,7 @@ test("never fill here holds in the menu, the popup and the core", async () => {
   await p.goto(at("fixsite.test", "/ext/fix.html"));
   const pop = await popupFor(p);
   await pop.getByText("Fix this page").click();
-  await pop.getByLabel("Never fill on fixsite.test").check();
+  await pop.getByRole("checkbox", { name: "Never fill on fixsite.test" }).check();
   await pop.getByRole("button", { name: "Save fix" }).click();
   await expect(pop.getByRole("status")).toContainText("Kept the fix");
   // The popup's own Fill is refused, with the reason.

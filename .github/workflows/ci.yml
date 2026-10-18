@@ -87,6 +87,10 @@ jobs:
         run: pnpm typecheck
       - name: Build the extension (Chromium and Firefox)
         run: pnpm build
+      # The popup is on unicron (docs/plan/26-desktop-finish.md §9): the same
+      # design-system ratchet the desktop runs, over the popup's own files.
+      - name: Design-system ratchet (popup)
+        run: pnpm ds:ratchet
       - name: Red team and end to end in the browser
         run: pnpm test
       - uses: actions/upload-artifact@v4
