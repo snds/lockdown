@@ -15,7 +15,7 @@ export function parseLink(text: string): { itemId: string; fieldId: string } {
   return at < 0 ? { itemId: "", fieldId: "" } : { itemId: text.slice(0, at), fieldId: text.slice(at + 1) }
 }
 
-/** How long the Wi-Fi guest card stays up before it hides itself (D236). */
+/** How long the Wi-Fi guest card stays up before it hides itself (D239). */
 export const WIFI_CARD_LIFETIME_S = 60
 
 /** The four-module quiet zone a QR code needs around it to scan. */

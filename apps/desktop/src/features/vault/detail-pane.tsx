@@ -166,7 +166,7 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
       return <LinkedField key={f.field_id} itemId={item.id} field={f} onNotice={onNotice} fillOnly={fillOnly} />
     }
     // Any password reads across a room or types into a TV: large type on every hidden value but a
-    // code's set-up and passkey material (matrix `large-type`; D237).
+    // code's set-up and passkey material (matrix `large-type`; D242).
     const big = largeType ?? (f.hidden && f.kind !== "totp" && f.kind !== "passkey" ? `${t?.label ?? f.label} · ${item.fields.find((x) => x.field_id === "title")?.value ?? kindLabel(item.kind)}` : undefined)
     return (
       <ItemField

@@ -173,7 +173,7 @@ impl App {
         Ok((value, preview))
     }
 
-    // --- the Wi-Fi guest card (D236) -------------------------------------------
+    // --- the Wi-Fi guest card (D239) -------------------------------------------
 
     /// The network's joining code as a QR grid ([`crate::session::depth`]
     /// `qr_bytes`): the password is in it, so it goes through the `Reveal`

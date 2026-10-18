@@ -1672,7 +1672,15 @@ mod tests {
             "title only"
         );
         let json = serde_json::to_string(&rows).unwrap();
-        for secret in ["4111", "123\"", phrase, generated.as_str(), "GEZDGNBV"] {
+        // The number with its space: a random item id can hold "4111".
+        for secret in [
+            "4111 1111",
+            "4111111111111111",
+            "123\"",
+            phrase,
+            generated.as_str(),
+            "GEZDGNBV",
+        ] {
             assert!(!json.contains(secret), "{secret} in the list");
         }
         let detail = app.show(&card, false).unwrap();
@@ -1682,7 +1690,11 @@ mod tests {
             .find(|f| f.field_id == "card.type")
             .unwrap();
         assert_eq!(brand.value.as_deref(), Some("Visa"));
-        assert!(!serde_json::to_string(&detail).unwrap().contains("4111"));
+        assert!(
+            !serde_json::to_string(&detail)
+                .unwrap()
+                .contains("4111 1111")
+        );
 
         // An edit: untouched secrets kept without being sent; a field of your own added.
         let n = app

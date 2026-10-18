@@ -26,7 +26,7 @@ interface WifiCardProps {
 }
 
 /**
- * The Wi-Fi guest card (matrix `wifi-items`; D236): a QR code a guest's
+ * The Wi-Fi guest card (matrix `wifi-items`; D239): a QR code a guest's
  * phone camera joins the network from, full size in a sheet that hides
  * itself after a minute, when the window loses focus and when the vault
  * locks, and a printable card. The code holds the network's password, so

@@ -1,7 +1,7 @@
 //! Vault depth (docs/plan/21-vault-depth.md): the session's half of the
 //! template variants and the person's own templates (D231, D232), fields
 //! that link to another item's field (D235), the sites' password rules
-//! (D236), the Wi-Fi guest card (D236), sign-ins logged on someone else's
+//! (D236), the Wi-Fi guest card (D239), sign-ins logged on someone else's
 //! screen (D237), the card's security-code re-prompt (D238) and files
 //! attached from disk a chunk at a time (D233).
 //!
@@ -682,7 +682,7 @@ impl Session {
         Ok(out)
     }
 
-    // --- the Wi-Fi guest card (D236) ------------------------------------------
+    // --- the Wi-Fi guest card (D239) ------------------------------------------
 
     /// A Wi-Fi network's joining code as a QR grid. The caller gates it
     /// (`Reveal` for a crown jewel) and counts it as a use.

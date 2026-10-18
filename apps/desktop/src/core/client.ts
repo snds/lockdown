@@ -226,7 +226,7 @@ export interface Client {
   linkTargets(vaultId: string, except?: string): Promise<LinkTargetView[]>
   /** What `recipe` would make, with a login's site rules when it has some (D230, D236). */
   generatorPreview(recipe: Recipe, url?: string, rule?: string): Promise<GeneratorPreview>
-  /** The Wi-Fi card's QR grid (D236): its width, then a byte per module. A secret; the caller wipes it. */
+  /** The Wi-Fi card's QR grid (D239): its width, then a byte per module. A secret; the caller wipes it. */
   wifiQr(id: string, gate?: GateInput): Promise<Uint8Array>
   /** Logs a sign-in on someone else's screen, reminded in `remindInHours` (D237). */
   logAway(input: { id: string; place: string; remindInHours: number }, gate?: GateInput): Promise<number>

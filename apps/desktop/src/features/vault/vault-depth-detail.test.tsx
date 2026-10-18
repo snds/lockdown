@@ -87,7 +87,7 @@ describe("vault depth in the detail (docs/plan/21-vault-depth.md)", () => {
     expect(screen.queryByText("w1#wifi.passphrase")).toBeNull()
   })
 
-  it("shows the Wi-Fi guest card through the gate and hides it on lock (D236)", async () => {
+  it("shows the Wi-Fi guest card through the gate and hides it on lock (D239)", async () => {
     let held: Uint8Array | null = null
     const wifiQr = vi.fn<Client["wifiQr"]>(() => {
       held = grid()
