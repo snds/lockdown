@@ -209,12 +209,18 @@ fn backup_cmd(args: &[&str], key: &str) -> std::process::Output {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child
+    // `keygen` exits without reading a key, so the write can find stdin
+    // already closed (a broken pipe, seen on macOS); that is not a failure.
+    match child
         .stdin
         .take()
         .unwrap()
         .write_all(format!("{key}\n").as_bytes())
-        .unwrap();
+    {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {}
+        Err(e) => panic!("couldn't give the backup command its key: {e}"),
+    }
     child.wait_with_output().unwrap()
 }
 
