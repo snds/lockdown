@@ -66,6 +66,7 @@ const EMPTY: Record<ListView, [string, string]> = {
   deleted: ["The trash is empty", "Trashed items stay readable here through their grace period."],
   favourites: ["No favourites yet", "Star an item from its menu or its detail; favourites come first in quick access."],
   archived: ["Nothing archived", "Archive an item to take it out of the list and search without deleting it."],
+  contacts: ["No contacts yet", "Add someone with New item → Contact. Contacts are never used to fill a form."],
 }
 
 /**
@@ -128,7 +129,7 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
       </DropdownMenu>
       <IconButton label="Quick access" icon="bolt" shortcut={isMac() ? "⌘K" : "Ctrl+K"} onClick={onPalette} />
       <IconButton label="Find duplicates" icon="merge" onClick={() => setDuplicates(true)} />
-      <NewItemMenu onPick={(kind) => setEditor({ kind, item: null, vaultId: scope?.vault ?? vaults.find((v) => v.folders.some((f) => f.id === scope?.folder))?.id, folder: scope?.folder, tags: scope?.tag ? [scope.tag] : undefined })} />
+      <NewItemMenu onPick={(kind) => setEditor({ kind, item: null, vaultId: scope?.vault ?? vaults.find((v) => v.folders.some((f) => f.id === scope?.folder))?.id, folder: scope?.folder, tags: scope?.tag ? [scope.tag] : undefined })} onNotice={onNotice} />
     </PaneHeader>
   )
 
@@ -220,7 +221,7 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
               key={`${selected}:${version}`}
               id={selected}
               rows={rows ?? []}
-              onEdit={(item) => setEditor({ kind: item.kind, item })}
+              onEdit={(item) => setEditor({ kind: item.template ?? item.kind, item })}
               onTrashed={() => {
                 setSelected(null)
                 bump()

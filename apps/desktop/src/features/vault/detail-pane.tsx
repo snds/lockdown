@@ -29,6 +29,9 @@ import { sectionsOf } from "./detail-model"
 import { conflictPair, kindLabel } from "./list-model"
 import { ItemField, type SecretFormat } from "./item-field"
 import { ShowLargeType } from "./large-type"
+import { AwayBlock } from "./away-block"
+import { LinkedField } from "./linked-field"
+import { WifiCard } from "./wifi-card"
 
 interface DetailPaneProps {
   /** The parent keys this pane by item and version, so a change remounts it. */
@@ -63,7 +66,7 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
   const gate = useGate()
   const { vaults } = useVaults()
   const [purging, setPurging] = useState(false)
-  const { forKind, fieldOf } = useTemplates()
+  const { forTemplate, fieldOf } = useTemplates()
   const [item, setItem] = useState<ItemDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [confirm, setConfirm] = useState(false)
@@ -151,13 +154,20 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
   }
   const title = item.fields.find((f) => f.field_id === "title")?.value ?? kindLabel(item.kind)
   const trashed = item.state === "trashed"
-  const template = forKind(item.kind)
+  // Drawn from its own template: a variant (a Passport) or the person's own (D231, D232).
+  const template = forTemplate(item.template ?? item.kind, item.kind)
   // Shared with this person (docs/plan/18-sharing.md): offer only what the right allows.
   const access = item.access
   const canEdit = !access || access === "edit" || access === "manage"
   const fillOnly = access === "fill-only"
   const field = (f: FieldView, format?: SecretFormat, largeType?: string) => {
-    const t = fieldOf(item.kind, f.field_id)
+    const t = template?.fields.find((x) => x.field_id === f.field_id) ?? fieldOf(item.kind, f.field_id)
+    if (f.kind === "linked") {
+      return <LinkedField key={f.field_id} itemId={item.id} field={f} onNotice={onNotice} fillOnly={fillOnly} />
+    }
+    // Any password reads across a room or types into a TV: large type on every hidden value but a
+    // code's set-up and passkey material (matrix `large-type`; D237).
+    const big = largeType ?? (f.hidden && f.kind !== "totp" && f.kind !== "passkey" ? `${t?.label ?? f.label} · ${item.fields.find((x) => x.field_id === "title")?.value ?? kindLabel(item.kind)}` : undefined)
     return (
       <ItemField
         key={f.field_id}
@@ -166,7 +176,7 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
         control={t?.control}
         onNotice={onNotice}
         format={format ?? (t?.grouped ? "groups-of-4" : undefined)}
-        largeType={fillOnly ? undefined : largeType}
+        largeType={fillOnly ? undefined : big}
         fillOnly={fillOnly}
       />
     )
@@ -228,6 +238,9 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
         )}
         {!trashed && (
           <div className="flex shrink-0 items-center gap-1">
+            {item.kind === "wi-fi" && !fillOnly && (
+              <WifiCard itemId={item.id} ssid={item.fields.find((f) => f.field_id === "wifi.ssid")?.value ?? title} hasPassword={item.fields.some((f) => f.field_id === "wifi.passphrase")} />
+            )}
             <ItemShare item={item} title={title} onNotice={onNotice} />
             {template?.creatable && canEdit && (
               <Button variant="outline" size="sm" onClick={() => onEdit(item)}>
@@ -279,6 +292,10 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
       )}
       {!trashed && <ItemSecurity key={`${item.id}:${item.version}`} itemId={item.id} onNotice={onNotice} />}
       {item.crown_jewel ? <ItemCrownJewel title={title}>{body}</ItemCrownJewel> : body}
+      {item.reprompt && <p className="text-sm text-muted-foreground">This card asks it's you before its security code is shown, copied or filled.</p>}
+      {!trashed && !fillOnly && (item.kind === "login" || (item.away?.length ?? 0) > 0) && (
+        <AwayBlock itemId={item.id} title={title} away={item.away ?? []} canEdit={canEdit} onChanged={onChanged} />
+      )}
       {item.crown_jewel && !trashed && <ExportOptIn item={item} onChanged={setItem} onNotice={onNotice} />}
       {!fillOnly && (
         <FilesPanel
@@ -369,6 +386,16 @@ const empty = <p className="text-sm text-muted-foreground">Nothing filled in yet
 
 /** The layout per kind (brief §3.1). A kind without a template renders the generic field list. */
 function layoutFor(item: ItemDetail, template: TemplateView | null, field: FieldRenderer, codeBlocks: ReactNode[], passkeyBlock: ReactNode): ReactNode {
+  if (item.kind !== "login" && item.kind !== "code" && codeBlocks.length > 0) {
+    // A code of your own on any other kind (D235's sibling): drawn as a code, its set-up left out.
+    const rest = { ...item, fields: item.fields.filter((f) => f.kind !== "totp") }
+    return (
+      <>
+        <Block title="One-time codes">{codeBlocks}</Block>
+        {layoutFor(rest, template, field, [], passkeyBlock)}
+      </>
+    )
+  }
   const fields = item.fields.filter((f) => !isMeta(f))
   const title = item.fields.find((f) => f.field_id === "title")?.value ?? kindLabel(item.kind)
   const sections = (list: FieldView[], render: (f: FieldView) => ReactNode = (f) => field(f)) =>

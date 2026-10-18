@@ -36,7 +36,7 @@ export interface PolicyInput {
 }
 
 /** The smart views (crates/app/src/views.rs), as `ItemSummary.views` names them. */
-export type SmartView = "passkeys" | "codes" | "wi-fi" | "expiring" | "attention" | "deleted" | "favourites" | "archived"
+export type SmartView = "passkeys" | "codes" | "wi-fi" | "expiring" | "attention" | "deleted" | "favourites" | "archived" | "contacts"
 
 export interface ItemSummary {
   id: string
@@ -57,6 +57,8 @@ export interface ItemSummary {
   views: SmartView[]
   /** The template's plain field under the title, or the username; empty for a crown jewel (title only). */
   subtitle: string
+  /** The template it is drawn from (D231); always sent by the core. */
+  template?: string
   /** What the row's quick copy takes (palette, copy button), when the item holds it. */
   copy: CopyTarget | null
   // Organization (docs/plan/15-organization.md). Always sent by the core;
@@ -115,6 +117,20 @@ export interface FieldView {
   mask: string | null
   /** A web address's match rule (`exact_host`, `base_domain`, `equivalent`, `starts_with`, `never`). */
   match_rule?: string
+  /** A link to another item's field (D235): what it points at, never its value. */
+  link?: LinkView
+}
+
+/** What a linked field points at (D235). */
+export interface LinkView {
+  item_id: string
+  field_id: string
+  title: string
+  label: string
+  secret: boolean
+  code: boolean
+  /** The item or field is gone (trashed, removed). */
+  missing: boolean
 }
 
 /** The bridge tiers' internal ids (D96); people see the badge's words, never these. */
@@ -148,6 +164,12 @@ export interface ItemDetail {
   crown_jewel_fixed?: boolean
   /** Something shared with this person: their right (as on `ItemSummary.access`). */
   access?: Access
+  /** The template it is drawn from (D231): `identity`, `identity/passport`, `user:<id>`. */
+  template?: string
+  /** Sign-ins on someone else's screen not yet signed out (D237). */
+  away?: AwayView[]
+  /** A card asks before its security code is used (D238). */
+  reprompt?: boolean
 }
 
 /** One one-time code now: values and timing, never the set-up. */
@@ -326,6 +348,7 @@ export type Control =
   | "boolean"
   | "totp"
   | "passkey"
+  | "linked"
 
 export interface GeneratorView {
   length: number
@@ -355,6 +378,14 @@ export interface FieldTemplateView {
 
 export interface TemplateView {
   kind: string
+  /** The template's id (D231): the kind, `kind/variant`, or `user:<id>` for one of the person's own. */
+  id?: string
+  /** The variant's name, or empty for the kind's own. */
+  variant?: string
+  /** A Material Symbols icon name. */
+  icon?: string
+  /** Whether any field is ever filled into a page (a Contact's are not). */
+  fills?: boolean
   /** Singular, plain words: "Wi-Fi network". */
   name: string
   summary: string
@@ -395,6 +426,8 @@ export interface FieldChangeInput {
   flag?: boolean
   /** With a web address's `text`: how it matches pages. */
   match_rule?: string
+  /** With `generate`: the person's options (D230). */
+  recipe?: Recipe
 }
 
 // --- organization (docs/plan/15-organization.md) --------------------------------
@@ -616,4 +649,89 @@ export interface BackupStatus {
   next_due_at: number | null
   crown_jewels_left_out: number
   backups: BackupFile[]
+}
+
+// --- vault depth (docs/plan/21-vault-depth.md) ----------------------------------
+
+/** The generator's options (D230): a character password or a passphrase. */
+export type Recipe =
+  | { style: "characters"; length: number; digits: boolean; symbols: boolean; unambiguous?: boolean; avoid?: string }
+  | { style: "words"; words: number; separator?: string; capitalize?: boolean; number?: boolean }
+
+/** A site's password rules (D236). */
+export interface SiteRuleView {
+  host: string
+  rule: string
+  words: string
+  /** `saved` on the login, or `published` by the site. */
+  source: "saved" | "published"
+}
+
+/** What the options make, without making it. */
+export interface GeneratorPreview {
+  words: string
+  bits: number
+  strength: "weak" | "fair" | "strong"
+  site: SiteRuleView | null
+}
+
+/** A sign-in on someone else's screen (D237). */
+export interface AwayView {
+  place: string
+  at: number
+  remind_at: number
+  due: boolean
+}
+
+export interface AwayReminder extends AwayView {
+  item_id: string
+  title: string
+}
+
+/** One field of a person's own template (D232). */
+export interface UserFieldView {
+  key: string
+  /** `tpl.<key>`. */
+  field_id?: string
+  label: string
+  /** A `CustomKindView.kind`. */
+  kind: string
+  required?: boolean
+  hint?: string
+  section?: string
+  secret?: boolean
+}
+
+export interface UserTemplateView {
+  id: string
+  vault_id: string
+  name: string
+  summary: string
+  icon: string
+  fields: UserFieldView[]
+  versions: number
+}
+
+export interface UserTemplateInput {
+  name: string
+  summary?: string
+  icon?: string
+  fields: UserFieldView[]
+}
+
+/** An item a link may point at, its fields by label (never a value). */
+export interface LinkTargetView {
+  item_id: string
+  title: string
+  kind: string
+  crown_jewel: boolean
+  fields: { field_id: string; label: string; secret: boolean; code: boolean }[]
+}
+
+/** The account's attachment room on its server (D234). */
+export interface StorageView {
+  used: number
+  quota: number | null
+  used_words: string
+  quota_words: string
 }
