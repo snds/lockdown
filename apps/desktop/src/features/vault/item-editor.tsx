@@ -198,7 +198,7 @@ function EditorForm({
     onClose()
   }
 
-  const titleHint = editing ? undefined : DERIVED_TITLE[template.kind]
+  const titleHint = editing ? undefined : (DERIVED_TITLE[template.kind] ?? (template.id?.startsWith("user:") ? "Left empty, the template's name is used." : undefined))
   return (
     <form onSubmit={submit} className="grid gap-4" aria-busy={busy}>
       <DialogHeader>
