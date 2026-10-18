@@ -6,6 +6,8 @@ import { CrownJewelMark } from "@unicron/ui/security/crown-jewel"
 import { useTemplates } from "@/app/templates"
 import type { ItemSummary } from "@/core/types"
 import { kindIcon, kindLabel } from "@/features/vault/list-model"
+import { folderPaths, rankRows } from "@/features/organization/org-model"
+import { useVaults } from "@/features/organization/vaults-context"
 import { useQuickCopy } from "@/features/vault/quick-copy"
 
 import { hostOf, matches, searchWords } from "./palette-model"
@@ -53,7 +55,16 @@ export function QuickPalette({ open, onOpenChange, rows, onOpen, onNotice }: Qui
     return () => window.removeEventListener("keydown", onKey)
   }, [open, onOpenChange])
 
-  const live = useMemo(() => rows.filter((r) => r.state !== "trashed"), [rows])
+  const { vaults } = useVaults()
+  const paths = useMemo(() => folderPaths(vaults), [vaults])
+  // Live items only (trashed and archived ones leave search), favourites first,
+  // then what this device uses most lately, then A–Z: the first result is the likely one.
+  const live = useMemo(() => rankRows(rows.filter((r) => r.state !== "trashed" && r.state !== "archived"), Date.now() / 1000), [rows])
+  const words = (r: ItemSummary) => {
+    const base = searchWords(r, forKind(r.kind)?.name ?? "")
+    if (r.crown_jewel) return base
+    return [...base, ...(r.tags ?? []).map((t) => `#${t}`), (r.folder && paths.get(r.folder)) || ""].filter(Boolean)
+  }
 
   const copy = (row: ItemSummary) => {
     // Close first: a crown jewel's ask opens over the window, not over the palette.
@@ -78,11 +89,12 @@ export function QuickPalette({ open, onOpenChange, rows, onOpen, onNotice }: Qui
           <CommandEmpty>{live.length ? "No matches. Try fewer letters." : "Nothing saved yet."}</CommandEmpty>
           <CommandGroup heading="Items">
             {live.map((r) => (
-              <CommandItem key={r.id} value={r.id} keywords={searchWords(r, forKind(r.kind)?.name ?? "")} onSelect={() => pick(r.id)}>
+              <CommandItem key={r.id} value={r.id} keywords={words(r)} onSelect={() => pick(r.id)}>
                 <Icon name={kindIcon(r.kind)} />
                 <span className="flex min-w-0 flex-col">
                   <span className="flex items-center gap-1 truncate">
                     {r.title || hostOf(r.site) || kindLabel(r.kind)}
+                    {r.favourite && <Icon name="star" fill label="favourite" />}
                     {r.crown_jewel && <CrownJewelMark size="sm" />}
                   </span>
                   <span className="truncate text-xs text-muted-foreground">{[forKind(r.kind)?.name, r.subtitle || r.username].filter(Boolean).join(" · ")}</span>

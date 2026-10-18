@@ -43,6 +43,9 @@ use crate::store::{Store, VAULT_RECORD_V, VaultRecord};
 use crate::transparency::SthRef;
 use crate::{Error, Hash32, Id, Result, Timestamp};
 
+mod carry;
+pub use carry::{CarriedAttachment, CarriedItem, CarriedVersion};
+
 /// Who and where a vault belongs to: the ids that go into every piece of
 /// associated data.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -302,9 +305,25 @@ impl Vault {
         for (hash, bytes) in self.pending_blobs.drain(..) {
             store.put_blob(hash, &bytes)?;
         }
+        // The blob table serves every vault in the store. Alone in it, this
+        // vault removes every blob it holds no key for (a purge's, or one a
+        // crash left unreferenced); beside other vaults it removes only the
+        // blobs its own shredded attachments name, never another vault's.
         let live = self.live_blobs();
+        let alone = store
+            .list_vaults()?
+            .iter()
+            .all(|id| *id == self.ctx.vault_id);
+        let dead: BTreeSet<Hash32> = self
+            .items
+            .values()
+            .flat_map(|i| i.versions.iter())
+            .flat_map(|v| v.attachments.iter())
+            .filter(|a| a.is_shredded())
+            .map(|a| a.blob)
+            .collect();
         for hash in store.list_blobs()? {
-            if !live.contains(&hash) {
+            if !live.contains(&hash) && (alone || dead.contains(&hash)) {
                 store.remove_blob(hash)?;
             }
         }
@@ -921,10 +940,83 @@ impl Vault {
         self.commit_head()
     }
 
+    /// Archives a live item (02-model §7): out of autofill, agents, default
+    /// search and the main list, kept in exports, nothing destroyed.
+    pub fn archive_item(&mut self, item_id: Id) -> Result<()> {
+        let item = self
+            .items
+            .get_mut(&item_id)
+            .ok_or_else(|| Error::NotFound(format!("item {item_id}")))?;
+        match item.state {
+            ItemState::Archived => return Ok(()),
+            ItemState::Live => {}
+            _ => {
+                return Err(Error::Invalid(format!(
+                    "item {item_id} isn't live, so it can't be archived"
+                )));
+            }
+        }
+        item.state = ItemState::Archived;
+        self.commit_head()
+    }
+
+    /// Brings an archived item back to the main list.
+    pub fn unarchive_item(&mut self, item_id: Id) -> Result<()> {
+        let item = self
+            .items
+            .get_mut(&item_id)
+            .ok_or_else(|| Error::NotFound(format!("item {item_id}")))?;
+        match item.state {
+            ItemState::Live => return Ok(()),
+            ItemState::Archived => {}
+            _ => {
+                return Err(Error::Invalid(format!("item {item_id} isn't archived")));
+            }
+        }
+        item.state = ItemState::Live;
+        self.commit_head()
+    }
+
     /// Purges an item: destroys its Item Key, every Version Key and every
     /// Attachment Key, leaves a tombstone with the last version hash, and
     /// commits. The ciphertext may sit in backups forever and stays dead.
     pub fn purge_item(&mut self, item_id: Id) -> Result<()> {
+        self.shred_item(item_id)?;
+        self.commit_head()
+    }
+
+    /// The trashed items whose grace period of `grace_secs` has run out at
+    /// `now` (seconds since the epoch), leaving out any in `hold` (an open
+    /// conflict, D58): what [`Self::purge_due`] would purge.
+    pub fn due_for_purge(&self, now: i64, grace_secs: i64, hold: &BTreeSet<Id>) -> Vec<Id> {
+        self.items
+            .values()
+            .filter(|i| i.state == ItemState::Trashed && !hold.contains(&i.item_id))
+            .filter(|i| {
+                i.trashed_at
+                    .is_some_and(|t| t.0.saturating_add(grace_secs) <= now)
+            })
+            .map(|i| i.item_id)
+            .collect()
+    }
+
+    /// Purges every trashed item whose grace period has run out (02-model
+    /// §7), except those in `hold`, under one new head. Every device runs
+    /// this on its own clock, so the purge happens wherever the vault is
+    /// open; a tombstone from whichever device was first syncs to the rest.
+    /// Returns what was purged.
+    pub fn purge_due(&mut self, now: i64, grace_secs: i64, hold: &BTreeSet<Id>) -> Result<Vec<Id>> {
+        let due = self.due_for_purge(now, grace_secs, hold);
+        for id in &due {
+            self.shred_item(*id)?;
+        }
+        if !due.is_empty() {
+            self.commit_head()?;
+        }
+        Ok(due)
+    }
+
+    fn shred_item(&mut self, item_id: Id) -> Result<()> {
         let item = self
             .items
             .get_mut(&item_id)
@@ -937,7 +1029,46 @@ impl Vault {
             }
         }
         item.state = ItemState::Tombstone;
-        self.commit_head()
+        Ok(())
+    }
+
+    /// Takes a file off an item: a new version whose attachment list no
+    /// longer names it. Earlier versions still do, so the history keeps it
+    /// (and its blob stays) until those versions are shredded or the item
+    /// is purged. Returns the new version's number.
+    pub fn remove_attachment(&mut self, item_id: Id, att_id: Id) -> Result<u64> {
+        let item = self.item(item_id)?;
+        if !matches!(item.state, ItemState::Live | ItemState::Archived) {
+            return Err(Error::Invalid(
+                "this item is in the trash; restore it before changing it".into(),
+            ));
+        }
+        let item_key = self.item_key(item)?;
+        let header = item.header();
+        let latest = item.latest()?;
+        if !latest.attachments.iter().any(|a| a.att_id == att_id) {
+            return Err(Error::NotFound(format!(
+                "attachment {att_id} of item {item_id}"
+            )));
+        }
+        let attachments: Vec<AttachmentRef> = latest
+            .attachments
+            .iter()
+            .filter(|a| a.att_id != att_id)
+            .cloned()
+            .collect();
+        let fields = self.open_envelope(item, latest.n)?;
+        let n = latest.n + 1;
+        let parent_hash = latest.hash(&header)?;
+        let version =
+            self.make_version(&header, &item_key, n, parent_hash, &fields, attachments)?;
+        self.items
+            .get_mut(&item_id)
+            .ok_or_else(|| Error::NotFound(format!("item {item_id}")))?
+            .versions
+            .push(version);
+        self.commit_head()?;
+        Ok(n)
     }
 
     /// Destroys one version's key, keeping the rest of the history.
@@ -1102,6 +1233,30 @@ impl Vault {
         fields: &[PlainField],
         attachments: Vec<AttachmentRef>,
     ) -> Result<ItemVersion> {
+        self.make_version_at(
+            header,
+            item_key,
+            n,
+            parent_hash,
+            fields,
+            attachments,
+            Timestamp::now(),
+        )
+    }
+
+    /// [`Self::make_version`] stamped `edited_at` (a carried version keeps
+    /// the time it was first saved).
+    #[allow(clippy::too_many_arguments)]
+    fn make_version_at(
+        &self,
+        header: &ItemHeader,
+        item_key: &ItemKey,
+        n: u64,
+        parent_hash: Hash32,
+        fields: &[PlainField],
+        attachments: Vec<AttachmentRef>,
+        edited_at: Timestamp,
+    ) -> Result<ItemVersion> {
         let item_id = header.item_id;
         let version_key = VersionKey::from_bytes(lockdown_crypto::rand::random_32()?);
         let version_key_id = Id::new();
@@ -1129,7 +1284,7 @@ impl Vault {
             version_key: Some(wrapped),
             parent_hash,
             edited_by: self.device_id,
-            edited_at: Timestamp::now(),
+            edited_at,
             fields: sealed,
             attachments,
             sig: Vec::new(),
@@ -1438,14 +1593,25 @@ mod tests {
         assert_eq!(n, 2);
         let fields = vault.open_item(wallet).unwrap();
         let ids: Vec<&str> = fields.iter().map(|f| f.field_id.as_str()).collect();
-        assert_eq!(ids, ["title", "seed", "wallet.password"]);
+        assert_eq!(
+            ids,
+            [
+                "title",
+                "seed",
+                "wallet.password",
+                "org.folder",
+                "org.tags",
+                "org.favourite"
+            ],
+            "the organization fields ride on every composed item, kept by an edit that leaves them out"
+        );
         assert_eq!(
             fields[1].value,
             FieldValue::Text("abandon ability able about above absent absorb abstract absurd abuse access accident".into()),
             "kept, never resent"
         );
         // The first version is still there, unchanged.
-        assert_eq!(vault.open_version(wallet, 1).unwrap().len(), 3);
+        assert_eq!(vault.open_version(wallet, 1).unwrap().len(), 6);
         vault.verify(0).unwrap();
 
         // A refused edit writes nothing.
@@ -1493,6 +1659,78 @@ mod tests {
         assert!(matches!(vault.restore_item(id), Err(Error::Invalid(_))));
         vault.purge_item(id).unwrap();
         assert!(matches!(vault.restore_item(id), Err(Error::Invalid(_))));
+    }
+
+    #[test]
+    fn archive_and_unarchive_move_only_between_live_and_archived() {
+        let mut vault = sample_vault();
+        let id = vault
+            .create_item(ItemKind::Login, ItemClass::Standard, login_fields("pw"))
+            .unwrap();
+        vault.archive_item(id).unwrap();
+        assert_eq!(vault.item(id).unwrap().state, ItemState::Archived);
+        let seq = vault.seq();
+        vault.archive_item(id).unwrap();
+        assert_eq!(vault.seq(), seq, "archiving twice writes nothing");
+        assert_eq!(vault.head().unwrap().entries[0].state, ItemState::Archived);
+        vault.unarchive_item(id).unwrap();
+        assert_eq!(vault.item(id).unwrap().state, ItemState::Live);
+        vault.trash_item(id).unwrap();
+        assert!(vault.archive_item(id).is_err());
+        assert!(vault.unarchive_item(id).is_err());
+        vault.verify(0).unwrap();
+    }
+
+    #[test]
+    fn the_trash_purges_itself_after_its_grace_period_unless_held() {
+        let mut vault = sample_vault();
+        let a = vault
+            .create_item(ItemKind::Login, ItemClass::Standard, login_fields("a"))
+            .unwrap();
+        let b = vault
+            .create_item(ItemKind::Login, ItemClass::Standard, login_fields("b"))
+            .unwrap();
+        let c = vault
+            .create_item(ItemKind::Login, ItemClass::Standard, login_fields("c"))
+            .unwrap();
+        vault.trash_item(a).unwrap();
+        vault.trash_item(b).unwrap();
+        let now = Timestamp::now().0;
+        let day = 86_400;
+        let none = BTreeSet::new();
+        assert!(vault.purge_due(now, 30 * day, &none).unwrap().is_empty());
+        let later = now + 31 * day;
+        let hold = BTreeSet::from([b]);
+        let seq = vault.seq();
+        assert_eq!(vault.purge_due(later, 30 * day, &hold).unwrap(), [a]);
+        assert_eq!(vault.seq(), seq + 1, "one head for the sweep");
+        assert!(vault.item(a).unwrap().is_shredded());
+        assert_eq!(vault.item(b).unwrap().state, ItemState::Trashed, "held");
+        assert_eq!(vault.item(c).unwrap().state, ItemState::Live);
+        assert_eq!(vault.purge_due(later, 30 * day, &none).unwrap(), [b]);
+        let seq = vault.seq();
+        assert!(vault.purge_due(later, 30 * day, &none).unwrap().is_empty());
+        assert_eq!(vault.seq(), seq, "nothing due, nothing written");
+        vault.verify(0).unwrap();
+    }
+
+    #[test]
+    fn removing_an_attachment_keeps_it_in_the_history() {
+        let mut vault = sample_vault();
+        let id = vault
+            .create_item(ItemKind::Login, ItemClass::Standard, login_fields("pw"))
+            .unwrap();
+        let (att, blob) = vault.attach(id, "a.txt", "text/plain", b"hello").unwrap();
+        let n = vault.remove_attachment(id, att).unwrap();
+        assert_eq!(n, 3);
+        assert!(vault.attachments(id).unwrap().is_empty());
+        assert!(
+            vault.live_blobs().contains(&blob),
+            "version 2 still names it"
+        );
+        assert!(vault.remove_attachment(id, att).is_err());
+        vault.purge_item(id).unwrap();
+        assert!(!vault.live_blobs().contains(&blob));
     }
 
     #[test]

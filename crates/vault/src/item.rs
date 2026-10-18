@@ -60,11 +60,15 @@ pub enum ItemKind {
     Custom,
     /// Hidden: a consent record for a tolerated bridge, so it lives in the chain.
     Consent,
+    /// Hidden: the vault's own encrypted facts (its name, its folders, its
+    /// trash setting), kept as an item so they sync, merge and stay sealed
+    /// like everything else (`crate::organization`).
+    VaultInfo,
 }
 
 impl ItemKind {
     /// Every kind, for template lists and tests.
-    pub const ALL: [ItemKind; 18] = [
+    pub const ALL: [ItemKind; 19] = [
         Self::Login,
         Self::Passkey,
         Self::Code,
@@ -83,17 +87,21 @@ impl ItemKind {
         Self::Membership,
         Self::Custom,
         Self::Consent,
+        Self::VaultInfo,
     ];
 
     /// Whether the extension and OS providers may ever offer this kind to
     /// fill (02-model §4 "never autofilled").
     pub fn autofill_allowed(self) -> bool {
-        !matches!(self, Self::SshKey | Self::BankAccount | Self::Consent)
+        !matches!(
+            self,
+            Self::SshKey | Self::BankAccount | Self::Consent | Self::VaultInfo
+        )
     }
 
     /// Whether the person sees this kind in lists.
     pub fn hidden(self) -> bool {
-        matches!(self, Self::Consent)
+        matches!(self, Self::Consent | Self::VaultInfo)
     }
 
     /// The word used in exports and messages.
@@ -117,6 +125,7 @@ impl ItemKind {
             Self::Membership => "membership",
             Self::Custom => "custom",
             Self::Consent => "consent",
+            Self::VaultInfo => "vault-info",
         }
     }
 }
@@ -375,6 +384,8 @@ mod tests {
         assert!(!ItemKind::BankAccount.autofill_allowed());
         assert!(ItemKind::Login.autofill_allowed());
         assert!(ItemKind::Consent.hidden());
+        assert!(ItemKind::VaultInfo.hidden());
+        assert!(!ItemKind::VaultInfo.autofill_allowed());
     }
 
     /// The serde name as a JSON string, through CBOR text (no serde_json here).

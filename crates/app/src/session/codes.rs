@@ -74,10 +74,9 @@ impl Session {
     /// Code item and each code field inside any other live item, by title.
     /// A set-up that doesn't parse is skipped, never fails the view.
     pub fn codes(&self, now: u64) -> Result<Vec<CodeView>, String> {
-        let vault = self.vault();
         let login = self.sync.as_ref().map(|c| c.login.as_str());
         let mut out = Vec::new();
-        for item in vault.items() {
+        for (vault, item) in self.vaults().flat_map(|v| v.items().map(move |i| (v, i))) {
             if item.kind.hidden() || item.state != ItemState::Live {
                 continue;
             }
@@ -124,7 +123,10 @@ impl Session {
         next: bool,
     ) -> Result<Revealed, String> {
         let item_id = parse_id(id)?;
-        let fields = self.vault().open_item(item_id).map_err(|e| e.to_string())?;
+        let fields = self
+            .holding(item_id)?
+            .open_item(item_id)
+            .map_err(|e| e.to_string())?;
         let field = fields
             .iter()
             .find(|f| f.field_id == field_id && f.kind == FieldKind::Totp)
@@ -153,11 +155,17 @@ impl Session {
     /// item: nothing is written then.
     pub fn advance_code(&mut self, id: &str, field_id: &str) -> Result<CodeAdvanced, String> {
         let item_id = parse_id(id)?;
-        let item = self.vault().item(item_id).map_err(|e| e.to_string())?;
+        let item = self
+            .holding(item_id)?
+            .item(item_id)
+            .map_err(|e| e.to_string())?;
         if item.state != ItemState::Live {
             return Err("that item isn't live; restore it first".into());
         }
-        let mut fields = self.vault().open_item(item_id).map_err(|e| e.to_string())?;
+        let mut fields = self
+            .holding(item_id)?
+            .open_item(item_id)
+            .map_err(|e| e.to_string())?;
         let field = fields
             .iter_mut()
             .find(|f| f.field_id == field_id && f.kind == FieldKind::Totp)
@@ -180,8 +188,7 @@ impl Session {
             .map_err(|e| e.to_string())?;
         field.value = FieldValue::Text(code.to_otpauth());
         let version = self
-            .opened
-            .vault
+            .holding_mut(item_id)?
             .update_item(item_id, fields)
             .map_err(|e| e.to_string())?;
         self.save()?;
@@ -208,11 +215,17 @@ impl Session {
         let id = match into {
             Some(into) => {
                 let item_id = parse_id(into)?;
-                let item = self.vault().item(item_id).map_err(|e| e.to_string())?;
+                let item = self
+                    .holding(item_id)?
+                    .item(item_id)
+                    .map_err(|e| e.to_string())?;
                 if item.state != ItemState::Live {
                     return Err("that item isn't live; restore it first".into());
                 }
-                let mut fields = self.vault().open_item(item_id).map_err(|e| e.to_string())?;
+                let mut fields = self
+                    .holding(item_id)?
+                    .open_item(item_id)
+                    .map_err(|e| e.to_string())?;
                 let n = fields.iter().filter(|f| f.kind == FieldKind::Totp).count();
                 fields.push(PlainField::new(
                     format!("code.{n}"),
@@ -220,8 +233,7 @@ impl Session {
                     "one-time code",
                     FieldValue::Text(uri.to_string()),
                 ));
-                self.opened
-                    .vault
+                self.holding_mut(item_id)?
                     .update_item(item_id, fields)
                     .map_err(|e| e.to_string())?;
                 item_id

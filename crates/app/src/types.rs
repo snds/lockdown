@@ -78,6 +78,23 @@ pub struct ItemSummary {
     pub subtitle: String,
     /// What the row's quick copy takes, when the item holds it.
     pub copy: Option<CopyTarget>,
+    /// The vault the item is in.
+    pub vault_id: String,
+    /// The folder it is filed in (an id of its vault's folders), if any.
+    pub folder: Option<String>,
+    /// Its tags, sorted; a `/` nests one under another.
+    pub tags: Vec<String>,
+    /// A favourite: listed first in the palette and in its own view.
+    pub favourite: bool,
+    /// When this device last used it (a copy, a reveal, its site opened),
+    /// in seconds since the epoch; kept on this device only, never synced.
+    pub last_used: Option<i64>,
+    /// How many times this device has used it.
+    pub uses: u32,
+    /// Days until `expires_at` lapses (negative once it has).
+    pub expires_in_days: Option<i64>,
+    /// How many files are attached.
+    pub attachments: u32,
 }
 
 /// The one value a row (and the quick-access palette) offers to copy: a
@@ -139,6 +156,8 @@ pub struct FieldTemplateView {
     pub grouped: bool,
     /// One line of help, or empty.
     pub hint: String,
+    /// The field may be added more than once (`url.0`, `url.1`, …).
+    pub repeats: bool,
 }
 
 /// A generator rule, with its plain words.
@@ -236,6 +255,9 @@ pub struct FieldView {
     /// it takes the bytes out of the struct by hand.
     #[serde(skip)]
     pub secret: Option<Revealed>,
+    /// A web address's match rule (`exact_host`, `base_domain`, …).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub match_rule: Option<String>,
 }
 
 /// One item in full.
@@ -248,6 +270,9 @@ pub struct ItemDetail {
     pub edited_at: i64,
     pub crown_jewel: bool,
     pub fields: Vec<FieldView>,
+    /// Where it is filed and what is attached (flattened into the item).
+    #[serde(flatten)]
+    pub place: ItemPlace,
 }
 
 /// The server's key-transparency log as this device last verified it
@@ -343,4 +368,102 @@ pub struct Registered {
 pub struct KitCreated {
     pub kit: Revealed,
     pub notes: Vec<String>,
+}
+
+/// An item's folder, tags and favourite, as `show` gives them.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct OrganizationView {
+    pub folder: Option<String>,
+    pub tags: Vec<String>,
+    pub favourite: bool,
+}
+
+/// One attached file's facts: never its bytes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct AttachmentView {
+    pub id: String,
+    pub name: String,
+    pub mime: String,
+    /// Bytes.
+    pub size: u64,
+}
+
+/// What `show` adds to an item beyond its fields: where it is filed, its
+/// files, and whether it may leave the crown-jewel class.
+#[derive(Clone, Debug, Serialize)]
+pub struct ItemPlace {
+    pub vault_id: String,
+    pub organization: OrganizationView,
+    pub attachments: Vec<AttachmentView>,
+    /// A crown jewel by its kind or a field (a wallet's recovery phrase):
+    /// it can never leave the class (02-model §3).
+    pub crown_jewel_fixed: bool,
+}
+
+/// One folder of a vault, for the sidebar and the pickers.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct FolderView {
+    pub id: String,
+    pub name: String,
+    pub parent: Option<String>,
+    /// The names from the top, joined by ` / `.
+    pub path: String,
+}
+
+/// One vault of the open persona.
+#[derive(Clone, Debug, Serialize)]
+pub struct VaultView {
+    pub id: String,
+    /// The name the person gave it, or `Personal` for the first vault and
+    /// `Vault` for any other until one is given.
+    pub name: String,
+    /// The first vault: where new items go unless another is picked.
+    pub primary: bool,
+    /// Items not in the trash.
+    pub items: usize,
+    /// Days a trashed item stays before it is purged on every device.
+    pub trash_days: u32,
+    pub folders: Vec<FolderView>,
+}
+
+/// Items that look like the same thing twice (after an import, say).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct DuplicateGroup {
+    /// `same-login` (same site and username), `same-password` (the same
+    /// password on several items) or `same-code` (the same code set-up).
+    pub reason: String,
+    /// In plain words, for the list.
+    pub words: String,
+    /// The items, newest change first.
+    pub ids: Vec<String>,
+    /// Whether "Merge" applies (Logins of the same site and username).
+    pub mergeable: bool,
+}
+
+/// One saved version of an item, for its history.
+#[derive(Clone, Debug, Serialize)]
+pub struct VersionView {
+    pub n: u64,
+    pub edited_at: i64,
+    /// The device's name, or its id when this device doesn't know it.
+    pub edited_by: String,
+    /// The labels of the fields this version changed, added or removed
+    /// against the one before it (never a value).
+    pub changed: Vec<String>,
+    /// False once its key was destroyed.
+    pub readable: bool,
+    /// The newest version.
+    pub current: bool,
+}
+
+/// An item due to lapse, for reminders.
+#[derive(Clone, Debug, Serialize)]
+pub struct ExpiryReminder {
+    pub id: String,
+    pub title: String,
+    pub kind: String,
+    /// The date as the field holds it.
+    pub date: String,
+    /// Negative once lapsed.
+    pub days: i64,
 }

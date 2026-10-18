@@ -28,6 +28,9 @@ export interface EditorRow {
   secret: SecretMode
   /** A plain field the person took off. */
   removed: boolean
+  /** A web address's match rule, and the one it had (an edit). */
+  matchRule?: string
+  originalRule?: string
 }
 
 const SECRET_CONTROLS: readonly Control[] = ["secret", "secret-multiline", "totp", "passkey"]
@@ -95,11 +98,32 @@ export function initialRows(template: TemplateView, item: ItemDetail | null): Ed
         text: secret ? "" : (f?.value ?? ""),
         flag: f?.value === "true",
         secret: f ? "keep" : "type",
+        ...(t.control === "url" ? { matchRule: f?.match_rule ?? "exact_host", originalRule: f?.match_rule ?? "exact_host" } : {}),
       }),
     )
   }
   for (const f of item?.fields ?? []) {
     if (f.field_id === "title" || template.fields.some((t) => t.field_id === f.field_id)) continue
+    // A later copy of a repeating field (a Login's second website) takes the first's template.
+    const repeat = template.fields.find((t) => t.repeats && f.field_id.startsWith(t.field_id.replace(/\.0$/, ".")))
+    if (repeat) {
+      rows.push(
+        row({
+          key: f.field_id,
+          fieldId: f.field_id,
+          label: repeat.label,
+          control: repeat.control,
+          template: repeat,
+          exists: true,
+          original: f.value ?? "",
+          text: f.value ?? "",
+          secret: "keep",
+          matchRule: f.match_rule ?? "exact_host",
+          originalRule: f.match_rule ?? "exact_host",
+        }),
+      )
+      continue
+    }
     const { control, editable } = controlForKind(f.kind)
     const secret = isSecretControl(control)
     rows.push(
@@ -118,6 +142,21 @@ export function initialRows(template: TemplateView, item: ItemDetail | null): Ed
     )
   }
   return rows
+}
+
+/** Another copy of a repeating field (a Login's next website), numbered after the ones there. */
+export function repeatRow(rows: EditorRow[], template: FieldTemplateView): EditorRow {
+  const stem = template.field_id.replace(/\.0$/, ".")
+  const used = rows.map((r) => (r.fieldId?.startsWith(stem) ? Number(r.fieldId.slice(stem.length)) : -1)).filter((n) => Number.isInteger(n) && n >= 0)
+  const n = used.length ? Math.max(...used) + 1 : 0
+  return row({
+    key: `${stem}${n}`,
+    fieldId: `${stem}${n}`,
+    label: template.label,
+    control: template.control,
+    template,
+    ...(template.control === "url" ? { matchRule: "exact_host", originalRule: "exact_host" } : {}),
+  })
 }
 
 /** A field the person adds by hand ("Add field"). */
@@ -153,12 +192,14 @@ export function buildChanges(rows: EditorRow[]): FieldChangeInput[] {
       continue
     }
     const text = r.text.trim()
+    const rule = r.control === "url" && r.matchRule ? { match_rule: r.matchRule } : {}
+    const ruleChanged = r.control === "url" && r.matchRule !== r.originalRule
     if (r.exists) {
-      if (text === r.original.trim()) out.push({ field_id: id, action: "keep" })
+      if (text === r.original.trim() && !ruleChanged) out.push({ field_id: id, action: "keep" })
       else if (text === "") out.push({ field_id: id, action: "remove" })
-      else out.push({ field_id: id, action: "set", text: r.text })
+      else out.push({ field_id: id, action: "set", text: r.text, ...rule })
     } else if (text !== "") {
-      out.push({ field_id: id, ...custom, action: "set", text: r.text })
+      out.push({ field_id: id, ...custom, action: "set", text: r.text, ...rule })
     }
   }
   return out

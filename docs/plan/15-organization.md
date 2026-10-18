@@ -1,0 +1,121 @@
+# Organization, search and item depth
+
+_Status: built, 2026-10-18, on branch `slice/organization` (D122 "desktop and web first"). Folders, tags, favourites, several vaults, moves between vaults and into or out of the crown-jewel class, the archive, the trash's own purge, the duplicate finder, expiry reminders, a Login's several websites with match rules and its sign-in method, attachments in the desktop, Markdown notes, and an item's history, each from the core through `lockdown-app` and a Tauri command to the desktop UI on `@unicron/ui` 0.9.0, with tests at each layer. Companion to [`02-model.md`](02-model.md) (the model this fills in), [`10-desktop-shell.md`](10-desktop-shell.md) (the shell it extends) and [`11-desktop-design-brief.md`](11-desktop-design-brief.md) (D92–D99). Proposed decisions D145–D154 are at the end._
+
+## For future agent
+
+- **TL;DR:** Nothing here adds plain-text metadata, a key layer or a server change. An item's folder, tags and favourite are three sealed fields on the item. A vault's name, folder tree and trash setting are sealed fields of one hidden item of a new kind, `vault-info`, in that vault. A persona's vaults all open at unlock and list together; each is its own Vault Key under the persona's App Data Key. A move (to another vault, or into or out of the crown-jewel class) seals the item again under new keys with its history and files, as a new id, and purges the old one. Recency stays on the device, sealed under the App Data Key.
+- **Reads before this:** `02-model.md` §1, §3, §4–§7, §10; `10-desktop-shell.md` §1–§3; decisions D58, D101, D104, D108, D110, D111, D113, D118, D121, D122.
+- **Not here:** sharing a vault with another person (02-model §1 "Shared"), folder import from other managers (the import/export slice), passkey creation, the extension's use of match rules and fill ranking.
+
+## 1. What was built, per row
+
+| Row | State | What there is | What is left |
+|---|---|---|---|
+| `folders` | done | Per-vault nested folders sealed in the vault's info item; make, rename, move to the top, remove (contents move up) from the sidebar; file an item from the editor, the row menu, the detail; the sidebar narrows the list to a folder and what is inside it; search and the palette find items by folder path | Drag and drop; folder import (import/export slice) |
+| `tags` | done | Sealed tags on every item, nested with `/`, across every vault; chips in the editor, the organize prompt and the detail; a tag tree in the sidebar with counts; rename and take off everywhere (nested tags follow); search and the palette match `#tag` | A tag colour or icon |
+| `multiple-vaults` | done | Make and name vaults (each its own key branch), all open at unlock and sync; the list spans them, the sidebar narrows to one; a new item goes to the first vault or the one the editor picks; move an item between vaults; move into or out of the crown-jewel class (D110's gap) | Sharing; the CLI still opens one vault (§6); the free-tier count of three (no plans exist) |
+| `duplicate-finder` | done | Same site and username (Logins), same password, same code set-up, decided in the core with a keyed hash thrown away after the search; merge Logins into the one kept, or trash a copy, each after a confirm | Running it on its own after an import (the import slice can call `duplicates`); a side-by-side compare |
+| `recency-ranking` | done | Favourites (synced) with their own view and star; this device's uses (never synced) rank the palette (favourites, then use, then A–Z) and the list's "Recently used" sort | Fill counts from the extension, once it exists |
+| `item-archive` | done | Archive and unarchive from the row menu and the detail; archived items leave the main list, search, the palette, the codes view and the reminders, and sit in their own view; they still sync and export | |
+| `item-expiry` | done | Each kind reminds from its own lead (documents 90 days, cards 60, API keys 14, the rest 30); the Expiring view in sections (Expired, Within a week, Within a month, Later); Needs attention lists them; a toast once a day after unlock with Show | Renewal kinds for domains and certificates; the client-side signed-date check |
+| `trash-recovery` | done | Every device purges trashed items whose grace ran out, at unlock and after each sync; the grace is a per-vault setting (7, 14, 30, 60, 90 days or a year; 30 by default) that syncs; a trashed item is held while a live conflict copy of it waits; Delete now in Deleted | Trash in the CLI |
+| `login-items` | done (for this slice) | Several websites, each with its match rule chosen in the editor in plain words; the sign-in method (Password, Passkey, Another account, Single sign-on) and "Signed in with"; the detail shows both | Passkeys made on the record (the passkey slice); the extension applying the rules |
+| `attachments` | done (desktop) | Attach (up to 100 MB in the desktop), the file's name, type and size in the detail, save to where the person chooses, take off (the history keeps it); moves carry files | Streaming large files (the core reads and seals whole files today), blobs on object storage and the 5 GB quota (server) |
+| `secure-notes` | done | The note's Markdown drawn as React elements from a small reader: headings, paragraphs, lists with task boxes, quotes, code, rules, emphasis, links; no HTML is ever interpreted; links are buttons that open the default browser (http and https only); edited as text | Tables and images |
+| `version-history` | done (v1.x row) | History from the detail's menu: every version with when, which device and which fields changed (labels, never values); an earlier version shown masked; Restore copies it into a new version, keeping where the item is filed | Revealing an old version's secret; the vault time machine |
+
+## 2. Model changes and compatibility
+
+Every change is additive; nothing in a vault file written before this slice changes meaning, and `crates/store/tests/pre_organization.rs` proves it against a SQLite vault file the previous build wrote (`fixtures/pre-organization.sqlite`, commit 8c0a4f8, fixed test keys): the old Login with two versions and an attachment, a Note, a crown-jewel wallet, a Wi-Fi network and a trashed Login all open; they read as unfiled with no name; and every new operation (naming the vault, a folder, filing, archiving, a move that re-seals the old attachment, the purge sweep) works on them, saves and reads back.
+
+| Change | Where | Older data | Older builds |
+|---|---|---|---|
+| Three common fields `org.folder` (a folder id or empty), `org.tags` (one per line, normalized), `org.favourite` (yes or no), on every item this build makes or changes, empty when unset, so their ids say nothing | `vault::organization`, `compose`, `template::COMMON` | An item without them reads as unfiled; an edit adds them | Read them as fields of their own (shown as such) |
+| An edit that leaves an organization field out keeps it (the rule "an edit names every field" exempts these three) | `compose::compose_edit` | | |
+| Item kind `vault-info` (hidden, never autofilled): `vault.name`, `vault.trash_days`, `vault.order`, and one `folder.<id>` field per folder whose sealed value is CBOR `{v, name, parent}` | `item::ItemKind::VaultInfo`, `organization::VaultInfo` | No info item: the default (named Personal, or Vault after the first; 30 days) | **Can't read a vault that has one**: an unknown kind fails the item's decode. Every device of a person needs this build before a vault is named or given a folder (§6) |
+| A repeating template field (`url.0` → `url.<n>`), `FieldTemplate.repeats` | `template` | | |
+| `sign_in_method` (a choice) and `sign_in_provider` (text) on the Login template | `template::LOGIN` | Absent | Kept as fields of their own |
+| `FieldInput::Url { value, match_rule }`, `compose::MATCH_RULES` | `compose` | A plain address keeps its stored rule | |
+| `ItemState::Archived` now set (it existed) | `Vault::{archive_item, unarchive_item}` | | Treated as not live, as before |
+| `Vault::save` removes, beside other vaults, only the blobs its own shredded attachments name (the blob table is shared by every vault in a store; the old rule would have deleted another vault's files) | `vault.rs` | | The previous build, alone with one vault, is unaffected |
+| `recency-<persona>.cbor` beside `remembered.cbor`: item ids, last use and count, sealed under the persona's App Data Key; unreadable is empty | `lockdown_app::recency` | Absent | Ignored |
+| Shell types: `ItemSummary` gains `vault_id`, `folder`, `tags`, `favourite`, `last_used`, `uses`, `expires_in_days`, `attachments`; `ItemDetail` gains `vault_id`, `organization`, `attachments`, `crown_jewel_fixed`; `FieldView.match_rule`; `TemplateView` fields gain `repeats`; views `favourites` and `archived` | `lockdown_app::types`, `views` | | |
+
+No schema number moved: `SCHEMA_V`, `ITEM_V`, `VAULT_RECORD_V`, the manifest and the store schema are as they were, the field associated data is unchanged, and the server needed no change (a second vault is one more `put_vault`, a move is an item purge plus a new item).
+
+## 3. How the pieces work
+
+**Several vaults.** `Session` keeps the first vault where it always was (`opened`) and the others beside it (`more`); every item call finds the vault that holds the item (`holding`, `holding_mut`). At unlock every vault of the persona opens under the same checks (chain, rollback memory, trusted devices); they are ordered by `vault.order` (zero for the first, one more for each made after it), then their first head's time, then id, so every device lists them alike. `create_vault` wraps a fresh Vault Key under the persona's App Data Key and writes the name into its info item. Sync runs the vault round once per vault inside one key-transparency session, audits every vault's logged heads against this device's copies (`AllVaults`), pulls vaults another device made and opens them. A sync now also trusts devices the identity learned in that same sync before it pulls their heads (`refresh_trust`): before, a device enrolled after this one unlocked couldn't be trusted until the next unlock.
+
+**Moves and the crown-jewel class.** A field's associated data names its vault and a version's signature covers its class, so neither a move nor a change of class can be a re-wrap. `Vault::carry_out` opens every readable version (signature first) and every attached file once; `Vault::carry_in` seals a new item from them under a fresh Item Key on the target branch (the Vault Key, or the persona's Crown-Jewel Key), a fresh Version Key per version and a fresh Attachment Key per file, each version keeping its number and first-saved time, signed by this device; the session purges the old item, drops the folder on a move across vaults, and moves this device's record of uses to the new id. Into the class needs no check; out of it goes through the `Reveal` gate (the account password where one exists), and a kind or field that is always a crown jewel can't leave; moving a crown jewel goes through `Use`.
+
+**The trash.** `Session::sweep_trash` runs at unlock and after every sync: per vault, `Vault::purge_due(now, grace, hold)` shreds every trashed item past the vault's grace in one head. `hold` is the trashed items a live conflict copy names (same kind, the copy's title without its marker equals the trashed item's): the conflict is open until the person settles it. Keeping a conflict copy (`resolve_conflict`) now gives it the item's own title back, so the trashed original can purge in time. Whichever device purges first syncs a tombstone to the rest; the merge already carries a purge.
+
+**Archive across devices.** The state rides the manifest entry. The merge rule (D58) gains one line: an archive here over a live copy there stays archived, as a trash does.
+
+**Duplicates.** `Session::duplicates` keys BLAKE3 with 32 random bytes made for that search (wiped after) over `host + "\n" + username` for every website of every live Login (`www.` dropped, case ignored), over every `pw`, and over every code set-up's secret; items sharing a hash group together. The webview gets ids, a reason and words, never a hash. `merge_duplicates` folds into the Login kept: websites and codes by value, passkeys as whole `passkey.<n>.*` groups, a password or username the kept one lacks, notes that differ (appended), fields of their own, tags and the favourite; one new version; the rest to the trash.
+
+**Recency.** A use is a deliberate act: a reveal, a copy (`reveal_to_use`, `code_now`), a file saved, a site opened (`note_use`, called by the shell after `open_site`). Opening an item to look at it is not one. The score is the count halved for every two weeks since the last use; the palette sorts favourites first, then by score, then A–Z, and keeps D118's matching rule over that order.
+
+**Attachments over IPC.** `attach` takes the file as the raw request body (an `ArrayBuffer`, not a JSON array) with the item, the name (percent-encoded), the type and the gate in headers; `attachment` answers raw bytes, which the webview saves as a download and wipes. A crown jewel's file needs the `Reveal` gate to save and `Use` to add or remove.
+
+## 4. Desktop UI
+
+| Where | What |
+|---|---|
+| Sidebar | Favourites and Archived views join the smart views; then Vaults (each with its folder tree, a menu to make a folder, rename, and the trash setting; New vault) and Tags (a nested tree with counts, rename and take off) (`features/organization/organization-nav.tsx`) |
+| List | The scope's name as the title; sort by title, recently changed or recently used; the Expiring view in sections by how soon; each row has a star when it is a favourite, an Archived badge, and a menu: favourite, file in folder, folder and tags…, move to vault, archive (`row-menu.tsx`); Find duplicates in the header (`duplicates-review.tsx`) |
+| Detail | Where it is (vault, folder, tags, the star) and a menu: History, Archive, Move to vault, Keep as / Stop keeping as a crown jewel (`place-panel.tsx`); a Login's sign-in method and each website's match rule in words; a note's Markdown (`markdown-view.tsx`); Files (`files-panel.tsx`); Delete now in Deleted |
+| Editor | Add another website, each with "Where it is offered"; the sign-in method fields from the template; an Organization section: the vault (new items, when there are several), the folder, tags, favourite; a new item from a folder or tag view starts filed there |
+| Palette | Favourites and recent uses first; tags and folder paths among the keywords (not for a crown jewel, which is found by title only); archived items left out |
+| Unlock | Once a day, a toast naming what lapses soon, with Show |
+
+Everything is composed from unicron 0.9.0 primitives with no new `className`, `style` or spread on a design-system component (`pnpm ds:ratchet` stays at its baseline of 4).
+
+## 5. Measurement
+
+| Gate | Before | After |
+|---|---|---|
+| `cargo test --workspace` | 225 passed | see the PR (the slice adds 24 Rust tests: vault 9, store 1, app 14) |
+| `pnpm test` | 61 passed in 15 files | 79 passed in 18 files |
+| `pnpm ds:ratchet` | 4 / 0 / 0 / 0 | 4 / 0 / 0 / 0 |
+
+The core tests worth naming: `organization::tests` (tags, folders that never loop, two info items read as one and folded, organize in a new version), `carry::tests` (a move keeps history and files and verifies under the target chain; a class change re-wraps under the Crown-Jewel Key), `vault::tests` (archive, the purge sweep with a hold, removing a file keeps the history), `compose::tests` (several websites with rules, the organization fields kept by an edit), `organize::tests` (an open conflict holds the trashed half), and `crates/app/tests/organization.rs` (everything through `App`, and a second vault, its folder and an archive reaching another device through the real server).
+
+## 6. Gaps and cautions
+
+1. **Older builds can't read a vault with an info item** (§2). Until every device runs this build, naming a vault or giving it a folder makes it unreadable to an old device's sync. A schema-gated rollout (a manifest flag older builds refuse with a sentence) would turn that into a plain message; not done here.
+2. **The CLI opens one vault** (`bins/cli` carries its own copy of the flows): with several vaults it opens the first by id, which may not be the first made, and doesn't see the others. Its blob cleanup is now safe beside other vaults (§2).
+3. **Export carries every vault**, archived items included, with favourites and tags in CXF's own slots and the organization fields left out of the extension; folders, the vault's name and the archived state itself are the import/export slice's to carry (02-model §11). Import applies a file's favourite and tags.
+4. **Attachments are whole-file**: up to 100 MB in the desktop, held and sealed in memory; streaming needs the core's chunk API on the store side.
+5. **History** shows changed field labels and old values masked; an old secret can't be revealed, only restored.
+6. **No free-tier vault limit**: a ceiling of 20 per persona on this build keeps a sync round bounded; three on the free tier waits for plans.
+7. **Shared build directory.** The four slices share one `CARGO_TARGET_DIR`, and Cargo hashes workspace members by their path inside the workspace, so the same crate in four worktrees writes the same artifact: a build can use another worktree's `lockdown-vault` and call it fresh. This slice touched every member source before each build so Cargo rebuilt from this worktree; whoever merges should run the gates once on the merged tree in a clean target.
+
+## 7. unicron host-contract gaps found
+
+| Gap | What the shell did |
+|---|---|
+| No tree or nested navigation row (folders, nested tags) | The shell's own `NavRow` with a spacer for depth |
+| No tag or token input | `Chip` + `ChipRemove` + `Input` with a `datalist` (`tags-editor.tsx`) |
+| No file picker or drop zone | A hidden native file input behind a `Button` |
+| No prose style for rendered Markdown | Plain elements with utility classes inside the shell's own `MarkdownView` |
+| No "save to a chosen path" host call (D88 keeps the dialog plugin out) | The browser download, as export does |
+| `IconButton` has no pressed state for a toggle | `fill` on the star, with the label saying what a press does |
+| Submenus of `DropdownMenu` don't take a pointer click under jsdom (they do from the keyboard) | Tests open them from the keyboard |
+
+## 8. Proposed decisions
+
+| # | Decision | Status |
+|---|---|---|
+| D145 | **An item's folder, tags and favourite are three sealed common fields** (`org.folder`, `org.tags`, `org.favourite`), written empty on every item this build saves so their ids say nothing; an edit that doesn't name them keeps them; tags are trimmed per `/`-part, nest with `/`, ignore case for repeats, at most 32 of 64 characters; a folder must be one of the item's own vault. Plain version: where you file something is encrypted with it and travels with it. | Accepted by default under D38; audit item |
+| D146 | **A vault's name, folder tree and trash setting live in one hidden `vault-info` item in that vault**, made only when something is set; two made on two devices before a sync read as one (the oldest wins the name, folders join) and fold into one at the next change; older builds can't read a vault that has one (§6.1). Plain version: a vault's own details are encrypted inside it like everything else. | Accepted by default under D38; **flagged for Sean** (every device needs this build before vaults are named) |
+| D147 | **Several vaults per persona, all open together**: each its own Vault Key under the persona's App Data Key; All items spans them and the sidebar narrows to one; the first is called Personal until renamed; new items go to it unless the editor picks another; vaults list in the order they were made; sync covers each; 20 at most on this build. Plain version: make a Family or Work vault beside your own; everything still shows in one list. | Accepted by default under D38; **flagged for Sean** (one list across vaults, the name Personal) |
+| D148 | **A move to another vault, or into or out of the crown-jewel class, seals the item again** under new keys with its readable history and files, as a new item, and purges the old one; a move across vaults drops the folder; into the class asks nothing, out of it asks for the account password (`Reveal`), a kind that is always a crown jewel can't leave, and a crown jewel's move asks first (`Use`). Amends D110 ("can't be undone"). Plain version: you can now move things between vaults and turn the crown-jewel protection off again, with your password. | Accepted by default under D38; **flagged for Sean** (the opt-in is now reversible behind the password) |
+| D149 | **Archived items leave the list, search, the palette, the codes view, the duplicate finder and the reminders**, sit in an Archived view, and still sync and export; an archive on one device over a live copy on another stays archived. Plain version: archive keeps something without it getting in your way. | Accepted by default under D38; **flagged for Sean** (user-visible) |
+| D150 | **The trash purges itself on every device** when the vault's grace runs out (30 days by default; 7, 14, 30, 60, 90 days or a year, per vault, synced), at unlock and after each sync; a trashed item waits while a conflict copy of it is open; keeping a conflict copy gives it the item's own title back; Delete now purges at once after a confirm. Plain version: deleted things really go after a month, everywhere, unless a conflict is still waiting for you. | Accepted by default under D38; **flagged for Sean** (the choices of grace period) |
+| D151 | **Recency stays on the device**: a use is a reveal, a copy, a code copied, a file saved or the site opened (not looking at the item), kept in `recency-<persona>.cbor` sealed under the App Data Key; the palette ranks favourites, then uses (the count halved for every two weeks since), then A–Z, and the list sorts by "Recently used" on request. Plain version: what you use most comes first in quick access, and only this computer knows. | Accepted by default under D38; **flagged for Sean** (what counts as a use) |
+| D152 | **The duplicate finder works in the core with a keyed hash it throws away**: same website and username (Logins), same password, same code set-up; Logins merge into the one kept (websites, codes, passkeys, notes, your own fields, tags and the favourite come along; the others go to the trash); other duplicates are trashed one by one; merging a crown jewel asks first. Plain version: find copies after an import and fold them together without anything leaving the vault. | Accepted by default under D38; **flagged for Sean** (what a merge keeps) |
+| D153 | **Expiry reminders start from how long a renewal takes**: documents and identities 90 days out, cards 60, API keys 14, everything else 30; the Expiring view in sections (Expired, Within a week, Within a month, Later); one toast a day after unlock. Amends D104's thirty days. Plain version: a passport reminds you three months ahead, a card two. | Accepted by default under D38; **flagged for Sean** (the leads, the daily toast) |
+| D154 | **Item depth in the desktop**: a Login takes several websites, each with a match rule in plain words (This address only, Anywhere on this site, This site and its sister sites, Pages starting with this address, Never offer here; new ones exact), and a sign-in method (Password, Passkey, Another account, Single sign-on) with "Signed in with"; a note's Markdown is drawn as elements with no HTML and links that open the browser; files up to 100 MB attach, save where the person chooses (a crown jewel's after the password) and come off in a new version the history keeps. Plain version: logins with several sites, notes that look like notes, and files you can attach and get back. | Accepted by default under D38; **flagged for Sean** (the rule and method words, the 100 MB cap) |
