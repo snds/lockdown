@@ -38,7 +38,10 @@ mod tests {
             "lockdown:link:v1?s=https%3A%2F%2Fvault.example&c=ABCDE12345&f=00112233445566778899aabbccddeeff",
         );
         let w = r.0.len();
-        assert!(w >= 21 && (w - 21).is_multiple_of(4), "a QR code's side is 21 + 4k");
+        assert!(
+            w >= 21 && (w - 21).is_multiple_of(4),
+            "a QR code's side is 21 + 4k"
+        );
         assert!(r.0.iter().all(|row| row.len() == w));
         // The top-left finder pattern: seven dark modules across the top.
         assert!(r.0[0].starts_with("1111111"));
