@@ -5,16 +5,20 @@
 //! approvals all reduce to "approve a sign-in I am being shown". This crate
 //! decides once, for all of them.
 //!
-//! **Status: skeleton with the gates real.** The proximity rule, number
-//! matching, and the rate limit are implemented and tested. Delivery of the
-//! prompt to a screen, the allow-list of activation pages, and the
-//! "this wasn't me" report pipeline are not built yet.
+//! **Status: the gates are real and wired.** The proximity rule, number
+//! matching and the rate limit are implemented and tested, and the shells'
+//! scan flow (`lockdown_app::scan`) runs every scanned or pasted sign-in
+//! code through [`ApprovalService::evaluate`] before anything else. The
+//! signed allow-list of activation pages and the reading of a scanned code
+//! are [`activation`]. The "this wasn't me" report pipeline is not built.
 //!
 //! The proximity rule: a code is approved **only** when the person scanned it
 //! from a screen in front of them. Codes that arrive by message, email, link
 //! or paste are refused, and no setting can override this.
 
 use serde::{Deserialize, Serialize};
+
+pub mod activation;
 
 /// What kind of sign-in is being approved.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -41,6 +45,9 @@ pub enum CodeSource {
     Link,
     /// Arrived in a message or email.
     Message,
+    /// Read from an image file (a photo or a screenshot): it may have been
+    /// sent, so it counts as a paste does.
+    Image,
 }
 
 /// Number matching: the sign-in screen shows a number and the approver must
@@ -208,7 +215,12 @@ mod tests {
     #[test]
     fn a_pasted_device_code_is_refused_by_the_proximity_rule() {
         let mut svc = ApprovalService::default();
-        for src in [CodeSource::Pasted, CodeSource::Link, CodeSource::Message] {
+        for src in [
+            CodeSource::Pasted,
+            CodeSource::Link,
+            CodeSource::Message,
+            CodeSource::Image,
+        ] {
             let d = svc.evaluate(&device_code(src), 0);
             assert!(
                 matches!(&d, ApprovalDecision::Refused { reason } if reason.contains("screen in front of you")),

@@ -70,6 +70,7 @@ mod history;
 pub mod items;
 mod organize;
 pub(crate) mod passkeys;
+pub(crate) mod quick;
 pub(crate) mod recovery;
 pub(crate) mod second_factor;
 pub(crate) mod secret_key;
@@ -300,6 +301,8 @@ pub struct Session {
     link: Option<devices_link::OpenLink>,
     /// Phrase checks of someone's keys under way (`sharing::phrase`).
     phrase_checks: BTreeMap<Id, sharing::phrase::Pending>,
+    /// The quick-access index, until what it was built from changes (`quick`).
+    quick: Option<quick::Cache>,
 }
 
 impl Session {
@@ -524,6 +527,7 @@ impl Session {
             opened_send: None,
             link: None,
             phrase_checks: BTreeMap::new(),
+            quick: None,
         };
         session.load_sharing()?;
         session.remember()?;

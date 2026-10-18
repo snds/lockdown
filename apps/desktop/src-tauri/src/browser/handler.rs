@@ -379,43 +379,34 @@ fn basic_auth(shared: &Shared, id: &Value, frame: &[u8]) -> Zeroizing<Vec<u8>> {
     }
 }
 
-/// The search over item summaries: every word a plain substring of the
-/// title, username, website host, subtitle or kind, in any order (the
-/// desktop list's rule, D118). Live items only; a crown jewel by title and
-/// kind (D113).
+/// The search over item summaries, through the core's quick-access index
+/// (`lockdown_app::quick`, docs/plan/26-desktop-finish.md §1): ranked,
+/// forgiving a typo, live items only, a crown jewel by title and kind
+/// (D113), the same answer the desktop's palette gets. The answer's shape
+/// is the popup's, as before (D62).
 pub fn search(app: &App, query: &str, limit: Option<usize>) -> Result<Value, Refusal> {
-    let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
     let limit = limit.unwrap_or(MAX_RESULTS).clamp(1, MAX_RESULTS);
-    let rows = app.list()?;
-    let mut items = Vec::new();
-    for row in rows.into_iter().filter(|r| r.state == "live") {
-        let host = lockdown_matcher::Origin::parse(&row.site)
-            .map(|o| o.host)
-            .unwrap_or_default();
-        let keywords = [
-            row.title.to_lowercase(),
-            row.username.to_lowercase(),
-            host.clone(),
-            row.subtitle.to_lowercase(),
-            row.kind.clone(),
-        ];
-        if !words.iter().all(|w| keywords.iter().any(|k| k.contains(w))) {
-            continue;
-        }
-        items.push(json!({
-            "item_id": row.id,
-            "kind": row.kind,
-            "title": row.title,
-            "username": row.username,
-            "host": host,
-            "subtitle": row.subtitle,
-            "crown_jewel": row.crown_jewel,
-            "copy": row.copy.as_ref().map(|c| json!({ "label": c.label, "how": c.how })),
-        }));
-        if items.len() == limit {
-            break;
-        }
-    }
+    let items: Vec<Value> = app
+        .search(query, limit)?
+        .into_iter()
+        .map(|hit| {
+            let row = hit.item;
+            let host = lockdown_matcher::Origin::parse(&row.site)
+                .map(|o| o.host)
+                .unwrap_or_default();
+            json!({
+                "item_id": row.id,
+                "kind": row.kind,
+                "title": row.title,
+                "username": row.username,
+                "host": host,
+                "subtitle": row.subtitle,
+                "crown_jewel": row.crown_jewel,
+                "copy": row.copy.as_ref().map(|c| json!({ "label": c.label, "how": c.how, "field_id": c.field_id })),
+                "exact": hit.exact,
+            })
+        })
+        .collect();
     Ok(json!({ "items": items }))
 }
 

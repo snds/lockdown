@@ -105,6 +105,10 @@ pub struct LoginCandidate {
     pub code_field: Option<String>,
     /// Seconds since the Unix epoch.
     pub edited_at: i64,
+    /// The person asked quick access to fill this login here a moment ago
+    /// (`quick::App::quick_fill`); it comes first. Absent otherwise.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub asked: bool,
 }
 
 /// Which logins fit a page, and what the page imitates.
@@ -389,6 +393,7 @@ impl App {
                     password: has_field(&fields, "pw"),
                     code_field: first_code(&fields),
                     edited_at,
+                    asked: false,
                 });
             }
             // Beyond your own logins: a page that imitates a well-known site,
@@ -399,9 +404,15 @@ impl App {
                     lookalike_of.push(domain);
                 }
             }
+            core.quick_fills
+                .retain(|p| p.at.elapsed() < crate::quick::FILL_WAIT);
+            for login in &mut logins {
+                login.asked = core.quick_fills.iter().any(|p| p.item_id == login.item_id);
+            }
             logins.sort_by(|a, b| {
-                strength(a.decision)
-                    .cmp(&strength(b.decision))
+                b.asked
+                    .cmp(&a.asked)
+                    .then(strength(a.decision).cmp(&strength(b.decision)))
                     .then(b.edited_at.cmp(&a.edited_at))
                     .then(a.title.cmp(&b.title))
             });

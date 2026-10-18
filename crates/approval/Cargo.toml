@@ -1,6 +1,6 @@
 [package]
 name = "lockdown-approval"
-description = "The one approval service: proximity gate, number matching, context, rate limits, 'this wasn't me'"
+description = "The one approval service: proximity gate, number matching, context, rate limits, 'this wasn't me'; the signed activation-page allow-list"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,3 +11,14 @@ repository.workspace = true
 lockdown-policy.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+# The activation-page allow-list (src/activation.rs): the matcher's signed
+# envelope and publisher keys, canonical CBOR, Ed25519 for the signing
+# example, and scanned addresses parsed as hostile.
+lockdown-matcher.workspace = true
+ciborium.workspace = true
+ed25519-dalek.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+data-encoding.workspace = true

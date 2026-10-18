@@ -1,0 +1,15 @@
+{
+  "activation_pages": 1,
+  "published": "2026-10-18",
+  "pages": [
+    { "service": "Microsoft", "hosts": ["www.microsoft.com", "microsoft.com"], "path": "/link", "params": ["otc"], "opens_with": "otc", "path_code": false },
+    { "service": "YouTube", "hosts": ["www.youtube.com", "youtube.com"], "path": "/activate", "params": ["user_code"], "opens_with": "user_code", "path_code": false },
+    { "service": "Google", "hosts": ["www.google.com", "google.com"], "path": "/device", "params": ["user_code"], "opens_with": "user_code", "path_code": false },
+    { "service": "Epic Games", "hosts": ["www.epicgames.com", "epicgames.com"], "path": "/id/activate", "params": ["userCode", "user_code"], "opens_with": "userCode", "path_code": false },
+    { "service": "Discord", "hosts": ["discord.com"], "path": "/activate", "params": ["user_code"], "opens_with": "user_code", "path_code": false },
+    { "service": "Netflix", "hosts": ["www.netflix.com", "netflix.com"], "path": "/tv8", "params": ["code"], "opens_with": null, "path_code": true },
+    { "service": "Disney+", "hosts": ["www.disneyplus.com", "disneyplus.com"], "path": "/begin", "params": ["code"], "opens_with": null, "path_code": true },
+    { "service": "Amazon", "hosts": ["www.amazon.com", "amazon.com"], "path": "/code", "params": ["cbl-code", "code"], "opens_with": null, "path_code": false },
+    { "service": "Prime Video", "hosts": ["www.primevideo.com", "primevideo.com"], "path": "/mytv", "params": ["cbl-code", "code"], "opens_with": null, "path_code": false }
+  ]
+}
