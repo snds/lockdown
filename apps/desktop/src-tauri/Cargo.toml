@@ -73,6 +73,10 @@ sha2.workspace = true
 getrandom.workspace = true
 data-encoding.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+# The browser endpoint's named pipe on Windows (docs/plan/24-release.md §3).
+lockdown-pipe.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true
 # Test speed only: the identity crate's lowered Argon2id floor, so the

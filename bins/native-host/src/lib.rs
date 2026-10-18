@@ -7,10 +7,11 @@
 //! 1. Reads which extension started it from its arguments
 //!    ([`Caller::from_args`]).
 //! 2. Reads the endpoint file the desktop app wrote in Lockdown's data
-//!    directory, connects to the socket it names, and checks the process
-//!    on the other end is that executable with that SHA-256
-//!    ([`ProcessIdentityVerifier`]); the desktop checks this host the same
-//!    way from its side.
+//!    directory, connects to the socket (Linux, macOS) or named pipe
+//!    (Windows, `lockdown-pipe`) it names, and checks the process on the
+//!    other end is that executable with that SHA-256
+//!    ([`ProcessIdentityVerifier`], or `lockdown-pipe`'s check by the same
+//!    rules); the desktop checks this host the same way from its side.
 //! 3. Sends a [`HostHello`] naming the caller, relays the desktop's first
 //!    frame (ready, or refused) to the browser, and then relays each
 //!    browser message to the desktop and each answer back, one at a time.
@@ -127,8 +128,36 @@ pub fn relay<R: Read, W: Write, C: PeerChannel>(
     }
 }
 
+/// Reads the endpoint file in `data`, or says Lockdown isn't running.
+fn endpoint<W: Write>(
+    data: &std::path::Path,
+    output: &mut W,
+) -> Result<lockdown_native_messaging::endpoint::EndpointFile, String> {
+    lockdown_native_messaging::endpoint::EndpointFile::read(data).map_err(|_| {
+        say(
+            output,
+            "no_app",
+            "Lockdown isn't running on this computer; open it and unlock",
+        );
+        "no endpoint file".to_string()
+    })
+}
+
+/// The desktop app the endpoint file names, by path and hash: the only
+/// program this host relays to.
+fn the_app(
+    endpoint: &lockdown_native_messaging::endpoint::EndpointFile,
+) -> Result<ecosystem_identity::handshake::verify::AllowedBinary, String> {
+    Ok(ecosystem_identity::handshake::verify::AllowedBinary {
+        app: "lockdown".into(),
+        path: endpoint.app_exe.clone(),
+        sha256: Some(endpoint.app_hash().map_err(|e| e.to_string())?),
+    })
+}
+
 /// Connects to the desktop named by the endpoint file in `data` and
-/// relays. Unix only: the Windows named pipe is not built yet.
+/// relays: over the Unix socket it names (Linux, macOS), checked by the
+/// identity crate's process identity.
 #[cfg(unix)]
 pub fn run<R: Read, W: Write>(
     caller: Caller,
@@ -136,27 +165,11 @@ pub fn run<R: Read, W: Write>(
     input: &mut R,
     output: &mut W,
 ) -> Result<(), String> {
+    use ecosystem_identity::handshake::PeerTransport;
     use ecosystem_identity::handshake::unix::UnixSocketTransport;
-    use ecosystem_identity::handshake::{PeerTransport, verify::AllowedBinary};
-    use lockdown_native_messaging::endpoint::EndpointFile;
 
-    let endpoint = match EndpointFile::read(data) {
-        Ok(e) => e,
-        Err(_) => {
-            say(
-                output,
-                "no_app",
-                "Lockdown isn't running on this computer; open it and unlock",
-            );
-            return Err("no endpoint file".into());
-        }
-    };
-    let hash = endpoint.app_hash().map_err(|e| e.to_string())?;
-    let verifier = ProcessIdentityVerifier::new(vec![AllowedBinary {
-        app: "lockdown".into(),
-        path: endpoint.app_exe.clone(),
-        sha256: Some(hash),
-    }]);
+    let endpoint = endpoint(data, output)?;
+    let verifier = ProcessIdentityVerifier::new(vec![the_app(&endpoint)?]);
     let channel = match UnixSocketTransport::at(&endpoint.socket).connect(HELLO_TIMEOUT) {
         Ok(c) => c,
         Err(_) => {
@@ -171,8 +184,48 @@ pub fn run<R: Read, W: Write>(
     relay(caller, &verifier, channel, input, output)
 }
 
-/// On a platform without the local socket yet, the host says so.
-#[cfg(not(unix))]
+/// Connects to the desktop named by the endpoint file in `data` and
+/// relays: over the named pipe it names (Windows), checked by the same
+/// rules as the socket (user, path, SHA-256) through `lockdown-pipe`.
+#[cfg(windows)]
+pub fn run<R: Read, W: Write>(
+    caller: Caller,
+    data: &std::path::Path,
+    input: &mut R,
+    output: &mut W,
+) -> Result<(), String> {
+    use ecosystem_identity::handshake::PeerTransport;
+    use lockdown_pipe::{PipeTransport, PipeVerifier};
+
+    let endpoint = endpoint(data, output)?;
+    let verifier = PipeVerifier::new(vec![the_app(&endpoint)?]);
+    let name = endpoint.socket.to_string_lossy();
+    if !name.starts_with(lockdown_pipe::PIPE_PREFIX) {
+        say(
+            output,
+            "untrusted_app",
+            "the endpoint file doesn't name a Lockdown pipe",
+        );
+        return Err("not a Lockdown pipe".into());
+    }
+    let channel = match PipeTransport::at(&name).connect(HELLO_TIMEOUT) {
+        Ok(c) => c,
+        Err(_) => {
+            say(
+                output,
+                "no_app",
+                "Lockdown isn't running on this computer; open it and unlock",
+            );
+            return Err("nobody on the pipe".into());
+        }
+    };
+    let bound = verifier.bind(channel.peer_process());
+    relay(caller, &bound, channel, input, output)
+}
+
+/// On a platform with neither a Unix socket nor a named pipe, the host
+/// says so.
+#[cfg(not(any(unix, windows)))]
 pub fn run<R: Read, W: Write>(
     _caller: Caller,
     _data: &std::path::Path,
@@ -310,7 +363,6 @@ mod tests {
         assert_eq!(out[2]["error"]["code"], "closed");
     }
 
-    #[cfg(unix)]
     #[test]
     fn without_an_endpoint_file_the_host_says_lockdown_is_not_running() {
         let dir = tempfile::tempdir().unwrap();

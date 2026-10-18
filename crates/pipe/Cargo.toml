@@ -1,0 +1,32 @@
+[package]
+name = "lockdown-pipe"
+description = "The local channel on Windows: a named pipe with a user-only ACL, and the peer check by process id, executable path and SHA-256 that the Unix socket gets from the identity crate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# The channel and verifier traits, the frame encoding and the allow-list
+# type this crate implements for Windows (D4, D33). The identity crate's
+# own transports are the in-memory channel and the Unix socket.
+ecosystem-identity.workspace = true
+sha2.workspace = true
+data-encoding.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+# Raw Win32: named pipes, overlapped I/O, process and token queries, SDDL.
+# The same major line Tauri and keyring already pull in.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+tempfile.workspace = true

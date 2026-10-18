@@ -21,5 +21,9 @@ lockdown-native-messaging.workspace = true
 ecosystem-identity.workspace = true
 serde_json.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+# The named pipe and its peer check on Windows (docs/plan/24-release.md §3).
+lockdown-pipe.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true
