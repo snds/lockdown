@@ -4,6 +4,7 @@ import {
   Button,
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -106,18 +107,23 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
           Sort
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-            <DropdownMenuRadioItem value="title">Title</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="changed">Recently changed</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="used">Recently used</DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
+          {/* A label names the group it sits in (Base UI's Menu.GroupLabel needs one). */}
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+              <DropdownMenuRadioItem value="title">Title</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="changed">Recently changed</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="used">Recently used</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuGroup>
           <DropdownMenuSeparator />
-          <DropdownMenuLabel>Group</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
-            <DropdownMenuRadioItem value="kind">By kind</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="none">No groups</DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>Group</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
+              <DropdownMenuRadioItem value="kind">By kind</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="none">No groups</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
       <IconButton label="Quick access" icon="bolt" shortcut={isMac() ? "⌘K" : "Ctrl+K"} onClick={onPalette} />

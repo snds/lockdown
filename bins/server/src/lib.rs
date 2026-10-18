@@ -19,6 +19,7 @@
 //! - [`breach_monitor`] — the email breach job over an injectable feed
 //! - [`sharing`] / [`sharing_api`] — shared vaults and their members, items
 //!   shared on their own, share links, request links, emergency access
+//! - [`web_vault`] — the built web vault at `/vault/`, with its headers
 //!
 //! The key-transparency log (`storage::kt_log`, served under `/v1/kt/`) is
 //! appended inside the same transactions that accept identity manifests,
@@ -33,6 +34,7 @@ pub mod sharing;
 pub mod sharing_api;
 pub mod storage;
 pub mod token;
+pub mod web_vault;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -116,6 +118,9 @@ pub struct Config {
     pub max_blob_bytes: u64,
     /// How long a blob nothing names is kept before it is collected.
     pub blob_grace: Duration,
+    /// The built web vault (`apps/web/dist`) to serve at `/vault/`; `None`
+    /// serves none (docs/plan/17-web-vault.md).
+    pub web_vault: Option<std::path::PathBuf>,
 }
 
 /// The default blob cap: 64 MiB.
@@ -133,6 +138,7 @@ impl Default for Config {
             per_login: (10, 1.0 / 6.0),
             max_blob_bytes: DEFAULT_MAX_BLOB_BYTES,
             blob_grace: DEFAULT_BLOB_GRACE,
+            web_vault: None,
         }
     }
 }
@@ -315,6 +321,9 @@ pub fn app(state: Arc<AppState>) -> Router {
         )
         .route("/s/{send}", get(sharing_api::send_page))
         .route("/r/{request}", get(sharing_api::request_page))
+        .route("/vault", get(web_vault::redirect))
+        .route("/vault/", get(web_vault::index))
+        .route("/vault/{*path}", get(web_vault::file))
         .with_state(state)
 }
 

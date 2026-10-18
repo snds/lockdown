@@ -75,7 +75,7 @@ fn right_named(text: &str) -> Result<Right, String> {
 /// Removes everything a vault left in the store (its items and heads); the
 /// record, a few hundred bytes of the Vault Key under this persona's key,
 /// stays and is never opened again.
-fn clear_vault(store: &mut SqliteStore, vault_id: Id) -> Result<(), String> {
+fn clear_vault(store: &mut DeviceStore, vault_id: Id) -> Result<(), String> {
     use lockdown_vault::Store as _;
     for item in store.list_items(vault_id).map_err(|e| e.to_string())? {
         store

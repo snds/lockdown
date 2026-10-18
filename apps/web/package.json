@@ -1,0 +1,48 @@
+{
+  "name": "lockdown-web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "The Lockdown web vault: the desktop's views over lockdown-app compiled to WebAssembly and run in a dedicated worker, served by the self-host server at /vault/",
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "build:wasm": "./build-wasm.sh",
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc -b",
+    "lint": "oxlint",
+    "test": "vitest run",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.9.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@unicron/tokens": "https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.7.0/unicron-tokens-0.7.0.tgz",
+    "@unicron/ui": "https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.12.0/unicron-ui-0.12.0.tgz",
+    "next-themes": "^0.4.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "sonner": "^2.0.8",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.0",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "jsdom": "^30.0.0",
+    "oxlint": "^1.81.0",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.0"
+  }
+}

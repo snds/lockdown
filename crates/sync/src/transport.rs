@@ -1,7 +1,10 @@
 //! How the client reaches the server: the [`Transport`] contract over the
 //! wire types, and [`HttpTransport`], the HTTPS implementation (blocking
-//! `reqwest` over rustls, which is enough for the CLI; the shells get an
-//! async one later). `HttpTransport` is also the
+//! `reqwest` over rustls behind the default `http` feature, which is
+//! enough for the CLI; the shells get an async one later). A host with
+//! its own HTTP client (the web vault, where the browser makes every
+//! request) installs it with [`install_http_hook`] and builds without
+//! `http`. `HttpTransport` is also the
 //! [`AuthRounds`](lockdown_crypto::auth::AuthRounds) the OPAQUE client
 //! drives, so one connection does login and sync.
 
@@ -103,9 +106,70 @@ pub trait Transport {
     fn kt_entries(&self, token: &str, from: u64) -> Result<AccountEntries>;
 }
 
+/// The HTTP methods the protocol uses.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Method {
+    /// `GET`.
+    Get,
+    /// `PUT`.
+    Put,
+    /// `POST`.
+    Post,
+    /// `HEAD`.
+    Head,
+    /// `DELETE`.
+    Delete,
+}
+
+impl Method {
+    /// The method's name on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Get => "GET",
+            Self::Put => "PUT",
+            Self::Post => "POST",
+            Self::Head => "HEAD",
+            Self::Delete => "DELETE",
+        }
+    }
+}
+
+/// One request as a host's HTTP client sees it: what [`HttpHook`] is
+/// handed when a build has no HTTP client of its own (the web vault, whose
+/// requests go through the browser, docs/plan/17-web-vault.md).
+#[derive(Clone, Copy, Debug)]
+pub struct HttpRequest<'a> {
+    /// The method.
+    pub method: Method,
+    /// The full URL: the transport's base and the path.
+    pub url: &'a str,
+    /// The `Content-Type` header.
+    pub content_type: &'a str,
+    /// The `Authorization` header (`Bearer <session token>`), when the
+    /// call is authenticated.
+    pub authorization: Option<&'a str>,
+    /// The body, when the request has one.
+    pub body: Option<&'a [u8]>,
+}
+
+/// A host's HTTP client: the status and the body, or why there was no
+/// answer (for the person, never with a secret in it).
+pub type HttpHook = fn(&HttpRequest<'_>) -> std::result::Result<(u16, Vec<u8>), String>;
+
+static HTTP_HOOK: std::sync::OnceLock<HttpHook> = std::sync::OnceLock::new();
+
+/// Installs the host's HTTP client, once, before any transport is made.
+/// Every [`HttpTransport`] then sends through it, in place of the built-in
+/// client (which a build without the `http` feature does not have).
+/// Returns `false` when one was installed already; the first one stays.
+pub fn install_http_hook(hook: HttpHook) -> bool {
+    HTTP_HOOK.set(hook).is_ok()
+}
+
 /// The HTTPS transport.
 pub struct HttpTransport {
     base: String,
+    #[cfg(feature = "http")]
     client: reqwest::blocking::Client,
 }
 
@@ -117,6 +181,7 @@ impl std::fmt::Debug for HttpTransport {
 
 /// Installs rustls's `ring` provider once per process. Harmless if another
 /// part of the program installed a provider already.
+#[cfg(feature = "http")]
 fn ensure_tls_provider() {
     if rustls::crypto::CryptoProvider::get_default().is_none() {
         let _ = rustls::crypto::ring::default_provider().install_default();
@@ -127,16 +192,26 @@ impl HttpTransport {
     /// A transport for the server at `base` (`https://host[:port]`, no
     /// trailing slash needed).
     pub fn new(base: &str) -> Result<Self> {
-        ensure_tls_provider();
-        let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .user_agent(concat!("lockdown/", env!("CARGO_PKG_VERSION")))
-            .build()
-            .map_err(|e| TransportError::Network(e.to_string()))?;
-        Ok(Self {
-            base: base.trim_end_matches('/').to_string(),
-            client,
-        })
+        let base = base.trim_end_matches('/').to_string();
+        #[cfg(feature = "http")]
+        {
+            ensure_tls_provider();
+            let client = reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .user_agent(concat!("lockdown/", env!("CARGO_PKG_VERSION")))
+                .build()
+                .map_err(|e| TransportError::Network(e.to_string()))?;
+            Ok(Self { base, client })
+        }
+        #[cfg(not(feature = "http"))]
+        {
+            if HTTP_HOOK.get().is_none() {
+                return Err(TransportError::Network(
+                    "this build has no HTTP client and the host installed none".into(),
+                ));
+            }
+            Ok(Self { base })
+        }
     }
 
     /// The server's base URL.
@@ -146,57 +221,82 @@ impl HttpTransport {
 
     fn send(
         &self,
-        method: reqwest::Method,
+        method: Method,
         path: &str,
         token: Option<&str>,
         body: Option<Vec<u8>>,
     ) -> Result<(u16, Vec<u8>)> {
-        let mut req = self
-            .client
-            .request(method, format!("{}{path}", self.base))
-            .header(reqwest::header::CONTENT_TYPE, CONTENT_TYPE);
-        if let Some(t) = token {
-            req = req.header(reqwest::header::AUTHORIZATION, format!("{BEARER}{t}"));
-        }
-        if let Some(b) = body {
-            req = req.body(b);
-        }
-        let res = req
-            .send()
-            .map_err(|e| TransportError::Network(e.to_string()))?;
-        let status = res.status().as_u16();
-        let bytes = res
-            .bytes()
-            .map_err(|e| TransportError::Network(e.to_string()))?;
-        Ok((status, bytes.to_vec()))
+        self.exchange(method, path, CONTENT_TYPE, token, body)
     }
 
     /// Like `send`, with an `application/octet-stream` body: blobs.
     fn send_raw(
         &self,
-        method: reqwest::Method,
+        method: Method,
         path: &str,
         token: Option<&str>,
         body: Option<Vec<u8>>,
     ) -> Result<(u16, Vec<u8>)> {
-        let mut req = self
-            .client
-            .request(method, format!("{}{path}", self.base))
-            .header(reqwest::header::CONTENT_TYPE, "application/octet-stream");
-        if let Some(t) = token {
-            req = req.header(reqwest::header::AUTHORIZATION, format!("{BEARER}{t}"));
+        self.exchange(method, path, "application/octet-stream", token, body)
+    }
+
+    /// One round trip: through the host's hook when one is installed,
+    /// else the built-in client.
+    fn exchange(
+        &self,
+        method: Method,
+        path: &str,
+        content_type: &str,
+        token: Option<&str>,
+        body: Option<Vec<u8>>,
+    ) -> Result<(u16, Vec<u8>)> {
+        let url = format!("{}{path}", self.base);
+        if let Some(hook) = HTTP_HOOK.get() {
+            let authorization = token.map(|t| format!("{BEARER}{t}"));
+            return hook(&HttpRequest {
+                method,
+                url: &url,
+                content_type,
+                authorization: authorization.as_deref(),
+                body: body.as_deref(),
+            })
+            .map_err(TransportError::Network);
         }
-        if let Some(b) = body {
-            req = req.body(b);
+        #[cfg(feature = "http")]
+        {
+            let method = match method {
+                Method::Get => reqwest::Method::GET,
+                Method::Put => reqwest::Method::PUT,
+                Method::Post => reqwest::Method::POST,
+                Method::Head => reqwest::Method::HEAD,
+                Method::Delete => reqwest::Method::DELETE,
+            };
+            let mut req = self
+                .client
+                .request(method, url)
+                .header(reqwest::header::CONTENT_TYPE, content_type);
+            if let Some(t) = token {
+                req = req.header(reqwest::header::AUTHORIZATION, format!("{BEARER}{t}"));
+            }
+            if let Some(b) = body {
+                req = req.body(b);
+            }
+            let res = req
+                .send()
+                .map_err(|e| TransportError::Network(e.to_string()))?;
+            let status = res.status().as_u16();
+            let bytes = res
+                .bytes()
+                .map_err(|e| TransportError::Network(e.to_string()))?;
+            Ok((status, bytes.to_vec()))
         }
-        let res = req
-            .send()
-            .map_err(|e| TransportError::Network(e.to_string()))?;
-        let status = res.status().as_u16();
-        let bytes = res
-            .bytes()
-            .map_err(|e| TransportError::Network(e.to_string()))?;
-        Ok((status, bytes.to_vec()))
+        #[cfg(not(feature = "http"))]
+        {
+            let _ = (url, content_type, token, body);
+            Err(TransportError::Network(
+                "this build has no HTTP client and the host installed none".into(),
+            ))
+        }
     }
 
     fn refused(status: u16, bytes: &[u8]) -> TransportError {
@@ -224,7 +324,7 @@ impl HttpTransport {
 
     pub(crate) fn call<T: Serialize, R: DeserializeOwned>(
         &self,
-        method: reqwest::Method,
+        method: Method,
         path: &str,
         token: Option<&str>,
         body: Option<&T>,
@@ -243,7 +343,7 @@ impl HttpTransport {
 
     pub(crate) fn call_raw(
         &self,
-        method: reqwest::Method,
+        method: Method,
         path: &str,
         token: Option<&str>,
         body: Option<Vec<u8>>,
@@ -271,7 +371,7 @@ impl AuthRounds for HttpTransport {
     fn register_start(&mut self, login: &str, request: &[u8]) -> lockdown_crypto::Result<Vec<u8>> {
         let reply: RegisterStartReply = self
             .call(
-                reqwest::Method::POST,
+                Method::Post,
                 "/v1/account/register/start",
                 None,
                 Some(&RegisterStart {
@@ -295,7 +395,7 @@ impl AuthRounds for HttpTransport {
             upload: upload.to_vec(),
         })?;
         self.call_raw(
-            reqwest::Method::POST,
+            Method::Post,
             "/v1/account/register/finish",
             None,
             Some(body),
@@ -311,7 +411,7 @@ impl AuthRounds for HttpTransport {
     ) -> lockdown_crypto::Result<LoginStarted> {
         let reply: LoginStartReply = self
             .call(
-                reqwest::Method::POST,
+                Method::Post,
                 "/v1/account/login/start",
                 None,
                 Some(&LoginStart {
@@ -334,7 +434,7 @@ impl AuthRounds for HttpTransport {
     ) -> lockdown_crypto::Result<Session> {
         let reply: LoginFinishReply = self
             .call(
-                reqwest::Method::POST,
+                Method::Post,
                 "/v1/account/login/finish",
                 None,
                 Some(&LoginFinish {
@@ -359,7 +459,7 @@ impl AuthRounds for HttpTransport {
 impl Transport for HttpTransport {
     fn identity_since(&self, token: &str, since: u64) -> Result<IdentitySince> {
         self.call::<(), _>(
-            reqwest::Method::GET,
+            Method::Get,
             &format!("/v1/identity?since={since}"),
             Some(token),
             None,
@@ -372,12 +472,7 @@ impl Transport for HttpTransport {
         push: &IdentityPush,
     ) -> Result<std::result::Result<HeadAccepted, HeadRefused>> {
         let body = wire::encode(push).map_err(|e| TransportError::Decode(e.to_string()))?;
-        let (status, bytes) = self.send(
-            reqwest::Method::PUT,
-            "/v1/identity",
-            Some(token),
-            Some(body),
-        )?;
+        let (status, bytes) = self.send(Method::Put, "/v1/identity", Some(token), Some(body))?;
         if (200..300).contains(&status) {
             return Ok(Ok(
                 wire::decode(&bytes).map_err(|e| TransportError::Decode(e.to_string()))?
@@ -392,12 +487,12 @@ impl Transport for HttpTransport {
     }
 
     fn list_vaults(&self, token: &str) -> Result<VaultList> {
-        self.call::<(), _>(reqwest::Method::GET, "/v1/vaults", Some(token), None)
+        self.call::<(), _>(Method::Get, "/v1/vaults", Some(token), None)
     }
 
     fn put_vault(&self, token: &str, vault_id: Id, record: &[u8]) -> Result<()> {
         self.call_raw(
-            reqwest::Method::PUT,
+            Method::Put,
             &format!("/v1/vaults/{vault_id}"),
             Some(token),
             Some(record.to_vec()),
@@ -407,7 +502,7 @@ impl Transport for HttpTransport {
 
     fn heads_since(&self, token: &str, vault_id: Id, since: u64) -> Result<HeadsSince> {
         self.call::<(), _>(
-            reqwest::Method::GET,
+            Method::Get,
             &format!("/v1/vaults/{vault_id}/heads?since={since}"),
             Some(token),
             None,
@@ -421,7 +516,7 @@ impl Transport for HttpTransport {
         head: &[u8],
     ) -> Result<std::result::Result<HeadAccepted, HeadRefused>> {
         let (status, bytes) = self.send(
-            reqwest::Method::PUT,
+            Method::Put,
             &format!("/v1/vaults/{vault_id}/heads"),
             Some(token),
             Some(head.to_vec()),
@@ -441,7 +536,7 @@ impl Transport for HttpTransport {
 
     fn items_since(&self, token: &str, vault_id: Id, since: u64) -> Result<ItemsSince> {
         self.call::<(), _>(
-            reqwest::Method::GET,
+            Method::Get,
             &format!("/v1/vaults/{vault_id}/items?since={since}"),
             Some(token),
             None,
@@ -457,7 +552,7 @@ impl Transport for HttpTransport {
     ) -> Result<PushReply> {
         let body = wire::encode(push).map_err(|e| TransportError::Decode(e.to_string()))?;
         let (status, bytes) = self.send(
-            reqwest::Method::PUT,
+            Method::Put,
             &format!("/v1/vaults/{vault_id}/items/{item_id}"),
             Some(token),
             Some(body),
@@ -478,7 +573,7 @@ impl Transport for HttpTransport {
         bytes: &[u8],
     ) -> Result<BlobAccepted> {
         let (status, body) = self.send_raw(
-            reqwest::Method::PUT,
+            Method::Put,
             &format!("/v1/vaults/{vault_id}/blobs/{hash}"),
             Some(token),
             Some(bytes.to_vec()),
@@ -491,7 +586,7 @@ impl Transport for HttpTransport {
 
     fn get_blob(&self, token: &str, vault_id: Id, hash: Hash32) -> Result<Option<Vec<u8>>> {
         let (status, body) = self.send_raw(
-            reqwest::Method::GET,
+            Method::Get,
             &format!("/v1/vaults/{vault_id}/blobs/{hash}"),
             Some(token),
             None,
@@ -506,12 +601,12 @@ impl Transport for HttpTransport {
     }
 
     fn kt_sth(&self) -> Result<SthWire> {
-        self.call::<(), _>(reqwest::Method::GET, "/v1/kt/sth", None, None)
+        self.call::<(), _>(Method::Get, "/v1/kt/sth", None, None)
     }
 
     fn kt_inclusion(&self, index: u64, size: u64) -> Result<InclusionProofWire> {
         self.call::<(), _>(
-            reqwest::Method::GET,
+            Method::Get,
             &format!("/v1/kt/inclusion?index={index}&size={size}"),
             None,
             None,
@@ -520,7 +615,7 @@ impl Transport for HttpTransport {
 
     fn kt_consistency(&self, from: u64, to: u64) -> Result<ConsistencyProofWire> {
         self.call::<(), _>(
-            reqwest::Method::GET,
+            Method::Get,
             &format!("/v1/kt/consistency?from={from}&to={to}"),
             None,
             None,
@@ -529,7 +624,7 @@ impl Transport for HttpTransport {
 
     fn kt_entries(&self, token: &str, from: u64) -> Result<AccountEntries> {
         self.call::<(), _>(
-            reqwest::Method::GET,
+            Method::Get,
             &format!("/v1/kt/entries?from={from}"),
             Some(token),
             None,
@@ -538,7 +633,7 @@ impl Transport for HttpTransport {
 
     fn has_blob(&self, token: &str, vault_id: Id, hash: Hash32) -> Result<bool> {
         let (status, body) = self.send_raw(
-            reqwest::Method::HEAD,
+            Method::Head,
             &format!("/v1/vaults/{vault_id}/blobs/{hash}"),
             Some(token),
             None,
@@ -559,7 +654,7 @@ impl HttpTransport {
     /// `GET /v1/account/alerts?since=N`.
     pub fn account_alerts(&self, token: &str, since: u64) -> Result<wire::AlertsSince> {
         self.call::<(), _>(
-            reqwest::Method::GET,
+            Method::Get,
             &format!("/v1/account/alerts?since={since}"),
             Some(token),
             None,
@@ -569,7 +664,7 @@ impl HttpTransport {
     /// `POST /v1/account/alerts/{seq}/dismiss`.
     pub fn dismiss_alert(&self, token: &str, seq: u64) -> Result<()> {
         self.call_raw(
-            reqwest::Method::POST,
+            Method::Post,
             &format!("/v1/account/alerts/{seq}/dismiss"),
             Some(token),
             None,
