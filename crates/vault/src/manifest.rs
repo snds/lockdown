@@ -13,6 +13,7 @@ use lockdown_crypto::VerifyingKey;
 use lockdown_crypto::aead::Sealed;
 use lockdown_crypto::cbor::to_canonical;
 use lockdown_crypto::hash::hash;
+use lockdown_crypto::pq_sign::{PqSigningKey, PqVerifyingKey};
 use serde::{Deserialize, Serialize};
 
 use crate::item::ItemState;
@@ -22,6 +23,9 @@ use crate::{Error, Hash32, Id, Result, Timestamp};
 
 /// The manifest format version.
 pub const MANIFEST_V: u16 = 1;
+
+/// The ML-DSA context string of a vault head signature.
+const HEAD_CONTEXT: &[u8] = b"lockdown vault head";
 
 /// One line of the manifest.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -91,20 +95,30 @@ pub struct ManifestHead {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sth: Option<SthRef>,
     /// Ed25519 by the signing device over the canonical head with `sig`
-    /// empty and no checkpoint.
+    /// empty, no checkpoint and no `pq_sig`.
     #[serde(with = "serde_bytes")]
     pub sig: Vec<u8>,
     /// The server's anchor, once it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint: Option<Checkpoint>,
+    /// ML-DSA-65 by the identity's post-quantum signing key over the same
+    /// bytes as `sig` (`crate::pq`; docs/plan/28-pq-signatures.md). Like
+    /// `checkpoint` it sits outside both signatures and outside
+    /// [`Self::hash`], so a build that doesn't know the field drops it
+    /// without breaking its chain (D62, additive). Absent on every head
+    /// signed before the identity's devices all read it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_sig: Option<serde_bytes::ByteBuf>,
 }
 
 impl ManifestHead {
-    /// The bytes the signature covers.
+    /// The bytes both signatures cover: the head without `sig`, its
+    /// checkpoint or `pq_sig`.
     pub fn signable(&self) -> Result<Vec<u8>> {
         let mut copy = self.clone();
         copy.sig.clear();
         copy.checkpoint = None;
+        copy.pq_sig = None;
         Ok(to_canonical(&copy)?)
     }
 
@@ -127,11 +141,42 @@ impl ManifestHead {
         })
     }
 
-    /// BLAKE3 of the signed head without the server's checkpoint: what the
-    /// next head names as `prev_hash`.
+    /// Adds the ML-DSA-65 signature beside the Ed25519 one, over the same
+    /// bytes, with the identity's post-quantum key.
+    pub fn sign_post_quantum(&mut self, key: &PqSigningKey) -> Result<()> {
+        let sig = key.sign(&self.signable()?, HEAD_CONTEXT)?;
+        self.pq_sig = Some(serde_bytes::ByteBuf::from(sig));
+        Ok(())
+    }
+
+    /// Checks the ML-DSA-65 signature under `key`: it must be there and
+    /// verify. Whether a head needs one at all is `crate::pq::check_heads`'s
+    /// rule.
+    pub fn verify_post_quantum(&self, key: &PqVerifyingKey) -> Result<()> {
+        let broken = |why: &str| Error::ChainBroken {
+            seq: self.seq,
+            why: why.into(),
+        };
+        let sig = self
+            .pq_sig
+            .as_ref()
+            .ok_or_else(|| broken("the head isn't signed with the identity's post-quantum key"))?;
+        key.verify(
+            &self.signable()?,
+            HEAD_CONTEXT,
+            sig,
+            &format!("manifest {}", self.seq),
+        )
+        .map_err(|_| broken("the head's post-quantum signature didn't check out"))
+    }
+
+    /// BLAKE3 of the signed head without the server's checkpoint or the
+    /// post-quantum signature: what the next head names as `prev_hash`.
+    /// The same on a build that knows `pq_sig` and on one that doesn't.
     pub fn hash(&self) -> Result<Hash32> {
         let mut copy = self.clone();
         copy.checkpoint = None;
+        copy.pq_sig = None;
         Ok(hash(&to_canonical(&copy)?))
     }
 

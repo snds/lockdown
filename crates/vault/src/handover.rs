@@ -32,7 +32,10 @@ use crate::{Error, Id, Result};
 
 /// The root key and its key id, opened through this device's keystore and
 /// checked against the profile's signing key. Drop it as soon as it is used.
-pub fn root_key(identity: &Identity, keystore: &dyn DeviceKeystore) -> Result<(Irk, Id)> {
+pub fn root_key<K: DeviceKeystore + ?Sized>(
+    identity: &Identity,
+    keystore: &K,
+) -> Result<(Irk, Id)> {
     let profile = identity.profile();
     let device_ref = KeyRef::new(KeyRefKind::Device, keystore.device_id());
     let envelope = identity
