@@ -1,5 +1,5 @@
 {
- "as_of": "2e5a39b",
+ "as_of": "979a714",
  "source": "docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)",
  "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, a web vault the server serves (the same core on wasm32-wasip1 in a worker, doc 17), and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Lockdown's clients and server speak TLS 1.3 with the hybrid X25519MLKEM768 group first (crates/tls, doc 20); plain HTTP is refused away from loopback. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and the web vault refuses some features in words for now (doc 17 §10). OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.",
  "non_v1_built": [
@@ -1981,7 +1981,7 @@
     "desktop",
     "extension"
    ],
-   "left": "Code-signature checks on macOS and Windows, and a Windows variant of the identity crate's peer type; both ends check each other by process, path and SHA-256 on every platform, Windows through the named pipe.",
+   "left": "Real signing certificates (releases use the path and SHA-256 check until then), the MSIX package-family check, and a Windows variant of the identity crate's peer type (in snds/ecosystem-identity); signed builds check each other's code signature on macOS and Windows, proven with throwaway CI certificates.",
    "evidence": [
     "D33 (process-identity check lives in the identity crate's Linux handshake, unused by Lockdown)",
     "D4"
@@ -2075,7 +2075,7 @@
    "surfaces": [
     "desktop"
    ],
-   "left": "A browser reaching the app inside the Flatpak, the SSH agent and TPM-sealed unlock (OS-level, deferred); deb, rpm and Flatpak packages are built and smoke-tested.",
+   "left": "Browsers that are themselves Flatpak or Snap (D362), Flathub, the SSH agent and TPM-sealed unlock (OS-level, deferred); deb, rpm and Flatpak packages are built, smoke-tested and reproducible, and a host browser reaches the app inside the Flatpak.",
    "evidence": [
     ".github/workflows/ci.yml:98 (desktop job on WebKitGTK)",
     "apps/desktop/src-tauri/tauri.conf.json:34 (bundle targets all; no packaging pipeline in CI)"
@@ -2243,9 +2243,10 @@
    "surfaces": [
     "extension",
     "server",
-    "cli"
+    "cli",
+    "desktop"
    ],
-   "left": "Reproducible desktop bundles and Android builds, and an independent rebuilder; the extension zips, server and CLI binaries and the server image are byte-identical across two runner images.",
+   "left": "Windows executables (linker version, PE time stamp, PDB GUID), the dmg and the .flatpak bundle file, Android builds, and an independent rebuilder; the extension zips, server and CLI binaries, server image, deb, rpm, the Flatpak's OSTree commit and the unsigned macOS app are byte-identical across two runner images.",
    "evidence": [
     ".github/workflows/ci.yml (no release or rebuild job)"
    ],

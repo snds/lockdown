@@ -1,6 +1,6 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `2e5a39b`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `979a714`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
 **Done** means it works end to end in today's surfaces (core, desktop, CLI, server, browser extension, web vault) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
@@ -172,7 +172,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [ ] **Malicious-server resistance**: Partial · core, server. The Tamarin or ProVerif model of login, sharing and recovery, and the academic review (not code); sharing's defences (signed envelopes, membership chain, KT-checked keys) are built.
 - [ ] **Post-quantum key wrapping**: Partial · core, desktop, web, server, cli. Shared vaults and items shared on their own (Ed25519, D343), session tokens and the device's live sign-in proof, a post-quantum state line in Security (D346), and an outside review; hybrid wraps, ML-DSA-65 on identity manifests, vault heads (covering every item version), the log's tree heads and checkpoints, and the rollout rule are built.
 - [ ] **Memory hygiene**: Partial · core, desktop, web. Locking the identity crate's own key types, and measuring web engines other than Chromium; secret pages are out of swap, core dumps are off, and typed secrets clear on hide and after a minute out of focus.
-- [ ] **Verified local connections**: Partial · desktop, extension. Code-signature checks on macOS and Windows, and a Windows variant of the identity crate's peer type; both ends check each other by process, path and SHA-256 on every platform, Windows through the named pipe.
+- [ ] **Verified local connections**: Partial · desktop, extension. Real signing certificates (releases use the path and SHA-256 check until then), the MSIX package-family check, and a Windows variant of the identity crate's peer type (in snds/ecosystem-identity); signed builds check each other's code signature on macOS and Windows, proven with throwaway CI certificates.
 - [ ] **Hardware-backed biometric unlock**: Not started · nowhere yet. Everything: key slots in the Secure Enclave, StrongBox or TPM that reset when biometrics change.
 
 ## Platforms & apps
@@ -182,14 +182,14 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [x] **Non-Electron desktop**: Done · desktop. Nothing; native targets come with the OS-provider features.
 - [ ] **Windows app**: Partial · desktop. The passkey plugin and auto-type (OS-level, deferred), and signing; Windows builds and tests in CI, with MSI, NSIS and unsigned MSIX packages.
 - [ ] **macOS app**: Partial · desktop. Signing and notarisation (waits on a Developer ID; the steps are written), and the native AutoFill and passkey extensions (OS-level, deferred); a universal build and dmg are made in CI.
-- [ ] **Linux app**: Partial · desktop. A browser reaching the app inside the Flatpak, the SSH agent and TPM-sealed unlock (OS-level, deferred); deb, rpm and Flatpak packages are built and smoke-tested.
+- [ ] **Linux app**: Partial · desktop. Browsers that are themselves Flatpak or Snap (D362), Flathub, the SSH agent and TPM-sealed unlock (OS-level, deferred); deb, rpm and Flatpak packages are built, smoke-tested and reproducible, and a host browser reaches the app inside the Flatpak.
 - [ ] **iPhone and iPad app** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: the SwiftUI app and the UniFFI bindings.
 - [ ] **Android app** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: the Jetpack Compose app and F-Droid build.
 - [ ] **Usable free tier**: Not code yet · nowhere yet. Needs the plan and pricing decision and its enforcement on the server.
 
 ## Trust & transparency
 
-- [ ] **Reproducible builds**: Partial · extension, server, cli. Reproducible desktop bundles and Android builds, and an independent rebuilder; the extension zips, server and CLI binaries and the server image are byte-identical across two runner images.
+- [ ] **Reproducible builds**: Partial · extension, server, cli, desktop. Windows executables (linker version, PE time stamp, PDB GUID), the dmg and the .flatpak bundle file, Android builds, and an independent rebuilder; the extension zips, server and CLI binaries, server image, deb, rpm, the Flatpak's OSTree commit and the unsigned macOS app are byte-identical across two runner images.
 - [ ] **Signed releases and SBOMs**: Partial · nowhere yet. Signing certificates and a first tag; the tag-only workflow, SBOMs, checksums, Sigstore provenance, the verification guide and cargo-vet (632 crates still exempted) are built.
 - [ ] **Open-source clients**: Not code yet · nowhere yet. Needs the licence choice: the plan says GPL-3.0 but the code is Apache-2.0 today; and a public repository. Licence settled as Apache-2.0 for now (D120).
 - [ ] **Open-source server**: Not code yet · nowhere yet. Needs the licence choice: the plan says AGPL but the server is Apache-2.0 today. Licence settled as Apache-2.0 for now (D120).

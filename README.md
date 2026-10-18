@@ -14,7 +14,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**342 decisions, twenty-seven build slices, no release yet (2026-10-18).** Of the 122 features committed to v1, 82 are done, 16 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
+**357 decisions, twenty-eight build slices, no release yet (2026-10-18).** Of the 122 features committed to v1, 82 are done, 16 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
 
 | Slice | What it delivered |
 |---|---|
@@ -46,6 +46,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 | **25 · Release engineering** ✅ | Windows and macOS in CI with the Windows named-pipe browser channel, deb, rpm, Flatpak, universal macOS, MSI, NSIS and MSIX packages, a tag-only release workflow with SBOMs, checksums and Sigstore provenance (draft releases for Sean to publish), cargo-vet, reproducible extension, server and image builds, store-ready extension packages ([doc](docs/plan/24-release.md), D275–D289) |
 | **26 · Post-quantum signatures** ✅ | ML-DSA-65 beside Ed25519 on vault heads (which pin every item version), the key-transparency log's signed tree heads and checkpoints, under the all-devices rollout rule; stripping refused once seen, the server checks pushed heads ([doc](docs/plan/28-pq-signatures.md), D335–D346) |
 | **27 · Web and server finishing** ✅ | The web vault holds the live channel itself, the last restore drill shown in the clients, passkeys on the admin page, drills that sign a real client in, key-transparency log mirrors with the comparison and a warning in words, pairing and fill driven in Firefox from the inline menu ([doc](docs/plan/27-web-server-finish.md), D320–D332) |
+| **28 · Release polish** ✅ | Reproducible deb, rpm and Flatpak (same OSTree commit on two runner images) and an unsigned macOS app, code-signature peer checks on macOS and Windows proven with throwaway CI certificates, the browser reaching the app inside the Flatpak through a host-side wrapper ([doc](docs/plan/29-release-polish.md), D350–D364) |
 | **Next** | Browser extension (fill, save, passkeys), mobile apps, sharing and family, breach monitoring, packaged and signed releases |
 
 | Real (with tests) | Skeleton (types, traits, one real rule each) |
