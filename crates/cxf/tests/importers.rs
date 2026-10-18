@@ -847,16 +847,25 @@ fn a_kdbx_export_opens_in_a_keepass_reader() {
         bytes: zeroize::Zeroizing::new(b"attached".to_vec()),
     });
     let mut card = ImportedItem::new("b", ItemKind::Card, "Visa");
-    card.fields
-        .push(PlainField::hidden("card.number", "Card number", "4111111111111111"));
+    card.fields.push(PlainField::hidden(
+        "card.number",
+        "Card number",
+        "4111111111111111",
+    ));
     let file = lockdown_cxf::kdbx_out::write(&[login, card], "out-pass", "Lockdown").unwrap();
     let p = import::read(&file, Format::Kdbx, Some(b"out-pass"), &Limits::default()).unwrap();
     let f = by_title(&p, "Forum");
     assert_eq!(f.folder.as_deref(), Some("Logins"));
     assert_eq!(text(f, "pw").as_deref(), Some("kdbx-out-pass"));
-    assert_eq!(text(f, "url.1").as_deref(), Some("https://m.forum.example.com"));
+    assert_eq!(
+        text(f, "url.1").as_deref(),
+        Some("https://m.forum.example.com")
+    );
     assert!(text(f, "code.0").is_some());
-    assert_eq!(labelled(f, "Door code"), Some((FieldKind::Hidden, "1234".into())));
+    assert_eq!(
+        labelled(f, "Door code"),
+        Some((FieldKind::Hidden, "1234".into()))
+    );
     assert_eq!(f.attachments[0].bytes.as_slice(), b"attached");
     let c = by_title(&p, "Visa");
     assert_eq!(text(c, "pw").as_deref(), Some("4111111111111111"));

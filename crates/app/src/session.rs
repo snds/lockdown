@@ -59,9 +59,10 @@ use crate::types::{
 };
 use crate::views;
 
+mod backup;
 mod codes;
 pub mod items;
-mod transfer;
+pub(crate) mod transfer;
 
 const KEYSTORE_FILE: &str = "device-key.cbor";
 const STORE_FILE: &str = "vault.sqlite";
@@ -252,6 +253,8 @@ pub struct Session {
     transparency: TransparencyMemory,
     sync: Option<SyncConfig>,
     opened: OpenVault,
+    /// A parsed import waiting for the person's yes (dropped on lock).
+    transfer: transfer::Pending,
 }
 
 impl Session {
@@ -427,6 +430,7 @@ impl Session {
             transparency,
             sync,
             opened,
+            transfer: transfer::Pending::default(),
         };
         session.remember()?;
         Ok(session)
@@ -687,7 +691,11 @@ impl Session {
         let item = vault.item(item_id).map_err(|e| e.to_string())?;
         let latest = item.latest().map_err(|e| e.to_string())?;
         let fields = vault.open_item(item_id).map_err(|e| e.to_string())?;
-        let views = fields.iter().map(|f| field_view(f, reveal)).collect();
+        let views = fields
+            .iter()
+            .filter(|f| !lockdown_vault::is_reserved_field(&f.field_id))
+            .map(|f| field_view(f, reveal))
+            .collect();
         Ok(ItemDetail {
             id: item_id.to_string(),
             kind: item.kind.as_str().to_string(),
@@ -695,6 +703,7 @@ impl Session {
             version: latest.n,
             edited_at: latest.edited_at.0,
             crown_jewel: item.class == ItemClass::CrownJewel,
+            export_opt_in: lockdown_vault::export_opted_in(&fields),
             fields: views,
         })
     }

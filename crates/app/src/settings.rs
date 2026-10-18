@@ -67,6 +67,36 @@ pub struct Settings {
     pub hidden_lock_secs: Option<u64>,
     /// The server the join, register and log-in forms suggest.
     pub server: Option<String>,
+    /// Automatic encrypted backups (preferences only: the key they are
+    /// sealed under lives in `backup-key.cbor`, sealed under the vault's
+    /// key, never here).
+    pub backup: BackupSettings,
+}
+
+/// Where and how often automatic backups run.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BackupSettings {
+    /// Whether scheduled backups run.
+    pub enabled: bool,
+    /// The folder the person chose.
+    pub folder: Option<String>,
+    /// Hours between backups, 1 to 168 (a week).
+    pub interval_hours: u32,
+    /// How many backups to keep, 1 to 100; older ones Lockdown made are
+    /// removed from the folder.
+    pub keep_last: u32,
+}
+
+impl Default for BackupSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            folder: None,
+            interval_hours: 24,
+            keep_last: 10,
+        }
+    }
 }
 
 impl Default for Settings {
@@ -80,6 +110,7 @@ impl Default for Settings {
             idle_lock_secs: policy.idle.map(|d| d.as_secs()),
             hidden_lock_secs: policy.hidden.map(|d| d.as_secs()),
             server: None,
+            backup: BackupSettings::default(),
         }
     }
 }
@@ -128,6 +159,18 @@ impl Settings {
             .map(str::trim)
             .filter(|t| !t.is_empty())
             .map(str::to_string);
+        s.backup.interval_hours = s.backup.interval_hours.clamp(1, 168);
+        s.backup.keep_last = s.backup.keep_last.clamp(1, 100);
+        s.backup.folder = s
+            .backup
+            .folder
+            .as_deref()
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(str::to_string);
+        if s.backup.folder.is_none() {
+            s.backup.enabled = false;
+        }
         s
     }
 
@@ -257,9 +300,23 @@ mod tests {
             "idle_lock_secs",
             "hidden_lock_secs",
             "server",
+            "backup",
         ]
         .into_iter()
         .collect();
         assert_eq!(keys, expected);
+        let backup: std::collections::BTreeSet<String> = json["backup"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+        assert_eq!(
+            backup,
+            ["enabled", "folder", "interval_hours", "keep_last"]
+                .map(String::from)
+                .into(),
+            "the backup key is never in the settings file"
+        );
     }
 }

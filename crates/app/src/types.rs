@@ -216,7 +216,13 @@ pub struct PersonaInfo {
 pub struct ImportReport {
     /// Items created.
     pub imported: usize,
-    /// Per item, what in it did not map and was left out (never silent).
+    /// Items already here (from an earlier restore of the same backup)
+    /// that got the file's copy as a new version, history kept.
+    pub updated: usize,
+    /// Items already here exactly as the file has them, left alone.
+    pub unchanged: usize,
+    /// About the file and per item, what did not map and was left out
+    /// (never silent).
     pub notes: Vec<String>,
 }
 
@@ -247,6 +253,8 @@ pub struct ItemDetail {
     pub version: u64,
     pub edited_at: i64,
     pub crown_jewel: bool,
+    /// A crown jewel the person opted in to exports and backups (D121).
+    pub export_opt_in: bool,
     pub fields: Vec<FieldView>,
 }
 
@@ -343,4 +351,137 @@ pub struct Registered {
 pub struct KitCreated {
     pub kit: Revealed,
     pub notes: Vec<String>,
+}
+
+// --- import, export and backups (14-import-export.md) -------------------------
+
+/// One format the import wizard offers.
+#[derive(Clone, Debug, Serialize)]
+pub struct ImportFormatView {
+    /// The id a shell sends back (`1pux`, `bitwarden`, …).
+    pub id: String,
+    /// Its name in plain words.
+    pub name: String,
+    /// How to get the file out of the other app.
+    pub how: String,
+    /// Whether the file may have a password of its own.
+    pub may_need_password: bool,
+}
+
+/// How many items of one kind a file holds.
+#[derive(Clone, Debug, Serialize)]
+pub struct KindCount {
+    /// The kind's id.
+    pub kind: String,
+    /// The kind's name.
+    pub name: String,
+    /// How many.
+    pub count: usize,
+}
+
+/// What a file holds, before anything is kept. Counts and words only:
+/// no field value of the file crosses to a shell.
+#[derive(Clone, Debug, Serialize)]
+pub struct ImportPreview {
+    /// Hand it back to `import_commit` to keep the items.
+    pub token: u64,
+    /// The format read.
+    pub format: String,
+    /// Its name in plain words.
+    pub format_name: String,
+    /// Items in the file.
+    pub total: usize,
+    /// Items per kind.
+    pub by_kind: Vec<KindCount>,
+    /// Attached files.
+    pub attachments: usize,
+    /// Items that will be crown jewels here.
+    pub crown_jewels: usize,
+    /// Items that will be new here.
+    pub new: usize,
+    /// A backup's items already here that will get the backup's copy.
+    pub updated: usize,
+    /// A backup's items already here as the backup has them.
+    pub unchanged: usize,
+    /// About the file as a whole.
+    pub problems: Vec<String>,
+    /// Per item ("title: what").
+    pub item_notes: Vec<String>,
+}
+
+/// An item an export or a backup leaves out, and why.
+#[derive(Clone, Debug, Serialize)]
+pub struct LeftOutView {
+    pub id: String,
+    pub title: String,
+    pub kind: String,
+    pub reason: String,
+}
+
+/// What an export carries and leaves, in counts and words.
+#[derive(Clone, Debug, Serialize)]
+pub struct ExportPreview {
+    /// `lockdown`, `cxf`, `csv` or `kdbx`.
+    pub format: String,
+    /// Items the file carries.
+    pub items: usize,
+    /// Files it carries.
+    pub attachments: usize,
+    /// Crown jewels in it (each opted in by the person, D121).
+    pub crown_jewels_included: usize,
+    /// Crown jewels left out (not opted in).
+    pub crown_jewels_left_out: usize,
+    /// The items left out, by title.
+    pub left_out: Vec<LeftOutView>,
+    /// What the format itself can't carry, in words.
+    pub dropped: Vec<String>,
+    /// Whether the file is locked with a password.
+    pub encrypted: bool,
+}
+
+/// An export written to the place the person chose.
+#[derive(Clone, Debug, Serialize)]
+pub struct ExportDone {
+    /// Where.
+    pub path: String,
+    /// How big.
+    pub bytes: u64,
+    /// What it carried and left.
+    pub preview: ExportPreview,
+}
+
+/// One backup file in the backup folder.
+#[derive(Clone, Debug, Serialize)]
+pub struct BackupFile {
+    /// Its name in the folder.
+    pub name: String,
+    /// Its size.
+    pub bytes: u64,
+    /// When it was made, seconds since the Unix epoch.
+    pub made_at: i64,
+}
+
+/// Automatic backups as they stand.
+#[derive(Clone, Debug, Serialize)]
+pub struct BackupStatus {
+    /// Whether scheduled backups run.
+    pub enabled: bool,
+    /// The folder they go to.
+    pub folder: Option<String>,
+    /// Hours between backups.
+    pub interval_hours: u32,
+    /// How many to keep.
+    pub keep_last: u32,
+    /// Whether a backup password is set on this device.
+    pub key_set: bool,
+    /// When the last backup succeeded.
+    pub last_success_at: Option<i64>,
+    /// What went wrong last time, in words.
+    pub last_error: Option<String>,
+    /// When the next one is due (while the vault is open).
+    pub next_due_at: Option<i64>,
+    /// Crown jewels a backup leaves out (not opted in, D121).
+    pub crown_jewels_left_out: usize,
+    /// The backups in the folder, newest first.
+    pub backups: Vec<BackupFile>,
 }
