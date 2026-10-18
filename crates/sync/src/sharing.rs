@@ -782,4 +782,167 @@ mod tests {
         );
         assert_eq!(path_escape("a b@c.d"), "a%20b%40c.d");
     }
+
+    use crate::kt::{AccountEntries, ConsistencyProofWire, InclusionProofWire, SthWire};
+    use crate::transport::TransportError;
+    use crate::wire;
+    use lockdown_crypto::SigningKey;
+    use lockdown_vault::identity_set::{PROFILE_PATH, RecordSet};
+    use lockdown_vault::transparency::TreeHead;
+
+    /// A log of leaves and nothing else: inclusion proofs from the tree.
+    struct Log(Vec<Vec<u8>>);
+
+    fn nope<T>() -> Result<T> {
+        Err(TransportError::Network("not in this test".into()))
+    }
+
+    impl Transport for Log {
+        fn identity_since(&self, _: &str, _: u64) -> Result<wire::IdentitySince> {
+            nope()
+        }
+        fn put_identity(
+            &self,
+            _: &str,
+            _: &wire::IdentityPush,
+        ) -> Result<std::result::Result<wire::HeadAccepted, wire::HeadRefused>> {
+            nope()
+        }
+        fn list_vaults(&self, _: &str) -> Result<wire::VaultList> {
+            nope()
+        }
+        fn put_vault(&self, _: &str, _: Id, _: &[u8]) -> Result<()> {
+            nope()
+        }
+        fn heads_since(&self, _: &str, _: Id, _: u64) -> Result<wire::HeadsSince> {
+            nope()
+        }
+        fn put_head(
+            &self,
+            _: &str,
+            _: Id,
+            _: &[u8],
+        ) -> Result<std::result::Result<wire::HeadAccepted, wire::HeadRefused>> {
+            nope()
+        }
+        fn items_since(&self, _: &str, _: Id, _: u64) -> Result<wire::ItemsSince> {
+            nope()
+        }
+        fn push_item(&self, _: &str, _: Id, _: Id, _: &wire::ItemPush) -> Result<wire::PushReply> {
+            nope()
+        }
+        fn put_blob(&self, _: &str, _: Id, _: Hash32, _: &[u8]) -> Result<wire::BlobAccepted> {
+            nope()
+        }
+        fn get_blob(&self, _: &str, _: Id, _: Hash32) -> Result<Option<Vec<u8>>> {
+            nope()
+        }
+        fn has_blob(&self, _: &str, _: Id, _: Hash32) -> Result<bool> {
+            nope()
+        }
+        fn kt_sth(&self) -> Result<SthWire> {
+            nope()
+        }
+        fn kt_inclusion(&self, index: u64, size: u64) -> Result<InclusionProofWire> {
+            let hashes: Vec<Hash32> = self.0.iter().map(|b| merkle::leaf_hash(b)).collect();
+            Ok(InclusionProofWire {
+                index,
+                size,
+                path: merkle::inclusion_proof(&hashes[..size as usize], index).unwrap(),
+            })
+        }
+        fn kt_consistency(&self, _: u64, _: u64) -> Result<ConsistencyProofWire> {
+            nope()
+        }
+        fn kt_entries(&self, _: &str, _: u64) -> Result<AccountEntries> {
+            nope()
+        }
+    }
+
+    #[test]
+    fn a_directory_entry_counts_only_when_the_log_records_its_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        let keystore =
+            ecosystem_identity::FileKeystore::open_or_create(&dir.path().join("k.cbor")).unwrap();
+        let identity =
+            ecosystem_identity::Identity::create(&dir.path().join("bob"), "lockdown", "bob", &keystore)
+                .unwrap();
+        let mut set = RecordSet::from_records(
+            identity.profile(),
+            identity.personas().cloned(),
+            identity.devices().cloned(),
+            identity.envelopes().cloned(),
+            identity.consents().cloned(),
+            None,
+            Vec::new(),
+            identity.device_id(),
+        )
+        .unwrap();
+        let isk = lockdown_vault::identity::identity_signing_key(&identity, &keystore).unwrap();
+        set.sign(&isk).unwrap();
+        let account = Id::new();
+        let other = Id::new();
+        let leaf = |account: Id, hash: Hash32| {
+            LogLeaf::new(account, LogEntry::IdentityHead { seq: 1, hash })
+                .to_bytes()
+                .unwrap()
+        };
+        let good = leaf(account, set.manifest.hash().unwrap());
+        let log = Log(vec![leaf(other, Hash32::ZERO), good.clone(), leaf(other, Hash32::ZERO)]);
+        let hashes: Vec<Hash32> = log.0.iter().map(|b| merkle::leaf_hash(b)).collect();
+        let sth = SignedTreeHead::sign(
+            TreeHead {
+                size: 3,
+                root: merkle::root(&hashes),
+                time: 1,
+            },
+            &SigningKey::generate().unwrap(),
+        )
+        .unwrap();
+        let records: Vec<RecordWire> = set
+            .records
+            .iter()
+            .filter(|(p, _)| {
+                p.as_str() == PROFILE_PATH || p.starts_with("personas/") || p.starts_with("devices/")
+            })
+            .map(|(p, b)| RecordWire {
+                path: p.clone(),
+                body: b.clone(),
+            })
+            .collect();
+        let entry = DirectoryEntry {
+            account_id: account,
+            login: "bob@example.com".into(),
+            manifest: ByteBuf::from(set.manifest.to_bytes().unwrap()),
+            records,
+            log_index: 1,
+            leaf: ByteBuf::from(good),
+        };
+        let contact = verify_directory_entry(&log, &sth, &entry, None, None).unwrap();
+        assert_eq!(contact.isk_pub, identity.profile().isk_pub);
+        assert_eq!(contact.log_index, 1);
+        // Pinned, the same answer continues.
+        verify_directory_entry(&log, &sth, &entry, Some(&contact), None).unwrap();
+
+        // The leaf of another account, or one naming another manifest.
+        let mut wrong = entry.clone();
+        wrong.log_index = 0;
+        wrong.leaf = ByteBuf::from(log.0[0].clone());
+        assert!(verify_directory_entry(&log, &sth, &wrong, None, None).is_err());
+        let mut forged = entry.clone();
+        forged.leaf = ByteBuf::from(leaf(account, Hash32::ZERO));
+        assert!(verify_directory_entry(&log, &sth, &forged, None, None).is_err());
+        // The right leaf at the wrong index: not in the signed tree there.
+        let mut moved = entry.clone();
+        moved.log_index = 2;
+        assert!(verify_directory_entry(&log, &sth, &moved, None, None).is_err());
+        // Past the verified tree head.
+        let mut late = entry.clone();
+        late.log_index = 3;
+        assert!(verify_directory_entry(&log, &sth, &late, None, None).is_err());
+        // A device hidden from the answer.
+        let mut hidden = entry.clone();
+        hidden.records.retain(|r| !r.path.starts_with("devices/"));
+        assert!(verify_directory_entry(&log, &sth, &hidden, None, None).is_err());
+    }
 }

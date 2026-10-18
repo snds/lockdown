@@ -12,6 +12,7 @@ pub mod codes;
 pub mod items;
 pub mod organization;
 pub mod security;
+pub mod sharing;
 pub mod transfer;
 
 #[cfg(feature = "shell")]
