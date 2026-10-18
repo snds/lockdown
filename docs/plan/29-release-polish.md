@@ -49,7 +49,25 @@ The release workflow's `linux` job now runs the same `build-desktop.sh`, so the 
 
 ### Still not reproducible, and why
 
-RESULTS-OTHER
+Measured in `reproducible.yml`'s report jobs, both runners on Rust 1.99.1 (runs 39132584794, 39136514232 and XCODE-RUN):
+
+| Bundle | Same bytes on two images? | What differs, and why |
+|---|---|---|
+| deb, rpm (Linux) | **yes**, required | — |
+| Flatpak | FLATPAK-RESULT | FLATPAK-WHY |
+| macOS `Lockdown.app` | `Info.plist` and `icon.icns` yes; both executables no | On their default Xcode (15.4 on macos-14, 16.4 on macos-15), two linkers give two binaries, and each slice's `LC_UUID`, which the linker derives from the content, differs. XCODE-FINDING |
+| macOS dmg | no | `hdiutil` writes an HFS+ image with its own creation times and a random volume UUID. Tauri's bundler offers no way to fix them. A signed release also carries a signing time from Apple's timestamp server, which differs by design. |
+| Windows executables | no | MSVC's linker version differs between the images (14.44 on windows-2022, 14.51 on windows-2025). Each executable's PE time stamp is the link time, and the CodeView record carries a fresh PDB GUID per link. `/Brepro` would make those two deterministic, and the same toolset would still have to be pinned on both images. |
+| MSI | no | WiX gives every build a new package code (a GUID) and writes the build's time into the summary information. The executables inside differ too (above). |
+| NSIS installer | no | The executables inside differ; the installer also records its files' times. |
+
+So a reproducible macOS or Windows build needs, at least:
+- the toolchain pinned on both images: the same Xcode, or the same MSVC toolset;
+- `/Brepro` on Windows;
+- a deterministic disk image or installer, or a release that ships a normalised zip of the app;
+- a comparison that strips signatures first (the signatures carry signing times by design).
+
+None of that is done here. The report jobs exist so the next slice starts from measurements.
 
 ## 2. Code-signature peer checks (`ipc-peer-auth`)
 
@@ -161,7 +179,12 @@ browser (host) ── starts ──▶ ~/.var/app/design.snds.lockdown/data/snds
 
   The CI container runs as root, so it doesn't show `flatpak enter` without root; on a desktop it runs as the user.
 
-RESULTS-FLATPAK
+**What CI showed** (`release.yml` → `flatpak`, run 39136440032):
+- The installed Flatpak's endpoint came up at `~/.var/app/design.snds.lockdown/data/snds/lockdown/`, naming `/app/bin/lockdown-desktop`.
+- Through the wrapper, the host answered `{"event":"ready",…}` and then `{"id":1,"ok":true,"result":{"app":"Lockdown 0.1.0","locked":true,"paired":false,…}}`.
+- From a sandbox of its own, the host refused the app before saying anything: "the other app's executable couldn't be read". That process can't see the app either.
+- `flatpak ps` listed **two** instances of the app: the running one, and one left by the job's earlier `flatpak run --command` step whose process had exited. That stale record is what broke the first attempt, which named the app id.
+- The same release run installed the normalised deb in `ubuntu:24.04` and `debian:12`, and the rpm in `fedora:41`. All three passed `packaging/linux/smoke.sh`, and the window stayed up under Xvfb.
 
 ## 4. How to run it
 
