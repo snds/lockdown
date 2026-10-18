@@ -143,6 +143,20 @@ pub struct Parsed {
     /// About the file, in words: items in the source's trash, attachments
     /// a format doesn't carry, sheets of a ZIP this build doesn't know.
     pub problems: Vec<String>,
+    /// Only from a Lockdown backup: the folders its items are filed in,
+    /// by id, so a restore puts them back where they were.
+    pub folders: Vec<KeptFolder>,
+}
+
+/// A folder a Lockdown backup carries.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeptFolder {
+    /// Its id in the vault it came from.
+    pub id: lockdown_vault::Id,
+    /// Its name.
+    pub name: String,
+    /// The folder it sits in.
+    pub parent: Option<lockdown_vault::Id>,
 }
 
 pub(crate) fn json_err(format: &'static str) -> impl Fn(serde_json::Error) -> CxfError {
@@ -232,7 +246,7 @@ pub fn read(
                 let header = model::parse(bytes, limits)?;
                 Ok(Parsed {
                     items: crate::convert::to_items(&header)?,
-                    problems: Vec::new(),
+                    ..Parsed::default()
                 })
             }
             Format::OnePux => onepux::read(bytes, limits),
@@ -257,7 +271,7 @@ pub fn read(
             Format::Enpass => enpass::read(bytes, limits),
             Format::Csv => Ok(Parsed {
                 items: csv::import_logins(&csv::parse(bytes, limits)?),
-                problems: Vec::new(),
+                ..Parsed::default()
             }),
         }
     };

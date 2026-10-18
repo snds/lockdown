@@ -11,13 +11,33 @@
 //!   whose issuer is the sync login (02-model §4).
 //! - **Deleted**: trashed items, in their grace period. A trashed item is
 //!   in no other view.
+//! - **Favourites**: items the person starred.
+//! - **Archived**: archived items, out of the main list and search; an
+//!   archived item is in no other view.
+//!
+//! "Expiring" counts from how long a renewal takes: a passport or other
+//! document from ninety days out, a card from sixty, a licence, membership
+//! or anything else from thirty, an API key from fourteen
+//! ([`expiry_lead_days`]).
 
 use serde::Serialize;
 
 use crate::types::ItemSummary;
 
-/// Days before an expiry date that an item counts as expiring.
+/// Days before an expiry date that an item counts as expiring, unless its
+/// kind says otherwise ([`expiry_lead_days`]).
 pub const EXPIRING_DAYS: i64 = 30;
+
+/// How many days before its date an item of `kind` (`ItemKind::as_str`)
+/// starts to remind: long enough to renew it.
+pub fn expiry_lead_days(kind: &str) -> i64 {
+    match kind {
+        "document" | "identity" => 90,
+        "card" => 60,
+        "api-credential" => 14,
+        _ => EXPIRING_DAYS,
+    }
+}
 
 /// One sidebar view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -29,6 +49,8 @@ pub enum SmartView {
     Expiring,
     Attention,
     Deleted,
+    Favourites,
+    Archived,
 }
 
 impl SmartView {
@@ -41,6 +63,8 @@ impl SmartView {
             Self::Expiring => "expiring",
             Self::Attention => "attention",
             Self::Deleted => "deleted",
+            Self::Favourites => "favourites",
+            Self::Archived => "archived",
         }
     }
 }
@@ -53,7 +77,13 @@ pub fn classify(item: &ItemSummary, now: i64) -> Vec<SmartView> {
     if item.state == "trashed" {
         return vec![SmartView::Deleted];
     }
+    if item.state == "archived" {
+        return vec![SmartView::Archived];
+    }
     let mut views = Vec::new();
+    if item.favourite {
+        views.push(SmartView::Favourites);
+    }
     if item.kind == "passkey" || item.passkeys > 0 {
         views.push(SmartView::Passkeys);
     }
@@ -67,7 +97,7 @@ pub fn classify(item: &ItemSummary, now: i64) -> Vec<SmartView> {
         .expires_at
         .as_deref()
         .and_then(parse_date)
-        .is_some_and(|expiry| expiry - now <= EXPIRING_DAYS * 86_400);
+        .is_some_and(|expiry| expiry - now <= expiry_lead_days(&item.kind) * 86_400);
     if expiring {
         views.push(SmartView::Expiring);
     }
@@ -80,6 +110,22 @@ pub fn classify(item: &ItemSummary, now: i64) -> Vec<SmartView> {
 /// Whether a title marks a conflict copy (D58).
 pub fn is_conflict_copy(title: &str) -> bool {
     title.contains(CONFLICT_MARK)
+}
+
+/// The title a conflict copy shares with the item it split from: the
+/// marker and what follows it taken off.
+pub fn base_title(title: &str) -> &str {
+    match title.find(&format!(" {CONFLICT_MARK}")) {
+        Some(at) => &title[..at],
+        None => title,
+    }
+}
+
+/// Whole days from `now` until the end of the day `text` names
+/// (negative once it has passed), when `text` is a date this view reads.
+pub fn days_until(text: &str, now: i64) -> Option<i64> {
+    let end = parse_date(text)?;
+    Some((end - now).div_euclid(86_400))
 }
 
 /// `YYYY-MM-DD`, `YYYY-MM` (the month's last day) or `YYYY` (the year's
@@ -157,6 +203,14 @@ mod tests {
             views: Vec::new(),
             subtitle: String::new(),
             copy: None,
+            vault_id: String::new(),
+            folder: None,
+            tags: Vec::new(),
+            favourite: false,
+            last_used: None,
+            uses: 0,
+            expires_in_days: None,
+            attachments: 0,
         }
     }
 
@@ -200,8 +254,28 @@ mod tests {
             classify(&doc, NOW),
             [SmartView::Expiring, SmartView::Attention]
         );
+        doc.expires_at = Some("2027-02-24".into());
+        assert!(
+            classify(&doc, NOW).is_empty(),
+            "a document reminds from ninety days out"
+        );
         doc.expires_at = Some("2026-12-24".into());
-        assert!(classify(&doc, NOW).is_empty(), "more than thirty days away");
+        assert_eq!(
+            classify(&doc, NOW),
+            [SmartView::Expiring, SmartView::Attention],
+            "a passport takes months to renew"
+        );
+        let mut key = item("api-credential");
+        key.expires_at = Some("2026-11-10".into());
+        assert!(
+            classify(&key, NOW).is_empty(),
+            "an API key from fourteen days"
+        );
+        key.expires_at = Some("2026-10-25".into());
+        assert_eq!(classify(&key, NOW)[0], SmartView::Expiring);
+        assert_eq!(days_until("2026-10-25", NOW), Some(8));
+        assert_eq!(days_until("2026-10-16", NOW), Some(-1));
+        assert_eq!(days_until("2026-10-17", NOW), Some(0));
         doc.expires_at = Some("2020-01-01".into());
         assert_eq!(
             classify(&doc, NOW),
@@ -232,5 +306,24 @@ mod tests {
         gone.codes = 3;
         gone.expires_at = Some("2020-01-01".into());
         assert_eq!(classify(&gone, NOW), [SmartView::Deleted]);
+    }
+
+    #[test]
+    fn favourites_have_a_view_and_archived_items_leave_every_other() {
+        let mut star = item("login");
+        star.favourite = true;
+        star.codes = 1;
+        assert_eq!(
+            classify(&star, NOW),
+            [SmartView::Favourites, SmartView::Codes]
+        );
+        star.state = "archived".into();
+        star.expires_at = Some("2020-01-01".into());
+        assert_eq!(classify(&star, NOW), [SmartView::Archived]);
+        assert_eq!(
+            base_title("Bank (conflict copy from laptop, 2026-10-17)"),
+            "Bank"
+        );
+        assert_eq!(base_title("Bank"), "Bank");
     }
 }

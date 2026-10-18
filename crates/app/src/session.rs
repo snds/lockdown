@@ -61,7 +61,10 @@ use crate::views;
 
 mod backup;
 mod codes;
+mod duplicates;
+mod history;
 pub mod items;
+mod organize;
 pub(crate) mod security;
 pub(crate) mod transfer;
 
@@ -253,9 +256,14 @@ pub struct Session {
     synced: SyncedIdentity,
     transparency: TransparencyMemory,
     sync: Option<SyncConfig>,
+    /// The persona's first vault: where new items go unless another is named.
     opened: OpenVault,
     /// A parsed import waiting for the person's yes (dropped on lock).
     transfer: transfer::Pending,
+    /// The persona's other vaults, oldest first (`organize`).
+    more: Vec<OpenVault>,
+    /// What this device used, and when (never synced).
+    recency: crate::recency::Recency,
 }
 
 impl Session {
@@ -421,6 +429,41 @@ impl Session {
             )
             .map_err(|e| e.to_string())?
         };
+        // Every other vault of the persona opens too, under the same checks;
+        // the oldest is the first vault, whichever opened above.
+        let mut all = vec![opened];
+        let trust_for = |vault_id: Id| {
+            let mut keys = synced.device_keys();
+            for (id, key) in device_keys(&identity) {
+                keys.entry(id).or_insert(key);
+            }
+            DeviceTrust {
+                keys,
+                revoked_after: synced.revoked_after(vault_id),
+            }
+        };
+        for vault_id in persona_vaults(&identity, persona_id, &store).map_err(|e| e.to_string())? {
+            if all.iter().any(|o| o.vault.context().vault_id == vault_id) {
+                continue;
+            }
+            all.push(
+                open_vault_trusting(
+                    &identity,
+                    vault_id,
+                    &store,
+                    Box::new(keystore.clone()),
+                    memory.last_accepted_seq(vault_id),
+                    &trust_for(vault_id),
+                )
+                .map_err(|e| e.to_string())?,
+            );
+        }
+        organize::order_vaults(&mut all);
+        let opened = all.remove(0);
+        let recency = crate::recency::Recency::open(
+            crate::recency::Recency::path_in(&paths.data, persona_id),
+            &opened.keys.app_data_key,
+        );
         let mut session = Self {
             paths,
             keystore,
@@ -432,16 +475,22 @@ impl Session {
             sync,
             opened,
             transfer: transfer::Pending::default(),
+            more: all,
+            recency,
         };
         session.remember()?;
+        session.sweep_trash()?;
         Ok(session)
     }
 
-    /// Writes the vault and records its newest head.
+    /// Writes every vault and records each one's newest head.
     fn save(&mut self) -> Result<(), String> {
         self.opened
             .save(&mut self.store)
             .map_err(|e| e.to_string())?;
+        for o in &mut self.more {
+            o.save(&mut self.store).map_err(|e| e.to_string())?;
+        }
         self.remember()
     }
 
@@ -457,29 +506,93 @@ impl Session {
         let head = self.remembered_head()?;
         self.memory
             .remember_vault(self.vault().context().vault_id, head)
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        for o in &self.more {
+            let head = o.vault.head().map_err(|e| e.to_string())?;
+            let remembered = RememberedHead {
+                seq: head.seq,
+                hash: head.hash().map_err(|e| e.to_string())?,
+            };
+            self.memory
+                .remember_vault(o.vault.context().vault_id, remembered)
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
-    /// The vault in use.
+    /// Has every open vault trust the devices the identity's signed records
+    /// list now (a device enrolled since unlock, learned in this sync's
+    /// record pull), and refuse what revoked ones sign past their boundary.
+    fn refresh_trust(&mut self) {
+        let mut keys = self.synced.device_keys();
+        for (id, key) in device_keys(&self.identity) {
+            keys.entry(id).or_insert(key);
+        }
+        let mut vaults: Vec<&mut Vault> = std::iter::once(&mut self.opened.vault)
+            .chain(self.more.iter_mut().map(|o| &mut o.vault))
+            .collect();
+        for vault in vaults.iter_mut() {
+            for (id, key) in &keys {
+                vault.trust_device(*id, key.clone());
+            }
+            for (id, after) in self.synced.revoked_after(vault.context().vault_id) {
+                vault.revoke_device(id, after);
+            }
+        }
+    }
+
+    /// The persona's first vault (where new items go by default).
     pub fn vault(&self) -> &Vault {
         &self.opened.vault
     }
 
+    /// Every open vault of the persona, the first one first.
+    pub fn vaults(&self) -> impl Iterator<Item = &Vault> {
+        std::iter::once(&self.opened.vault).chain(self.more.iter().map(|o| &o.vault))
+    }
+
+    /// The vault holding `item_id`.
+    pub(crate) fn holding(&self, item_id: Id) -> Result<&Vault, String> {
+        self.vaults()
+            .find(|v| v.item(item_id).is_ok())
+            .ok_or_else(|| format!("item {item_id} wasn't found in this persona's vaults"))
+    }
+
+    /// The vault holding `item_id`, to change it.
+    pub(crate) fn holding_mut(&mut self, item_id: Id) -> Result<&mut Vault, String> {
+        if self.opened.vault.item(item_id).is_ok() {
+            return Ok(&mut self.opened.vault);
+        }
+        self.more
+            .iter_mut()
+            .map(|o| &mut o.vault)
+            .find(|v| v.item(item_id).is_ok())
+            .ok_or_else(|| format!("item {item_id} wasn't found in this persona's vaults"))
+    }
+
     /// What this device knows, for the key-transparency audit: the
-    /// identity, the synced records, and the vault in use at the `seq` the
-    /// server last confirmed.
-    fn expectations(&self) -> DeviceExpectations<'_> {
+    /// identity, the synced records, and every vault of the persona at the
+    /// `seq` the server last confirmed for it.
+    fn expectations(&self) -> AllVaults<'_> {
+        let synced = |vault: &Vault| {
+            self.sync
+                .as_ref()
+                .and_then(|c| c.vaults.get(&vault.context().vault_id))
+                .map(|s| s.synced_seq)
+                .unwrap_or(0)
+        };
         let vault = self.vault();
-        let synced_seq = self
-            .sync
-            .as_ref()
-            .and_then(|c| c.vaults.get(&vault.context().vault_id))
-            .map(|s| s.synced_seq)
-            .unwrap_or(0);
-        DeviceExpectations {
-            identity: &self.identity,
-            synced: &self.synced,
-            vault: Some((vault, synced_seq)),
+        AllVaults {
+            base: DeviceExpectations {
+                identity: &self.identity,
+                synced: &self.synced,
+                vault: Some((vault, synced(vault))),
+            },
+            more: self
+                .more
+                .iter()
+                .map(|o| (&o.vault, synced(&o.vault)))
+                .collect(),
         }
     }
 
@@ -513,8 +626,7 @@ impl Session {
     /// destroyed).
     pub fn trash(&mut self, id: &str) -> Result<(), String> {
         let item_id = parse_id(id)?;
-        self.opened
-            .vault
+        self.holding_mut(item_id)?
             .trash_item(item_id)
             .map_err(|e| e.to_string())?;
         self.save()
@@ -523,8 +635,7 @@ impl Session {
     /// Brings a trashed item back from the Deleted view, as it was.
     pub fn restore(&mut self, id: &str) -> Result<(), String> {
         let item_id = parse_id(id)?;
-        self.opened
-            .vault
+        self.holding_mut(item_id)?
             .restore_item(item_id)
             .map_err(|e| e.to_string())?;
         self.save()
@@ -535,11 +646,10 @@ impl Session {
     /// hidden is in it. The facts a row and the smart views are drawn from
     /// (`views::classify`) are decided here, once, for every shell.
     pub fn list(&self) -> Result<Vec<ItemSummary>, String> {
-        let vault = self.vault();
         let login = self.sync.as_ref().map(|c| c.login.as_str());
         let now = now_secs();
         let mut rows = Vec::new();
-        for item in vault.items() {
+        for (vault, item) in self.vaults().flat_map(|v| v.items().map(move |i| (v, i))) {
             if item.kind.hidden()
                 || !matches!(
                     item.state,
@@ -576,7 +686,27 @@ impl Session {
                 views: Vec::new(),
                 subtitle: String::new(),
                 copy: items::copy_target(item.kind, &fields),
+                vault_id: vault.context().vault_id.to_string(),
+                folder: None,
+                tags: Vec::new(),
+                favourite: false,
+                last_used: None,
+                uses: 0,
+                expires_in_days: None,
+                attachments: latest
+                    .attachments
+                    .iter()
+                    .filter(|a| !a.is_shredded())
+                    .count() as u32,
             };
+            let org = lockdown_vault::Organization::of(&fields);
+            row.folder = org.folder.map(|f| f.to_string());
+            row.tags = org.tags;
+            row.favourite = org.favourite;
+            if let Some(u) = self.recency.get(item.item_id) {
+                row.last_used = Some(u.last);
+                row.uses = u.count;
+            }
             let template = lockdown_vault::template_for(item.kind);
             row.subtitle = template
                 .subtitle
@@ -628,6 +758,10 @@ impl Session {
                     row.methods.push("code".into());
                 }
             }
+            row.expires_in_days = row
+                .expires_at
+                .as_deref()
+                .and_then(|d| views::days_until(d, now));
             row.views = views::classify(&row, now)
                 .into_iter()
                 .map(|v| v.as_str().to_string())
@@ -641,9 +775,10 @@ impl Session {
     /// Whether an item is under the crown-jewel treatment (D98), so a
     /// reveal or a use of it goes through the gate first.
     pub fn is_crown_jewel(&self, id: &str) -> Result<bool, String> {
+        let item_id = parse_id(id)?;
         let item = self
-            .vault()
-            .item(parse_id(id)?)
+            .holding(item_id)?
+            .item(item_id)
             .map_err(|e| e.to_string())?;
         Ok(item.class == ItemClass::CrownJewel)
     }
@@ -688,16 +823,13 @@ impl Session {
     /// field also carries its bytes (wiped when the view drops).
     pub fn show(&self, id: &str, reveal: bool) -> Result<ItemDetail, String> {
         let item_id = parse_id(id)?;
-        let vault = self.vault();
+        let vault = self.holding(item_id)?;
         let item = vault.item(item_id).map_err(|e| e.to_string())?;
+        if item.kind.hidden() {
+            return Err(format!("'{id}' isn't an item you can open"));
+        }
         let latest = item.latest().map_err(|e| e.to_string())?;
         let fields = vault.open_item(item_id).map_err(|e| e.to_string())?;
-        // Lockdown's own fields (the security center's settings) are never shown.
-        let views = fields
-            .iter()
-            .filter(|f| !lockdown_vault::is_reserved(&f.field_id))
-            .map(|f| field_view(f, reveal))
-            .collect();
         Ok(ItemDetail {
             id: item_id.to_string(),
             kind: item.kind.as_str().to_string(),
@@ -706,7 +838,8 @@ impl Session {
             edited_at: latest.edited_at.0,
             crown_jewel: item.class == ItemClass::CrownJewel,
             export_opt_in: lockdown_vault::export_opted_in(&fields),
-            fields: views,
+            fields: shown_fields(&fields, reveal),
+            place: self.place_of(vault, item_id, &fields)?,
         })
     }
 
@@ -714,7 +847,10 @@ impl Session {
     /// field that isn't hidden (those come with `show`).
     pub fn reveal(&self, id: &str, field_id: &str) -> Result<Revealed, String> {
         let item_id = parse_id(id)?;
-        let fields = self.vault().open_item(item_id).map_err(|e| e.to_string())?;
+        let fields = self
+            .holding(item_id)?
+            .open_item(item_id)
+            .map_err(|e| e.to_string())?;
         let field = fields
             .iter()
             .find(|f| f.field_id == field_id)
@@ -746,8 +882,8 @@ impl Session {
         let head = self.vault().head().map_err(|e| e.to_string())?;
         let hash = head.hash().map_err(|e| e.to_string())?;
         let live = self
-            .vault()
-            .items()
+            .vaults()
+            .flat_map(|v| v.items())
             .filter(|i| i.state == ItemState::Live && !i.kind.hidden())
             .count();
         let vault_id = self.vault().context().vault_id;
@@ -1296,6 +1432,7 @@ impl Session {
             &mut self.synced,
             &mut self.memory,
         )?;
+        self.refresh_trust();
         let remembered = self.transparency.view(&server).cloned();
         let mut kt =
             KtSession::begin(&transport, &token, remembered.as_ref()).map_err(|e| e.to_string())?;
@@ -1305,53 +1442,94 @@ impl Session {
             .as_mut()
             .ok_or("no account on this device; register or log in first")?;
         let label = device_name();
+        // Vaults another device of this persona made since: pulled under
+        // the same log, then opened like the rest.
+        let pulled = pull_new_vaults(
+            &transport,
+            &token,
+            &self.identity,
+            &mut self.store,
+            cfg,
+            &kt,
+        )?;
+        if pulled > 0 {
+            self.open_new_vaults()?;
+        }
         let syncer = Syncer {
             transport: &transport,
             token: &token,
             device_label: &label,
         };
-        let vault_id = self.opened.vault.context().vault_id;
-        let record = self
-            .opened
-            .vault
-            .record(&self.opened.keys.app_data_key)
-            .and_then(|r| r.to_bytes())
-            .map_err(|e| e.to_string())?;
-        let state = cfg.vaults.entry(vault_id).or_default();
-        let outcome = lockdown_sync::sync_vault_with(
-            &syncer,
-            &mut self.opened.vault,
-            &record,
-            state,
-            &mut self.store,
-            Some(&kt),
-        );
-        // Whatever happened on the wire, what is in memory is saved and
-        // remembered, so a half-finished round is picked up next time.
-        self.opened
-            .save(&mut self.store)
-            .map_err(|e| e.to_string())?;
-        let report = match outcome {
-            Ok(report) => report,
-            Err(e) => {
-                let _ = self.remember();
-                if let Some(cfg) = &self.sync {
-                    cfg.save(&self.paths.sync_file())?;
-                }
-                return Err(e.to_string());
-            }
-        };
-        let head = self.remembered_head()?;
-        if report.chain_rewritten {
-            self.memory
-                .replace_vault(vault_id, head)
+        let mut report = SyncReport::default();
+        for idx in 0..=self.more.len() {
+            let cfg = self
+                .sync
+                .as_mut()
+                .ok_or("no account on this device; register or log in first")?;
+            let open = if idx == 0 {
+                &mut self.opened
+            } else {
+                &mut self.more[idx - 1]
+            };
+            let vault_id = open.vault.context().vault_id;
+            let record = open
+                .vault
+                .record(&open.keys.app_data_key)
+                .and_then(|r| r.to_bytes())
                 .map_err(|e| e.to_string())?;
-        } else {
-            self.remember()?;
+            let state = cfg.vaults.entry(vault_id).or_default();
+            let outcome = lockdown_sync::sync_vault_with(
+                &syncer,
+                &mut open.vault,
+                &record,
+                state,
+                &mut self.store,
+                Some(&kt),
+            );
+            // Whatever happened on the wire, what is in memory is saved and
+            // remembered, so a half-finished round is picked up next time.
+            open.save(&mut self.store).map_err(|e| e.to_string())?;
+            let one = match outcome {
+                Ok(one) => one,
+                Err(e) => {
+                    let _ = self.remember();
+                    if let Some(cfg) = &self.sync {
+                        cfg.save(&self.paths.sync_file())?;
+                    }
+                    return Err(e.to_string());
+                }
+            };
+            let head = open.vault.head().map_err(|e| e.to_string())?;
+            let remembered = RememberedHead {
+                seq: head.seq,
+                hash: head.hash().map_err(|e| e.to_string())?,
+            };
+            if one.chain_rewritten {
+                self.memory
+                    .replace_vault(vault_id, remembered)
+                    .map_err(|e| e.to_string())?;
+            } else {
+                self.memory
+                    .remember_vault(vault_id, remembered)
+                    .map_err(|e| e.to_string())?;
+            }
+            if idx == 0 {
+                report.head_seq = one.head_seq;
+            }
+            report.pushed += one.pushed;
+            report.pulled += one.pulled;
+            report.merged += one.merged;
+            report.conflict_copies.extend(one.conflict_copies);
+            report.blobs_pushed += one.blobs_pushed;
+            report.blobs_pulled += one.blobs_pulled;
+            report.rounds = report.rounds.max(one.rounds);
         }
         if let Some(cfg) = &self.sync {
             cfg.save(&self.paths.sync_file())?;
         }
+        // A purge whose grace ran out on another device's clock, or here
+        // while offline, happens now (and syncs next time).
+        self.sweep_trash()?;
         // The entries this sync added (the new head, at least) are audited
         // under a fresh tree head that must continue the one just verified.
         let mut view = kt.view.clone();
@@ -1934,6 +2112,41 @@ pub(crate) fn now_secs() -> i64 {
         .unwrap_or(0)
 }
 
+/// [`DeviceExpectations`] over every vault of the persona: the audit
+/// checks each vault's logged heads against the copy this device holds.
+struct AllVaults<'a> {
+    base: DeviceExpectations<'a>,
+    more: Vec<(&'a Vault, u64)>,
+}
+
+impl lockdown_sync::AuditExpectations for AllVaults<'_> {
+    fn device_key(&self, device_id: Id) -> Option<[u8; 32]> {
+        self.base.device_key(device_id)
+    }
+
+    fn own_device(&self) -> Id {
+        self.base.own_device()
+    }
+
+    fn identity_head(&self) -> Option<(u64, lockdown_vault::Hash32)> {
+        self.base.identity_head()
+    }
+
+    fn vault_head(&self, vault_id: Id, seq: u64) -> Option<lockdown_vault::Hash32> {
+        if let Some((vault, synced_seq)) = self
+            .more
+            .iter()
+            .find(|(v, _)| v.context().vault_id == vault_id)
+        {
+            if seq > *synced_seq {
+                return None;
+            }
+            return vault.head_at(seq).and_then(|h| h.hash().ok());
+        }
+        self.base.vault_head(vault_id, seq)
+    }
+}
+
 fn parse_id(id: &str) -> Result<Id, String> {
     Id::parse(id).map_err(|_| format!("'{id}' isn't an item id"))
 }
@@ -1966,6 +2179,19 @@ fn is_secret_kind(kind: FieldKind) -> bool {
     )
 }
 
+/// An item's fields as a shell may show them: the organization fields
+/// leave the list (they come as the item's `organization`), and Lockdown's
+/// own reserved fields (the security center's settings) are never shown.
+fn shown_fields(fields: &[PlainField], reveal: bool) -> Vec<FieldView> {
+    fields
+        .iter()
+        .filter(|f| {
+            !lockdown_vault::is_org_field(&f.field_id) && !lockdown_vault::is_reserved(&f.field_id)
+        })
+        .map(|f| field_view(f, reveal))
+        .collect()
+}
+
 /// One field as a shell may show it.
 fn field_view(f: &PlainField, reveal: bool) -> FieldView {
     let kind = format!("{:?}", f.kind).to_lowercase();
@@ -1990,5 +2216,9 @@ fn field_view(f: &PlainField, reveal: bool) -> FieldView {
         value,
         mask,
         secret,
+        match_rule: match &f.value {
+            FieldValue::Url { match_rule, .. } => Some(match_rule.clone()),
+            _ => None,
+        },
     }
 }

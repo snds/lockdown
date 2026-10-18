@@ -172,9 +172,10 @@ pub(crate) mod commands {
         format: String,
         file_name: String,
         password: Option<Vec<u8>>,
+        vault: Option<String>,
     ) -> AppResult<ImportPreview> {
         blocking(&app, move |a| {
-            a.import_preview(bytes, &format, &file_name, password)
+            a.import_preview(bytes, &format, &file_name, password, vault)
         })
         .await
     }
@@ -196,8 +197,9 @@ pub(crate) mod commands {
     pub(crate) async fn export_preview(
         app: State<'_, App>,
         format: String,
+        vault: Option<String>,
     ) -> AppResult<ExportPreview> {
-        blocking(&app, move |a| a.export_preview(&format)).await
+        blocking(&app, move |a| a.export_preview(&format, vault)).await
     }
 
     /// Asks where to save, in the OS's own dialog. The path stays here,
@@ -245,6 +247,7 @@ pub(crate) mod commands {
         format: String,
         password: Option<Vec<u8>>,
         plain_confirmed: bool,
+        vault: Option<String>,
         gate: Option<GateInput>,
     ) -> AppResult<ExportDone> {
         let gate = gate.unwrap_or_default();
@@ -252,7 +255,7 @@ pub(crate) mod commands {
             .get(target)
             .ok_or_else(|| failed("choose where to save first"))?;
         let done = blocking(&app, move |a| {
-            a.export_to(path, &format, password, plain_confirmed, gate)
+            a.export_to(path, &format, password, plain_confirmed, vault, gate)
         })
         .await?;
         picked.take(target);

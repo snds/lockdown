@@ -16,6 +16,8 @@ import { SecretField } from "@unicron/ui/security/secret-field"
 
 import type { Control } from "@/core/types"
 
+import { MATCH_RULES } from "@/features/organization/org-model"
+
 import { isSecretControl, type EditorRow } from "./editor-model"
 import { useStrength } from "./use-strength"
 
@@ -184,6 +186,15 @@ export function FieldControl({ row, onChange, onDiscard, context = NO_CONTEXT }:
           required={required}
           autoComplete="off"
         />
+      )}
+      {row.control === "url" && row.matchRule !== undefined && (
+        <NativeSelect id={`${id}-rule`} aria-label={`Where ${row.label.toLowerCase()} is offered`} value={row.matchRule} onChange={(e) => onChange({ matchRule: e.target.value })}>
+          {MATCH_RULES.map(([rule, words]) => (
+            <NativeSelectOption key={rule} value={rule}>
+              {words}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
       )}
       {(hint || removable) && <FieldDescription>{hint ?? removable}</FieldDescription>}
     </Field>

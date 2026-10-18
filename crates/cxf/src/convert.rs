@@ -141,8 +141,36 @@ fn kind_of(creds: &[Credential]) -> ItemKind {
 pub fn to_items(header: &Header) -> Result<Vec<ImportedItem>> {
     let mut out = Vec::new();
     for account in &header.accounts {
+        // An item's folder: the path of the collection that lists it.
+        let mut folder_of: std::collections::BTreeMap<&str, String> = Default::default();
+        fn walk<'a>(
+            c: &'a crate::model::Collection,
+            path: &str,
+            depth: usize,
+            out: &mut std::collections::BTreeMap<&'a str, String>,
+        ) {
+            if depth > 32 {
+                return;
+            }
+            let here = if path.is_empty() {
+                c.title.clone()
+            } else {
+                format!("{path}/{}", c.title)
+            };
+            for l in &c.items {
+                out.entry(l.item.as_str()).or_insert_with(|| here.clone());
+            }
+            for sub in &c.sub_collections {
+                walk(sub, &here, depth + 1, out);
+            }
+        }
+        for c in &account.collections {
+            walk(c, "", 0, &mut folder_of);
+        }
         for item in &account.items {
-            out.push(to_item(item)?);
+            let mut it = to_item(item)?;
+            it.folder = folder_of.get(item.id.as_str()).cloned();
+            out.push(it);
         }
     }
     Ok(out)
@@ -362,8 +390,25 @@ pub fn from_items(
     now: u64,
 ) -> Result<Header> {
     let mut out = Vec::with_capacity(items.len());
+    let mut collections: Vec<crate::model::Collection> = Vec::new();
     for item in items {
         out.push(from_item(item)?);
+        if let Some(path) = item.folder.as_deref().filter(|p| !p.is_empty()) {
+            let link = crate::model::LinkedItem {
+                item: item.source_id.clone(),
+                account: None,
+            };
+            match collections.iter_mut().find(|c| c.title == path) {
+                Some(c) => c.items.push(link),
+                None => collections.push(crate::model::Collection {
+                    id: b64url(format!("folder:{path}").as_bytes()),
+                    title: path.to_string(),
+                    subtitle: None,
+                    items: vec![link],
+                    sub_collections: vec![],
+                }),
+            }
+        }
     }
     Ok(Header {
         version: CXF_VERSION,
@@ -372,6 +417,7 @@ pub fn from_items(
         timestamp: now,
         accounts: vec![Account {
             id: b64url(b"lockdown"),
+            collections,
             items: out,
             ..Account::default()
         }],

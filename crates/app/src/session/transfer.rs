@@ -14,12 +14,21 @@
 //! item was opted in (D121); the export says how many and which stayed,
 //! and what the format itself couldn't carry. The gate in front of it
 //! (the `Reveal` approval, D101) is the app's, not this module's.
+//!
+//! **Vaults and folders.** An import lands in the vault the person picked
+//! (the first one by default); a source's folder path becomes that vault's
+//! folders (made where missing), its tags and favourite the item's own
+//! (15-organization). An export takes every vault or one; the Lockdown
+//! format carries each vault's folders so a restore files items back where
+//! they were, and the other formats carry the folder as the format can
+//! (a CXF collection, a KeePass group).
 
 use std::collections::BTreeMap;
 use std::path::Path;
 
 use lockdown_cxf::archive::{
-    self, DocAttachment, DocField, DocItem, DocVersion, Document, LeftOut, class_name,
+    self, DocAttachment, DocField, DocFolder, DocItem, DocVault, DocVersion, Document, LeftOut,
+    class_name,
 };
 use lockdown_cxf::convert::{ImportedItem, from_items};
 use lockdown_cxf::import::{self, Format, Parsed};
@@ -27,7 +36,8 @@ use lockdown_cxf::model::{self, b64url};
 use lockdown_cxf::{ImportedAttachment, Limits, csv, kdbx_out};
 use lockdown_vault::{
     CrownJewelDefault, FieldKind, FieldValue, Id, ImportSpec, ItemClass, ItemKind, ItemState,
-    NewAttachment, PlainField, Store, export_opted_in, is_reserved_field, template_for,
+    NewAttachment, Organization, PlainField, Store, Vault, VaultInfo, export_opted_in,
+    is_org_field, is_reserved_field, template_for,
 };
 use zeroize::Zeroizing;
 
@@ -47,13 +57,22 @@ pub const EXPORT_FORMATS: [&str; 4] = ["lockdown", "cxf", "csv", "kdbx"];
 #[derive(Default)]
 pub struct Pending {
     next: u64,
-    held: Option<(u64, Format, Parsed)>,
+    held: Option<Held>,
+}
+
+struct Held {
+    token: u64,
+    target: Id,
+    parsed: Parsed,
 }
 
 impl std::fmt::Debug for Pending {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Pending")
-            .field("held", &self.held.as_ref().map(|h| (h.0, h.2.items.len())))
+            .field(
+                "held",
+                &self.held.as_ref().map(|h| (h.token, h.parsed.items.len())),
+            )
             .finish()
     }
 }
@@ -97,6 +116,18 @@ fn crown_by_template(kind: ItemKind, fields: &[PlainField]) -> bool {
             .any(|f| template.field(&f.field_id).is_some_and(|t| t.crown_jewel))
 }
 
+/// The same item but for where it is filed (a restore over a copy filed
+/// since): left as it is here.
+fn same_but_filing(a: &[PlainField], b: &[PlainField]) -> bool {
+    let strip = |x: &[PlainField]| -> Vec<PlainField> {
+        x.iter()
+            .filter(|f| !is_org_field(&f.field_id))
+            .cloned()
+            .collect()
+    };
+    same_fields(&strip(a), &strip(b))
+}
+
 fn same_fields(a: &[PlainField], b: &[PlainField]) -> bool {
     let key = |f: &PlainField| (f.field_id.clone(), f.kind, f.label.clone(), f.value.clone());
     let mut x: Vec<_> = a.iter().map(key).collect();
@@ -106,25 +137,50 @@ fn same_fields(a: &[PlainField], b: &[PlainField]) -> bool {
     x == y
 }
 
-/// A source's folder and tags, which this build's vault has no place for
-/// yet, kept as fields of the person's own so nothing is lost.
-fn carry_folder_and_tags(item: &mut ImportedItem) {
-    let mut n = item
-        .fields
-        .iter()
-        .filter_map(|f| f.field_id.strip_prefix("custom.")?.parse::<usize>().ok())
-        .max()
-        .map_or(0, |n| n + 1);
-    if let Some(folder) = item.folder.take() {
-        item.fields
-            .push(PlainField::text(&format!("custom.{n}"), "Folder", &folder));
-        n += 1;
+/// Tags a source gave, as Lockdown keeps them: each one normalized, the
+/// ones that can't be (too long, empty) named in the item's report.
+fn tags_of(item: &mut ImportedItem) -> Vec<String> {
+    let mut out = Vec::new();
+    for t in std::mem::take(&mut item.tags) {
+        match lockdown_vault::organization::normalize_tag(&t) {
+            Ok(n) if !out.contains(&n) => out.push(n),
+            Ok(_) => {}
+            Err(_) => item.report.push(format!("the tag '{t}' couldn't be kept")),
+        }
     }
-    if !item.tags.is_empty() {
-        let tags = std::mem::take(&mut item.tags).join(", ");
-        item.fields
-            .push(PlainField::text(&format!("custom.{n}"), "Tags", &tags));
+    let max = lockdown_vault::organization::MAX_TAGS;
+    if out.len() > max {
+        item.report.push(format!(
+            "only the first {max} of its {} tags were kept",
+            out.len()
+        ));
+        out.truncate(max);
     }
+    out
+}
+
+/// The folder a path (`Work/Servers`) names in `info`, made where missing.
+/// `None` (and a report) when a name can't be a folder's.
+fn folder_for(info: &mut VaultInfo, path: &str, report: &mut Vec<String>) -> Option<Id> {
+    let mut parent: Option<Id> = None;
+    for part in path.split('/').map(str::trim).filter(|p| !p.is_empty()) {
+        let found = info
+            .folders
+            .iter()
+            .find(|(_, f)| f.parent == parent && f.name.eq_ignore_ascii_case(part))
+            .map(|(id, _)| *id);
+        parent = Some(match found {
+            Some(id) => id,
+            None => match info.add_folder(part, parent) {
+                Ok(id) => id,
+                Err(e) => {
+                    report.push(format!("the folder '{path}' couldn't be made ({e})"));
+                    return None;
+                }
+            },
+        });
+    }
+    parent
 }
 
 fn to_new(a: &ImportedAttachment) -> NewAttachment {
@@ -146,7 +202,15 @@ impl Session {
         format: &str,
         file_name: &str,
         password: Option<&[u8]>,
+        vault: Option<&str>,
     ) -> Result<ImportPreview, String> {
+        let target = match vault {
+            Some(v) => {
+                let id = Id::parse(v).map_err(|_| format!("'{v}' isn't a vault id"))?;
+                self.vault_by_id(id)?.context().vault_id
+            }
+            None => self.vault().context().vault_id,
+        };
         let format = if format == "auto" {
             import::detect(bytes, file_name).ok_or_else(|| {
                 "Lockdown couldn't tell which app made this file; pick the app from the list"
@@ -163,49 +227,48 @@ impl Session {
         };
         let mut parsed =
             import::read(bytes, format, password, &limits).map_err(|e| e.to_string())?;
-        let mut favourites = 0;
         for item in &mut parsed.items {
             if item.kept.is_none() {
                 // A file from elsewhere doesn't get to set the app's own
-                // fields (the export opt-in of D121).
-                item.fields.retain(|f| !is_reserved_field(&f.field_id));
+                // fields (the export opt-in of D121) or name folders of a
+                // vault it never saw; its folder and tags are applied at
+                // commit, in the vault picked.
+                let own = |id: &str| is_reserved_field(id) || is_org_field(id);
+                item.fields.retain(|f| !own(&f.field_id));
                 for h in &mut item.history {
-                    h.retain(|f| !is_reserved_field(&f.field_id));
+                    h.retain(|f| !own(&f.field_id));
                 }
-                if item.favourite {
-                    favourites += 1;
-                }
-                carry_folder_and_tags(item);
             }
             if !item.fields.iter().any(|f| f.field_id == "title") {
                 item.fields
                     .insert(0, PlainField::text("title", "title", &item.title));
             }
         }
-        if favourites > 0 {
-            parsed.problems.push(format!(
-                "{favourites} favourites came in as ordinary items; Lockdown has no favourites yet"
-            ));
-        }
-        let preview = self.preview_of(format, &parsed);
+        let preview = self.preview_of(format, &parsed, target)?;
         self.transfer.next += 1;
         let token = self.transfer.next;
-        self.transfer.held = Some((token, format, parsed));
+        self.transfer.held = Some(Held {
+            token,
+            target,
+            parsed,
+        });
         Ok(ImportPreview { token, ..preview })
     }
 
-    fn landing(&self, item: &ImportedItem) -> Landing {
+    fn landing(vault: &Vault, item: &ImportedItem) -> Landing {
         let Some(kept) = item.kept else {
             return Landing::New;
         };
-        let vault = self.vault();
         match vault.item(kept.item_id) {
             Err(_) => Landing::New,
             Ok(existing) => match existing.state {
                 ItemState::Tombstone => Landing::New,
                 ItemState::Trashed => Landing::InTrashHere,
                 _ => match vault.open_item(kept.item_id) {
-                    Ok(fields) if same_fields(&fields, &item.fields) => {
+                    Ok(fields)
+                        if same_fields(&fields, &item.fields)
+                            || same_but_filing(&fields, &item.fields) =>
+                    {
                         let have = vault
                             .attachments(kept.item_id)
                             .map(|a| a.len())
@@ -222,7 +285,13 @@ impl Session {
         }
     }
 
-    fn preview_of(&self, format: Format, parsed: &Parsed) -> ImportPreview {
+    fn preview_of(
+        &self,
+        format: Format,
+        parsed: &Parsed,
+        target: Id,
+    ) -> Result<ImportPreview, String> {
+        let vault = self.vault_by_id(target)?;
         let mut kinds: BTreeMap<&'static str, (String, usize)> = BTreeMap::new();
         let mut preview = ImportPreview {
             token: 0,
@@ -250,7 +319,7 @@ impl Session {
             if crown {
                 preview.crown_jewels += 1;
             }
-            match self.landing(item) {
+            match Self::landing(vault, item) {
                 Landing::New => preview.new += 1,
                 Landing::Update(_) => preview.updated += 1,
                 Landing::Unchanged => preview.unchanged += 1,
@@ -274,30 +343,63 @@ impl Session {
                 count,
             })
             .collect();
-        preview
+        Ok(preview)
     }
 
     /// Lands the file held under `token`: new items with their history,
     /// files and state; a backup's item already here gets the backup's
     /// fields as a new version (history kept); an unchanged one is left.
     pub fn import_commit(&mut self, token: u64) -> Result<ImportReport, String> {
-        let (held, format, parsed) = match self.transfer.held.take() {
-            Some(h) if h.0 == token => h,
+        let Held { target, parsed, .. } = match self.transfer.held.take() {
+            Some(h) if h.token == token => h,
             Some(h) => {
                 self.transfer.held = Some(h);
                 return Err("that import is no longer waiting; choose the file again".into());
             }
             None => return Err("there is no import waiting; choose the file again".into()),
         };
-        let _ = (held, format);
         let mut report = ImportReport {
             imported: 0,
             updated: 0,
             unchanged: 0,
             notes: parsed.problems.clone(),
         };
-        for item in parsed.items {
-            let landing = self.landing(&item);
+        let vault = self.vault_by_id_mut(target)?;
+        let mut info = vault.info().map_err(|e| e.to_string())?;
+        let info_before = info.clone();
+        // A backup's folders come back with their ids, so its items' filing holds.
+        for f in &parsed.folders {
+            info.folders
+                .entry(f.id)
+                .or_insert_with(|| lockdown_vault::Folder {
+                    name: f.name.clone(),
+                    parent: f.parent,
+                });
+        }
+        for mut item in parsed.items {
+            let landing = Self::landing(vault, &item);
+            let mut fields = std::mem::take(&mut item.fields);
+            if item.kept.is_some() {
+                let mut org = Organization::of(&fields);
+                if org.folder.is_some_and(|f| !info.folders.contains_key(&f)) {
+                    org.folder = None;
+                    item.report
+                        .push("its folder isn't in this backup, so it came back unfiled".into());
+                    org.apply(&mut fields);
+                }
+            } else {
+                let folder = match item.folder.clone() {
+                    Some(path) => folder_for(&mut info, &path, &mut item.report),
+                    None => None,
+                };
+                Organization {
+                    folder,
+                    tags: tags_of(&mut item),
+                    favourite: item.favourite,
+                }
+                .apply(&mut fields);
+            }
+            lockdown_vault::organization::ensure_org_fields(&mut fields);
             for note in &item.report {
                 report.notes.push(format!("{}: {note}", item.title));
             }
@@ -307,8 +409,7 @@ impl Session {
                     continue;
                 }
                 Landing::Update(id) => {
-                    let have: Vec<(String, u64)> = self
-                        .vault()
+                    let have: Vec<(String, u64)> = vault
                         .attachments(id)
                         .map_err(|e| e.to_string())?
                         .into_iter()
@@ -320,16 +421,15 @@ impl Session {
                         .filter(|a| !have.contains(&(a.name.clone(), a.bytes.len() as u64)))
                         .map(to_new)
                         .collect();
-                    self.opened
-                        .vault
-                        .update_item_with_files(id, item.fields, &extra)
+                    vault
+                        .update_item_with_files(id, fields, &extra)
                         .map_err(|e| e.to_string())?;
                     report.updated += 1;
                 }
                 Landing::New => {
-                    let crown = crown_by_template(item.kind, &item.fields);
+                    let crown = crown_by_template(item.kind, &fields);
                     let (item_id, class, state) = match item.kept {
-                        Some(k) if self.vault().item(k.item_id).is_err() => {
+                        Some(k) if vault.item(k.item_id).is_err() => {
                             (Some(k.item_id), k.class, k.state)
                         }
                         Some(k) => (None, k.class, k.state),
@@ -345,7 +445,7 @@ impl Session {
                     };
                     let class = if crown { ItemClass::CrownJewel } else { class };
                     let mut versions = item.history;
-                    versions.push(item.fields);
+                    versions.push(fields);
                     let spec = ImportSpec {
                         item_id,
                         kind: item.kind,
@@ -354,15 +454,15 @@ impl Session {
                         attachments: item.attachments.iter().map(to_new).collect(),
                         state,
                     };
-                    self.opened
-                        .vault
-                        .import_item(spec)
-                        .map_err(|e| e.to_string())?;
+                    vault.import_item(spec).map_err(|e| e.to_string())?;
                     report.imported += 1;
                 }
             }
         }
-        if report.imported + report.updated > 0 {
+        if info != info_before {
+            vault.set_info(&info).map_err(|e| e.to_string())?;
+        }
+        if report.imported + report.updated > 0 || info != info_before {
             self.save()?;
         }
         Ok(report)
@@ -376,7 +476,7 @@ impl Session {
     /// One step, for callers that don't preview (the CLI shape): parse and
     /// land at once.
     pub fn import(&mut self, bytes: &[u8], format: &str) -> Result<ImportReport, String> {
-        let preview = self.import_preview(bytes, format, "", None)?;
+        let preview = self.import_preview(bytes, format, "", None, None)?;
         self.import_commit(preview.token)
     }
 
@@ -385,16 +485,15 @@ impl Session {
     pub fn set_export_opt_in(&mut self, id: &str, on: bool) -> Result<u64, String> {
         let item_id = Id::parse(id).map_err(|_| format!("'{id}' isn't an item id"))?;
         let n = self
-            .opened
-            .vault
+            .holding_mut(item_id)?
             .set_export_opt_in(item_id, on)
             .map_err(|e| e.to_string())?;
         self.save()?;
         Ok(n)
     }
 
-    fn blob(&self, hash: lockdown_vault::Hash32) -> Option<Vec<u8>> {
-        self.vault()
+    fn blob(&self, vault: &Vault, hash: lockdown_vault::Hash32) -> Option<Vec<u8>> {
+        vault
             .pending_blob(hash)
             .map(<[u8]>::to_vec)
             .or_else(|| self.store.get_blob(hash).ok())
@@ -403,9 +502,38 @@ impl Session {
     /// Every visible item as an export takes it: what goes, and what stays
     /// (crown jewels not opted in, D121). `trashed` takes the Deleted view
     /// too (the Lockdown format keeps it; the others don't).
-    fn gather(&self, trashed: bool) -> Result<Gathered, String> {
-        let vault = self.vault();
+    fn gather(&self, trashed: bool, only: Option<Id>) -> Result<Gathered, String> {
         let mut out = Gathered::default();
+        for vault in self
+            .vaults()
+            .filter(|v| only.is_none_or(|o| v.context().vault_id == o))
+        {
+            let info = vault.info().map_err(|e| e.to_string())?;
+            out.vaults.push(DocVault {
+                id: vault.context().vault_id.to_string(),
+                name: info.name.clone(),
+                folders: info
+                    .folders
+                    .iter()
+                    .map(|(id, f)| DocFolder {
+                        id: id.to_string(),
+                        name: f.name.clone(),
+                        parent: f.parent.map(|p| p.to_string()),
+                    })
+                    .collect(),
+            });
+            self.gather_vault(vault, &info, trashed, &mut out)?;
+        }
+        Ok(out)
+    }
+
+    fn gather_vault(
+        &self,
+        vault: &Vault,
+        info: &VaultInfo,
+        trashed: bool,
+        out: &mut Gathered,
+    ) -> Result<(), String> {
         for item in vault.items() {
             if item.kind.hidden() {
                 continue;
@@ -446,7 +574,7 @@ impl Session {
             for a in vault.attachments(item.item_id).map_err(|e| e.to_string())? {
                 let Some(meta) = a.meta.clone() else { continue };
                 match self
-                    .blob(a.blob)
+                    .blob(vault, a.blob)
                     .and_then(|b| vault.open_attachment(item.item_id, a.att_id, &b).ok())
                 {
                     Some((_, bytes)) => files.push(ImportedAttachment {
@@ -457,7 +585,12 @@ impl Session {
                     None => missing.push(meta.name.clone()),
                 }
             }
+            let org = Organization::of(&fields);
             out.items.push(Gathered1 {
+                vault_id: vault.context().vault_id,
+                folder: org.folder.and_then(|f| info.path(f)),
+                tags: org.tags,
+                favourite: org.favourite,
                 item_id: item.item_id,
                 kind: item.kind,
                 class: item.class,
@@ -472,22 +605,39 @@ impl Session {
                 shredded,
             });
         }
-        Ok(out)
+        Ok(())
+    }
+
+    fn vault_choice(&self, vault: Option<&str>) -> Result<Option<Id>, String> {
+        match vault {
+            None => Ok(None),
+            Some(v) => {
+                let id = Id::parse(v).map_err(|_| format!("'{v}' isn't a vault id"))?;
+                Ok(Some(self.vault_by_id(id)?.context().vault_id))
+            }
+        }
     }
 
     /// What an export in `format` would carry and leave, before anything
     /// is written.
-    pub fn export_preview(&self, format: &str) -> Result<ExportPreview, String> {
+    pub fn export_preview(
+        &self,
+        format: &str,
+        vault: Option<&str>,
+    ) -> Result<ExportPreview, String> {
         if !EXPORT_FORMATS.contains(&format) {
             return Err(unknown_export(format));
         }
-        let g = self.gather(format == "lockdown")?;
+        let g = self.gather(format == "lockdown", self.vault_choice(vault)?)?;
         Ok(g.preview(format))
     }
 
     /// The Lockdown document of everything an export or backup may carry.
-    pub(crate) fn backup_document(&self) -> Result<(Document, ExportPreview), String> {
-        let g = self.gather(true)?;
+    pub(crate) fn backup_document(
+        &self,
+        only: Option<Id>,
+    ) -> Result<(Document, ExportPreview), String> {
+        let g = self.gather(true, only)?;
         let preview = g.preview("lockdown");
         let mut doc = Document::new(
             now_secs().max(0) as u64,
@@ -516,9 +666,11 @@ impl Session {
                     .iter()
                     .map(|a| DocAttachment::new(&a.name, &a.mime, &a.bytes))
                     .collect(),
+                vault: Some(it.vault_id.to_string()),
             });
         }
         doc.left_out = g.left_out.clone();
+        doc.vaults = g.vaults.clone();
         Ok((doc, preview))
     }
 
@@ -530,13 +682,15 @@ impl Session {
         &self,
         format: &str,
         password: Option<&[u8]>,
+        vault: Option<&str>,
     ) -> Result<(Zeroizing<Vec<u8>>, ExportPreview), String> {
         if !EXPORT_FORMATS.contains(&format) {
             return Err(unknown_export(format));
         }
+        let only = self.vault_choice(vault)?;
         let password = password.filter(|p| !p.is_empty());
         if format == "lockdown" {
-            let (doc, mut preview) = self.backup_document()?;
+            let (doc, mut preview) = self.backup_document(only)?;
             let plain = doc.to_bytes().map_err(|e| e.to_string())?;
             let Some(pw) = password else {
                 return Ok((plain, preview));
@@ -548,7 +702,7 @@ impl Session {
             preview.encrypted = true;
             return Ok((Zeroizing::new(sealed), preview));
         }
-        let g = self.gather(false)?;
+        let g = self.gather(false, only)?;
         let mut preview = g.preview(format);
         let items = g.imported_items();
         let bytes = match format {
@@ -579,7 +733,7 @@ impl Session {
         if !["cxf", "csv"].contains(&format) {
             return Err(unknown_export(format));
         }
-        Ok(self.export_file(format, None)?.0.to_vec())
+        Ok(self.export_file(format, None, None)?.0.to_vec())
     }
 }
 
@@ -615,11 +769,16 @@ pub fn write_user_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
 #[derive(Default)]
 struct Gathered {
     items: Vec<Gathered1>,
+    vaults: Vec<DocVault>,
     left_out: Vec<LeftOut>,
     trashed_left: usize,
 }
 
 struct Gathered1 {
+    vault_id: Id,
+    folder: Option<String>,
+    tags: Vec<String>,
+    favourite: bool,
     item_id: Id,
     kind: ItemKind,
     class: ItemClass,
@@ -771,12 +930,30 @@ impl Gathered1 {
             self.kind,
             self.title.clone(),
         );
-        item.fields = self.fields.clone();
+        // Folder, tags and favourite travel in the format's own slots.
+        item.fields = self
+            .fields
+            .iter()
+            .filter(|f| !is_org_field(&f.field_id))
+            .cloned()
+            .collect();
+        item.folder = self.folder.clone();
+        item.tags = self.tags.clone();
+        item.favourite = self.favourite;
         item.created_at = self.created_at.map(|t| t.max(0) as u64);
         item.modified_at = Some(self.modified_at.max(0) as u64);
         item.archived = self.state == ItemState::Archived;
         item.attachments = self.files.clone();
-        item.history = self.history.iter().map(|(_, _, f)| f.clone()).collect();
+        item.history = self
+            .history
+            .iter()
+            .map(|(_, _, f)| {
+                f.iter()
+                    .filter(|p| !is_org_field(&p.field_id))
+                    .cloned()
+                    .collect()
+            })
+            .collect();
         item
     }
 }

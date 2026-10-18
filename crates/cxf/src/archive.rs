@@ -71,6 +71,34 @@ pub struct Document {
     /// What a person's choice or the format kept out, and why.
     #[serde(default)]
     pub left_out: Vec<LeftOut>,
+    /// The vaults the items came from, with their folders.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub vaults: Vec<DocVault>,
+}
+
+/// A vault the items came from.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DocVault {
+    /// The vault's id (a UUID).
+    pub id: String,
+    /// The name the person gave it, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Its folders.
+    #[serde(default)]
+    pub folders: Vec<DocFolder>,
+}
+
+/// A folder.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DocFolder {
+    /// Its id (a UUID): what an item's `org.folder` field names.
+    pub id: String,
+    /// Its name.
+    pub name: String,
+    /// The folder it sits in, or none at the top.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
 }
 
 /// One item.
@@ -98,6 +126,9 @@ pub struct DocItem {
     /// The newest version's files.
     #[serde(default)]
     pub attachments: Vec<DocAttachment>,
+    /// The vault it came from (one of the document's `vaults`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vault: Option<String>,
 }
 
 /// One field.
@@ -323,6 +354,7 @@ impl Document {
             exporter: exporter.into(),
             items: Vec::new(),
             left_out: Vec::new(),
+            vaults: Vec::new(),
         }
     }
 
@@ -373,6 +405,21 @@ impl Document {
                     "an item ({}) didn't read and was left out: {why}",
                     it.kind
                 )),
+            }
+        }
+        for v in &self.vaults {
+            for f in &v.folders {
+                match Id::parse(&f.id) {
+                    Ok(id) => parsed.folders.push(crate::import::KeptFolder {
+                        id,
+                        name: f.name.clone(),
+                        parent: f.parent.as_deref().and_then(|p| Id::parse(p).ok()),
+                    }),
+                    Err(_) => parsed.problems.push(format!(
+                        "the folder '{}' has no valid id and was left out",
+                        f.name
+                    )),
+                }
             }
         }
         if !self.left_out.is_empty() {
@@ -796,6 +843,7 @@ mod tests {
                 ))],
             }],
             attachments: vec![DocAttachment::new("a.txt", "text/plain", b"hello")],
+            vault: None,
         });
         d
     }

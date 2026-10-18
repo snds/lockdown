@@ -24,6 +24,7 @@ import { useGate } from "@/app/gate"
 import { describeError, useClient } from "@/core/client"
 import { encodeSecret } from "@/core/secret-bytes"
 import type { ExportDone, ExportPreview } from "@/core/types"
+import { useVaults } from "@/features/organization/vaults-context"
 
 import { EXPORT_CHOICES, carriesLine, leftOutLine, passwordProblem } from "./export-model"
 
@@ -45,6 +46,8 @@ export function ExportDialog({ open, onClose, onNotice }: ExportDialogProps) {
   const client = useClient()
   const gate = useGate()
   const [choiceId, setChoiceId] = useState(EXPORT_CHOICES[0].id)
+  const { vaults } = useVaults()
+  const [vault, setVault] = useState("")
   const [counted, setCounted] = useState<ExportPreview | null>(null)
   const [plainOk, setPlainOk] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -53,19 +56,24 @@ export function ExportDialog({ open, onClose, onNotice }: ExportDialogProps) {
   const first = useRef<HTMLInputElement>(null)
   const second = useRef<HTMLInputElement>(null)
   const choice = EXPORT_CHOICES.find((c) => c.id === choiceId) ?? EXPORT_CHOICES[0]
-  const preview = counted?.format === choice.format ? counted : null
+  const [countedFor, setCountedFor] = useState("")
+  const preview = counted?.format === choice.format && countedFor === vault ? counted : null
 
   useEffect(() => {
     if (!open) return
     let live = true
     client
-      .exportPreview(choice.format)
-      .then((p) => live && setCounted(p))
+      .exportPreview(choice.format, vault || null)
+      .then((p) => {
+        if (!live) return
+        setCounted(p)
+        setCountedFor(vault)
+      })
       .catch((e) => live && setError(describeError(e)))
     return () => {
       live = false
     }
-  }, [client, open, choice.format])
+  }, [client, open, choice.format, vault])
 
   const clearPasswords = () => {
     if (first.current) first.current.value = ""
@@ -100,7 +108,7 @@ export function ExportDialog({ open, onClose, onNotice }: ExportDialogProps) {
       const target = await client.exportChoose(choice.format, choice.sealed)
       if (!target) return
       const result = await gate.run((g) =>
-        client.exportSave({ target: target.token, format: choice.format, password, plainConfirmed: !choice.sealed && plainOk }, g),
+        client.exportSave({ target: target.token, format: choice.format, password, plainConfirmed: !choice.sealed && plainOk, vault: vault || null }, g),
       )
       clearPasswords()
       setDone(result)
@@ -142,6 +150,19 @@ export function ExportDialog({ open, onClose, onNotice }: ExportDialogProps) {
         ) : (
           <div className="flex flex-col gap-4">
             <FieldGroup>
+              {vaults.length > 1 && (
+                <Field>
+                  <FieldLabel htmlFor="export-vault">What to export</FieldLabel>
+                  <NativeSelect id="export-vault" value={vault} onChange={(e) => setVault(e.target.value)}>
+                    <NativeSelectOption value="">Every vault</NativeSelectOption>
+                    {vaults.map((v) => (
+                      <NativeSelectOption key={v.id} value={v.id}>
+                        {v.name}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </Field>
+              )}
               <Field>
                 <FieldLabel htmlFor="export-kind">Kind of file</FieldLabel>
                 <NativeSelect

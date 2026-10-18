@@ -234,7 +234,7 @@ impl Session {
             ));
         }
         let (kdf, key) = self.backup_key()?;
-        let (doc, _) = self.backup_document()?;
+        let (doc, _) = self.backup_document(None)?;
         let plain = doc.to_bytes().map_err(|e| e.to_string())?;
         let sealed = Zeroizing::new(
             archive::seal(&plain, &key, &kdf, now.max(0) as u64).map_err(|e| e.to_string())?,
@@ -266,7 +266,7 @@ impl Session {
                 .map_or_else(now_secs, |t| t + i64::from(cfg.interval_hours) * 3600)
         });
         let crown_jewels_left_out = self
-            .export_preview("lockdown")
+            .export_preview("lockdown", None)
             .map(|p| p.crown_jewels_left_out)
             .unwrap_or(0);
         BackupStatus {
@@ -316,9 +316,9 @@ impl Session {
             && archive::kdf_of(&bytes).is_ok_and(|k| k == kdf)
         {
             let plain = archive::open_with(&bytes, &key, &limits).map_err(|e| e.to_string())?;
-            return self.import_preview(&plain, "lockdown", name, None);
+            return self.import_preview(&plain, "lockdown", name, None, None);
         }
-        self.import_preview(&bytes, "lockdown", name, password)
+        self.import_preview(&bytes, "lockdown", name, password, None)
     }
 }
 

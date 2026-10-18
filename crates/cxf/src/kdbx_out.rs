@@ -3,7 +3,8 @@
 //! `keepass` crate under a password the person picks. One group per kind;
 //! each item an entry with Title, UserName, Password, URL, Notes and `otp`
 //! where it has them, every other field as a named string (masked when
-//! secret), passkeys in KeePassXC's `KPEX_PASSKEY_*` fields, attachments as
+//! secret), passkeys in KeePassXC's `KPEX_PASSKEY_*` fields, a folder as its
+//! group (else the kind's group), tags as tags, attachments as
 //! entry attachments. What KDBX has no place for (earlier versions,
 //! match rules beyond the address) is listed by the caller's report.
 
@@ -145,19 +146,30 @@ pub fn write(items: &[ImportedItem], password: &str, name: &str) -> Result<Vec<u
         *memory = u64::from(floor.m_cost_kib) * 1024;
         *parallelism = floor.p_cost;
     }
-    let mut kinds: Vec<ItemKind> = Vec::new();
+    // An item's group: its folder's path where it has one, else its kind's.
+    let group_of = |i: &ImportedItem| {
+        i.folder
+            .clone()
+            .filter(|f| !f.is_empty())
+            .unwrap_or_else(|| group_name(i.kind))
+    };
+    let mut groups: Vec<String> = Vec::new();
     for i in items {
-        if !kinds.contains(&i.kind) {
-            kinds.push(i.kind);
+        let g = group_of(i);
+        if !groups.contains(&g) {
+            groups.push(g);
         }
     }
-    for kind in kinds {
+    for name in groups {
         let mut root = db.root_mut();
         let mut group = root.add_group();
-        group.name = group_name(kind);
-        for item in items.iter().filter(|i| i.kind == kind) {
+        group.name = name.clone();
+        for item in items.iter().filter(|i| group_of(i) == name) {
             let mut e = group.add_entry();
             entry(&mut e, item);
+            for t in &item.tags {
+                e.tags.push(t.clone());
+            }
         }
     }
     let mut out = Vec::new();

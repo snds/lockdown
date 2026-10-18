@@ -572,9 +572,11 @@ fn merge_item(
             conflict_copy_fields(our_fields, device_label),
         )?);
     }
-    // A trash on either side sticks.
-    if our_state == ItemState::Trashed && their_state == ItemState::Live {
+    // A trash on either side sticks; so does an archive over a live copy.
+    if our_state == ItemState::Trashed && their_state != ItemState::Trashed {
         vault.trash_item(item_id)?;
+    } else if our_state == ItemState::Archived && their_state == ItemState::Live {
+        vault.archive_item(item_id)?;
     }
     Ok(copies)
 }

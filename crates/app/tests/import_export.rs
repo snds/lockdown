@@ -55,7 +55,7 @@ fn every_sample_file_previews_then_lands() {
     ] {
         let before = app.list().unwrap().len();
         let preview = app
-            .import_preview(fixture(name), "auto", name, password)
+            .import_preview(fixture(name), "auto", name, password, None)
             .unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(preview.total, total, "{name}");
         assert_eq!(preview.new, total, "{name}");
@@ -69,18 +69,48 @@ fn every_sample_file_previews_then_lands() {
     }
     // A password-protected file asks for its password first.
     let err = app
-        .import_preview(fixture("keepass.kdbx"), "auto", "x.kdbx", None)
+        .import_preview(fixture("keepass.kdbx"), "auto", "x.kdbx", None, None)
         .unwrap_err();
     assert!(err.message.contains("protected with a password"), "{err}");
     // The folder and tags a source had are kept as fields of your own.
     let rows = app.list().unwrap();
     let forum = rows.iter().find(|r| r.title == "Example Forum").unwrap();
     let detail = app.show(&forum.id, false).unwrap();
+    let folders = &app.vaults().unwrap()[0].folders;
+    let folder = |id: &Option<String>| {
+        folders
+            .iter()
+            .find(|f| Some(&f.id) == id.as_ref())
+            .map(|f| f.path.clone())
+    };
+    assert_eq!(
+        folder(&detail.place.organization.folder).as_deref(),
+        Some("Work"),
+        "Bitwarden's folder became one of the vault's"
+    );
+    assert!(detail.place.organization.favourite);
+    // KeePass's nested groups became nested folders; 1Password's tags, tags.
+    let bank = rows
+        .iter()
+        .find(|r| r.title == "Example Bank" && r.kind == "login")
+        .unwrap();
+    let bank = app.show(&bank.id, false).unwrap();
     assert!(
-        detail
+        folders.iter().any(|f| f.path == "Internet / Banking"),
+        "{folders:?}"
+    );
+    let example = rows
+        .iter()
+        .find(|r| r.title == "Example" && r.kind == "login")
+        .unwrap();
+    let example = app.show(&example.id, false).unwrap();
+    assert_eq!(example.place.organization.tags, ["personal", "email"]);
+    assert!(
+        example
             .fields
             .iter()
-            .any(|f| f.label == "Folder" && f.value.as_deref() == Some("Work"))
+            .all(|f| f.label != "Folder" && f.label != "Tags"),
+        "no stand-in fields any more"
     );
     // A 1Password archived item lands archived; a document keeps its file.
     assert!(
@@ -109,7 +139,7 @@ fn crown_jewels_stay_out_of_exports_unless_opted_in() {
             vec![FieldChange::secret("seed", PHRASE.as_bytes())],
         )
         .unwrap();
-    let preview = app.export_preview("cxf").unwrap();
+    let preview = app.export_preview("cxf", None).unwrap();
     assert_eq!(preview.items, 1);
     assert_eq!(preview.crown_jewels_left_out, 1);
     assert_eq!(preview.left_out[0].title, "Cold wallet");
@@ -117,15 +147,15 @@ fn crown_jewels_stay_out_of_exports_unless_opted_in() {
     let out = dir.path().join("export.json");
     // A plain file needs the person's yes first, then the gate.
     let err = app
-        .export_to(out.clone(), "cxf", None, false, yes())
+        .export_to(out.clone(), "cxf", None, false, None, yes())
         .unwrap_err();
     assert!(err.message.contains("won't be protected"), "{err}");
     let err = app
-        .export_to(out.clone(), "cxf", None, true, GateInput::default())
+        .export_to(out.clone(), "cxf", None, true, None, GateInput::default())
         .unwrap_err();
     assert_eq!(err.code, ErrorCode::ApprovalNeeded);
     let done = app
-        .export_to(out.clone(), "cxf", None, true, yes())
+        .export_to(out.clone(), "cxf", None, true, None, yes())
         .unwrap();
     assert_eq!(done.preview.crown_jewels_left_out, 1);
     let text = std::fs::read_to_string(&out).unwrap();
@@ -161,12 +191,12 @@ fn crown_jewels_stay_out_of_exports_unless_opted_in() {
     )
     .unwrap();
     assert!(app.show(&wallet, false).unwrap().export_opt_in);
-    let preview = app.export_preview("cxf").unwrap();
+    let preview = app.export_preview("cxf", None).unwrap();
     assert_eq!(
         (preview.crown_jewels_left_out, preview.crown_jewels_included),
         (0, 1)
     );
-    app.export_to(out.clone(), "cxf", None, true, yes())
+    app.export_to(out.clone(), "cxf", None, true, None, yes())
         .unwrap();
     assert!(std::fs::read_to_string(&out).unwrap().contains("abandon"));
     // Opting out asks nothing.
@@ -189,7 +219,7 @@ fn a_sealed_backup_restores_everything_and_a_second_restore_merges() {
     let a = fresh(dir.path(), "a");
     // Content with history, files, an archived item and a trashed one.
     let p = a
-        .import_preview(fixture("1password.1pux"), "auto", "x.1pux", None)
+        .import_preview(fixture("1password.1pux"), "auto", "x.1pux", None, None)
         .unwrap();
     a.import_commit(p.token).unwrap();
     let forum = a
@@ -228,7 +258,7 @@ fn a_sealed_backup_restores_everything_and_a_second_restore_merges() {
     a.set_export_opt_in(&wallet, true, yes()).unwrap();
 
     let file = dir.path().join("vault.lockdown");
-    let preview = a.export_preview("lockdown").unwrap();
+    let preview = a.export_preview("lockdown", None).unwrap();
     assert!(preview.attachments >= 1, "{preview:?}");
     let done = a
         .export_to(
@@ -236,6 +266,7 @@ fn a_sealed_backup_restores_everything_and_a_second_restore_merges() {
             "lockdown",
             Some(b"backup password 1".to_vec()),
             false,
+            None,
             yes(),
         )
         .unwrap();
@@ -252,6 +283,7 @@ fn a_sealed_backup_restores_everything_and_a_second_restore_merges() {
             "auto",
             "vault.lockdown",
             Some(b"nope".to_vec()),
+            None,
         )
         .unwrap_err();
     assert!(wrong.message.contains("didn't open"), "{wrong}");
@@ -261,6 +293,7 @@ fn a_sealed_backup_restores_everything_and_a_second_restore_merges() {
             "auto",
             "vault.lockdown",
             Some(b"backup password 1".to_vec()),
+            None,
         )
         .unwrap();
     assert_eq!(p.format, "lockdown");
@@ -292,7 +325,7 @@ fn a_sealed_backup_restores_everything_and_a_second_restore_merges() {
     assert!(b.show(&wallet, false).unwrap().export_opt_in);
     // The files came back byte for byte: B's own plain export carries them.
     let check = dir.path().join("check.json");
-    b.export_to(check.clone(), "lockdown", None, true, yes())
+    b.export_to(check.clone(), "lockdown", None, true, None, yes())
         .unwrap();
     let doc: serde_json::Value = serde_json::from_slice(&std::fs::read(&check).unwrap()).unwrap();
     let lease = doc["items"]
@@ -312,6 +345,7 @@ fn a_sealed_backup_restores_everything_and_a_second_restore_merges() {
             "lockdown",
             "vault.lockdown",
             Some(b"backup password 1".to_vec()),
+            None,
         )
         .unwrap();
     assert_eq!((p.new, p.updated), (0, 0), "{p:?}");
@@ -331,6 +365,7 @@ fn a_sealed_backup_restores_everything_and_a_second_restore_merges() {
             "lockdown",
             "vault.lockdown",
             Some(b"backup password 1".to_vec()),
+            None,
         )
         .unwrap();
     assert_eq!(p.updated, 1);
@@ -370,7 +405,7 @@ fn kdbx_and_csv_exports_say_what_they_leave() {
         ],
     )
     .unwrap();
-    let csv = a.export_preview("csv").unwrap();
+    let csv = a.export_preview("csv", None).unwrap();
     assert_eq!(csv.items, 1);
     assert!(
         csv.dropped.iter().any(|d| d.contains("aren't logins")),
@@ -379,7 +414,8 @@ fn kdbx_and_csv_exports_say_what_they_leave() {
     );
     let out = dir.path().join("vault.kdbx");
     assert!(
-        a.export_to(out.clone(), "kdbx", None, true, yes()).is_err(),
+        a.export_to(out.clone(), "kdbx", None, true, None, yes())
+            .is_err(),
         "a KeePass file needs a password"
     );
     a.export_to(
@@ -387,6 +423,7 @@ fn kdbx_and_csv_exports_say_what_they_leave() {
         "kdbx",
         Some(b"keepass-pw".to_vec()),
         false,
+        None,
         yes(),
     )
     .unwrap();
@@ -397,6 +434,7 @@ fn kdbx_and_csv_exports_say_what_they_leave() {
             "auto",
             "vault.kdbx",
             Some(b"keepass-pw".to_vec()),
+            None,
         )
         .unwrap();
     assert_eq!(p.total, 2);
@@ -498,7 +536,13 @@ fn backups_are_sealed_kept_to_n_and_restore_on_this_device_without_the_password(
     let b = fresh(dir.path(), "b");
     let bytes = std::fs::read(folder.join(&name)).unwrap();
     let p = b
-        .import_preview(bytes, "auto", &name, Some(b"backup-password".to_vec()))
+        .import_preview(
+            bytes,
+            "auto",
+            &name,
+            Some(b"backup-password".to_vec()),
+            None,
+        )
         .unwrap();
     b.import_commit(p.token).unwrap();
     assert_eq!(b.list().unwrap().len(), 1);
@@ -510,4 +554,120 @@ fn backups_are_sealed_kept_to_n_and_restore_on_this_device_without_the_password(
     // Locked: no backup calls.
     a.lock().unwrap();
     assert_eq!(a.backup_now().unwrap_err().code, ErrorCode::Locked);
+}
+
+#[test]
+fn vaults_and_folders_go_out_and_come_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let a = fresh(dir.path(), "a");
+    let first = a.vaults().unwrap()[0].id.clone();
+    let work = a.create_vault("Work").unwrap();
+    let online = a.add_folder(&first, "Online", None).unwrap();
+    let forums = a.add_folder(&first, "Forums", Some(&online)).unwrap();
+    let forum = a
+        .add_login(
+            "https://forum.example.com",
+            "ada",
+            b"pw-1".to_vec(),
+            Some("Forum"),
+        )
+        .unwrap();
+    a.organize(
+        &forum,
+        Some(Some(forums.clone())),
+        Some(vec!["social".into()]),
+        Some(true),
+    )
+    .unwrap();
+    a.add_item_in(
+        &work,
+        "note",
+        Some("Rota"),
+        false,
+        vec![FieldChange::text("body", "Mondays")],
+    )
+    .unwrap();
+
+    // Every vault, or one.
+    assert_eq!(a.export_preview("lockdown", None).unwrap().items, 2);
+    assert_eq!(
+        a.export_preview("lockdown", Some(work.clone()))
+            .unwrap()
+            .items,
+        1
+    );
+    // A CXF file carries the folder as a collection and the tags and star.
+    let cxf = dir.path().join("vault.json");
+    a.export_to(cxf.clone(), "cxf", None, true, Some(first.clone()), yes())
+        .unwrap();
+    let doc: serde_json::Value = serde_json::from_slice(&std::fs::read(&cxf).unwrap()).unwrap();
+    assert_eq!(
+        doc["accounts"][0]["collections"][0]["title"],
+        "Online / Forums"
+    );
+    assert_eq!(doc["accounts"][0]["items"][0]["tags"][0], "social");
+    assert_eq!(doc["accounts"][0]["items"][0]["favorite"], true);
+
+    // A sealed backup restores the filing, folders and all, into a fresh vault.
+    let backup = dir.path().join("all.lockdown");
+    a.export_to(
+        backup.clone(),
+        "lockdown",
+        Some(b"backup password 1".to_vec()),
+        false,
+        None,
+        yes(),
+    )
+    .unwrap();
+    let b = fresh(dir.path(), "b");
+    let p = b
+        .import_preview(
+            std::fs::read(&backup).unwrap(),
+            "auto",
+            "all.lockdown",
+            Some(b"backup password 1".to_vec()),
+            None,
+        )
+        .unwrap();
+    b.import_commit(p.token).unwrap();
+    let restored = b.show(&forum, false).unwrap();
+    assert_eq!(
+        restored.place.organization.folder.as_deref(),
+        Some(forums.as_str())
+    );
+    assert_eq!(restored.place.organization.tags, ["social"]);
+    assert!(restored.place.organization.favourite);
+    let paths: Vec<String> = b.vaults().unwrap()[0]
+        .folders
+        .iter()
+        .map(|f| f.path.clone())
+        .collect();
+    assert!(paths.contains(&"Online / Forums".to_string()), "{paths:?}");
+
+    // Another manager's file lands in the vault picked.
+    let p = b
+        .import_preview(
+            std::fs::read(&cxf).unwrap(),
+            "cxf",
+            "vault.json",
+            None,
+            Some("not-a-vault".into()),
+        )
+        .unwrap_err();
+    assert!(p.message.contains("isn't a vault id"), "{p}");
+    let other = b.create_vault("Imported").unwrap();
+    let p = b
+        .import_preview(
+            fixture("lastpass.csv"),
+            "auto",
+            "lastpass.csv",
+            None,
+            Some(other.clone()),
+        )
+        .unwrap();
+    b.import_commit(p.token).unwrap();
+    let views = b.vaults().unwrap();
+    let imported = views.iter().find(|v| v.id == other).unwrap();
+    assert_eq!(imported.items, 6);
+    assert!(imported.folders.iter().any(|f| f.path == "Shopping / Home"));
 }

@@ -32,6 +32,10 @@ import type {
   Status,
   SyncOutcome,
   Templates,
+  DuplicateGroup,
+  ExpiryReminder,
+  VaultView,
+  VersionView,
 } from "./types"
 import { splitOncePage } from "./secret-bytes"
 
@@ -128,16 +132,16 @@ export interface Client {
   /** The format a file looks like, from its first bytes and its name; `null` when unsure. */
   importDetect(bytes: number[], fileName: string): Promise<string | null>
   /** Parses a file in the core (hostile until proven otherwise) and says what it holds; nothing is kept. */
-  importPreview(input: { bytes: number[]; format: string; fileName: string; password?: number[] }): Promise<ImportPreview>
+  importPreview(input: { bytes: number[]; format: string; fileName: string; password?: number[]; vault?: string | null }): Promise<ImportPreview>
   /** Keeps the previewed import. */
   importCommit(token: number): Promise<ImportReport>
   importCancel(): Promise<void>
   /** What an export in `format` would carry and leave out. */
-  exportPreview(format: string): Promise<ExportPreview>
+  exportPreview(format: string, vault?: string | null): Promise<ExportPreview>
   /** The OS's save dialog; the place stays in the shell under the returned number. */
   exportChoose(format: string, sealed: boolean): Promise<Chosen | null>
   /** The core writes the export to the chosen place, after the `Reveal` gate (D101). */
-  exportSave(input: { target: number; format: string; password?: number[]; plainConfirmed: boolean }, gate?: GateInput): Promise<ExportDone>
+  exportSave(input: { target: number; format: string; password?: number[]; plainConfirmed: boolean; vault?: string | null }, gate?: GateInput): Promise<ExportDone>
   /** A crown jewel's "include in exports and backups" (D121); on goes through the `Reveal` gate. */
   setExportOptIn(id: string, on: boolean, gate?: GateInput): Promise<number>
   backupStatus(): Promise<BackupStatus>
@@ -149,6 +153,47 @@ export interface Client {
   backupOff(forget: boolean): Promise<BackupStatus>
   /** Opens one of the folder's backups for the import preview (the key kept here, or `password`). */
   backupRestorePreview(name: string, password?: number[]): Promise<ImportPreview>
+
+  // --- organization (docs/plan/15-organization.md) ---------------------------
+  /** Every vault of the persona, the first one first, with its folders. */
+  vaults(): Promise<VaultView[]>
+  createVault(name: string): Promise<string>
+  renameVault(vaultId: string, name: string): Promise<void>
+  /** Days a trashed item stays before it is purged on every device (1–365). */
+  setTrashDays(vaultId: string, days: number): Promise<void>
+  addFolder(vaultId: string, name: string, parent?: string | null): Promise<string>
+  changeFolder(vaultId: string, folder: string, name: string, parent?: string | null): Promise<void>
+  /** Removes a folder; what was in it moves up. Resolves to how many items moved. */
+  removeFolder(vaultId: string, folder: string): Promise<number>
+  /** Files, tags or stars an item. `folder: ""` takes it out of its folder; a part left out stays. */
+  organize(id: string, change: { folder?: string; tags?: string[]; favourite?: boolean }): Promise<number>
+  /** Renames a tag everywhere (nested ones too); `to: null` takes it off. */
+  renameTag(from: string, to: string | null): Promise<number>
+  archive(id: string): Promise<void>
+  unarchive(id: string): Promise<void>
+  /** Seals the item again in another vault; resolves to its new id. A crown jewel's asks first. */
+  moveItem(id: string, vaultId: string, gate?: GateInput): Promise<string>
+  /** Into the crown-jewel class, or out of it (asks for the password); resolves to the new id. */
+  setCrownJewel(id: string, on: boolean, gate?: GateInput): Promise<string>
+  /** Deletes a trashed item for good now. */
+  purge(id: string, gate?: GateInput): Promise<void>
+  /** Keeps one copy of a conflict and trashes the other (D58). */
+  resolveConflict(keep: string, other: string): Promise<void>
+  duplicates(): Promise<DuplicateGroup[]>
+  mergeDuplicates(keep: string, others: string[], gate?: GateInput): Promise<number>
+  history(id: string): Promise<VersionView[]>
+  showVersion(id: string, n: number): Promise<ItemDetail>
+  restoreVersion(id: string, n: number, gate?: GateInput): Promise<number>
+  /** Attaches a file: its bytes go as the raw request body, never as JSON. */
+  attach(id: string, name: string, mime: string, bytes: Uint8Array, gate?: GateInput): Promise<string>
+  /** A file's bytes, for the person to save; the caller wipes them after. */
+  attachment(id: string, attId: string, gate?: GateInput): Promise<Uint8Array>
+  detach(id: string, attId: string, gate?: GateInput): Promise<number>
+  /** Notes a use made outside the core (the site opened), for the ranking. */
+  noteUse(id: string): Promise<void>
+  expiryReminders(): Promise<ExpiryReminder[]>
+  /** `addItem` into a chosen vault. */
+  addItemIn(vaultId: string, input: { kind: string; title?: string; crownJewel?: boolean; fields: FieldChangeInput[] }): Promise<string>
   /** The security center's report from what this device knows now; no network. */
   securityReport(): Promise<SecurityReport>
   /** Checks again (breach ranges by five-character prefix, the account's alerts), then the report. */
@@ -236,7 +281,7 @@ export const tauriClient: Client = {
   importPreview: (input) => call("import_preview", input),
   importCommit: (token) => call("import_commit", { token }),
   importCancel: () => call("import_cancel"),
-  exportPreview: (format) => call("export_preview", { format }),
+  exportPreview: (format, vault) => call("export_preview", { format, vault: vault ?? null }),
   exportChoose: (format, sealed) => call("export_choose", { format, sealed }),
   exportSave: (input, gate) => call("export_save", { ...input, gate }),
   setExportOptIn: (id, on, gate) => call("set_export_opt_in", { id, on, gate }),
@@ -246,6 +291,40 @@ export const tauriClient: Client = {
   backupNow: () => call("backup_now"),
   backupOff: (forget) => call("backup_off", { forget }),
   backupRestorePreview: (name, password) => call("backup_restore_preview", { name, password }),
+  vaults: () => call("vaults"),
+  createVault: (name) => call("create_vault", { name }),
+  renameVault: (vaultId, name) => call("rename_vault", { vaultId, name }),
+  setTrashDays: (vaultId, days) => call("set_trash_days", { vaultId, days }),
+  addFolder: (vaultId, name, parent) => call("add_folder", { vaultId, name, parent: parent ?? null }),
+  changeFolder: (vaultId, folder, name, parent) => call("change_folder", { vaultId, folder, name, parent: parent ?? null }),
+  removeFolder: (vaultId, folder) => call("remove_folder", { vaultId, folder }),
+  organize: (id, change) => call("organize", { id, ...change }),
+  renameTag: (from, to) => call("rename_tag", { from, to }),
+  archive: (id) => call("archive", { id }),
+  unarchive: (id) => call("unarchive", { id }),
+  moveItem: (id, vaultId, gate) => call("move_item", { id, vaultId, gate }),
+  setCrownJewel: (id, on, gate) => call("set_crown_jewel", { id, on, gate }),
+  purge: (id, gate) => call("purge", { id, gate }),
+  resolveConflict: (keep, other) => call("resolve_conflict", { keep, other }),
+  duplicates: () => call("duplicates"),
+  mergeDuplicates: (keep, others, gate) => call("merge_duplicates", { keep, others, gate }),
+  history: (id) => call("history", { id }),
+  showVersion: (id, n) => call("show_version", { id, n }),
+  restoreVersion: (id, n, gate) => call("restore_version", { id, n, gate }),
+  attach: (id, name, mime, bytes, gate) =>
+    invoke<string>("attach", bytes, {
+      headers: {
+        "x-lockdown-item": id,
+        "x-lockdown-name": encodeURIComponent(name),
+        "x-lockdown-type": mime,
+        ...(gate ? { "x-lockdown-gate": JSON.stringify(gate) } : {}),
+      },
+    }),
+  attachment: (id, attId, gate) => callBytes("attachment", { id, attId, gate }),
+  detach: (id, attId, gate) => call("detach", { id, attId, gate }),
+  noteUse: (id) => call("note_use", { id }),
+  expiryReminders: () => call("expiry_reminders"),
+  addItemIn: (vaultId, input) => call("add_item", { ...input, vault: vaultId }),
   securityReport: () => call("security_report"),
   securityCheck: () => call("security_check"),
   securityDismiss: (itemId, key, until) => call("security_dismiss", { itemId, key, until }),

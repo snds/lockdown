@@ -23,6 +23,7 @@ import {
 import { describeError, useClient } from "@/core/client"
 import { encodeSecret } from "@/core/secret-bytes"
 import type { ImportFormatView, ImportPreview, ImportReport } from "@/core/types"
+import { useVaults } from "@/features/organization/vaults-context"
 
 import { AUTO, confirmWords, doneLine, factLines, kindLines, passwordAsked, summaryLine } from "./import-model"
 
@@ -53,6 +54,8 @@ export function ImportWizard({ open, restore = null, onClose, onImported }: Impo
   const client = useClient()
   const [formats, setFormats] = useState<ImportFormatView[]>([])
   const [format, setFormat] = useState(AUTO)
+  const { vaults } = useVaults()
+  const [vault, setVault] = useState<string>("")
   const [fileName, setFileName] = useState("")
   const [step, setStep] = useState<Step>("choose")
   const [error, setError] = useState<string | null>(null)
@@ -98,7 +101,7 @@ export function ImportWizard({ open, restore = null, onClose, onImported }: Impo
     try {
       const p = restore
         ? await client.backupRestorePreview(restore, password)
-        : await client.importPreview({ bytes: Array.from(bytes.current ?? []), format, fileName: name, password })
+        : await client.importPreview({ bytes: Array.from(bytes.current ?? []), format, fileName: name, password, vault: vault || null })
       setPreview(p)
       setStep("preview")
     } catch (e) {
@@ -200,6 +203,19 @@ export function ImportWizard({ open, restore = null, onClose, onImported }: Impo
                   {chosen ? chosen.how : "1Password, Bitwarden, Proton Pass, KeePass, Dashlane, Keeper, LastPass, Enpass, a CXF or CSV file, or a Lockdown backup."}
                 </FieldDescription>
               </Field>
+              {vaults.length > 1 && (
+                <Field>
+                  <FieldLabel htmlFor="import-into">Into which vault</FieldLabel>
+                  <NativeSelect id="import-into" value={vault} onChange={(e) => setVault(e.target.value)}>
+                    {vaults.map((v) => (
+                      <NativeSelectOption key={v.id} value={v.primary ? "" : v.id}>
+                        {v.name}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                  <FieldDescription>Folders in the file become folders in this vault.</FieldDescription>
+                </Field>
+              )}
               <Field>
                 <FieldLabel htmlFor="import-file">The file</FieldLabel>
                 <input id="import-file" ref={fileRef} type="file" className="text-sm" />

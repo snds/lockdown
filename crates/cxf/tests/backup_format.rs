@@ -157,6 +157,8 @@ fn what_the_crate_seals_opens_by_the_spec_and_both_vectors_read_back_the_same() 
     );
     assert!(lockdown_vault::export_opted_in(&wallet.fields));
     assert!(from_plain.problems[0].contains("1 items were left out"));
+    assert_eq!(from_plain.folders.len(), 1);
+    assert_eq!(from_plain.folders[0].name, "Online");
 }
 
 fn f(field: PlainField) -> DocField {
@@ -171,6 +173,17 @@ fn f(field: PlainField) -> DocField {
 fn write_backup_vectors() {
     let id = |n: u8| Id::parse(&format!("00000000-0000-4000-8000-0000000000{n:02}")).unwrap();
     let mut doc = Document::new(1_760_000_000, "Lockdown 0.1.0");
+    let vault = id(90).to_string();
+    let folder = id(91).to_string();
+    doc.vaults.push(archive::DocVault {
+        id: vault.clone(),
+        name: Some("Personal".into()),
+        folders: vec![archive::DocFolder {
+            id: folder.clone(),
+            name: "Online".into(),
+            parent: None,
+        }],
+    });
     let login_now = vec![
         f(PlainField::text("title", "title", "Example Forum")),
         f(PlainField::text("user", "Username", "ada@example.com")),
@@ -199,6 +212,14 @@ fn write_backup_vectors() {
             FieldValue::Bytes(vec![0x30, 0x81, 0x87, 0x02, 0x01, 0x00]),
         )),
         f(PlainField::text("notes", "Notes", "Signed up in 2024.")),
+        f(PlainField::text("org.folder", "Folder", &folder)),
+        f(PlainField::text("org.tags", "Tags", "forums\nsocial")),
+        f(PlainField::new(
+            "org.favourite",
+            FieldKind::Boolean,
+            "Favourite",
+            FieldValue::Boolean(true),
+        )),
     ];
     let mut login_then = login_now.clone();
     login_then[2] = f(PlainField::hidden("pw", "Password", "an older password"));
@@ -220,6 +241,7 @@ fn write_backup_vectors() {
             "text/plain",
             b"receipt: one kettle",
         )],
+        vault: Some(vault.clone()),
     });
     doc.items.push(DocItem {
         id: id(2).to_string(),
@@ -244,6 +266,7 @@ fn write_backup_vectors() {
         ],
         history: vec![],
         attachments: vec![],
+        vault: Some(vault.clone()),
     });
     doc.items.push(DocItem {
         id: id(3).to_string(),
@@ -264,6 +287,7 @@ fn write_backup_vectors() {
         ],
         history: vec![],
         attachments: vec![],
+        vault: Some(vault.clone()),
     });
     doc.items.push(DocItem {
         id: id(4).to_string(),
@@ -282,6 +306,7 @@ fn write_backup_vectors() {
         ],
         history: vec![],
         attachments: vec![],
+        vault: Some(vault.clone()),
     });
     doc.left_out.push(LeftOut {
         id: id(5).to_string(),

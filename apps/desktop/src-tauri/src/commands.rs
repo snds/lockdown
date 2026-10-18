@@ -334,6 +334,7 @@ async fn password_strength(
 
 /// Makes an item of any kind a person may make (D110). Secrets arrive as
 /// byte arrays inside `fields` (items.rs) and are wiped after the call.
+/// `vault` names the vault to make it in; left out, the first one.
 #[tauri::command]
 async fn add_item(
     app: State<'_, App>,
@@ -341,15 +342,23 @@ async fn add_item(
     title: Option<String>,
     crown_jewel: Option<bool>,
     fields: Vec<FieldChangeInput>,
+    vault: Option<String>,
 ) -> AppResult<String> {
     let changes = into_changes(fields)?;
-    blocking(&app, move |a| {
-        a.add_item(
+    blocking(&app, move |a| match vault {
+        Some(v) => a.add_item_in(
+            &v,
             &kind,
             title.as_deref(),
             crown_jewel.unwrap_or(false),
             changes,
-        )
+        ),
+        None => a.add_item(
+            &kind,
+            title.as_deref(),
+            crown_jewel.unwrap_or(false),
+            changes,
+        ),
     })
     .await
 }
@@ -772,6 +781,31 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         crate::transfer::commands::backup_now,
         crate::transfer::commands::backup_off,
         crate::transfer::commands::backup_restore_preview,
+        crate::organization::commands::vaults,
+        crate::organization::commands::create_vault,
+        crate::organization::commands::rename_vault,
+        crate::organization::commands::set_trash_days,
+        crate::organization::commands::add_folder,
+        crate::organization::commands::change_folder,
+        crate::organization::commands::remove_folder,
+        crate::organization::commands::organize,
+        crate::organization::commands::rename_tag,
+        crate::organization::commands::archive,
+        crate::organization::commands::unarchive,
+        crate::organization::commands::move_item,
+        crate::organization::commands::set_crown_jewel,
+        crate::organization::commands::purge,
+        crate::organization::commands::resolve_conflict,
+        crate::organization::commands::duplicates,
+        crate::organization::commands::merge_duplicates,
+        crate::organization::commands::history,
+        crate::organization::commands::show_version,
+        crate::organization::commands::restore_version,
+        crate::organization::commands::attach,
+        crate::organization::commands::attachment,
+        crate::organization::commands::detach,
+        crate::organization::commands::note_use,
+        crate::organization::commands::expiry_reminders,
         security_report,
         security_check,
         security_dismiss,

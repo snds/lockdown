@@ -50,6 +50,7 @@ impl App {
         format: &str,
         file_name: &str,
         password: Option<Vec<u8>>,
+        vault: Option<String>,
     ) -> AppResult<ImportPreview> {
         let format = format.to_string();
         let file_name = file_name.to_string();
@@ -61,6 +62,7 @@ impl App {
                 &format,
                 &file_name,
                 password.as_deref().map(|p| p.as_slice()),
+                vault.as_deref(),
             )
         })
     }
@@ -78,13 +80,14 @@ impl App {
         })
     }
 
-    /// What an export in `format` would carry and leave out.
-    pub fn export_preview(&self, format: &str) -> AppResult<ExportPreview> {
+    /// What an export in `format` would carry and leave out: every vault,
+    /// or the one `vault` names.
+    pub fn export_preview(&self, format: &str, vault: Option<String>) -> AppResult<ExportPreview> {
         let format = format.to_string();
-        self.with_session(move |s| s.export_preview(&format))
+        self.with_session(move |s| s.export_preview(&format, vault.as_deref()))
     }
 
-    /// Writes the vault in `format` to `path` (the person chose it in the
+    /// Writes every vault (or the one `vault` names) in `format` to `path` (the person chose it in the
     /// shell's own save dialog), after the `Reveal` gate. With `password`
     /// the file is sealed (the Lockdown format, KDBX); without one a
     /// Lockdown, CXF or CSV file is plain text, and `plain_confirmed`
@@ -95,6 +98,7 @@ impl App {
         format: &str,
         password: Option<Vec<u8>>,
         plain_confirmed: bool,
+        vault: Option<String>,
         gate: GateInput,
     ) -> AppResult<ExportDone> {
         let format = format.to_string();
@@ -111,7 +115,11 @@ impl App {
             core.approve(ApprovalKind::Reveal, "export the vault", &gate)?;
             let (bytes, preview) = core
                 .session()?
-                .export_file(&format, password.as_deref().map(|p| p.as_slice()))
+                .export_file(
+                    &format,
+                    password.as_deref().map(|p| p.as_slice()),
+                    vault.as_deref(),
+                )
                 .map_err(AppError::refused)?;
             write_user_file(&path, &bytes).map_err(AppError::refused)?;
             Ok(ExportDone {

@@ -20,6 +20,7 @@ UTF-8 JSON, one object. Unknown members MUST be ignored by a reader of the same 
 | `exporter` | string | the app and version that wrote it, in words |
 | `items` | array of item | every item carried |
 | `left_out` | array of left-out | items deliberately kept out (may be empty or absent) |
+| `vaults` | array of vault, optional | the vaults the items came from, with their folders (§2.6) |
 
 ### 2.1 Item
 
@@ -33,6 +34,7 @@ UTF-8 JSON, one object. Unknown members MUST be ignored by a reader of the same 
 | `fields` | array of field | the item as it is now; the first is `title` |
 | `history` | array of version | earlier versions, oldest first (may be empty) |
 | `attachments` | array of attachment | the newest version's files (may be empty) |
+| `vault` | string, optional | the id of the vault (in `vaults`) it came from |
 
 A reader MUST refuse an item whose `kind`, `class` or `state` it doesn't know, and SHOULD carry on with the other items, saying which one it left out.
 
@@ -56,6 +58,8 @@ A reader MUST refuse an item whose `kind`, `class` or `state` it doesn't know, a
 | `bytes` | base64url without padding: passkey material (`passkey.<n>.credential_id`, `.user_handle`, and `.key`, the PKCS#8 private key) |
 | `ref` | another item's UUID |
 
+**Filing.** `org.folder` (`text`: the id of one of the vault's folders, §2.6, or empty), `org.tags` (`text`: one tag per line) and `org.favourite` (`flag`) say where the item is filed. A reader that restores into a vault without the named folder SHOULD file the item nowhere and say so.
+
 **The app's own fields.** `lockdown.export` (`flag`): a crown jewel the person chose to include in exports and backups. `lockdown.security` (`text`, JSON): the security center's dismissals. A reader that is not Lockdown MAY ignore them; a writer MUST NOT set `lockdown.export` on an item the person didn't opt in.
 
 ### 2.3 Version
@@ -77,6 +81,10 @@ A reader MUST check `size` and `blake3` and refuse the item when either is wrong
 ### 2.5 Left out
 
 `{ "id", "title", "kind", "reason" }`. `reason` is `crown-jewel` for a crown jewel the person didn't include (decision D121: crown jewels leave a bulk export only when opted in, per item); other reasons are words. A reader SHOULD tell the person what was left out.
+
+### 2.6 Vault
+
+`{ "id", "name" (optional), "folders": [ { "id", "name", "parent" (optional) } ] }`: a vault's id, the name the person gave it, and its folders by id, each under its `parent` folder or at the top. A restore SHOULD bring the folders back with their ids so the items' `org.folder` still names them.
 
 ## 3. The sealed file
 
@@ -123,7 +131,7 @@ Each sealed chunk is its ciphertext followed by the 16-byte tag, so every frame 
 
 ## 4. Test vectors
 
-- `crates/cxf/tests/fixtures/backup-v1.json`: a plain document with a login (password, code, passkey key, a base-domain website, one earlier version, one attachment), an opted-in crown-jewel wallet, an archived Wi-Fi network, a trashed note, and one left-out crown jewel.
+- `crates/cxf/tests/fixtures/backup-v1.json`: a plain document with one vault and one folder; a login filed in that folder with two tags and a star (password, code, passkey key, a base-domain website, one earlier version, one attachment); an opted-in crown-jewel wallet; an archived Wi-Fi network; a trashed note; and one left-out crown jewel.
 - `crates/cxf/tests/fixtures/backup-v1.lockdown`: the same document sealed with the password `correct horse battery staple` at the test cost.
 
 ## 5. Changes

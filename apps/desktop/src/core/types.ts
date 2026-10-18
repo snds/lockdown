@@ -36,7 +36,7 @@ export interface PolicyInput {
 }
 
 /** The smart views (crates/app/src/views.rs), as `ItemSummary.views` names them. */
-export type SmartView = "passkeys" | "codes" | "wi-fi" | "expiring" | "attention" | "deleted"
+export type SmartView = "passkeys" | "codes" | "wi-fi" | "expiring" | "attention" | "deleted" | "favourites" | "archived"
 
 export interface ItemSummary {
   id: string
@@ -59,6 +59,23 @@ export interface ItemSummary {
   subtitle: string
   /** What the row's quick copy takes (palette, copy button), when the item holds it. */
   copy: CopyTarget | null
+  // Organization (docs/plan/15-organization.md). Always sent by the core;
+  // optional here so older fixtures still type-check.
+  /** The vault the item is in. */
+  vault_id?: string
+  /** The folder it is filed in (an id of its vault's folders). */
+  folder?: string | null
+  /** Its tags, sorted; `/` nests one under another. */
+  tags?: string[]
+  favourite?: boolean
+  /** When this device last used it (copy, reveal, site opened); never synced. */
+  last_used?: number | null
+  /** How many times this device used it. */
+  uses?: number
+  /** Days until its expiry date lapses; negative once it has. */
+  expires_in_days?: number | null
+  /** How many files are attached. */
+  attachments?: number
 }
 
 /** One value a row offers to copy, by id and field: never the value. */
@@ -87,6 +104,8 @@ export interface FieldView {
   hidden: boolean
   value: string | null
   mask: string | null
+  /** A web address's match rule (`exact_host`, `base_domain`, `equivalent`, `starts_with`, `never`). */
+  match_rule?: string
 }
 
 /** The bridge tiers' internal ids (D96); people see the badge's words, never these. */
@@ -110,6 +129,14 @@ export interface ItemDetail {
   tier?: RiskTier | null
   /** The manifest check's answer; left out while it runs. */
   tier_verified?: boolean
+  /** The vault it is in. */
+  vault_id?: string
+  /** Its folder, tags and favourite (never among `fields`). */
+  organization?: OrganizationView
+  /** Its files' facts, never their bytes. */
+  attachments?: AttachmentView[]
+  /** A crown jewel by its kind or a field: it can never leave the class. */
+  crown_jewel_fixed?: boolean
 }
 
 /** One one-time code now: values and timing, never the set-up. */
@@ -309,6 +336,8 @@ export interface FieldTemplateView {
   section: string
   grouped: boolean
   hint: string
+  /** May be added more than once (`url.0`, `url.1`, …). */
+  repeats?: boolean
 }
 
 export interface TemplateView {
@@ -351,6 +380,66 @@ export interface FieldChangeInput {
   text?: string
   secret?: number[]
   flag?: boolean
+  /** With a web address's `text`: how it matches pages. */
+  match_rule?: string
+}
+
+// --- organization (docs/plan/15-organization.md) --------------------------------
+
+export interface OrganizationView {
+  folder: string | null
+  tags: string[]
+  favourite: boolean
+}
+
+export interface AttachmentView {
+  id: string
+  name: string
+  mime: string
+  size: number
+}
+
+export interface FolderView {
+  id: string
+  name: string
+  parent: string | null
+  /** Names from the top, joined by " / ". */
+  path: string
+}
+
+export interface VaultView {
+  id: string
+  name: string
+  /** The first vault: new items go here unless another is picked. */
+  primary: boolean
+  items: number
+  trash_days: number
+  folders: FolderView[]
+}
+
+export interface DuplicateGroup {
+  reason: "same-login" | "same-password" | "same-code"
+  words: string
+  ids: string[]
+  mergeable: boolean
+}
+
+export interface VersionView {
+  n: number
+  edited_at: number
+  edited_by: string
+  /** Labels of the fields this version changed; never a value. */
+  changed: string[]
+  readable: boolean
+  current: boolean
+}
+
+export interface ExpiryReminder {
+  id: string
+  title: string
+  kind: string
+  date: string
+  days: number
 }
 
 // --- the security center (crates/app/src/security.rs) ----------------------------

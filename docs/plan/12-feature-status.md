@@ -1,14 +1,14 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `a3ca4f8`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `c817185`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
 **Done** means it works end to end in today's surfaces (core, desktop, CLI, server) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **12** | **53** | **47** | **10** |
-| [Vault & item types](#vault--item-types) | 0 | 12 | 0 | 0 |
-| [Organization & search](#organization--search) | 1 | 2 | 4 | 0 |
+| **All 122 v1 features** | **21** | **48** | **43** | **10** |
+| [Vault & item types](#vault--item-types) | 4 | 8 | 0 | 0 |
+| [Organization & search](#organization--search) | 6 | 1 | 0 | 0 |
 | [Autofill (browser)](#autofill-browser) | 0 | 3 | 6 | 0 |
 | [Autofill (mobile & desktop OS)](#autofill-mobile--desktop-os) | 0 | 0 | 6 | 0 |
 | [Passkeys & WebAuthn](#passkeys--webauthn) | 0 | 2 | 6 | 0 |
@@ -32,28 +32,28 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser 
 
 ## Vault & item types
 
-- [ ] **Logins**: Partial · core, desktop, cli. Several websites in the editor (only url.0 is offered), a sign-in-method field (password, passkey, federated, SSO), and passkeys made on the record rather than only imported.
-- [ ] **Secure notes**: Partial · core, desktop. Render the Markdown (the body is shown as written); the encrypted note item and the notes field on every kind already work.
+- [x] **Secure notes**: Done · core, desktop. Nothing for desktop; mobile and web views later.
+- [x] **Item expiry reminders**: Done · core, desktop. Renewal kinds for domains and certificates; the signed-date check.
+- [x] **Trash with recovery**: Done · core, desktop. Trash in the CLI.
+- [x] **Item archive**: Done · core, desktop. Nothing for desktop.
+- [ ] **Logins**: Partial · core, desktop, cli. Passkeys made on the record (they can only be imported today).
 - [ ] **Payment cards**: Partial · core, desktop. The card fill itself (extension or OS provider) with the second deliberate action and the optional CVC re-prompt.
 - [ ] **Identities and addresses**: Partial · core, desktop. Typed subtypes (person, address, business, vehicle, passport) and a separate contacts list that is never filled; plus the form fill itself.
 - [ ] **Typed item templates**: Partial · core, desktop. Reach 25+ types (passport and licence are a Document type choice today) and add user-defined templates.
 - [ ] **Custom fields**: Partial · core, desktop. Add the TOTP and linked field kinds.
-- [ ] **File attachments**: Partial · core, cli, server. Attachments in lockdown-app and the desktop editor and detail, streaming for large files, blobs on object storage, and the 5 GB quota.
+- [ ] **File attachments**: Partial · core, desktop, cli, server. Streaming for large files (whole files up to 100 MB today), object storage and the 5 GB quota on the server.
 - [ ] **Password and passphrase generator**: Partial · core, desktop. Word passphrases, per-site rule profiles, length and class options in the UI, and statistical randomness tests in CI.
 - [ ] **Wi-Fi network items**: Partial · core, desktop. The self-hiding guest QR card, the printable card, and export through CXF's own Wi-Fi type (it rides in the Lockdown extension today).
-- [ ] **Item expiry reminders**: Partial · core, desktop. Actual reminders before a date lapses, renewal kinds for domains and certificates, and the client-side signed-date check.
-- [ ] **Trash with recovery**: Partial · core, desktop. The 30-day grace timer that purges on every device, the per-vault setting, holding purges while a conflict is open, and trash in the CLI.
-- [ ] **Item archive**: Partial · core. An archive and unarchive action in the core and the desktop, and leaving archived items out of search (the state exists but nothing sets it).
 
 ## Organization & search
 
+- [x] **Folders**: Done · core, desktop. Drag and drop; folders from imports.
+- [x] **Tags**: Done · core, desktop. Nothing for desktop; the extension and web vault views.
+- [x] **Multiple vaults**: Done · core, desktop. Several vaults in the CLI; a free-tier limit once plans exist.
 - [x] **Smart categories**: Done · core, desktop. Nothing for the desktop; Signal-hidden passkeys join Needs attention once the Signal API exists.
-- [ ] **Multiple vaults**: Partial · core. Creating a second vault, switching between vaults in the desktop, and per-vault sync and limits.
+- [x] **Duplicate finder**: Done · core, desktop. Run it on its own after an import; a side-by-side compare.
+- [x] **Favorites and recency ranking**: Done · core, desktop. Fill counts from the browser extension.
 - [ ] **Global quick-access palette**: Partial · desktop. The system-wide hotkey outside the window, fill and show-code actions, and a shared Rust search index (search runs over summaries in TypeScript).
-- [ ] **Folders**: Not started · nowhere yet. Everything: a folder tree in the vault model, the UI, and folder import.
-- [ ] **Tags**: Not started · nowhere yet. Everything: an encrypted tag field, nesting, cross-vault views and the UI.
-- [ ] **Duplicate finder**: Not started · nowhere yet. Everything: detection on URL, username and code secret after import, and the side-by-side merge.
-- [ ] **Favorites and recency ranking**: Not started · nowhere yet. Favorites, last-fill and frequency tracking on the device, and ranking fill suggestions and search by them.
 
 ## Autofill (browser)
 
@@ -204,7 +204,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser 
 
 - `cli`: Partly built: the `lockdown` binary (bins/cli/src/main.rs) does init, add/edit/list/show logins, account register/login, sync, kit, device list/revoke, attach/fetch, audit, checkpoint, code and match, with end-to-end tests (bins/cli/tests/end_to_end.rs:42). No JSON output, no biometric unlock through the desktop app, no secret references.
 - `local-only-mode`: Largely built: "This device only" on first run makes a vault and kit with no account, and an account can be added later from Status (apps/desktop/src/features/unlock/first-run.tsx:122); `lockdown init` works without a server.
-- `version-history`: Data layer built: every edit is a new signed version under its own key and old versions open (crates/vault/src/vault.rs:1240 seal_open_and_history); no history view, restore action or retention rule.
+- `version-history`: Built: every version shows when, by which device and which fields changed; an earlier version shows masked and Restore saves it as the newest (15-organization). Revealing an old version's secret is not built.
 - `seed-safe-mode`: Detector only: crates/vault/src/crown_jewel.rs:112 looks_like_seed_phrase (test at :173); not wired to any paste or field.
 
 Evidence (file and line, test, or decision row) for every row is in `feature-status.json`.
