@@ -386,7 +386,8 @@ impl Session {
         let mut changes: Vec<FieldChange> = fields
             .iter()
             .filter(|f| f.field_id != "title")
-            // Lockdown's own fields are kept by every edit without being named.
+            // Lockdown's own fields are kept by the edit without being
+            // named; naming one is refused (`compose`).
             .filter(|f| !lockdown_vault::is_reserved(&f.field_id))
             .filter(|f| {
                 !set.iter()

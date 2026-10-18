@@ -14,7 +14,7 @@ type Fieldish = HTMLInputElement | HTMLSelectElement
 const inputSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set
 const selectSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set
 
-function write(el: Fieldish, value: string): boolean {
+export function write(el: Fieldish, value: string): boolean {
   if (el instanceof HTMLSelectElement) {
     const want = value.trim().toLowerCase()
     const opt = Array.from(el.options).find((o) => o.value.toLowerCase() === want || o.text.trim().toLowerCase() === want)

@@ -5,6 +5,7 @@
 // is in.
 
 import type { FillWhat } from "../shared/protocol"
+import { fixedRole, neverHere } from "./fixes"
 
 const TEXTLIKE = new Set(["text", "email", "tel", "number", "search", "url", ""])
 
@@ -40,7 +41,10 @@ const CARD = {
 
 /** The kind of fill a field asks for, or `null` for an ordinary field. */
 export function classify(el: HTMLInputElement): FillWhat | null {
-  if (!usable(el)) return null
+  if (!usable(el) || neverHere()) return null
+  // A fill fix for this site (fixes.ts) says what the field is.
+  const fixed = fixedRole(el)
+  if (fixed) return fixed === "username" || fixed === "password" || fixed === "new_password" ? "login" : fixed === "code" ? "code" : null
   const a = auto(el)
   const words = attrs(el)
   if (el.type === "password") return a === "one-time-code" ? "code" : "login"
@@ -63,32 +67,43 @@ function scope(el: Element): ParentNode {
 }
 
 function inputsIn(root: ParentNode): HTMLInputElement[] {
-  return Array.from(root.querySelectorAll("input")).filter(usable)
+  return Array.from(root.querySelectorAll("input")).filter((i) => usable(i) && fixedRole(i) !== "ignore")
+}
+
+/** A password field, by its type or by a fix that says so. */
+function isPassword(el: HTMLInputElement): boolean {
+  const fixed = fixedRole(el)
+  if (fixed) return fixed === "password" || fixed === "new_password"
+  return el.type === "password"
 }
 
 function passwordNear(el: HTMLInputElement): boolean {
-  return inputsIn(scope(el)).some((i) => i.type === "password")
+  return inputsIn(scope(el)).some(isPassword)
 }
 
 /** The username field that goes with `password`: the last text-like input
  *  before it in the same form, preferring one marked `username` or `email`. */
 export function usernameFor(password: HTMLInputElement): HTMLInputElement | null {
   const all = inputsIn(scope(password))
+  const fixed = all.find((i) => i !== password && fixedRole(i) === "username")
+  if (fixed) return fixed
   const before = all.slice(0, all.indexOf(password)).filter((i) => TEXTLIKE.has(i.type) && i.type !== "number")
   return before.find((i) => auto(i) === "username") ?? before.reverse().find((i) => i.type === "email" || /(user|login|email|account)/.test(attrs(i))) ?? before[0] ?? null
 }
 
 /** The sign-in pair around the focused field. */
 export function loginPair(el: HTMLInputElement): { user: HTMLInputElement | null; pass: HTMLInputElement | null } {
-  if (el.type === "password") return { user: usernameFor(el), pass: el }
-  const pass = inputsIn(scope(el)).find((i) => i.type === "password") ?? null
+  if (isPassword(el)) return { user: usernameFor(el), pass: el }
+  const all = inputsIn(scope(el)).filter(isPassword)
+  const pass = all.find((i) => fixedRole(i) === "password") ?? all.find((i) => fixedRole(i) !== "new_password") ?? null
   return { user: el, pass }
 }
 
 /** The first sign-in field on the page, for the popup and the shortcut. */
 export function firstLoginField(): HTMLInputElement | null {
+  if (neverHere()) return null
   const inputs = inputsIn(document)
-  const pass = inputs.find((i) => i.type === "password")
+  const pass = inputs.find((i) => isPassword(i) && fixedRole(i) !== "new_password")
   if (pass) return usernameFor(pass) ?? pass
   return inputs.find((i) => classify(i) === "login") ?? null
 }
@@ -170,9 +185,10 @@ export function identityFields(el: Element): Map<string, Fieldish> {
 /** The new password and the username around it, when a form that holds a
  *  password is submitted: `null` when there is nothing to offer. */
 export function capture(form: ParentNode): { username: string; password: string } | null {
-  const passwords = inputsIn(form).filter((i) => i.type === "password" && i.value)
+  const passwords = inputsIn(form).filter((i) => isPassword(i) && i.value)
   if (passwords.length === 0) return null
   const chosen =
+    passwords.find((p) => fixedRole(p) === "new_password") ??
     passwords.find((p) => auto(p) === "new-password") ?? (passwords.length >= 2 ? passwords[passwords.length - 1] : passwords[0])
   const user = usernameFor(passwords[0])
   return { username: user?.value.trim() ?? "", password: chosen.value }
@@ -182,6 +198,9 @@ export function capture(form: ParentNode): { username: string; password: string 
  *  `new-password`; or, unmarked, either of exactly two password fields, or
  *  any but the first of three or more (the first being the current one). */
 export function isNewPassword(el: HTMLInputElement): boolean {
+  // A fill fix for this site (fixes.ts) says so either way.
+  const fixed = fixedRole(el)
+  if (fixed) return fixed === "new_password" && usable(el)
   if (el.type !== "password" || !usable(el)) return false
   const a = auto(el)
   if (a === "new-password") return true
@@ -196,4 +215,36 @@ export function isNewPassword(el: HTMLInputElement): boolean {
 export function newPasswordFields(el: HTMLInputElement): HTMLInputElement[] {
   const all = inputsIn(scope(el)).filter((i) => i === el || isNewPassword(i))
   return all.includes(el) ? all : [el, ...all]
+}
+
+/** The page's fields as the popup lists them for a fix: attributes and
+ *  what Lockdown takes each for, never a value. At most 40, each attribute
+ *  cut to the length a fix may name. */
+export function pageFields(): { id: string; name: string; autocomplete: string; type: string; label: string; role: string | null }[] {
+  const cut = (t: string | null | undefined, n: number) => (t ?? "").trim().slice(0, n)
+  return Array.from(document.querySelectorAll("input"))
+    .filter((i) => usable(i) && !["checkbox", "radio", "submit", "button", "image", "reset", "file", "range", "color"].includes(i.type))
+    .filter((i) => i.id || i.name || i.getAttribute("autocomplete"))
+    .slice(0, 40)
+    .map((i) => {
+      const fixed = fixedRole(i)
+      const kind = fixed ?? (isPassword(i) ? "password" : classify(i) === "login" ? "username" : classify(i) === "code" ? "code" : null)
+      return {
+        id: cut(i.id, 128),
+        name: cut(i.name, 128),
+        autocomplete: cut(i.getAttribute("autocomplete"), 128),
+        type: cut(i.type, 20),
+        label: cut(i.labels?.[0]?.textContent ?? i.getAttribute("aria-label") ?? i.placeholder, 60),
+        role: kind,
+      }
+    })
+}
+
+/** The field an alias goes in: the focused one if it takes an address,
+ *  else the form's first email field. */
+export function emailField(): HTMLInputElement | null {
+  const takes = (i: HTMLInputElement) => usable(i) && !isPassword(i) && (i.type === "email" || auto(i) === "email" || /e-?mail/.test(attrs(i)))
+  const active = document.activeElement
+  if (isInput(active) && takes(active)) return active
+  return Array.from(document.querySelectorAll("input")).find(takes) ?? null
 }

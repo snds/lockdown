@@ -18,6 +18,13 @@
 //! - [`http`] — the one HTTP client both network calls share, behind the
 //!   [`http::Fetch`] trait so tests (and a shell with its own stack) swap it.
 //!
+//! - [`site_data`] — the signed site data (set-up guides from the two
+//!   directories, identity providers, change-password recipes, community
+//!   fill fixes) in the matcher's signed-data format; [`guide`] builds a
+//!   site's set-up card from it.
+//! - [`incident`] — the seven guided incident flows.
+//! - [`alias`] — email aliases through six alias services' APIs.
+//!
 //! Nothing here logs, and no error message names a password or a hash.
 
 #![forbid(unsafe_code)]
@@ -27,6 +34,11 @@ pub mod change_password;
 pub mod http;
 pub mod playbook;
 pub mod twofa;
+// Bridges, imports and monitoring (docs/plan/23-bridges.md).
+pub mod alias;
+pub mod guide;
+pub mod incident;
+pub mod site_data;
 
 pub use breach::{BreachError, Candidate, DEFAULT_RANGE_ENDPOINT, RangeSource};
 pub use change_password::{ChangeLink, LinkKind};

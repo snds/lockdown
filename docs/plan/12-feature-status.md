@@ -1,24 +1,24 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `e84830d`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `307d003`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
 **Done** means it works end to end in today's surfaces (core, desktop, CLI, server, browser extension, web vault) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **55** | **35** | **22** | **10** |
+| **All 122 v1 features** | **65** | **29** | **18** | **10** |
 | [Vault & item types](#vault--item-types) | 12 | 0 | 0 | 0 |
 | [Organization & search](#organization--search) | 6 | 1 | 0 | 0 |
-| [Autofill (browser)](#autofill-browser) | 7 | 1 | 1 | 0 |
+| [Autofill (browser)](#autofill-browser) | 8 | 1 | 0 | 0 |
 | [Autofill (mobile & desktop OS)](#autofill-mobile--desktop-os) | 0 | 0 | 6 | 0 |
 | [Passkeys & WebAuthn](#passkeys--webauthn) | 4 | 1 | 3 | 0 |
-| [Two-factor & authenticator](#two-factor--authenticator) | 2 | 2 | 0 | 0 |
-| [Vendor login bridges](#vendor-login-bridges) | 2 | 3 | 2 | 0 |
+| [Two-factor & authenticator](#two-factor--authenticator) | 3 | 1 | 0 | 0 |
+| [Vendor login bridges](#vendor-login-bridges) | 5 | 2 | 0 | 0 |
 | [Sharing & collaboration](#sharing--collaboration) | 6 | 0 | 0 | 0 |
 | [Family & emergency/recovery](#family--emergencyrecovery) | 1 | 3 | 1 | 0 |
-| [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 4 | 4 | 0 | 0 |
-| [Privacy](#privacy) | 0 | 1 | 1 | 0 |
-| [Import/export & portability](#importexport--portability) | 3 | 3 | 2 | 0 |
+| [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 6 | 2 | 0 | 0 |
+| [Privacy](#privacy) | 1 | 1 | 0 | 0 |
+| [Import/export & portability](#importexport--portability) | 5 | 1 | 2 | 0 |
 | [Self-hosting & deployment](#self-hosting--deployment) | 0 | 3 | 0 | 1 |
 | [Security architecture & crypto](#security-architecture--crypto) | 5 | 9 | 3 | 0 |
 | [Platforms & apps](#platforms--apps) | 3 | 3 | 2 | 1 |
@@ -61,11 +61,11 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [x] **Clickjacking-hardened fill**: Done · core, extension. Firefox has a hit test instead of IntersectionObserver v2.
 - [x] **Precise URL matching**: Done · core, cli, extension. Per-item match rules in the desktop editor (new sites get exact_host).
 - [x] **Save and update prompts**: Done · core, desktop, extension. A Firefox test run.
+- [x] **Per-site fill fixes**: Done · core, desktop, extension. Entries in the signed community fix list (it ships empty; the format and signing are built).
 - [x] **Fill keyboard shortcut**: Done · extension. A Firefox test run; letting people change the keys.
 - [x] **Card and address fill**: Done · core, extension. A Firefox test run; more checkout layouts as they turn up.
 - [x] **HTTP Basic Auth fill**: Done · core, extension. Tested on Chromium only; Firefox run.
 - [ ] **Browser extension coverage**: Partial · core, desktop, extension. Store packaging, a popup on unicron, a Firefox test run, Windows (named-pipe transport); Safari waits on OS-level work.
-- [ ] **Per-site fill fixes**: Not started · nowhere yet. Per-site user overrides synced end to end and a signed community fix list.
 
 ## Autofill (mobile & desktop OS)
 
@@ -91,18 +91,18 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 
 - [x] **Built-in TOTP codes**: Done · core, desktop, cli, web. Nothing in code for desktop; keeping it on the free tier is a pricing rule.
 - [x] **TOTP autofill**: Done · core, extension. A Firefox test run.
-- [ ] **Authenticator importers**: Partial · core, desktop, cli. Google Authenticator transfer batches and Aegis (incl. encrypted), 2FAS, Ente, Proton and Bitwarden files; only single otpauth:// and steam:// links import today.
-- [ ] **Code display aids**: Partial · core, desktop, web. Clock-skew correction against server time and search focus on launch (haptics are a phone item).
+- [x] **Authenticator importers**: Done · core, desktop. Proton Authenticator's locked export (refused in words today); the web vault (imports are refused there).
+- [ ] **Code display aids**: Partial · core, desktop, web. Search focus on launch; the clock check against the account server is built (haptics are a phone item).
 
 ## Vendor login bridges
 
 - [x] **Steam Guard codes**: Done · core, desktop, cli, web. Nothing in code for desktop; no UI test exercises the Steam variant specifically.
+- [x] **Steam maFile import**: Done · core, desktop. Nothing for desktop; trades are never confirmed by design.
 - [x] **Large-type display**: Done · core, desktop, web. Nothing for desktop and web; phones.
-- [ ] **Steam maFile import**: Partial · core. File parsers for SDA (incl. passkey-encrypted), WinAuth and Steam v2 JSON, with identity_secret put in the high-risk class.
+- [x] **Federated sign-in map**: Done · core, desktop, extension. Capture on mobile; more provider sign-in pages as they turn up.
+- [x] **Service 2FA setup guides**: Done · core, desktop. Refreshing the bundled directories on a schedule.
 - [ ] **TV and console activation by scan** _(under review)_: Partial · core, desktop. The scanner, the activation-page allow-list, opening the real page with the code and autofill, and the core producing approval requests (the sheet is a seam).
 - [ ] **Anti-phishing approval gate** _(under review)_: Partial · core, desktop. Wire the gate into real device-code, Steam QR and passkey QR flows; nothing calls it yet.
-- [ ] **Federated sign-in map**: Not started · nowhere yet. Everything: capturing provider buttons and redirects, the blast-radius view and recovery warnings.
-- [ ] **Service 2FA setup guides**: Not started · nowhere yet. Everything: setup cards from 2fa.directory and the passkeys directory with attribution.
 
 ## Sharing & collaboration
 
@@ -126,25 +126,25 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [x] **Breached password check**: Done · core, desktop. The extension's and web vault's view of the same findings.
 - [x] **Weak and reused password report**: Done · core, desktop. Reuse across more than one vault once multiple vaults land.
 - [x] **Missing 2FA report**: Done · core, desktop. A refresh schedule for the bundled 2fa.directory snapshot (D129).
+- [x] **Breach-response playbooks**: Done · core, desktop. The web vault (the security center is refused there today).
 - [x] **Lookalike-domain warning**: Done · core, desktop, extension. Nothing for desktop and the extension; the web vault.
-- [ ] **Email breach monitoring**: Partial · server. A breach feed key (the built-in feed needs a paid key) and alias monitoring.
-- [ ] **Breach-response playbooks**: Partial · core, desktop. The seven guided incident flows from the plan; seven plain playbooks exist.
-- [ ] **One-tap change-password link**: Partial · core, desktop, extension. The popup opens the well-known page, not the security center's checked link; curated per-site recipes.
+- [x] **One-tap change-password link**: Done · core, desktop, extension. More curated per-site pages in the signed data.
+- [ ] **Email breach monitoring**: Partial · core, desktop, server. A breach feed key (the built-in feed needs a paid key); alias monitoring is built and opt-in.
 - [ ] **Vault account sign-in alerts**: Partial · core, desktop, server. OS notifications and email verification for new devices (no SMTP setting yet); the session list that ends tokens at once is built.
 
 ## Privacy
 
+- [x] **Third-party alias services**: Done · core, desktop, extension. Aliases from the extension's save prompt (the popup makes them, D268); the web vault.
 - [ ] **Clipboard and screenshot hygiene**: Partial · desktop, web. Keep copies out of Windows clipboard history and cloud clipboard, and block screen capture on reveal screens.
-- [ ] **Third-party alias services**: Not started · nowhere yet. Everything: alias generation through the six services' API keys.
 
 ## Import/export & portability
 
 - [x] **Importers from other managers**: Done · core, desktop. Check each format against one real export (samples are built from the documented formats); 1Password .1pif, Dashlane .dash, passkeys from Proton and Keeper; the CLI on the core importers.
 - [x] **Complete export**: Done · core, desktop. Export in the CLI; restored versions keep their original dates.
+- [x] **Encrypted export**: Done · core, desktop. An external review of Lockdown's own age v1 code (audit item, D273); it interoperates with rage both ways.
 - [x] **Published backup format**: Done · core. A stand-alone open-licence reference decoder outside the workspace; the spec, test vectors and KDBX export are built.
+- [x] **Automatic local backups**: Done · core, desktop. Nothing for desktop; the web vault (backups are refused there).
 - [ ] **Lossless transfer**: Partial · core, desktop. File bytes through CXF, which waits on CXP (still a draft); Wi-Fi and identity documents now travel in CXF's own types, and Lockdown backups stay lossless.
-- [ ] **Encrypted export**: Partial · core, desktop. Exports to a public key (age recipients); password-locked Lockdown and KDBX files and the plain-export confirm are built.
-- [ ] **Automatic local backups**: Partial · core, desktop. A last-backup indicator outside Settings and the emergency sheet.
 - [ ] **iOS credential exchange** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: needs the iOS app; the CXF model it would map through exists.
 - [ ] **Android credential exchange** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: needs the Android app; the CXF model it would map through exists.
 

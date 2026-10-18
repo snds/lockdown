@@ -22,6 +22,10 @@ import { describeError, useClient } from "@/core/client"
 import type { Finding, SecurityReport } from "@/core/types"
 import { whenLocal } from "@/lib/format"
 
+import { FederationSection } from "@/features/bridges/federation"
+import { IncidentsSection } from "@/features/bridges/incidents"
+import { GuideAttribution } from "@/features/bridges/setup-guide"
+
 import { FindingRow } from "./finding-row"
 import { PlaybookDialog } from "./playbook-dialog"
 import { SEVERITIES, SEVERITY_TEXT, groupBySeverity, summaryWords } from "./security-model"
@@ -36,6 +40,8 @@ interface SecurityViewProps {
   onOpenItem: (id: string) => void
   /** Goes to the Devices screen (a new device's sign-in). */
   onDevices: () => void
+  /** Goes to the Recovery screen (a guided flow's new kit). */
+  onRecovery?: () => void
   /** A dismissal wrote a new version of an item: reload the list. */
   onChanged: () => void
   onNotice: (text: string) => void
@@ -51,7 +57,7 @@ interface SecurityViewProps {
  * when the last breach check is a day old or the account's alerts haven't
  * been fetched this session.
  */
-export function SecurityView({ onOpenItem, onDevices, onChanged, onNotice }: SecurityViewProps) {
+export function SecurityView({ onOpenItem, onDevices, onRecovery, onChanged, onNotice }: SecurityViewProps) {
   const client = useClient()
   const playbooks = usePlaybooks()
   const [report, setReport] = useState<SecurityReport | null>(null)
@@ -219,12 +225,23 @@ export function SecurityView({ onOpenItem, onDevices, onChanged, onNotice }: Sec
               )}
             </section>
           )}
+          <FederationSection onOpenItem={onOpenItem} onChanged={onChanged} onNotice={onNotice} />
+          <IncidentsSection
+            onOpenItem={onOpenItem}
+            onNotice={onNotice}
+            onAction={(a) => {
+              if (a === "check") void check()
+              else if (a === "recovery_kit") onRecovery?.()
+              else onDevices()
+            }}
+          />
           <Separator />
           <SecuritySettings onSaved={() => void client.securityReport().then(setReport).catch(() => {})} />
           <p className="text-xs text-muted-foreground">
             Two-step sign-in information for {report.directory.sites.toLocaleString()} sites comes from 2fa.directory ({report.directory.licence}{" "}
             licence), as of {report.directory.date}. It is built into Lockdown, so looking a site up tells no one which sites you use.
           </p>
+          <GuideAttribution />
         </>
       )}
       <PlaybookDialog

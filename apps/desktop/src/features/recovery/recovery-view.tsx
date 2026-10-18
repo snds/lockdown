@@ -3,6 +3,7 @@ import { useState } from "react"
 import { Badge, Button, Icon, Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@unicron/ui"
 
 import { PaneHeader } from "@/components/master-detail"
+import { EmergencySheetButton } from "@/features/bridges/emergency-sheet"
 import { decodeAndWipe } from "@/core/secret-bytes"
 import type { OncePage as OncePageData, Status } from "@/core/types"
 import { KitDialog } from "@/features/account/kit-dialog"
@@ -28,7 +29,9 @@ export function RecoveryView({ status, onChanged, onNotice }: RecoveryViewProps)
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 md:p-6">
-      <PaneHeader title="Recovery" />
+      <PaneHeader title="Recovery">
+        <EmergencySheetButton onNotice={onNotice} />
+      </PaneHeader>
       <ItemGroup>
         <Item variant="outline" data-row="">
           <ItemContent>

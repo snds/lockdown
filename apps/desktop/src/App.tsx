@@ -36,6 +36,9 @@ import { tauriLiveClient } from "@/app/tauri-live"
 import { tauriDepthClient } from "@/app/tauri-depth"
 import { DepthClientProvider } from "@/features/depth/depth-client"
 import { RemindersPrompt } from "@/features/depth/reminders"
+import { BridgesProvider } from "@/features/bridges/bridges-client"
+import { BackupIndicator } from "@/features/bridges/backup-indicator"
+import { tauriBridgesClient } from "@/app/tauri-bridges"
 
 /**
  * Locked is the default state. `status` is set when the core opened the
@@ -137,6 +140,7 @@ function Root() {
         onNavigate={setNav}
         onLock={lockNow}
         organization={<OrganizationNav rows={rows ?? []} nav={nav} onNavigate={setNav} />}
+        footer={<BackupIndicator onOpen={() => setNav({ area: "settings", view: nav.view })} />}
       >
         {nav.area === "vault" && (
           <VaultView
@@ -174,6 +178,7 @@ function Root() {
               setSelected(id)
             }}
             onDevices={() => setNav({ area: "devices", view: nav.view })}
+            onRecovery={() => setNav({ area: "recovery", view: nav.view })}
             onChanged={reload}
             onNotice={notice}
           />
@@ -206,7 +211,9 @@ export default function App() {
             <GateProvider>
               <LiveClientProvider value={tauriLiveClient}>
                 <DepthClientProvider value={tauriDepthClient}>
-                  <Root />
+                  <BridgesProvider value={tauriBridgesClient}>
+                    <Root />
+                  </BridgesProvider>
                 </DepthClientProvider>
               </LiveClientProvider>
             </GateProvider>

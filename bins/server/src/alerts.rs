@@ -49,6 +49,19 @@ pub trait AlertStore: Send + Sync {
     fn breach_seen(&self, account_id: Id, breach: &str) -> Result<bool>;
     /// Remembers that it did.
     fn mark_breach_seen(&self, account_id: Id, breach: &str) -> Result<()>;
+    /// The addresses beside the login the account asked to have watched
+    /// (its email aliases, docs/plan/23-bridges.md §9), sorted.
+    fn monitored(&self, account_id: Id) -> Result<Vec<String>> {
+        let _ = account_id;
+        Ok(Vec::new())
+    }
+    /// Replaces that list.
+    fn set_monitored(&self, account_id: Id, addresses: &[String]) -> Result<()> {
+        let _ = (account_id, addresses);
+        Err(StorageError::Backend(
+            "this server keeps no monitored addresses".into(),
+        ))
+    }
 }
 
 fn backend(e: rusqlite::Error) -> StorageError {
@@ -89,6 +102,11 @@ pub(crate) fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
              account_id TEXT NOT NULL REFERENCES accounts(account_id),
              name       TEXT NOT NULL,
              PRIMARY KEY (account_id, name)
+         );
+         CREATE TABLE IF NOT EXISTS monitored_addresses (
+             account_id TEXT NOT NULL REFERENCES accounts(account_id),
+             address    TEXT NOT NULL,
+             PRIMARY KEY (account_id, address)
          );",
     )
 }
@@ -299,6 +317,39 @@ impl AlertStore for SqliteStorage {
             )
             .map_err(backend)?;
         Ok(())
+    }
+
+    fn monitored(&self, account_id: Id) -> Result<Vec<String>> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT address FROM monitored_addresses WHERE account_id = ?1 ORDER BY address",
+            )
+            .map_err(backend)?;
+        let rows = stmt
+            .query_map(params![account_id.to_string()], |r| r.get(0))
+            .map_err(backend)?
+            .collect::<std::result::Result<Vec<String>, _>>()
+            .map_err(backend)?;
+        Ok(rows)
+    }
+
+    fn set_monitored(&self, account_id: Id, addresses: &[String]) -> Result<()> {
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(backend)?;
+        tx.execute(
+            "DELETE FROM monitored_addresses WHERE account_id = ?1",
+            params![account_id.to_string()],
+        )
+        .map_err(backend)?;
+        for a in addresses {
+            tx.execute(
+                "INSERT OR IGNORE INTO monitored_addresses (account_id, address) VALUES (?1, ?2)",
+                params![account_id.to_string(), a],
+            )
+            .map_err(backend)?;
+        }
+        tx.commit().map_err(backend)
     }
 }
 

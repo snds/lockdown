@@ -41,6 +41,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "aes-gcm"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f2b8006a0c83f52b62ba44a97b58bf76fe2f70a329e588f67f89691d93d498f"
+dependencies = [
+ "aead",
+ "aes 0.9.3",
+ "cipher 0.5.2",
+ "ctr",
+ "ctutils",
+ "ghash",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1168,6 +1182,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "914a755b7c2d4af2bdcff7ce1739e2db9a1b81a9b07123d8015786ae03c0980d"
 
 [[package]]
+name = "ctr"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baaca1c4b237092596f64d571e9db6ce4109c4ef9742e27590f1709594461f21"
+dependencies = [
+ "cipher 0.5.2",
+]
+
+[[package]]
 name = "ctutils"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2127,6 +2150,15 @@ dependencies = [
  "r-efi 6.0.0",
  "rand_core 0.10.1",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "ghash"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2eecf2d5dc9b66b732b97707a0210906b1d30523eb773193ab777c0c84b3e8d5"
+dependencies = [
+ "polyval",
 ]
 
 [[package]]
@@ -3253,9 +3285,11 @@ name = "lockdown-cxf"
 version = "0.1.0"
 dependencies = [
  "aes 0.9.3",
+ "aes-gcm",
  "argon2",
  "blake3",
  "cbc 0.2.1",
+ "chacha20",
  "chacha20poly1305",
  "data-encoding",
  "ecosystem-identity",
@@ -3266,10 +3300,14 @@ dependencies = [
  "lockdown-crypto",
  "lockdown-vault",
  "pbkdf2",
+ "poly1305",
+ "scrypt",
  "serde",
  "serde_json",
+ "sha1 0.11.0",
  "sha2 0.11.1",
  "thiserror 2.0.21",
+ "x25519-dalek",
  "zeroize",
  "zip",
 ]
@@ -3289,6 +3327,7 @@ dependencies = [
  "lockdown-matcher",
  "lockdown-native-messaging",
  "lockdown-platform-auth",
+ "lockdown-security",
  "log",
  "serde",
  "serde_json",
@@ -3392,6 +3431,9 @@ dependencies = [
 name = "lockdown-security"
 version = "0.1.0"
 dependencies = [
+ "ciborium",
+ "data-encoding",
+ "ed25519-dalek",
  "lockdown-matcher",
  "lockdown-tls",
  "reqwest",
@@ -3400,6 +3442,7 @@ dependencies = [
  "sha1 0.11.0",
  "tempfile",
  "thiserror 2.0.21",
+ "url",
  "zeroize",
 ]
 
@@ -4428,6 +4471,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "polyval"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0fa31d631f2b2cb2a544d0aa321ce847a94764d701ca2becc411138b93d49cd"
+dependencies = [
+ "cpubits",
+ "cpufeatures 0.3.1",
+ "universal-hash",
+]
+
+[[package]]
 name = "portable-atomic"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5066,6 +5120,18 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
+name = "scrypt"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d87af57419b594aa23fa95f09f0e06d80d84ba01c26148c43844cad6ff4485f0"
+dependencies = [
+ "cfg-if",
+ "pbkdf2",
+ "salsa20",
+ "sha2 0.11.1",
+]
 
 [[package]]
 name = "sec1"

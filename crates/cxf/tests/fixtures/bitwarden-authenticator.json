@@ -1,0 +1,28 @@
+{
+  "encrypted": false,
+  "items": [
+    {
+      "id": "b1",
+      "name": "Example",
+      "folderId": null,
+      "organizationId": null,
+      "collectionIds": null,
+      "notes": null,
+      "type": 1,
+      "login": {
+        "totp": "otpauth://totp/Example:sean@example.com?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Example",
+        "username": "sean@example.com"
+      },
+      "favorite": true
+    },
+    {
+      "id": "b2",
+      "name": "Bare key",
+      "type": 1,
+      "login": {
+        "totp": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+      },
+      "favorite": false
+    }
+  ]
+}

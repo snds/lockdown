@@ -1,0 +1,2 @@
+otpauth://totp/Example:sean@example.com?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&digits=6&issuer=Example
+otpauth://totp/Steam:gaben?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&digits=5&issuer=Steam

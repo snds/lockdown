@@ -9,6 +9,7 @@ import { codeKey, useCodes } from "@/features/codes/use-codes"
 import { whenLocal } from "@/lib/format"
 
 import { ItemSecurity } from "@/features/security/item-security"
+import { FillFixPanel } from "@/features/bridges/fill-fix"
 
 import { ItemCodeDisplay } from "./code-display"
 import { RiskTierBadge } from "@unicron/ui/security/risk-tier-badge"
@@ -300,6 +301,9 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
       )}
       {item.crown_jewel && !trashed && <ExportOptIn item={item} onChanged={setItem} onNotice={onNotice} />}
       {!trashed && !fillOnly && <ItemProtection key={`${item.id}:${item.version}`} itemId={item.id} crownJewel={item.crown_jewel === true} onNotice={onNotice} />}
+      {item.kind === "login" && !trashed && !fillOnly && (
+        <FillFixPanel key={item.id} itemId={item.id} crownJewel={item.crown_jewel} canEdit={canEdit} onNotice={onNotice} />
+      )}
       {!fillOnly && (
         <FilesPanel
           itemId={item.id}

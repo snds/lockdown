@@ -20,6 +20,7 @@
 #![forbid(unsafe_code)]
 
 pub mod approval;
+pub mod bridges;
 pub mod browser;
 pub mod depth;
 pub mod devices;
@@ -176,6 +177,9 @@ struct Core {
     recent_fills: Vec<passkeys::RecentFill>,
     /// Joins and sign-ins waiting for a security key (`devices`).
     depth: devices::Depth,
+    /// The bridges slice's state: the clock check, the extension's
+    /// sign-in observations (docs/plan/23-bridges.md).
+    bridges: bridges::BridgesState,
 }
 
 impl Core {
@@ -203,6 +207,7 @@ impl Core {
             security: security::SecurityState::default(),
             recent_fills: Vec::new(),
             depth: devices::Depth::default(),
+            bridges: bridges::BridgesState::default(),
         }
     }
 
@@ -413,7 +418,9 @@ impl Core {
             self.approve(ApprovalKind::Use, "copy this protected code", gate)?;
         }
         self.exposure_gate(id, "use this code", gate)?;
-        let now = session::now_secs().max(0) as u64;
+        let now = self
+            .bridges
+            .code_time(session::now_secs(), self.settings.code_clock_correction);
         let code = self
             .session()?
             .code_now(id, field_id, now, next)
@@ -488,6 +495,7 @@ impl Core {
         self.recent_fills.clear();
         self.depth.forget();
         self.security_forget();
+        self.bridges.forget();
         self.last_reason = Some(reason);
     }
 
@@ -714,6 +722,9 @@ impl App {
             let mut settings = settings.clamped();
             // Backups change only through the backup calls (behind the gate).
             settings.backup = core.settings.backup.clone();
+            // Alias monitoring changes only through its own call, which
+            // tells the server (docs/plan/23-bridges.md §9).
+            settings.alias_monitoring = core.settings.alias_monitoring;
             settings
                 .save(&core.paths.settings_file())
                 .map_err(AppError::refused)?;
@@ -796,7 +807,12 @@ impl App {
     /// Every one-time code at this moment: current and next value and the
     /// seconds left, never the set-up (D102).
     pub fn codes(&self) -> AppResult<Vec<CodeView>> {
-        self.with_session(|s| s.codes(session::now_secs().max(0) as u64))
+        self.call(|core| {
+            let now = core
+                .bridges
+                .code_time(session::now_secs(), core.settings.code_clock_correction);
+            core.session()?.codes(now).map_err(AppError::refused)
+        })
     }
 
     /// The code valid now for one code field (with `next`, the one after

@@ -36,7 +36,7 @@ pub struct Refusal {
 }
 
 impl Refusal {
-    pub(super) fn new(code: &'static str, message: impl Into<String>) -> Self {
+    pub(crate) fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
@@ -141,7 +141,7 @@ struct ValueOut<'a> {
     value: &'a str,
 }
 
-pub(super) fn args<T: for<'de> Deserialize<'de>>(frame: &[u8]) -> Result<T, Refusal> {
+pub(crate) fn args<T: for<'de> Deserialize<'de>>(frame: &[u8]) -> Result<T, Refusal> {
     serde_json::from_slice(frame).map_err(|e| Refusal::new("bad_request", e.to_string()))
 }
 
@@ -195,6 +195,8 @@ pub fn handle(shared: &Shared, conn: &mut Conn, frame: &[u8]) -> Zeroizing<Vec<u
             Ok(json!(p))
         }),
         "suggest" => return suggest(shared, &head.id, frame),
+        "federation_hints" | "federation_seen" | "site_fixes" | "fix_set" | "change_link"
+        | "alias_options" | "alias_create" => super::bridges::answer(shared, &head.op, frame),
         other => Err(Refusal::new(
             "unknown_op",
             format!("'{other}' isn't something Lockdown answers"),

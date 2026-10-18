@@ -38,6 +38,8 @@ tauri-build = { version = "2.7.2", optional = true }
 
 [dependencies]
 lockdown-app.workspace = true
+# The set-up card type the bridges commands hand over (docs/plan/23-bridges.md).
+lockdown-security.workspace = true
 # Touch ID / Windows Hello for approvals (D99, D101); nothing on Linux.
 lockdown-platform-auth.workspace = true
 blake3.workspace = true

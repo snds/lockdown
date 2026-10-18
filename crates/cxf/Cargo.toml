@@ -35,6 +35,21 @@ pbkdf2 = { version = "0.13", default-features = false, features = ["hmac"] }
 # KeePass KDBX 3.1 / 4 (and the KDBX 4 writer for the exit-path export).
 # MIT; maintained at github.com/sseemayer/keepass-rs.
 keepass = { version = "0.15.3", features = ["save_kdbx4"] }
+# Authenticator apps' encrypted exports (docs/plan/23-bridges.md §1): Aegis
+# (scrypt, then AES-256-GCM), 2FAS (PBKDF2-SHA-256, AES-256-GCM), Ente Auth
+# (Argon2id, then libsodium's secretstream: HChaCha20, ChaCha20 and
+# Poly1305), SDA maFiles (PBKDF2-SHA-1, AES-256-CBC). MIT or Apache-2.0.
+aes-gcm = { version = "0.11", default-features = false, features = ["aes", "alloc"] }
+scrypt = { version = "0.12", default-features = false }
+chacha20 = { version = "0.10", default-features = false, features = ["cipher", "xchacha"] }
+poly1305 = "0.9"
+sha1.workspace = true
+# Exports locked to public keys: the age v1 format with X25519 recipients
+# (docs/plan/23-bridges.md §11), written here over the same primitives the
+# tree already links (the `age` crate doesn't fit the tree: 0.12 needs a
+# pre-release `kem`, 0.11 an unmaintained proc-macro crate cargo-deny
+# refuses).
+x25519-dalek = { version = "3.0", default-features = false, features = ["static_secrets", "zeroize"] }
 
 [dev-dependencies]
 lockdown-crypto = { workspace = true, features = ["insecure-test-kdf"] }

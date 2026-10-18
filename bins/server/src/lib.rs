@@ -445,6 +445,10 @@ pub fn app(state: Arc<AppState>) -> Router {
             "/v1/emergency/{grant}/items",
             get(legacy::get_items).post(legacy::put_items),
         )
+        .route(
+            "/v1/account/monitored",
+            get(api::monitored).put(api::set_monitored),
+        )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             live::notify_writes,

@@ -48,6 +48,28 @@ pub enum FetchError {
 pub trait Fetch: Send + Sync {
     /// Fetches `url` with `headers`, following no redirect.
     fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Fetched, FetchError>;
+
+    /// Sends a request with a body (the alias services' `POST`,
+    /// docs/plan/23-bridges.md §5). A client that only reads says so.
+    fn send(&self, request: &Request<'_>) -> Result<Fetched, FetchError> {
+        Err(FetchError::Network {
+            host: host_of(request.url),
+            why: format!("this client doesn't send {} requests", request.method),
+        })
+    }
+}
+
+/// A request with a method and a body, for [`Fetch::send`].
+#[derive(Clone, Copy, Debug)]
+pub struct Request<'a> {
+    /// `POST`, `PUT`, `PATCH` or `DELETE` (or `GET`).
+    pub method: &'a str,
+    /// The full address.
+    pub url: &'a str,
+    /// Headers to send; a credential among them is never logged or echoed.
+    pub headers: &'a [(&'a str, &'a str)],
+    /// The body, sent as is.
+    pub body: &'a [u8],
 }
 
 /// The host of `url`, for an error message that never repeats a path.
@@ -135,17 +157,20 @@ impl Fetch for HttpFetch {
             why: "this build of Lockdown calls no server but its own".into(),
         })
     }
+
+    fn send(&self, request: &Request<'_>) -> Result<Fetched, FetchError> {
+        self.get(request.url, &[])
+    }
 }
 
 #[cfg(feature = "http")]
-impl Fetch for HttpFetch {
-    fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Fetched, FetchError> {
-        allowed_address(url)?;
-        let host = host_of(url);
-        let mut req = self.client.get(url);
-        for (name, value) in headers {
-            req = req.header(*name, *value);
-        }
+impl HttpFetch {
+    /// Sends `req` and reads at most [`MAX_BODY`] bytes of the answer.
+    fn exchange(
+        &self,
+        req: reqwest::blocking::RequestBuilder,
+        host: String,
+    ) -> Result<Fetched, FetchError> {
         let res = req.send().map_err(|e| FetchError::Network {
             host: host.clone(),
             // reqwest's message names the URL; keep only its kind.
@@ -172,6 +197,33 @@ impl Fetch for HttpFetch {
             status,
             body: body.to_vec(),
         })
+    }
+}
+
+#[cfg(feature = "http")]
+impl Fetch for HttpFetch {
+    fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Fetched, FetchError> {
+        allowed_address(url)?;
+        let mut req = self.client.get(url);
+        for (name, value) in headers {
+            req = req.header(*name, *value);
+        }
+        self.exchange(req, host_of(url))
+    }
+
+    fn send(&self, request: &Request<'_>) -> Result<Fetched, FetchError> {
+        allowed_address(request.url)?;
+        let method = reqwest::Method::from_bytes(request.method.as_bytes()).map_err(|_| {
+            FetchError::BadAddress(format!("{} isn't an HTTP method", request.method))
+        })?;
+        let mut req = self.client.request(method, request.url);
+        for (name, value) in request.headers {
+            req = req.header(*name, *value);
+        }
+        if !request.body.is_empty() {
+            req = req.body(request.body.to_vec());
+        }
+        self.exchange(req, host_of(request.url))
     }
 }
 

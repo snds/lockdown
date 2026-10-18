@@ -15,6 +15,7 @@
 //! [`CopySink`] for its clipboard path, and its commands call
 //! [`Endpoint`]'s methods.
 
+pub mod bridges;
 pub mod handler;
 pub mod pairing;
 pub mod passkeys;

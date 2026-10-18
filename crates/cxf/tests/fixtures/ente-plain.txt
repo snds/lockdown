@@ -1,0 +1,2 @@
+otpauth://totp/Example:sean@example.com?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Example&algorithm=SHA1&digits=6&period=30
+otpauth://hotp/Counter:hotp@example.com?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Counter&counter=2

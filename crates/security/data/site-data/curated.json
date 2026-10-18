@@ -1,0 +1,119 @@
+{
+  "site_data": 1,
+  "published": "2026-10-18",
+  "providers": [
+    {
+      "id": "google",
+      "name": "Google",
+      "domains": ["google.com", "accounts.google.com", "gmail.com", "youtube.com"],
+      "auth": [
+        { "host": "accounts.google.com", "path": "/o/oauth2/", "ret": "redirect_uri" },
+        { "host": "accounts.google.com", "path": "/signin/oauth", "ret": "redirect_uri" },
+        { "host": "accounts.google.com", "path": "/v3/signin/", "ret": "redirect_uri" },
+        { "host": "accounts.google.com", "path": "/gsi/", "ret": "origin" }
+      ]
+    },
+    {
+      "id": "apple",
+      "name": "Apple",
+      "domains": ["apple.com", "appleid.apple.com", "account.apple.com", "icloud.com"],
+      "auth": [{ "host": "appleid.apple.com", "path": "/auth/authorize", "ret": "redirect_uri" }]
+    },
+    {
+      "id": "microsoft",
+      "name": "Microsoft",
+      "domains": ["microsoft.com", "live.com", "outlook.com", "login.microsoftonline.com", "account.microsoft.com"],
+      "auth": [
+        { "host": "login.microsoftonline.com", "path": "/oauth2/", "ret": "redirect_uri" },
+        { "host": "login.live.com", "path": "/oauth20_authorize.srf", "ret": "redirect_uri" }
+      ]
+    },
+    {
+      "id": "facebook",
+      "name": "Facebook",
+      "domains": ["facebook.com"],
+      "auth": [
+        { "host": "www.facebook.com", "path": "/dialog/oauth", "ret": "redirect_uri" },
+        { "host": "m.facebook.com", "path": "/dialog/oauth", "ret": "redirect_uri" }
+      ]
+    },
+    {
+      "id": "github",
+      "name": "GitHub",
+      "domains": ["github.com"],
+      "auth": [{ "host": "github.com", "path": "/login/oauth/authorize", "ret": "redirect_uri" }]
+    },
+    {
+      "id": "steam",
+      "name": "Steam",
+      "domains": ["steampowered.com", "steamcommunity.com", "store.steampowered.com"],
+      "auth": [{ "host": "steamcommunity.com", "path": "/openid/login", "ret": "openid.return_to" }]
+    },
+    {
+      "id": "x",
+      "name": "X",
+      "domains": ["x.com", "twitter.com"],
+      "auth": [
+        { "host": "x.com", "path": "/i/oauth2/authorize", "ret": "redirect_uri" },
+        { "host": "twitter.com", "path": "/i/oauth2/authorize", "ret": "redirect_uri" }
+      ]
+    },
+    {
+      "id": "discord",
+      "name": "Discord",
+      "domains": ["discord.com"],
+      "auth": [
+        { "host": "discord.com", "path": "/oauth2/authorize", "ret": "redirect_uri" },
+        { "host": "discord.com", "path": "/api/oauth2/authorize", "ret": "redirect_uri" }
+      ]
+    },
+    {
+      "id": "amazon",
+      "name": "Amazon",
+      "domains": ["amazon.com"],
+      "auth": [{ "host": "www.amazon.com", "path": "/ap/oa", "ret": "redirect_uri" }]
+    },
+    {
+      "id": "linkedin",
+      "name": "LinkedIn",
+      "domains": ["linkedin.com"],
+      "auth": [{ "host": "www.linkedin.com", "path": "/oauth/v2/authorization", "ret": "redirect_uri" }]
+    },
+    {
+      "id": "yahoo",
+      "name": "Yahoo",
+      "domains": ["yahoo.com", "login.yahoo.com"],
+      "auth": [{ "host": "api.login.yahoo.com", "path": "/oauth2/request_auth", "ret": "redirect_uri" }]
+    },
+    {
+      "id": "twitch",
+      "name": "Twitch",
+      "domains": ["twitch.tv"],
+      "auth": [{ "host": "id.twitch.tv", "path": "/oauth2/authorize", "ret": "redirect_uri" }]
+    },
+    {
+      "id": "slack",
+      "name": "Slack",
+      "domains": ["slack.com"],
+      "auth": [
+        { "host": "slack.com", "path": "/openid/connect/authorize", "ret": "redirect_uri" },
+        { "host": "slack.com", "path": "/oauth/v2/authorize", "ret": "redirect_uri" }
+      ]
+    }
+  ],
+  "recipes": [
+    { "d": ["google.com", "accounts.google.com", "gmail.com"], "url": "https://myaccount.google.com/signinoptions/password" },
+    { "d": ["github.com"], "url": "https://github.com/settings/security" },
+    { "d": ["microsoft.com", "live.com", "outlook.com"], "url": "https://account.live.com/password/Change" },
+    { "d": ["facebook.com"], "url": "https://www.facebook.com/settings?tab=security" },
+    { "d": ["x.com", "twitter.com"], "url": "https://x.com/settings/password" },
+    { "d": ["linkedin.com"], "url": "https://www.linkedin.com/psettings/change-password" },
+    { "d": ["netflix.com"], "url": "https://www.netflix.com/password" },
+    { "d": ["dropbox.com"], "url": "https://www.dropbox.com/account/security" },
+    { "d": ["reddit.com"], "url": "https://www.reddit.com/settings/account" },
+    { "d": ["discord.com"], "url": "https://discord.com/app", "note": "Open User Settings, then My Account, then Change Password." },
+    { "d": ["steampowered.com", "steamcommunity.com"], "url": "https://help.steampowered.com/wizard/HelpChangePassword" },
+    { "d": ["twitch.tv"], "url": "https://www.twitch.tv/settings/security" }
+  ],
+  "fixes": []
+}
