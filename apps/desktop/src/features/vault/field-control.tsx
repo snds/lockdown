@@ -68,6 +68,17 @@ export function FieldControl({ row, onChange, onDiscard, context = NO_CONTEXT }:
   const strength = useStrength(row.text, context, row.editable && row.control === "secret" && row.secret === "type" && words !== null)
   const discard = onDiscard && <IconButton label={`Drop ${row.label}`} icon="close" onClick={onDiscard} />
 
+  if (row.managed) {
+    return (
+      <Field orientation="horizontal">
+        <FieldContent>
+          <FieldLabel>{row.label}</FieldLabel>
+          <FieldDescription>Made by a site through a passkey provider; kept as it is. Delete it from the item's passkeys, which says first if it is your only way in.</FieldDescription>
+        </FieldContent>
+      </Field>
+    )
+  }
+
   if (!row.editable) {
     return (
       <Field orientation="horizontal">

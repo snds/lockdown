@@ -36,6 +36,10 @@ pub struct Use {
 struct Body {
     v: u16,
     uses: BTreeMap<Id, Use>,
+    /// When each passkey last signed in, by item and credential id
+    /// (base64url); added within v1, so an older file reads with none.
+    #[serde(default)]
+    passkeys: BTreeMap<Id, BTreeMap<String, i64>>,
 }
 
 /// The device's record of uses, for one persona.
@@ -43,6 +47,7 @@ struct Body {
 pub struct Recency {
     path: PathBuf,
     uses: BTreeMap<Id, Use>,
+    passkeys: BTreeMap<Id, BTreeMap<String, i64>>,
 }
 
 impl Recency {
@@ -53,15 +58,45 @@ impl Recency {
 
     /// Reads the record, or starts an empty one.
     pub fn open(path: PathBuf, key: &AppDataKey) -> Self {
-        let uses = std::fs::read(&path)
+        let (uses, passkeys) = std::fs::read(&path)
             .ok()
             .and_then(|bytes| lockdown_crypto::cbor::from_slice::<Sealed>(&bytes).ok())
             .and_then(|sealed| open(key, AAD, &sealed).ok())
             .and_then(|plain| lockdown_crypto::cbor::from_slice::<Body>(&plain).ok())
             .filter(|b| b.v <= RECENCY_V)
-            .map(|b| b.uses)
+            .map(|b| (b.uses, b.passkeys))
             .unwrap_or_default();
-        Self { path, uses }
+        Self {
+            path,
+            uses,
+            passkeys,
+        }
+    }
+
+    /// When the passkey `credential_id` on `item` last signed in here.
+    pub fn passkey(&self, item: Id, credential_id: &[u8]) -> Option<i64> {
+        self.passkeys
+            .get(&item)?
+            .get(&lockdown_passkey::encode::b64url(credential_id))
+            .copied()
+    }
+
+    /// Notes a passkey sign-in at `now` and writes the record.
+    pub fn note_passkey(
+        &mut self,
+        item: Id,
+        credential_id: &[u8],
+        now: i64,
+        key: &AppDataKey,
+    ) -> Result<(), String> {
+        let last = self
+            .passkeys
+            .entry(item)
+            .or_default()
+            .entry(lockdown_passkey::encode::b64url(credential_id))
+            .or_default();
+        *last = (*last).max(now);
+        self.save(key)
     }
 
     /// One item's use, if any.
@@ -79,8 +114,14 @@ impl Recency {
 
     /// Moves an item's record to its new id (a move between vaults).
     pub fn rename(&mut self, from: Id, to: Id, key: &AppDataKey) -> Result<(), String> {
+        let pk = self.passkeys.remove(&from);
+        if let Some(p) = &pk {
+            self.passkeys.insert(to, p.clone());
+        }
         if let Some(u) = self.uses.remove(&from) {
             self.uses.insert(to, u);
+            self.save(key)?;
+        } else if pk.is_some() {
             self.save(key)?;
         }
         Ok(())
@@ -89,10 +130,12 @@ impl Recency {
     /// Drops the records of items that are gone.
     pub fn forget(&mut self, gone: &[Id], key: &AppDataKey) -> Result<(), String> {
         let before = self.uses.len();
+        let before_pk = self.passkeys.len();
         for id in gone {
             self.uses.remove(id);
+            self.passkeys.remove(id);
         }
-        if self.uses.len() != before {
+        if self.uses.len() != before || self.passkeys.len() != before_pk {
             self.save(key)?;
         }
         Ok(())
@@ -106,13 +149,17 @@ impl Recency {
                 .min_by_key(|(_, u)| u.last)
                 .map(|(id, _)| *id);
             match oldest {
-                Some(id) => self.uses.remove(&id),
+                Some(id) => {
+                    self.passkeys.remove(&id);
+                    self.uses.remove(&id)
+                }
                 None => break,
             };
         }
         let body = Body {
             v: RECENCY_V,
             uses: self.uses.clone(),
+            passkeys: self.passkeys.clone(),
         };
         let plain = zeroize::Zeroizing::new(
             lockdown_crypto::cbor::to_canonical(&body).map_err(|e| e.to_string())?,
@@ -157,6 +204,13 @@ mod tests {
                 count: 2
             })
         );
+        // A passkey's own last use rides in the same sealed record.
+        let mut r = Recency::open(path.clone(), &key);
+        r.note_passkey(a, &[1, 2, 3], 300, &key).unwrap();
+        let back = Recency::open(path.clone(), &key);
+        assert_eq!(back.passkey(a, &[1, 2, 3]), Some(300));
+        assert_eq!(back.passkey(a, &[9]), None);
+        assert_eq!(back.get(a).map(|u| u.count), Some(2));
         // Another key reads nothing (and never fails).
         let other = Recency::open(path, &AppDataKey::from_bytes([4; 32]));
         assert_eq!(other.get(a), None);

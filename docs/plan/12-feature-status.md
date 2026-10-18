@@ -1,21 +1,21 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `dd7f045`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `dcf9cc1`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
 **Done** means it works end to end in today's surfaces (core, desktop, CLI, server) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **33** | **45** | **34** | **10** |
-| [Vault & item types](#vault--item-types) | 4 | 8 | 0 | 0 |
+| **All 122 v1 features** | **43** | **44** | **25** | **10** |
+| [Vault & item types](#vault--item-types) | 5 | 7 | 0 | 0 |
 | [Organization & search](#organization--search) | 6 | 1 | 0 | 0 |
 | [Autofill (browser)](#autofill-browser) | 7 | 1 | 1 | 0 |
 | [Autofill (mobile & desktop OS)](#autofill-mobile--desktop-os) | 0 | 0 | 6 | 0 |
-| [Passkeys & WebAuthn](#passkeys--webauthn) | 0 | 2 | 6 | 0 |
+| [Passkeys & WebAuthn](#passkeys--webauthn) | 4 | 1 | 3 | 0 |
 | [Two-factor & authenticator](#two-factor--authenticator) | 2 | 2 | 0 | 0 |
 | [Vendor login bridges](#vendor-login-bridges) | 1 | 4 | 2 | 0 |
-| [Sharing & collaboration](#sharing--collaboration) | 0 | 2 | 4 | 0 |
-| [Family & emergency/recovery](#family--emergencyrecovery) | 0 | 2 | 3 | 0 |
+| [Sharing & collaboration](#sharing--collaboration) | 4 | 2 | 0 | 0 |
+| [Family & emergency/recovery](#family--emergencyrecovery) | 1 | 3 | 1 | 0 |
 | [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 4 | 4 | 0 | 0 |
 | [Privacy](#privacy) | 0 | 1 | 1 | 0 |
 | [Import/export & portability](#importexport--portability) | 3 | 3 | 2 | 0 |
@@ -32,11 +32,11 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is
 
 ## Vault & item types
 
+- [x] **Logins**: Done · core, desktop, cli, extension. Nothing for desktop and the extension; the web vault and mobile.
 - [x] **Secure notes**: Done · core, desktop. Nothing for desktop; mobile and web views later.
 - [x] **Item expiry reminders**: Done · core, desktop. Renewal kinds for domains and certificates; the signed-date check.
 - [x] **Trash with recovery**: Done · core, desktop. Trash in the CLI.
 - [x] **Item archive**: Done · core, desktop. Nothing for desktop.
-- [ ] **Logins**: Partial · core, desktop, cli. Passkeys made on the record (they can only be imported today).
 - [ ] **Payment cards**: Partial · core, desktop. The card fill itself (extension or OS provider) with the second deliberate action and the optional CVC re-prompt.
 - [ ] **Identities and addresses**: Partial · core, desktop. Typed subtypes (person, address, business, vehicle, passport) and a separate contacts list that is never filled; plus the form fill itself.
 - [ ] **Typed item templates**: Partial · core, desktop. Reach 25+ types (passport and licence are a Document type choice today) and add user-defined templates.
@@ -58,7 +58,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is
 ## Autofill (browser)
 
 - [x] **Inline fill menu**: Done · extension. A Firefox test run; Safari waits on OS-level work.
-- [x] **Clickjacking-hardened fill**: Done · core, extension. Passkey fills once passkeys reach the extension; Firefox has a hit test instead of IntersectionObserver v2.
+- [x] **Clickjacking-hardened fill**: Done · core, extension. Firefox has a hit test instead of IntersectionObserver v2.
 - [x] **Precise URL matching**: Done · core, cli, extension. Per-item match rules in the desktop editor (new sites get exact_host).
 - [x] **Save and update prompts**: Done · core, desktop, extension. A Firefox test run.
 - [x] **Fill keyboard shortcut**: Done · extension. A Firefox test run; letting people change the keys.
@@ -78,14 +78,14 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is
 
 ## Passkeys & WebAuthn
 
-- [ ] **Passkey storage and sync**: Partial · core, desktop, server. Creating and using passkeys (WebAuthn L3 provider on every platform); today a passkey can only be imported, stored, synced and viewed.
-- [ ] **Passkey management view**: Partial · core, desktop. Provider ID (AAGUID), backup flags, last use, and a delete that warns when it is the account's only sign-in.
+- [x] **Passkey storage and sync**: Done · core, desktop, extension. The OS providers (macOS, Windows, iOS, Android) are deferred; through the extension, passkeys are made, used and synced.
+- [x] **Browser passkey fallback**: Done · core, desktop, extension. A Firefox test run; Windows waits on the named-pipe transport; Safari and the OS providers are deferred.
+- [x] **WebAuthn Signal API handling**: Done · core, desktop, extension. A Firefox test run.
+- [x] **Passkey management view**: Done · core, desktop. Last use is per computer, not synced.
+- [ ] **Automatic passkey upgrade**: Partial · core, extension. The OS-level automatic upgrade (deferred); in the extension it works only right after Lockdown filled that login's password on that site.
 - [ ] **Phone as authenticator (iPhone)** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: needs the iOS credential provider.
 - [ ] **Phone as authenticator (Android)** _(deferred: native mobile, D122)_: Not started · nowhere yet. Everything: needs the Android CredentialProviderService.
 - [ ] **Windows 11 passkey plugin** _(deferred: OS-level, D122)_: Not started · nowhere yet. Everything: the COM IPluginAuthenticator plugin, Windows Hello verification and MSIX packaging.
-- [ ] **Browser passkey fallback**: Not started · nowhere yet. Everything: the WebAuthn override where no OS provider exists, and the coexistence convention.
-- [ ] **Automatic passkey upgrade**: Not started · nowhere yet. Everything: needs the OS providers and passkey creation.
-- [ ] **WebAuthn Signal API handling**: Not started · nowhere yet. Everything: handling the three Signal API calls with soft delete and undo.
 
 ## Two-factor & authenticator
 
@@ -106,19 +106,19 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is
 
 ## Sharing & collaboration
 
-- [ ] **Shared vaults**: Partial · core. Adding and removing members, wrapping the Vault Key to another person's key, rotation on removal, server support and UI.
-- [ ] **Granular share permissions**: Partial · core. Enforcing the rights in clients, groups, and logging; nothing reads the rights yet.
-- [ ] **Single-item sharing**: Not started · nowhere yet. Everything: per-item keys wrapped to a recipient and the two-tap share.
-- [ ] **Share links for non-users**: Not started · nowhere yet. Everything: the Send feature for items, files and text.
-- [ ] **Request a secret**: Not started · nowhere yet. Everything: single-use request links encrypting to the requester's key.
-- [ ] **Fill-only sharing**: Not started · nowhere yet. Everything: needs sharing and an extension fill path.
+- [x] **Shared vaults**: Done · core, desktop, server. Sharing in the CLI and the web vault.
+- [x] **Granular share permissions**: Done · core, desktop, server, extension. Groups of people as members.
+- [x] **Single-item sharing**: Done · core, desktop, server. Sharing from the extension and the web vault.
+- [x] **Fill-only sharing**: Done · core, desktop, extension. Nothing for desktop and the extension; the web vault.
+- [ ] **Share links for non-users**: Partial · core, desktop, server. Opening a link in a plain browser (the server page is a no-script notice; the web vault slice will open it).
+- [ ] **Request a secret**: Partial · core, desktop, server. Answering a request in a plain browser for someone without Lockdown, like share links.
 
 ## Family & emergency/recovery
 
+- [x] **Emergency access**: Done · core, desktop, server. Reminders to the owner during the wait by email or OS notification.
+- [ ] **Family plan**: Partial · core, desktop, server. Plan and billing logic, which waits on the pricing decision; the household vault and organizer are built.
 - [ ] **Recovery kit**: Partial · core, desktop, cli, server. Make the "test it now" step forced at signup; today it is an optional drill with a reminder.
 - [ ] **Recovery drill**: Partial · core, desktop, cli. The yearly prompt, a last-success date, and checks of heirs' keys and legacy settings.
-- [ ] **Family plan**: Not started · nowhere yet. Everything: shared vaults, a household vault, and plan and billing logic.
-- [ ] **Emergency access**: Not started · nowhere yet. Everything: contact keys checked through key transparency and a QR fingerprint, the waiting period and release.
 - [ ] **Password reminder for biometric users**: Not started · nowhere yet. Everything: a periodic account-password prompt (default 14 days) once biometric unlock exists.
 
 ## Security monitoring & phishing defense
@@ -163,8 +163,8 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is
 - [x] **Rollback and deletion protection**: Done · core, server, cli, desktop. Nothing for v1 beyond the audit.
 - [ ] **Secret Key**: Partial · core, desktop, cli, server. QR transfer of the Secret Key to a new device (it is typed from the kit today) and the opt-out warning path.
 - [ ] **Strong key derivation**: Partial · core. Per-device calibration above the floor and renegotiation on a stronger device (every device uses the desktop floor, D49).
-- [ ] **Malicious-server resistance**: Partial · core, server, cli, desktop. The Tamarin or ProVerif model of login, sharing and recovery, and the academic review (not code); sharing and recovery defences follow those features.
-- [ ] **Authenticated public keys**: Partial · core, server, cli, desktop. Lookups of other people's keys, QR fingerprint checks and passphrase-verified invites (they need sharing), and log mirrors.
+- [ ] **Malicious-server resistance**: Partial · core, server. The Tamarin or ProVerif model of login, sharing and recovery, and the academic review (not code); sharing's defences (signed envelopes, membership chain, KT-checked keys) are built.
+- [ ] **Authenticated public keys**: Partial · core, desktop, server. Passphrase-verified invites, scanning the QR fingerprint (the payload exists), and log mirrors.
 - [ ] **Post-quantum key wrapping**: Partial · core. Wrapping vault, sharing, organisation and recovery keys to hybrid recipients, and ML-DSA signatures.
 - [ ] **New-device approval with code match**: Partial · core, desktop. Approving a new device from an existing one over an authenticated channel (a device joins with the password and kit today).
 - [ ] **Memory hygiene**: Partial · core, desktop. Locked memory pages kept out of swap; the webview still holds typed and revealed strings briefly (D91).

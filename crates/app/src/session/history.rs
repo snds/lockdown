@@ -177,6 +177,7 @@ impl Session {
     /// hash to the name the signed version carries and every chunk must
     /// open in its place first.
     pub fn attachment_bytes(&self, id: &str, att_id: &str) -> Result<Revealed, String> {
+        self.refuse_fill_only(id)?;
         let item_id = parse_id(id)?;
         let att_id = Id::parse(att_id).map_err(|_| format!("'{att_id}' isn't an attachment id"))?;
         let vault = self.holding(item_id)?;

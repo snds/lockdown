@@ -19,9 +19,11 @@ import { CodesView } from "@/features/codes/codes-view"
 import { DevicesView } from "@/features/devices/devices-view"
 import { QuickPalette } from "@/features/palette/quick-palette"
 import { PairingDialog } from "@/features/browsers/pairing-dialog"
+import { PasskeyApprovalDialog } from "@/features/passkeys/passkey-approval-dialog"
 import { RecoveryView } from "@/features/recovery/recovery-view"
 import { SecurityView } from "@/features/security/security-view"
 import { SettingsView } from "@/features/settings/settings-view"
+import { SharingView } from "@/features/sharing/sharing-view"
 import { StatusView } from "@/features/status/status-view"
 import { LockedWash } from "@/features/unlock/locked-wash"
 import { UnlockScreen } from "@/features/unlock/unlock-screen"
@@ -130,6 +132,17 @@ function Root() {
         {nav.area === "recovery" && <RecoveryView status={status} onChanged={refreshStatus} onNotice={notice} />}
         {nav.area === "status" && <StatusView status={status} onStatus={setStatus} onNotice={notice} />}
         {nav.area === "settings" && <SettingsView status={status} lock={lock} onLock={setLock} onChanged={refreshStatus} onNotice={notice} />}
+        {nav.area === "sharing" && (
+          <SharingView
+            rows={rows ?? []}
+            onOpenItem={(id) => {
+              setNav({ area: "vault", view: "all" })
+              setSelected(id)
+            }}
+            onChanged={reload}
+            onNotice={notice}
+          />
+        )}
         {nav.area === "security" && (
           <SecurityView
             onOpenItem={(id) => {
@@ -153,6 +166,7 @@ function Root() {
         onNotice={notice}
       />
       <PairingDialog onNotice={notice} />
+      <PasskeyApprovalDialog onNotice={notice} />
       </VaultsProvider>
     </LockedProvider>
   )

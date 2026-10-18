@@ -206,7 +206,7 @@ function EditorForm({
           <FieldSet key={s.name}>
             <FieldLegend variant="label">{s.name}</FieldLegend>
             <FieldGroup>
-              {s.rows.map((r) => (
+              {s.rows.filter((r) => !r.quiet).map((r) => (
                 <FieldControl
                   key={r.key}
                   row={r}

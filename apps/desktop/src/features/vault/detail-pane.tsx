@@ -21,6 +21,9 @@ import { PlacePanel } from "@/features/organization/place-panel"
 import { useVaults } from "@/features/organization/vaults-context"
 import { useGate } from "@/app/gate"
 
+import { AccessNote, ItemShare } from "@/features/sharing/item-share"
+import { PasskeysBlock } from "@/features/passkeys/passkeys-block"
+
 import { ItemCrownJewel } from "./crown-jewel"
 import { sectionsOf } from "./detail-model"
 import { conflictPair, kindLabel } from "./list-model"
@@ -149,6 +152,10 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
   const title = item.fields.find((f) => f.field_id === "title")?.value ?? kindLabel(item.kind)
   const trashed = item.state === "trashed"
   const template = forKind(item.kind)
+  // Shared with this person (docs/plan/18-sharing.md): offer only what the right allows.
+  const access = item.access
+  const canEdit = !access || access === "edit" || access === "manage"
+  const fillOnly = access === "fill-only"
   const field = (f: FieldView, format?: SecretFormat, largeType?: string) => {
     const t = fieldOf(item.kind, f.field_id)
     return (
@@ -159,11 +166,19 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
         control={t?.control}
         onNotice={onNotice}
         format={format ?? (t?.grouped ? "groups-of-4" : undefined)}
-        largeType={largeType}
+        largeType={fillOnly ? undefined : largeType}
+        fillOnly={fillOnly}
       />
     )
   }
   const codeBlocks = (item.fields.filter((f) => f.kind === "totp") ?? []).map((f) => {
+    if (fillOnly) {
+      return (
+        <p key={f.field_id} className="text-sm text-muted-foreground">
+          One-time code: filled in the browser only.
+        </p>
+      )
+    }
     const view = codes.codes?.find((c) => c.field_id === f.field_id)
     return view ? (
       <div key={f.field_id} className="flex flex-col items-start gap-1">
@@ -182,7 +197,10 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
     )
   })
 
-  const body = layoutFor(item, template, field, codeBlocks)
+  const passkeys = (
+    <PasskeysBlock itemId={item.id} title={item.fields.find((f) => f.field_id === "title")?.value ?? ""} fields={item.fields} onChanged={onChanged} />
+  )
+  const body = layoutFor(item, template, field, codeBlocks, passkeys)
   return (
     <article className="flex flex-col gap-4 p-4 md:p-6">
       <header className="flex items-start justify-between gap-3">
@@ -196,7 +214,7 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
             {trashed ? " · in the trash" : ""}
           </p>
         </div>
-        {trashed && (
+        {trashed && canEdit && (
           <div className="flex shrink-0 items-center gap-1">
             <Button variant="outline" size="sm" onClick={restore}>
               <Icon name="restore_from_trash" data-icon="inline-start" />
@@ -210,28 +228,34 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
         )}
         {!trashed && (
           <div className="flex shrink-0 items-center gap-1">
-            {template?.creatable && (
+            <ItemShare item={item} title={title} onNotice={onNotice} />
+            {template?.creatable && canEdit && (
               <Button variant="outline" size="sm" onClick={() => onEdit(item)}>
                 <Icon name="edit" data-icon="inline-start" />
                 Edit
               </Button>
             )}
-            <Button variant="ghost-destructive" size="sm" onClick={() => setConfirm(true)}>
-              <Icon name="delete" data-icon="inline-start" />
-              Trash
-            </Button>
+            {canEdit && (
+              <Button variant="ghost-destructive" size="sm" onClick={() => setConfirm(true)}>
+                <Icon name="delete" data-icon="inline-start" />
+                Trash
+              </Button>
+            )}
           </div>
         )}
       </header>
-      <PlacePanel
-        item={item}
-        title={title}
-        rows={rows}
-        onChanged={onChanged}
-        onReplaced={(newId, text) => (onReplaced ? onReplaced(newId, text) : onChanged(text))}
-        onError={setError}
-      />
-      {!trashed && other && (
+      {access && <AccessNote access={access} />}
+      {canEdit && (
+        <PlacePanel
+          item={item}
+          title={title}
+          rows={rows}
+          onChanged={onChanged}
+          onReplaced={(newId, text) => (onReplaced ? onReplaced(newId, text) : onChanged(text))}
+          onError={setError}
+        />
+      )}
+      {!trashed && other && canEdit && (
         <section aria-label="Resolve the conflict" className="flex flex-col gap-2 rounded-xl border p-3 text-sm">
           <p className="flex items-center gap-2">
             <Badge variant="outline">Needs attention</Badge>
@@ -256,7 +280,15 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
       {!trashed && <ItemSecurity key={`${item.id}:${item.version}`} itemId={item.id} onNotice={onNotice} />}
       {item.crown_jewel ? <ItemCrownJewel title={title}>{body}</ItemCrownJewel> : body}
       {item.crown_jewel && !trashed && <ExportOptIn item={item} onChanged={setItem} onNotice={onNotice} />}
-      <FilesPanel itemId={item.id} files={item.attachments ?? []} editable={!trashed && Boolean(template?.creatable)} onChanged={onChanged} onNotice={onNotice} />
+      {!fillOnly && (
+        <FilesPanel
+          itemId={item.id}
+          files={item.attachments ?? []}
+          editable={!trashed && canEdit && Boolean(template?.creatable)}
+          onChanged={onChanged}
+          onNotice={onNotice}
+        />
+      )}
       <Dialog open={purging} onOpenChange={setPurging}>
         <DialogContent>
           <DialogHeader>
@@ -321,7 +353,8 @@ type FieldRenderer = (f: FieldView, format?: SecretFormat, largeType?: string) =
 
 const isMeta = (f: FieldView) => f.field_id === "title"
 const isUrl = (f: FieldView) => f.kind === "url"
-const isMethod = (f: FieldView) => f.field_id === "pw" || f.kind === "passkey" || f.kind === "totp"
+const isPasskey = (f: FieldView) => f.field_id.startsWith("passkey.")
+const isMethod = (f: FieldView) => f.field_id === "pw" || isPasskey(f) || f.kind === "passkey" || f.kind === "totp"
 
 function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -335,7 +368,7 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
 const empty = <p className="text-sm text-muted-foreground">Nothing filled in yet. Edit the item to add its details.</p>
 
 /** The layout per kind (brief §3.1). A kind without a template renders the generic field list. */
-function layoutFor(item: ItemDetail, template: TemplateView | null, field: FieldRenderer, codeBlocks: ReactNode[]): ReactNode {
+function layoutFor(item: ItemDetail, template: TemplateView | null, field: FieldRenderer, codeBlocks: ReactNode[], passkeyBlock: ReactNode): ReactNode {
   const fields = item.fields.filter((f) => !isMeta(f))
   const title = item.fields.find((f) => f.field_id === "title")?.value ?? kindLabel(item.kind)
   const sections = (list: FieldView[], render: (f: FieldView) => ReactNode = (f) => field(f)) =>
@@ -347,7 +380,7 @@ function layoutFor(item: ItemDetail, template: TemplateView | null, field: Field
   switch (item.kind) {
     case "login": {
       const password = fields.find((f) => f.field_id === "pw")
-      const passkeys = fields.filter((f) => f.kind === "passkey")
+      const hasPasskeys = fields.some(isPasskey)
       const urls = fields.filter(isUrl)
       const isSignIn = (f: FieldView) => f.field_id === "sign_in_method" || f.field_id === "sign_in_provider"
       const rest = fields.filter((f) => !isMethod(f) && !isUrl(f) && !isSignIn(f) && f.field_id !== "user")
@@ -365,15 +398,7 @@ function layoutFor(item: ItemDetail, template: TemplateView | null, field: Field
             )}
             {user && field(user)}
             {password ? field(password) : <p className="text-sm text-muted-foreground">No password; this login uses other methods.</p>}
-            {passkeys.map((p) => (
-              <p key={p.field_id} className="flex items-center gap-2 text-sm">
-                <Badge variant="secondary">
-                  <Icon name="passkey" data-icon="inline-start" />
-                  passkey
-                </Badge>
-                <span className="text-muted-foreground">{p.label}; used from the browser or the OS, never shown.</span>
-              </p>
-            ))}
+            {hasPasskeys && passkeyBlock}
             {codeBlocks}
           </Block>
           {urls.length > 0 && (
@@ -419,9 +444,11 @@ function layoutFor(item: ItemDetail, template: TemplateView | null, field: Field
       )
     }
     case "passkey": {
+      const rest = fields.filter((f) => !isPasskey(f) && f.kind !== "passkey")
       return (
         <>
-          {fields.length ? sections(fields, (f) => (f.kind === "passkey" ? <PasskeyPart key={f.field_id} label={f.label} /> : field(f))) : empty}
+          <Block title="Passkey">{passkeyBlock}</Block>
+          {rest.length > 0 && sections(rest)}
           <p className="text-sm text-muted-foreground">A passkey is made by a site and used from the browser or the OS; its key is never shown or typed.</p>
         </>
       )
@@ -440,16 +467,4 @@ function layoutFor(item: ItemDetail, template: TemplateView | null, field: Field
       if (!template) return fields.length ? <Block title="Fields">{fields.map((f) => field(f))}</Block> : empty
       return fields.length ? sections(fields) : empty
   }
-}
-
-function PasskeyPart({ label }: { label: string }) {
-  return (
-    <p className="flex items-center gap-2 text-sm">
-      <Badge variant="secondary">
-        <Icon name="passkey" data-icon="inline-start" />
-        passkey
-      </Badge>
-      <span className="text-muted-foreground">{label}: kept by the provider, never shown.</span>
-    </p>
-  )
 }

@@ -20,12 +20,16 @@ lockdown-codes.workspace = true
 lockdown-cxf.workspace = true
 ecosystem-identity.workspace = true
 serde.workspace = true
+serde_bytes.workspace = true
 zeroize.workspace = true
 zxcvbn.workspace = true
 # The security center (security.rs): the breach range check, the 2FA
 # directory, the change-password link, the playbooks.
 lockdown-security = { path = "../security", version = "0.1.0", default-features = false }
 serde_json.workspace = true
+# The passkey authenticator (passkeys.rs): ES256 credentials, assertions,
+# the RP ID and client-data rules.
+lockdown-passkey.workspace = true
 
 [features]
 default = ["native"]
@@ -36,6 +40,9 @@ native = ["lockdown-store/sqlite", "lockdown-sync/http", "lockdown-security/http
 
 [dev-dependencies]
 tempfile.workspace = true
+# The relying party's side of the passkey tests: verify what the core signed.
+ring.workspace = true
+ciborium.workspace = true
 # The server, in process on a random port, so the sync tests drive the
 # real key-transparency log; rusqlite so one test can rewrite that log
 # under the server and see the audit refuse it.

@@ -156,7 +156,7 @@ export function OrganizationNav({ rows, nav, onNavigate }: OrganizationNavProps)
           <li key={v.id} className="flex flex-col gap-1">
             <div className="flex items-center gap-1">
               <div className="min-w-0 flex-1">
-                <NavRow icon="shelves" label={v.name} count={counts.byVault.get(v.id)} current={nav.area === "vault" && same(nav.scope, { vault: v.id })} onClick={() => go({ vault: v.id })} />
+                <NavRow icon={v.sharing ? (v.sharing.kind === "family" ? "home" : v.sharing.kind === "emergency" ? "emergency" : "group") : "shelves"} label={v.sharing && !v.sharing.owned && v.sharing.owner ? `${v.name} · ${v.sharing.owner}` : v.name} count={counts.byVault.get(v.id)} current={nav.area === "vault" && same(nav.scope, { vault: v.id })} onClick={() => go({ vault: v.id })} />
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger render={<IconButton label={`${v.name} options`} icon="more_horiz" size="icon-sm" variant="ghost" />} />

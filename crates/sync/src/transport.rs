@@ -117,6 +117,8 @@ pub enum Method {
     Post,
     /// `HEAD`.
     Head,
+    /// `DELETE`.
+    Delete,
 }
 
 impl Method {
@@ -127,6 +129,7 @@ impl Method {
             Self::Put => "PUT",
             Self::Post => "POST",
             Self::Head => "HEAD",
+            Self::Delete => "DELETE",
         }
     }
 }
@@ -266,6 +269,7 @@ impl HttpTransport {
                 Method::Put => reqwest::Method::PUT,
                 Method::Post => reqwest::Method::POST,
                 Method::Head => reqwest::Method::HEAD,
+                Method::Delete => reqwest::Method::DELETE,
             };
             let mut req = self
                 .client
@@ -318,7 +322,7 @@ impl HttpTransport {
         }
     }
 
-    fn call<T: Serialize, R: DeserializeOwned>(
+    pub(crate) fn call<T: Serialize, R: DeserializeOwned>(
         &self,
         method: Method,
         path: &str,
@@ -337,7 +341,7 @@ impl HttpTransport {
         }
     }
 
-    fn call_raw(
+    pub(crate) fn call_raw(
         &self,
         method: Method,
         path: &str,

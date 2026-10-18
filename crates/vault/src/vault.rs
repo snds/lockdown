@@ -47,6 +47,8 @@ mod restore;
 pub use restore::{EXPORT_OPT_IN, ImportSpec, NewAttachment, export_opted_in, is_reserved_field};
 mod carry;
 pub use carry::{CarriedAttachment, CarriedItem, CarriedVersion};
+mod share;
+pub use share::member_record;
 
 /// Who and where a vault belongs to: the ids that go into every piece of
 /// associated data.
@@ -111,6 +113,9 @@ pub struct Vault {
     /// The key-transparency tree head cited in every head committed from
     /// now on; set by sync once it has verified one.
     cited_sth: Option<SthRef>,
+    /// Earlier Vault Key generations of a shared vault, kept while an item
+    /// key may still be wrapped under one (`share`).
+    old_vault_keys: Vec<(Id, VaultKey)>,
 }
 
 /// One attachment of an item, as listed: its sealed facts opened for the
@@ -172,6 +177,7 @@ impl Vault {
             }],
             pending_blobs: Vec::new(),
             cited_sth: None,
+            old_vault_keys: Vec::new(),
         };
         vault.commit_head()?;
         Ok(vault)
@@ -286,6 +292,7 @@ impl Vault {
             members: Vec::new(),
             pending_blobs: Vec::new(),
             cited_sth: None,
+            old_vault_keys: Vec::new(),
         };
         vault.members = vault.members()?;
         Ok(vault)
@@ -1094,7 +1101,11 @@ impl Vault {
             .heads
             .last()
             .ok_or_else(|| Error::NotFound("a manifest head".into()))?;
-        let plain = open(&self.vault_key, &self.members_aad(head.seq), &head.members)?;
+        let plain = open(
+            self.vault_key_named(head.vault_key_ref)?,
+            &self.members_aad(head.seq),
+            &head.members,
+        )?;
         Ok(from_slice(&plain)?)
     }
 
@@ -1196,9 +1207,14 @@ impl Vault {
             item_id: item.item_id,
             version_n: 0,
         })?;
-        let place = self.item_key_place(item.item_id, item.class);
+        let mut place = self.item_key_place(item.item_id, item.class);
         match item.class {
-            ItemClass::Standard => unwrap_key(env, &self.vault_key, &place),
+            ItemClass::Standard => {
+                // A shared vault may still hold an item under an earlier
+                // Vault Key generation until its rotation reaches it.
+                place.wrapped_by.id = env.wrapped_by.id;
+                unwrap_key(env, self.vault_key_named(env.wrapped_by.id)?, &place)
+            }
             ItemClass::CrownJewel => {
                 let cjk = self
                     .crown_jewel_key

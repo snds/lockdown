@@ -42,6 +42,7 @@
 
 pub mod attachment;
 pub mod compose;
+pub mod contact;
 pub mod crown_jewel;
 pub mod error;
 pub mod field;
@@ -51,6 +52,8 @@ pub mod item;
 pub mod keys;
 pub mod manifest;
 pub mod organization;
+pub mod send;
+pub mod sharing;
 pub mod signer;
 pub mod store;
 pub mod template;
@@ -92,5 +95,5 @@ pub use template::{
 pub use transparency::{LogEntry, LogLeaf, SignedTreeHead, SthRef, TreeHead};
 pub use vault::{
     AttachmentInfo, EXPORT_OPT_IN, ImportSpec, NewAttachment, Unlock, Vault, VaultContext,
-    export_opted_in, is_reserved_field,
+    export_opted_in, is_reserved_field, member_record,
 };

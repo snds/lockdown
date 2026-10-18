@@ -36,3 +36,16 @@ test("both: one menu frame open to pages, wasm allowed only for the extension's 
     expect(m.commands["fill-login"].suggested_key.default).toBe("Ctrl+Shift+L");
   }
 });
+
+test("both: the passkey wrapper runs in the page's world, top frame only, before any page script", async () => {
+  for (const family of ["chromium", "firefox"] as const) {
+    const m = await manifest(family);
+    const main = m.content_scripts.find((c: { js: string[] }) => c.js.includes("webauthn.js"));
+    expect(main).toMatchObject({ world: "MAIN", run_at: "document_start", all_frames: false });
+    const bridge = m.content_scripts.find((c: { js: string[] }) => c.js.includes("passkeys.js"));
+    expect(bridge).toMatchObject({ run_at: "document_start", all_frames: false });
+    expect(bridge.world).toBeUndefined();
+    // Neither is a page-reachable resource.
+    expect(m.web_accessible_resources[0].resources).not.toContain("webauthn.js");
+  }
+});

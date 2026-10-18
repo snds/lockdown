@@ -6,8 +6,8 @@ import type { PersonaInfo } from "@/core/types"
 import type { Scope } from "@/features/organization/org-model"
 import { VIEW_LABELS, type ListView } from "@/features/vault/list-model"
 
-/** The areas of the window (brief §3): the vault's views, and four screens. */
-export type Area = "vault" | "codes" | "security" | "devices" | "recovery" | "status" | "settings"
+/** The areas of the window (brief §3): the vault's views, and the screens (Sharing: docs/plan/18-sharing.md). */
+export type Area = "vault" | "codes" | "security" | "devices" | "recovery" | "status" | "settings" | "sharing"
 
 export interface Nav {
   area: Area
@@ -47,6 +47,7 @@ const VIEWS: Array<[ListView, IconName]> = [
 
 export const SCREENS: ReadonlyArray<ShellScreen> = [
   ["security", "security", "Security"],
+  ["sharing", "group", "Sharing"],
   ["devices", "devices", "Devices"],
   ["recovery", "health_and_safety", "Recovery"],
   ["status", "shield", "Status"],
@@ -55,8 +56,8 @@ export const SCREENS: ReadonlyArray<ShellScreen> = [
 
 /**
  * The sidebar of brief §3: persona switcher (a read-only list for now),
- * All items and the smart views with counts, then Security · Devices ·
- * Recovery · Status · Settings, and Lock. Codes is a view of the vault that opens its
+ * All items and the smart views with counts, then Security · Sharing ·
+ * Devices · Recovery · Status · Settings, and Lock. Codes is a view of the vault that opens its
  * own screen, because a code is usually part of a Login (brief §3). Rows
  * take the density knobs through `data-row`.
  */

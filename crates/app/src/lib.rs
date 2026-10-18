@@ -22,12 +22,14 @@
 pub mod approval;
 pub mod browser;
 pub mod lock;
+pub mod passkeys;
 pub mod recency;
 mod revealed;
 pub mod secrets;
 pub mod security;
 mod session;
 pub mod settings;
+pub mod sharing;
 pub mod strength;
 mod transfer;
 pub mod types;
@@ -161,6 +163,9 @@ struct Core {
     approver: Option<Box<dyn Approver + Send + Sync>>,
     /// The security center's scores and alerts for this session.
     security: security::SecurityState,
+    /// Password fills this core made lately, for the passkey upgrade rule
+    /// (`passkeys`); dropped on lock.
+    recent_fills: Vec<passkeys::RecentFill>,
 }
 
 impl Core {
@@ -186,6 +191,7 @@ impl Core {
             settings,
             approver: None,
             security: security::SecurityState::default(),
+            recent_fills: Vec::new(),
         }
     }
 
@@ -253,6 +259,22 @@ impl Core {
         kind: ApprovalKind,
         gate: &GateInput,
     ) -> AppResult<Revealed> {
+        // A fill-only item is never shown or copied (docs/plan/18-sharing.md).
+        self.session()?
+            .refuse_fill_only(id)
+            .map_err(AppError::refused)?;
+        self.reveal_for_fill(id, field_id, kind, gate)
+    }
+
+    /// [`Self::reveal`] for a fill the browser extension asked for, which a
+    /// fill-only item allows: the value goes into the page, nowhere else.
+    fn reveal_for_fill(
+        &mut self,
+        id: &str,
+        field_id: &str,
+        kind: ApprovalKind,
+        gate: &GateInput,
+    ) -> AppResult<Revealed> {
         self.clock.touch(Instant::now());
         if self
             .session()?
@@ -304,6 +326,20 @@ impl Core {
     /// is a crown jewel: a code inside one is copied, never shown, and the
     /// copy is a use (brief §3.1).
     fn code_now(
+        &mut self,
+        id: &str,
+        field_id: &str,
+        next: bool,
+        gate: &GateInput,
+    ) -> AppResult<Revealed> {
+        self.session()?
+            .refuse_fill_only(id)
+            .map_err(AppError::refused)?;
+        self.code_for_fill(id, field_id, next, gate)
+    }
+
+    /// [`Self::code_now`] for a fill, which a fill-only item allows.
+    fn code_for_fill(
         &mut self,
         id: &str,
         field_id: &str,
@@ -389,6 +425,7 @@ impl Core {
         // Dropping the session drops the identity, the persona keys and
         // the vault: every key type zeroes itself on drop.
         self.session = None;
+        self.recent_fills.clear();
         self.security_forget();
         self.last_reason = Some(reason);
     }
