@@ -52,10 +52,11 @@ jobs:
       - name: Extension store packages
         working-directory: extension
         run: pnpm install --frozen-lockfile && pnpm build:wasm && pnpm build && pnpm run package
-      - name: Web vault (the image carries it)
-        working-directory: apps/web
-        run: pnpm install --frozen-lockfile && pnpm build:wasm && pnpm build
       - uses: docker/setup-buildx-action@v3
+      - name: Web vault (the image carries it; its core built in the pinned image)
+        run: |
+          env -u RUSTFLAGS packaging/repro/build-web.sh
+          cd apps/web && pnpm install --frozen-lockfile && pnpm build
       - name: Server and CLI binaries
         run: env -u RUSTFLAGS packaging/repro/build-server.sh out
       - name: Server image
@@ -66,6 +67,8 @@ jobs:
             (cd extension/dist/packages && sha256sum *.zip)
             (cd out && cat SHA256SUMS)
             echo "$(python3 packaging/repro/oci-file-hash.py out/lockdown-server-image.oci.tar usr/local/bin/lockdown-server)  image:/usr/local/bin/lockdown-server"
+            # The web vault's files, so a difference in the image is easy to place.
+            (cd apps/web/dist && find . -type f -print0 | sort -z | xargs -0 sha256sum | sed 's#  \./#  web:#')
           } | sort -k 2 > hashes.txt
           cat hashes.txt
       - uses: actions/upload-artifact@v4
