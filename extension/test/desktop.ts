@@ -40,9 +40,12 @@ export class Desktop {
   }
 
   static start(scratch: string, profile: string, extra: string[] = []): Desktop {
-    const target = targetDir();
-    const fixture = join(target, "debug", "examples", "browser-endpoint");
-    const host = join(target, "debug", "lockdown-native-host");
+    // LOCKDOWN_TEST_BINS: a folder holding private copies of both, for a
+    // machine where several checkouts share one cargo target directory.
+    const bins = process.env.LOCKDOWN_TEST_BINS;
+    const target = bins ? "" : targetDir();
+    const fixture = bins ? join(bins, "browser-endpoint") : join(target, "debug", "examples", "browser-endpoint");
+    const host = bins ? join(bins, "lockdown-native-host") : join(target, "debug", "lockdown-native-host");
     for (const f of [fixture, host]) {
       if (!existsSync(f)) throw new Error(`${f} is missing; run \`pnpm run build:native\` first`);
     }

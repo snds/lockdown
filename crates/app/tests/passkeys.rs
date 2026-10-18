@@ -352,12 +352,31 @@ fn a_crown_jewel_login_is_never_offered_to_a_page() {
             page(url, true),
             get_req(None),
             &id,
-            made.credential_id,
+            made.credential_id.clone(),
             None,
         )
         .unwrap(),
     );
     assert_eq!(name, "NotAllowedError");
+    // A page can neither replace it nor hide it with a Signal.
+    let (name, words) = refusal(
+        app.passkey_create(page(url, true), create_req(None, "me", b"me"), None)
+            .unwrap(),
+    );
+    assert_eq!(name, "NotAllowedError");
+    assert!(words.contains("protected"), "{words}");
+    let changed = app
+        .passkey_signal(
+            url,
+            Signal::UnknownCredential {
+                rp_id: "bank.example".into(),
+                credential_id: made.credential_id.clone(),
+            },
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(changed, 0);
+    assert!(app.passkeys(&id).unwrap()[0].hidden.is_none());
 }
 
 #[test]

@@ -533,6 +533,13 @@ impl Core {
             .into_iter()
             .find(|f| f.passkey.user_handle == req.user_id.0);
         let item_id = match same {
+            // A crown jewel changes only through its gate, in the app.
+            Some(f) if f.crown_jewel => {
+                return refused(
+                    RefusalName::NotAllowed,
+                    "this account's passkey is in a protected login; replace it from the Lockdown app",
+                );
+            }
             Some(f) => {
                 let n = f.passkey.n;
                 session
@@ -688,7 +695,9 @@ impl Core {
         let all = session.passkeys_for(&rp_id).map_err(AppError::refused)?;
         let at = now();
         let mut changed = 0u32;
-        for found in all {
+        // A crown jewel is never offered to a page, and a page's Signal
+        // never changes one (its changes go through the gate in the app).
+        for found in all.into_iter().filter(|f| !f.crown_jewel) {
             let p = &found.passkey;
             let edit: Option<FieldEdit> = match signal {
                 Signal::UnknownCredential { credential_id, .. } => {
