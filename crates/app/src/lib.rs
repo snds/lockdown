@@ -21,6 +21,7 @@
 
 pub mod approval;
 pub mod browser;
+pub mod depth;
 pub mod live;
 pub mod lock;
 pub mod passkeys;
@@ -277,22 +278,45 @@ impl Core {
         gate: &GateInput,
     ) -> AppResult<Revealed> {
         self.clock.touch(Instant::now());
-        if self
+        // A linked field's value is the other item's, read through that
+        // item's gates and rights (D235).
+        let (target, target_field) = self
+            .session()?
+            .resolve_link(id, field_id)
+            .map_err(AppError::refused)?;
+        if target != id {
+            self.session()?
+                .refuse_fill_only(&target)
+                .map_err(AppError::refused)?;
+        }
+        let original = id;
+        let (id, field_id) = (target.as_str(), target_field.as_str());
+        let crown = self
             .session()?
             .is_crown_jewel(id)
-            .map_err(AppError::refused)?
-        {
+            .map_err(AppError::refused)?;
+        if crown {
             let reason = match kind {
                 ApprovalKind::Use => "copy this protected value",
                 _ => "reveal this protected value",
             };
             self.approve(kind, reason, gate)?;
+        } else if self
+            .session()?
+            .needs_reprompt(id, field_id)
+            .map_err(AppError::refused)?
+        {
+            // The card asks before its security code is used (D238).
+            self.approve(kind, "use this card's security code", gate)?;
         }
         let revealed = self
             .session()?
             .reveal(id, field_id)
             .map_err(AppError::refused)?;
         self.note_use(id);
+        if original != id {
+            self.note_use(original);
+        }
         Ok(revealed)
     }
 
@@ -348,6 +372,16 @@ impl Core {
         gate: &GateInput,
     ) -> AppResult<Revealed> {
         self.clock.touch(Instant::now());
+        let (target, target_field) = self
+            .session()?
+            .resolve_link(id, field_id)
+            .map_err(AppError::refused)?;
+        if target != id {
+            self.session()?
+                .refuse_fill_only(&target)
+                .map_err(AppError::refused)?;
+        }
+        let (id, field_id) = (target.as_str(), target_field.as_str());
         if self
             .session()?
             .is_crown_jewel(id)

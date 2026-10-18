@@ -488,8 +488,8 @@ fn a_streamed_attachment_goes_to_a_file_and_back_in_chunks() {
         let data: Vec<u8> = (0..(3 << 20) + 77).map(|i| (i % 241) as u8).collect();
         let (att, hash) = fixture.with(|store| {
             let mut sink = store.blob_sink().unwrap();
-            let (att, hash, size) = vault
-                .attach_stream(
+            let prepared = vault
+                .seal_stream(
                     id,
                     "scan.tiff",
                     "image/tiff",
@@ -498,7 +498,13 @@ fn a_streamed_attachment_goes_to_a_file_and_back_in_chunks() {
                     &mut sink,
                 )
                 .unwrap();
-            assert_eq!(size, lockdown_vault::attachment::blob_size(4 << 20));
+            let hash = prepared.blob();
+            assert_eq!(
+                prepared.blob_size(),
+                lockdown_vault::attachment::blob_size(4 << 20)
+            );
+            // Sealed, not yet attached: the item hasn't moved.
+            assert_eq!(vault.item(id).unwrap().versions.len(), 1);
             if name == "sqlite" {
                 assert!(
                     matches!(sink, lockdown_vault::BlobSink::File { .. }),
@@ -509,6 +515,7 @@ fn a_streamed_attachment_goes_to_a_file_and_back_in_chunks() {
             // Kept twice is a no-op.
             let again = store.blob_sink().unwrap();
             store.keep_blob(hash, again).unwrap();
+            let att = vault.add_prepared(prepared).unwrap();
             vault.save(store, &device.adk).unwrap();
             (att, hash)
         });

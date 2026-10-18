@@ -381,6 +381,9 @@ const LOGIN: &[FieldTemplate] = &[
     field("url.0", "Website", Control::Url)
         .repeats()
         .section("Websites"),
+    field("pw.rule", "Password rules", Control::Text)
+        .section("Websites")
+        .hint("The site's own rules for a new password, for the generator, like minlength: 8; maxlength: 16; required: digit;"),
     NOTES,
 ];
 

@@ -61,6 +61,7 @@ use crate::views;
 
 mod backup;
 mod codes;
+pub(crate) mod depth;
 mod duplicates;
 mod history;
 pub mod items;
@@ -747,7 +748,11 @@ impl Session {
                 access: self
                     .item_right(item.item_id)
                     .map(|r| r.as_str().to_string()),
+                template: depth::template_id(item.kind, &fields),
             };
+            if depth::away_of(&fields).iter().any(|a| a.remind_at <= now) {
+                row.warnings.push(depth::AWAY_WARNING.into());
+            }
             if row.access.as_deref() == Some("fill-only") {
                 // Nothing to copy: a fill-only item only fills.
                 row.copy = None;
@@ -760,7 +765,7 @@ impl Session {
                 row.last_used = Some(u.last);
                 row.uses = u.count;
             }
-            let template = lockdown_vault::template_for(item.kind);
+            let template = lockdown_vault::template_of(item.kind, &fields);
             row.subtitle = template
                 .subtitle
                 .and_then(|s| text_of(&fields, s))
@@ -906,6 +911,11 @@ impl Session {
         // A fill-only item is never shown, whatever the caller asked.
         let reveal =
             reveal && self.item_right(item_id) != Some(lockdown_vault::sharing::Right::FillOnly);
+        let vault_id = vault.context().vault_id;
+        let mut shown = shown_fields(&fields, reveal);
+        for f in shown.iter_mut().filter(|f| f.kind == "linked") {
+            f.link = Some(self.link_view(vault_id, f.value.as_deref().unwrap_or("")));
+        }
         Ok(ItemDetail {
             id: item_id.to_string(),
             kind: item.kind.as_str().to_string(),
@@ -914,8 +924,11 @@ impl Session {
             edited_at: latest.edited_at.0,
             crown_jewel: item.class == ItemClass::CrownJewel,
             export_opt_in: lockdown_vault::export_opted_in(&fields),
-            fields: shown_fields(&fields, reveal),
+            fields: shown,
             place: self.place_of(vault, item_id, &fields)?,
+            template: depth::template_id(item.kind, &fields),
+            away: depth::away_views(&fields, now_secs()),
+            reprompt: depth::reprompts(item.kind, &fields),
         })
     }
 
@@ -2377,5 +2390,6 @@ fn field_view(f: &PlainField, reveal: bool) -> FieldView {
             FieldValue::Url { match_rule, .. } => Some(match_rule.clone()),
             _ => None,
         },
+        link: None,
     }
 }

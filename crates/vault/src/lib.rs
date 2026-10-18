@@ -104,6 +104,6 @@ pub use template::{
 pub use transparency::{LogEntry, LogLeaf, SignedTreeHead, SthRef, TreeHead};
 pub use user_template::{UserField, UserTemplate, user_template_of};
 pub use vault::{
-    AttachmentInfo, EXPORT_OPT_IN, ImportSpec, NewAttachment, Unlock, Vault, VaultContext,
-    export_opted_in, is_reserved_field, member_record,
+    AttachmentInfo, EXPORT_OPT_IN, ImportSpec, NewAttachment, PreparedAttachment, Unlock, Vault,
+    VaultContext, export_opted_in, is_reserved_field, member_record,
 };

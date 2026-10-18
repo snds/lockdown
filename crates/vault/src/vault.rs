@@ -118,6 +118,25 @@ pub struct Vault {
     old_vault_keys: Vec<(Id, VaultKey)>,
 }
 
+/// A file sealed by [`Vault::seal_stream`], not yet on its item.
+#[derive(Clone, Debug)]
+pub struct PreparedAttachment {
+    item_id: Id,
+    reference: AttachmentRef,
+}
+
+impl PreparedAttachment {
+    /// The blob's name, to keep it under.
+    pub fn blob(&self) -> Hash32 {
+        self.reference.blob
+    }
+
+    /// The blob's length.
+    pub fn blob_size(&self) -> u64 {
+        self.reference.blob_size
+    }
+}
+
 /// One attachment of an item, as listed: its sealed facts opened for the
 /// caller, and where its blob is.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -681,23 +700,21 @@ impl Vault {
 
     /// [`Self::attach`] for a file read from `reader` (`size` bytes),
     /// sealed chunk by chunk into `out` (a store's [`crate::BlobSink`]),
-    /// so the file is never whole in memory (D233). Nothing is kept
-    /// pending here: the caller keeps the blob in its store under the name
-    /// this returns before it saves the vault. Returns the attachment's id,
-    /// the blob's name and its length.
-    pub fn attach_stream(
-        &mut self,
+    /// so the file is never whole in memory (D233). The item is not
+    /// changed yet: the caller keeps the blob in its store under the name
+    /// this returns, then hands the result to [`Self::add_prepared`], so a
+    /// version never names a blob the store failed to keep.
+    pub fn seal_stream(
+        &self,
         item_id: Id,
         name: &str,
         mime: &str,
         size: u64,
         reader: &mut dyn std::io::Read,
         out: &mut dyn std::io::Write,
-    ) -> Result<(Id, Hash32, u64)> {
+    ) -> Result<PreparedAttachment> {
         let item = self.item(item_id)?;
         let item_key = self.item_key(item)?;
-        let header = item.header();
-        let latest = item.latest()?;
         let att_id = Id::new();
         let att_key = AttachmentKey::from_bytes(lockdown_crypto::rand::random_32()?);
         let wrapped = wrap_key(
@@ -717,15 +734,31 @@ impl Vault {
             reader,
             out,
         )?;
+        Ok(PreparedAttachment {
+            item_id,
+            reference: AttachmentRef {
+                att_id,
+                att_key: Some(wrapped),
+                chunks: sealed.chunks,
+                blob: sealed.blob_hash,
+                blob_size: sealed.blob_size,
+                meta: sealed.meta,
+            },
+        })
+    }
+
+    /// Adds a file [`Self::seal_stream`] sealed: a new version of the item
+    /// whose signed attachment list names its blob. Returns the
+    /// attachment's id.
+    pub fn add_prepared(&mut self, prepared: PreparedAttachment) -> Result<Id> {
+        let item_id = prepared.item_id;
+        let item = self.item(item_id)?;
+        let item_key = self.item_key(item)?;
+        let header = item.header();
+        let latest = item.latest()?;
+        let att_id = prepared.reference.att_id;
         let mut attachments = latest.attachments.clone();
-        attachments.push(AttachmentRef {
-            att_id,
-            att_key: Some(wrapped),
-            chunks: sealed.chunks,
-            blob: sealed.blob_hash,
-            blob_size: sealed.blob_size,
-            meta: sealed.meta,
-        });
+        attachments.push(prepared.reference);
         let fields = self.open_envelope(item, latest.n)?;
         let n = latest.n + 1;
         let parent_hash = latest.hash(&header)?;
@@ -737,7 +770,7 @@ impl Vault {
             .versions
             .push(version);
         self.commit_head()?;
-        Ok((att_id, sealed.blob_hash, sealed.blob_size))
+        Ok(att_id)
     }
 
     /// [`Self::open_attachment`] from a blob read in pieces, written to
