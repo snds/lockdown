@@ -94,7 +94,9 @@ test("nothing fills before the browser is paired", async () => {
   await page.goto(at("localhost", "/ext/login.html"));
   await page.focus("#user");
   const menu = await lockdownFrame(page);
-  await expect(menu.locator("body")).toContainText("Pair this browser");
+  // The first connection waits for the host to hash the app's executable
+  // (a large debug build on CI), so it gets longer than the default.
+  await expect(menu.locator("body")).toContainText("Pair this browser", { timeout: 30_000 });
   await expect(page.locator("#pass")).toHaveValue("");
   await page.close();
 });

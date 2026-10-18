@@ -11,7 +11,9 @@ export const HOST_NAME = "design.snds.lockdown"
 
 /** How long an answer may take (a fill waiting on Touch ID is the longest). */
 const ANSWER_MS = 190_000
-const READY_MS = 8_000
+// The host hashes the app's executable before it relays (process identity,
+// D155); a large development build takes seconds to hash.
+const READY_MS = 30_000
 
 export class DesktopError extends Error {
   constructor(
