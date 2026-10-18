@@ -23,6 +23,7 @@ pub mod approval;
 pub mod lock;
 mod revealed;
 pub mod secrets;
+pub mod security;
 mod session;
 pub mod settings;
 pub mod strength;
@@ -36,6 +37,7 @@ pub use approval::{Approval, ApprovalKind, Approver, GateInput, PasswordApprover
 pub use lock::{LockPolicy, LockReason};
 pub use lockdown_vault::{Change, FieldChange, FieldInput, FieldKind};
 pub use revealed::Revealed;
+pub use security::{Dismissal, Finding, SecurityReport};
 pub use session::items::field_kind_named;
 pub use session::{Paths, device_name};
 pub use settings::{Density, RevealGesture, Settings};
@@ -152,6 +154,8 @@ struct Core {
     /// The platform's own check (Touch ID, Windows Hello), when the shell
     /// installed one; else approvals fall back per `approval::route`.
     approver: Option<Box<dyn Approver + Send + Sync>>,
+    /// The security center's scores and alerts for this session.
+    security: security::SecurityState,
 }
 
 impl Core {
@@ -176,6 +180,7 @@ impl Core {
             last_reason: None,
             settings,
             approver: None,
+            security: security::SecurityState::default(),
         }
     }
 
@@ -346,6 +351,7 @@ impl Core {
         // Dropping the session drops the identity, the persona keys and
         // the vault: every key type zeroes itself on drop.
         self.session = None;
+        self.security_forget();
         self.last_reason = Some(reason);
     }
 

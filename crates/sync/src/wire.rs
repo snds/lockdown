@@ -28,6 +28,8 @@
 //! | `PUT /v1/vaults/{vault}/blobs/{hash}` | the blob bytes (`application/octet-stream`) | [`BlobAccepted`] | yes |
 //! | `GET /v1/vaults/{vault}/blobs/{hash}` | | the blob bytes | yes |
 //! | `HEAD /v1/vaults/{vault}/blobs/{hash}` | | 200 or 404 | yes |
+//! | `GET /v1/account/alerts?since=N` | | [`AlertsSince`] | yes |
+//! | `POST /v1/account/alerts/{seq}/dismiss` | | empty | yes |
 //!
 //! Attachment blobs (02-model §6) are content-addressed: the path names
 //! the BLAKE3 of the bytes, a `PUT` of a name already held is a no-op, a
@@ -373,6 +375,61 @@ pub struct ItemsSince {
     pub items: Vec<ItemWire>,
     /// The newest revision assigned in this vault.
     pub current_rev: u64,
+}
+
+// --- account alerts (docs/plan/13-security-center.md) ----------------------
+
+/// What an account alert is about.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AlertKind {
+    /// A device the account had never seen logged in with it.
+    NewDevice,
+    /// The account's email address appeared in a newly known breach.
+    EmailBreach,
+}
+
+/// A breach an address appeared in, as the breach feed names it.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct BreachNotice {
+    /// The address that was found (the account's login).
+    pub address: String,
+    /// The breach's name.
+    pub name: String,
+    /// The breached site's domain, when the feed names one.
+    pub domain: Option<String>,
+    /// When the breach happened (`YYYY-MM-DD`), when known.
+    pub breach_date: Option<String>,
+    /// What was taken, in the feed's words ("Email addresses", "Passwords").
+    pub data: Vec<String>,
+}
+
+/// One alert. `seq` orders an account's alerts and names one to dismiss.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct AccountAlert {
+    /// Its number within the account.
+    pub seq: u64,
+    /// What it is about.
+    pub kind: AlertKind,
+    /// When the server recorded it (seconds since the Unix epoch).
+    pub at: i64,
+    /// For a new device: which one.
+    pub device_id: Option<Id>,
+    /// For an email breach: the breach.
+    pub breach: Option<BreachNotice>,
+    /// Whether a device of the account dismissed it.
+    pub dismissed: bool,
+}
+
+/// `GET /v1/account/alerts?since=N`: the account's alerts after `N` that
+/// concern the asking device (never its own sign-in, never one from
+/// before it joined).
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct AlertsSince {
+    /// The alerts, oldest first.
+    pub alerts: Vec<AccountAlert>,
+    /// The newest `seq` the account has.
+    pub current_seq: u64,
 }
 
 /// Encodes a body.

@@ -18,6 +18,7 @@ members = [
     "bins/cli",
     "bins/server",
     "apps/desktop/src-tauri",
+    "crates/security",
 ]
 # The pure-Rust crates: everything that builds on CI without a platform SDK.
 # `ffi` and `wasm` are built with the shells, which bring UniFFI and the wasm
@@ -39,6 +40,7 @@ default-members = [
     "crates/platform-auth",
     "bins/cli",
     "bins/server",
+    "crates/security",
 ]
 
 [workspace.package]
@@ -70,6 +72,7 @@ lockdown-app = { path = "crates/app", version = "0.1.0" }
 lockdown-platform-auth = { path = "crates/platform-auth", version = "0.1.0" }
 lockdown-ffi = { path = "crates/ffi", version = "0.1.0" }
 lockdown-server = { path = "bins/server", version = "0.1.0" }
+lockdown-security = { path = "crates/security", version = "0.1.0" }
 
 # Cryptography: the same crates and versions the identity crate uses, so one
 # copy of each is linked (04-security.md §4–§5, 01-identity.md §10a).
