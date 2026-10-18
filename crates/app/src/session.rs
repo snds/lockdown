@@ -68,6 +68,7 @@ mod history;
 pub mod items;
 mod organize;
 pub(crate) mod passkeys;
+pub(crate) mod recovery;
 pub(crate) mod second_factor;
 pub(crate) mod secret_key;
 pub(crate) mod security;
@@ -711,6 +712,11 @@ impl Session {
             {
                 continue;
             }
+            // A crown jewel an emergency release didn't hand over stays
+            // its owner's alone: not listed (`legacy`).
+            if !vault.can_open(item.item_id) {
+                continue;
+            }
             let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
             let latest = item.latest().map_err(|e| e.to_string())?;
             let title = text_of(&fields, "title").unwrap_or_default();
@@ -891,7 +897,8 @@ impl Session {
             "no account on this device, so there is no password to check".to_string()
         })?;
         let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
-        let mut auth = OpaqueAccountAuth::new(transport, cfg.login.as_str(), self.device_binding());
+        let mut auth = OpaqueAccountAuth::new(transport, cfg.login.as_str(), self.device_binding())
+            .at_least(self.account_ksf_floor());
         match auth.sign_in(password) {
             Ok(_) => Ok(true),
             Err(lockdown_crypto::Error::LoginFailed) => Ok(false),
@@ -1108,7 +1115,8 @@ impl Session {
     ) -> Result<Vec<String>, String> {
         let secret_key = secret_key.filter(|s| !s.trim().is_empty());
         let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
-        let mut auth = OpaqueAccountAuth::new(transport, login, self.device_binding());
+        let mut auth = OpaqueAccountAuth::new(transport, login, self.device_binding())
+            .at_least(self.account_ksf_floor());
         let (export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
         if session.profile_id != self.identity.profile().profile_id {
             return Err(format!(
@@ -1264,6 +1272,7 @@ impl Session {
             }
             None => None,
         };
+        self.raise_profile_kdf()?;
         let kit = self
             .identity
             .create_recovery_kit()
@@ -1393,6 +1402,9 @@ impl Session {
             self.memory
                 .remember_identity(self.identity.head())
                 .map_err(|e| e.to_string())?;
+            // The date of this drill and, with the code in hand, the kit's
+            // stretching raised to what this device can afford (`recovery`).
+            lines.extend(self.after_drill(&kit)?);
             if let Some(cfg) = &self.sync {
                 let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
                 let token = cfg.session_token()?.to_string();

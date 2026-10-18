@@ -22,6 +22,9 @@
 //! server keeps the parameters beside the file and announces them at every
 //! login start (an unknown login gets the default, so nothing leaks).
 //!
+//! The same store keeps the crown jewels held back with emergency grants
+//! (`legacy`).
+//!
 //! What is stored: per account, each key's credential id, COSE public key,
 //! algorithm, counter, name and dates; and the stretching parameters. What
 //! is in memory only: sign-ins and registrations waiting for a key, for
@@ -129,6 +132,10 @@ pub trait AccountSecurityStore: Send + Sync {
     fn ksf(&self, account_id: Id) -> Result<Option<Argon2Params>>;
     /// Replaces the password file and the stretching it was made under, at once.
     fn replace_password(&self, account_id: Id, file: &[u8], ksf: &Argon2Params) -> Result<()>;
+    /// Replaces a grant's held-back crown-jewel envelopes (`legacy`).
+    fn put_emergency_items(&self, grant: Id, items: &[(Id, Vec<u8>)]) -> Result<()>;
+    /// A grant's held-back crown-jewel envelopes.
+    fn emergency_items(&self, grant: Id) -> Result<Vec<Vec<u8>>>;
 }
 
 fn backend(e: rusqlite::Error) -> StorageError {
@@ -259,6 +266,14 @@ impl AccountSecurityStore for SqliteStorage {
         )
         .map_err(backend)?;
         tx.commit().map_err(backend)
+    }
+
+    fn put_emergency_items(&self, grant: Id, items: &[(Id, Vec<u8>)]) -> Result<()> {
+        SqliteStorage::put_emergency_items(self, grant, items)
+    }
+
+    fn emergency_items(&self, grant: Id) -> Result<Vec<Vec<u8>>> {
+        SqliteStorage::emergency_items(self, grant)
     }
 }
 

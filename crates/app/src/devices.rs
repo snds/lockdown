@@ -41,6 +41,9 @@ use crate::{App, AppError, AppResult, ApprovalKind, ErrorCode, GateInput, Regist
 pub(crate) struct Depth {
     joining: Option<Joining>,
     waiting: Option<WaitingSignIn>,
+    /// This device's unlock is the account password (the web vault), so the
+    /// password reminder never applies (`reminders`).
+    pub(crate) unlock_asks_password: bool,
 }
 
 impl Depth {

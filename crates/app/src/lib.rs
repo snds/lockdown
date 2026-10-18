@@ -27,6 +27,7 @@ pub mod lock;
 pub mod passkeys;
 mod protection;
 pub mod recency;
+pub mod reminders;
 mod revealed;
 pub mod secrets;
 pub mod security;
@@ -231,15 +232,20 @@ impl Core {
                 let Some(password) = gate.password.as_deref() else {
                     return Err(AppError::approval_needed(Route::Password, reason));
                 };
+                let paths = self.paths.clone();
                 let session = self.session()?;
                 let approver =
                     PasswordApprover::new(zeroize::Zeroizing::new(password.to_string()), |p| {
                         session.check_password(p)
                     });
                 match approver.confirm(kind, reason) {
-                    Ok(true) => Ok(Approval {
-                        method: approver.method().into(),
-                    }),
+                    Ok(true) => {
+                        // A typed password counts for the reminder (`reminders`).
+                        reminders::note_password(&paths);
+                        Ok(Approval {
+                            method: approver.method().into(),
+                        })
+                    }
                     Ok(false) => Err(AppError::refused("the password didn't match")),
                     Err(e) => Err(AppError::refused(e)),
                 }
@@ -1003,9 +1009,19 @@ impl App {
         }
         self.call(move |core| {
             core.clock.touch(Instant::now());
-            core.session()?
+            let mut lines = core
+                .session()?
                 .account_login(&server, &login, &password, secret_key.as_deref())
-                .map_err(AppError::refused)
+                .map_err(AppError::refused)?;
+            reminders::note_password(&core.paths);
+            // A stronger device raises the account's stretching (D49's
+            // renegotiation, `client-kdf`); a failure leaves the login as is.
+            match core.session()?.strengthen_account(&password) {
+                Ok(Some(line)) => lines.push(line),
+                Ok(None) => {}
+                Err(e) => lines.push(format!("the password stretching wasn't raised: {e}")),
+            }
+            Ok(lines)
         })
     }
 

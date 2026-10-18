@@ -2228,6 +2228,7 @@ impl Session {
                 },
             )
             .map_err(|e| e.to_string())?;
+        self.put_emergency_items(&transport, &token, &grant, &contact)?;
         self.emergency()
     }
 
@@ -2358,6 +2359,8 @@ impl Session {
             opened.push(vault_id);
         }
         let owner_login = w.owner_login.clone();
+        // The crown jewels the owner opted in come with the release (`legacy`).
+        self.take_released_items(transport, token, &grant, &opened)?;
         self.sharing.put_released(
             grant_id,
             Released {
@@ -2447,4 +2450,126 @@ pub fn request_label(link: &str) -> Result<String, String> {
     parse_request_link(link)
         .map(|l| l.label)
         .map_err(|e| e.to_string())
+}
+
+// --- crown jewels in emergency access (`high-risk-class`) ------------------------------
+
+impl Session {
+    /// Opts a crown jewel in to (or out of) emergency access, as a new
+    /// version, and re-seals the held-back set of every grant covering its
+    /// vault (the gate in front of turning it on is the App's). Offline,
+    /// the choice is kept and the grants catch up at the next change.
+    pub fn set_legacy_opt_in(&mut self, id: &str, on: bool) -> Result<u64, String> {
+        let item_id = parse_id(id)?;
+        let vault_id = self.holding(item_id)?.context().vault_id;
+        let n = self
+            .holding_mut(item_id)?
+            .set_legacy_opt_in(item_id, on)
+            .map_err(|e| e.to_string())?;
+        self.save()?;
+        if self.sync.is_some() {
+            self.refresh_emergency_items(Some(vault_id))?;
+        }
+        Ok(n)
+    }
+
+    /// Re-seals the opted-in crown jewels of every grant this persona made
+    /// that is still alive (and covers `only`, when given).
+    pub(crate) fn refresh_emergency_items(&mut self, only: Option<Id>) -> Result<(), String> {
+        let (transport, token, _) = self.online()?;
+        let list = transport.emergency(&token).map_err(|e| e.to_string())?;
+        for w in &list.as_owner {
+            let Ok(grant) = EmergencyGrant::from_bytes(&w.grant) else {
+                continue;
+            };
+            if matches!(w.state, EmergencyState::Declined | EmergencyState::Revoked)
+                || only.is_some_and(|v| !grant.vaults.contains(&v))
+            {
+                continue;
+            }
+            let Some(contact) = self.sharing.contact(grant.contact.account_id).cloned() else {
+                continue;
+            };
+            self.put_emergency_items(&transport, &token, &grant, &contact)?;
+        }
+        Ok(())
+    }
+
+    fn put_emergency_items(
+        &self,
+        transport: &HttpTransport,
+        token: &str,
+        grant: &EmergencyGrant,
+        contact: &Contact,
+    ) -> Result<(), String> {
+        let me = self.me()?;
+        let mut envelopes = Vec::new();
+        for vault_id in &grant.vaults {
+            let vault = self.vault_by_id(*vault_id)?;
+            for item_id in vault.legacy_items() {
+                let env = vault
+                    .seal_for_emergency(
+                        item_id,
+                        contact.party(),
+                        &contact.kem_pub,
+                        me.account_id,
+                        grant.grant_id,
+                    )
+                    .map_err(|e| e.to_string())?;
+                envelopes.push(ByteBuf::from(env.to_bytes().map_err(|e| e.to_string())?));
+            }
+        }
+        transport
+            .emergency_items_put(
+                token,
+                grant.grant_id,
+                &lockdown_sync::account_security::EmergencyItems { envelopes },
+            )
+            .map_err(|e| e.to_string())
+    }
+
+    /// As the contact, after a release: the crown jewels the owner opted
+    /// in, each checked (for this grant, this person, a vault it covers,
+    /// signed by one of the owner's devices) before its key is taken.
+    fn take_released_items(
+        &mut self,
+        transport: &HttpTransport,
+        token: &str,
+        grant: &EmergencyGrant,
+        opened: &[Id],
+    ) -> Result<(), String> {
+        let items = transport
+            .emergency_items_get(token, grant.grant_id)
+            .map_err(|e| e.to_string())?;
+        let me = self.me()?;
+        let owner_keys = self.device_keys_of(grant.owner.account_id);
+        for bytes in &items.envelopes {
+            let env = ShareEnvelope::from_bytes(bytes).map_err(|e| e.to_string())?;
+            let (Some(item_id), vault_id) = (env.place.item_id, env.place.vault_id) else {
+                continue;
+            };
+            if !opened.contains(&vault_id) {
+                continue;
+            }
+            let expected = SharePlace {
+                purpose: SharePurpose::Emergency,
+                vault_id,
+                item_id: Some(item_id),
+                key_id: item_id,
+                to: me,
+                from_account: grant.owner.account_id,
+                grant_id: Some(grant.grant_id),
+            };
+            let signer = owner_keys.get(&env.by_device).ok_or(
+                "a crown jewel's key came from a device its owner's identity doesn't list; refused",
+            )?;
+            let key: ItemKey = env
+                .open(&self.kem_secret()?, &expected, signer)
+                .map_err(|e| e.to_string())?;
+            self.vault_slot(vault_id)?
+                .adopt_released_item(item_id, key)
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
 }

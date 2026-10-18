@@ -543,6 +543,7 @@ impl SqliteStorage {
         crate::sessions::create_tables(&conn).map_err(backend)?;
         crate::sharing::create_tables(&conn).map_err(backend)?;
         crate::second_factor::create_tables(&conn).map_err(backend)?;
+        crate::legacy::create_tables(&conn).map_err(backend)?;
         Ok(Self {
             path,
             conn: Mutex::new(conn),

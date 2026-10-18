@@ -205,6 +205,68 @@ pub fn restore_from_root_key(
     }
 }
 
+/// Raises the profile's signed Argon2id parameters (the kit's stretching,
+/// 04-security §4) to `params`, which must meet or exceed the current set in
+/// every parameter: they only ever rise (D26, D32). The kit's wrap was made
+/// under the old set, so the caller re-wraps it ([`rewrap_kit`]) with the
+/// recovery code in hand, at once. `None` when nothing changed.
+pub fn raise_profile_kdf(
+    identity: &mut Identity,
+    keystore: &dyn DeviceKeystore,
+    params: ecosystem_identity::Argon2Params,
+) -> Result<Option<Head>> {
+    check_manager(identity)?;
+    let current = identity.profile().kdf;
+    if !params.meets(&current) {
+        return Err(Error::Invalid(format!(
+            "the kit's stretching only rises; {params} is below {current}"
+        )));
+    }
+    if params == current {
+        return Ok(None);
+    }
+    params.check_floor()?;
+    write_identity_store(identity, keystore, |contents, isk| {
+        let profile = contents
+            .profile
+            .as_mut()
+            .ok_or_else(|| Error::NotFound("the profile".into()))?;
+        profile.kdf = params;
+        profile.sign(isk.inner())?;
+        Ok(true)
+    })
+}
+
+/// Wraps the root key to `kit` again under the profile's current
+/// stretching (after [`raise_profile_kdf`]), replacing the kit's wrap.
+pub fn rewrap_kit(
+    identity: &mut Identity,
+    keystore: &dyn DeviceKeystore,
+    kit: &ecosystem_identity::RecoveryKit,
+) -> Result<Head> {
+    check_manager(identity)?;
+    let (irk, irk_id) = root_key(identity, keystore)?;
+    let profile = identity.profile().clone();
+    if kit.profile_id() != profile.profile_id {
+        return Err(Error::Invalid("that kit is for another identity".into()));
+    }
+    let kit_key = kit.kit_key(&profile.kdf)?;
+    let mut envelope = ecosystem_identity::keys::wrap(
+        irk.expose(),
+        &kit_key,
+        KeyRef::new(KeyRefKind::Kit, profile.profile_id),
+        &ecosystem_identity::keys::aad(profile.profile_id, None, irk_id, Purpose::Irk),
+    )?;
+    drop(irk);
+    let head = write_identity_store(identity, keystore, |contents, isk| {
+        envelope.sign(isk.inner())?;
+        contents.put_envelope(envelope.clone());
+        Ok(true)
+    })?
+    .expect("a re-wrap always writes");
+    Ok(head)
+}
+
 /// One of Lockdown's fields on the profile, as last signed.
 pub fn profile_extra(identity: &Identity, key: &str) -> Option<Value> {
     identity.profile().extra.get(key).cloned()
@@ -258,6 +320,64 @@ pub fn profile_extra_int(identity: &Identity, key: &str) -> Option<i64> {
         Value::Integer(i) => i64::try_from(i).ok(),
         _ => None,
     }
+}
+
+/// Sets an integer field on the profile (`lockdown.drilled_at`).
+pub fn set_profile_int(
+    identity: &mut Identity,
+    keystore: &dyn DeviceKeystore,
+    key: &str,
+    value: i64,
+) -> Result<Option<Head>> {
+    set_profile_extra(
+        identity,
+        keystore,
+        &[(key, Some(Value::Integer(value.into())))],
+    )
+}
+
+/// Argon2id parameters kept on the profile (`lockdown.account_ksf`), as a
+/// map of the three numbers.
+pub fn profile_params(identity: &Identity, key: &str) -> Option<ecosystem_identity::Argon2Params> {
+    let value = profile_extra(identity, key)?;
+    let Value::Map(map) = value else {
+        return None;
+    };
+    let get = |name: &str| {
+        map.iter().find_map(|(k, v)| match (k, v) {
+            (Value::Text(k), Value::Integer(i)) if k == name => u32::try_from(*i).ok(),
+            _ => None,
+        })
+    };
+    Some(ecosystem_identity::Argon2Params {
+        m_cost_kib: get("m_cost_kib")?,
+        t_cost: get("t_cost")?,
+        p_cost: get("p_cost")?,
+    })
+}
+
+/// Sets Argon2id parameters on the profile (see [`profile_params`]).
+pub fn set_profile_params(
+    identity: &mut Identity,
+    keystore: &dyn DeviceKeystore,
+    key: &str,
+    params: &ecosystem_identity::Argon2Params,
+) -> Result<Option<Head>> {
+    let value = Value::Map(vec![
+        (
+            Value::Text("m_cost_kib".into()),
+            Value::Integer(params.m_cost_kib.into()),
+        ),
+        (
+            Value::Text("p_cost".into()),
+            Value::Integer(params.p_cost.into()),
+        ),
+        (
+            Value::Text("t_cost".into()),
+            Value::Integer(params.t_cost.into()),
+        ),
+    ]);
+    set_profile_extra(identity, keystore, &[(key, Some(value))])
 }
 
 #[cfg(test)]
@@ -374,6 +494,48 @@ mod tests {
         .unwrap_err()
         .to_string();
         assert!(err.contains("doesn't belong"), "{err}");
+    }
+
+    #[test]
+    fn the_kits_stretching_rises_and_the_kit_still_opens() {
+        let dir = tempfile::tempdir().unwrap();
+        let ks = FileKeystore::open_or_create(&dir.path().join("k.cbor")).unwrap();
+        let root = dir.path().join("root");
+        let mut identity = crate::identity::open_or_create_identity(&root, "d", &ks, None).unwrap();
+        let kit = identity.create_recovery_kit().unwrap();
+        let before = identity.profile().kdf;
+        let raised = ecosystem_identity::Argon2Params {
+            t_cost: before.t_cost + 2,
+            ..before
+        };
+        assert!(
+            raise_profile_kdf(&mut identity, &ks, before)
+                .unwrap()
+                .is_none()
+        );
+        let lower = ecosystem_identity::Argon2Params {
+            t_cost: before.t_cost.saturating_sub(1).max(1),
+            m_cost_kib: before.m_cost_kib / 2,
+            ..before
+        };
+        assert!(raise_profile_kdf(&mut identity, &ks, lower).is_err());
+        raise_profile_kdf(&mut identity, &ks, raised)
+            .unwrap()
+            .unwrap();
+        rewrap_kit(&mut identity, &ks, &kit).unwrap();
+        assert_eq!(identity.profile().kdf, raised);
+        // The kit rebuilds the identity under the raised set.
+        let backup = identity.export_backup();
+        let other = FileKeystore::open_or_create(&dir.path().join("o.cbor")).unwrap();
+        ecosystem_identity::Identity::recover_with_kit(
+            &dir.path().join("again"),
+            crate::identity::APP,
+            "again",
+            &other,
+            &kit,
+            &backup,
+        )
+        .unwrap();
     }
 
     #[test]

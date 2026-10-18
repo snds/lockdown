@@ -25,6 +25,8 @@
 //! | `POST /v1/account/login/second-factor` | [`SecondFactorAnswer`] | empty | no: the pending id |
 //! | `POST /v1/account/login/second-factor/request` | [`SecondFactorLookup`] | [`SecondFactorRequest`] | no |
 //! | `POST /v1/account/login/second-factor/poll` | [`SecondFactorPoll`] | [`SecondFactorStatus`] | no: the poll key |
+//! | `POST /v1/emergency/{grant}/items` | [`EmergencyItems`] | empty | yes (the owner) |
+//! | `GET /v1/emergency/{grant}/items` | | [`EmergencyItems`] | yes (the contact, once released) |
 //! | `POST /v1/verifications` | [`VerifyOpen`] | [`VerifyOpened`] | yes |
 //! | `GET /v1/verifications` | | [`VerifyList`] | yes |
 //! | `POST /v1/verifications/{id}/frames` | [`FramePush`] | empty | yes (either person) |
@@ -289,6 +291,17 @@ pub struct SecondFactorStatus {
     pub session: Option<crate::wire::LoginFinishReply>,
 }
 
+// --- crown jewels in emergency access ---------------------------------------------
+
+/// The crown jewels an owner opted in to an emergency grant: their Item
+/// Keys sealed to the contact (`lockdown_vault::sharing::ShareEnvelope`,
+/// purpose `emergency`, naming the item), held back with the grant.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize, Default)]
+pub struct EmergencyItems {
+    /// One per item, as signed.
+    pub envelopes: Vec<ByteBuf>,
+}
+
 // --- phrase checks between two people ----------------------------------------------
 
 /// One person asks another to check keys with a phrase.
@@ -536,6 +549,32 @@ impl HttpTransport {
                 pending_id,
                 poll_key: ByteBuf::from(poll_key.to_vec()),
             }),
+        )
+    }
+
+    /// `POST /v1/emergency/{grant}/items`: the owner's whole set.
+    pub fn emergency_items_put(
+        &self,
+        token: &str,
+        grant: Id,
+        items: &EmergencyItems,
+    ) -> Result<()> {
+        self.call_raw(
+            Method::Post,
+            &format!("/v1/emergency/{}/items", path_id(grant)),
+            Some(token),
+            Some(crate::wire::encode(items).map_err(|e| TransportError::Decode(e.to_string()))?),
+        )
+        .map(|_| ())
+    }
+
+    /// `GET /v1/emergency/{grant}/items`: the contact's, after the release.
+    pub fn emergency_items_get(&self, token: &str, grant: Id) -> Result<EmergencyItems> {
+        self.call::<(), _>(
+            Method::Get,
+            &format!("/v1/emergency/{}/items", path_id(grant)),
+            Some(token),
+            None,
         )
     }
 

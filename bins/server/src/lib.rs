@@ -27,6 +27,8 @@
 //! - [`web_vault`] — the built web vault at `/vault/`, with its headers
 //! - [`relay`] — where two devices meet to approve a new one, and two
 //!   people to check each other's keys with a phrase
+//! - [`legacy`] — crown jewels an owner opted in to emergency access, held back
+//!   with the grant
 //! - [`second_factor`] — security keys on the account, and the account's
 //!   password stretching (docs/plan/22-security-depth.md)
 //!
@@ -41,6 +43,7 @@ pub mod backup;
 pub mod breach_monitor;
 pub mod client_addr;
 pub mod keys;
+pub mod legacy;
 pub mod live;
 pub mod ratelimit;
 pub mod relay;
@@ -426,6 +429,10 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route(
             "/v1/account/login/second-factor/poll",
             post(second_factor::poll),
+        )
+        .route(
+            "/v1/emergency/{grant}/items",
+            get(legacy::get_items).post(legacy::put_items),
         )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
