@@ -25,6 +25,7 @@ import { ClockSetting } from "@/features/bridges/clock"
 import { ExportDialog } from "@/features/export/export-dialog"
 import { ImportWizard } from "@/features/import/import-wizard"
 import { BrowsersSection } from "@/features/browsers/browsers-section"
+import { QuickSettings } from "@/features/quick/quick-settings"
 
 interface SettingsViewProps {
   status: Status
@@ -214,6 +215,8 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
       </Section>
 
       <BrowsersSection onNotice={onNotice} />
+
+      <QuickSettings onNotice={onNotice} />
 
       <AliasSettings onNotice={onNotice} onChanged={onChanged} />
 

@@ -33,6 +33,8 @@ import type { ItemSummary } from "@/core/types"
 import { CodeDisplayList } from "@unicron/ui/security/code-display"
 
 import { ItemCodeDisplay } from "@/features/vault/code-display"
+import { ScanDialog } from "@/features/scan/scan-dialog"
+import { toast } from "sonner"
 
 import { codeKey, useCodes } from "./use-codes"
 
@@ -51,6 +53,7 @@ export function CodesView({ rows, onChanged }: CodesViewProps) {
   const { codes, error, now, expiresAt, reload } = useCodes(true)
   const [query, setQuery] = useState("")
   const [adding, setAdding] = useState(false)
+  const [scanning, setScanning] = useState(false)
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -62,6 +65,10 @@ export function CodesView({ rows, onChanged }: CodesViewProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-surface-chrome">
       <PaneHeader title="Codes">
+        <Button size="sm" variant="outline" onClick={() => setScanning(true)}>
+          <Icon name="qr_code_scanner" data-icon="inline-start" />
+          Sign in a TV
+        </Button>
         <Button size="sm" onClick={() => setAdding(true)}>
           <Icon name="add" data-icon="inline-start" />
           Add a code
@@ -103,6 +110,7 @@ export function CodesView({ rows, onChanged }: CodesViewProps) {
           onChanged()
         }}
       />
+      <ScanDialog open={scanning} onOpenChange={setScanning} onNotice={(t) => toast(t)} />
     </div>
   )
 }

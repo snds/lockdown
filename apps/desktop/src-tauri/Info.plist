@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Merged into the bundle's Info.plist by Tauri. The camera reads a TV's
+       sign-in code or a contact's QR (docs/plan/26-desktop-finish.md §3). -->
+  <key>NSCameraUsageDescription</key>
+  <string>Lockdown uses the camera to read a sign-in code a TV shows you, or a contact's QR code. Nothing is recorded.</string>
+</dict>
+</plist>

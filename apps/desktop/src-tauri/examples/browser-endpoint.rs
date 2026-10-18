@@ -304,6 +304,30 @@ fn main() {
                 app.set_settings(settings).unwrap();
                 emit(json!({ "event": "change_check", "on": *on == "on" }));
             }
+            // docs/plan/26-desktop-finish.md: a standalone code item, a code
+            // as the camera read it (the core's scan flow after the decode,
+            // which the core's own tests drive from a real frame), the
+            // person's yes, and quick access's "Fill in the browser".
+            ["add-code", uri, title @ ..] => {
+                let r = app.add_code(uri, Some(&title.join(" ")), None);
+                emit(json!({ "event": "code_added", "id": r.ok() }));
+            }
+            ["scan-camera", text] => {
+                let r = app.scan_text(text, lockdown_app::scan::ScanSource::Camera);
+                emit(json!({ "event": "scanned", "outcome": r.ok() }));
+            }
+            ["activation-approve", id, item] => {
+                let gate = GateInput {
+                    password: None,
+                    confirmed: true,
+                };
+                let r = app.activation_approve(id, Some(item), gate);
+                emit(json!({ "event": "activation", "started": r.ok() }));
+            }
+            ["quick-fill", item] => {
+                let r = app.quick_fill(item);
+                emit(json!({ "event": "quick_fill", "started": r.ok() }));
+            }
             ["quit"] => break,
             _ => emit(json!({ "event": "unknown", "line": line })),
         }

@@ -310,6 +310,8 @@ export interface Settings {
   code_clock_correction?: boolean
   /** Whether the server watches your email aliases for breaches; changed only through `aliasMonitoringSet`. Default off. */
   alias_monitoring?: boolean
+  /** The system-wide quick-access shortcut (docs/plan/26-desktop-finish.md §2). */
+  quick_access_hotkey?: boolean
 }
 
 export interface BackupSettings {

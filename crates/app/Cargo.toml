@@ -31,6 +31,10 @@ serde_json.workspace = true
 # The passkey authenticator (passkeys.rs): ES256 credentials, assertions,
 # the RP ID and client-data rules.
 lockdown-passkey.workspace = true
+# The scan flow (scan.rs): the proximity gate and the signed activation
+# pages, and the QR decoder for camera frames and image files.
+lockdown-approval.workspace = true
+rqrr.workspace = true
 
 [features]
 default = ["native"]

@@ -4,3 +4,6 @@ test-results/
 playwright-report/
 blob-report/
 dist/
+# dsa output: only the ratchet baseline is tracked.
+.dsa/*
+!.dsa/baseline.json

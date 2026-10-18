@@ -27,6 +27,12 @@ import type { WebClipboard } from "../core/clipboard"
 import type { Link } from "../core/link"
 import type { WebSession, WebState } from "../core/web-client"
 import { webDepthClient } from "../core/web-depth-client"
+import { webHygieneClient, webQuickClient, webScanClient } from "../core/web-finish-client"
+import { PeopleView } from "../features/people-view"
+import { HygieneClientProvider } from "@/features/hygiene/hygiene-client"
+import { useSecretWipe } from "@/features/hygiene/secret-wipe"
+import { QuickClientProvider } from "@/features/quick/quick-client"
+import { ScanClientProvider } from "@/features/scan/scan-client"
 import { LinksView } from "../features/links-view"
 import { Frame, SignInScreen } from "../features/sign-in-screen"
 import { WebSettingsView } from "../features/web-settings-view"
@@ -35,6 +41,7 @@ import { WebUnlockScreen } from "../features/web-unlock-screen"
 /** The screens the web vault has beside the vault's views. */
 const WEB_SCREENS: ReadonlyArray<ShellScreen> = [
   ["sharing", "link", "Links"],
+  ["people", "group", "People"],
   ["devices", "devices", "Devices"],
   ["settings", "settings", "Settings"],
 ]
@@ -102,6 +109,8 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
     [status, refreshWeb],
   )
   useLockWatch(onLockState)
+  // Typed secrets go when the tab hides or stays out of focus (docs/plan/26-desktop-finish.md §7).
+  useSecretWipe(useCallback((n: number) => toast(n === 1 ? "Lockdown cleared a password you were typing while the tab was away." : `Lockdown cleared ${n} passwords you were typing while the tab was away.`), []))
 
   const list = useCallback(() => {
     client
@@ -261,6 +270,7 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
           )}
           {nav.area === "codes" && <CodesView rows={rows ?? []} onChanged={syncThenList} />}
           {nav.area === "sharing" && <LinksView link={link} clipboard={clipboard} />}
+          {nav.area === "people" && <PeopleView link={link} onNotice={notice} />}
           {nav.area === "devices" && <DevicesView status={status} onChanged={syncThenList} onNotice={notice} />}
           {nav.area === "settings" && <WebSettingsView server={server} login={web.login ?? ""} onLock={setLock} onSignOut={signOut} />}
         </AppShell>
@@ -308,5 +318,21 @@ function openTab(url: string) {
  */
 function WebDepth({ link, children }: { link: Link; children: ReactNode }) {
   const depth = useMemo(() => webDepthClient(link, openTab), [link])
-  return <DepthClientProvider value={depth}>{children}</DepthClientProvider>
+  const quick = useMemo(() => webQuickClient(link), [link])
+  const scan = useMemo(() => webScanClient(link, openActivation), [link])
+  const hygiene = useMemo(() => webHygieneClient(link), [link])
+  return (
+    <DepthClientProvider value={depth}>
+      <QuickClientProvider value={quick}>
+        <ScanClientProvider value={scan}>
+          <HygieneClientProvider value={hygiene}>{children}</HygieneClientProvider>
+        </ScanClientProvider>
+      </QuickClientProvider>
+    </DepthClientProvider>
+  )
+}
+
+/** An approved activation page (https, on the signed list) in a new tab. */
+function openActivation(url: string) {
+  if (url.startsWith("https://")) window.open(url, "_blank", "noopener")
 }

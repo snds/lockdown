@@ -23,6 +23,13 @@ serde.workspace = true
 serde_bytes.workspace = true
 thiserror.workspace = true
 
+# Locking secret pages out of swap and turning core dumps off (src/locked.rs).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Memory", "Win32_System_SystemInformation"] }
+
 [features]
 # Lowers the Argon2id floor so a debug-mode test finishes in milliseconds.
 # Forwards to the identity crate's feature of the same name. Never enable it

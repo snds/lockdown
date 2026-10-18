@@ -44,6 +44,7 @@
 //!   manifest, as they travel between machines, with device revocations
 //! - [`transparency`] — the key-transparency log's leaves, signed tree heads,
 //!   the citation a vault head carries, and the exported checkpoint
+//! - [`search`] — the quick-access index every shell searches: ranked, typo-tolerant, over plain summary words only
 
 pub mod attachment;
 pub mod compose;
@@ -62,6 +63,7 @@ pub mod manifest;
 pub mod organization;
 pub mod phrase_check;
 pub mod pq;
+pub mod search;
 pub mod send;
 pub mod sharing;
 pub mod signer;

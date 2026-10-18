@@ -22,6 +22,7 @@
 //! - [`rand`] — random bytes from the operating system
 //! - [`generator`] — the password generator: uniform draws from that source under a rule
 //! - [`secret`] — key and plaintext types that zero their memory on drop
+//! - [`locked`] — the pages under those types kept out of swap; core dumps off
 //! - [`auth`] — account login: OPAQUE (RFC 9807) as a pure state machine, behind [`AccountAuth`]
 //! - [`cbor`] — canonical CBOR, the encoding every piece of associated data uses
 
@@ -32,6 +33,7 @@ pub mod generator;
 pub mod hash;
 pub mod kdf;
 pub mod kem;
+pub mod locked;
 pub mod merkle;
 pub mod pq_sign;
 pub mod rand;

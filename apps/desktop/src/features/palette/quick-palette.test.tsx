@@ -8,6 +8,9 @@ import { TemplatesProvider } from "@/app/templates"
 import { ClientProvider, type Client } from "@/core/client"
 import type { GateInput, ItemSummary } from "@/core/types"
 import { fakeClient } from "@/test/fake-client"
+import { fakeQuick } from "@/test/fake-quick"
+import { HygieneClientProvider, type HygieneClient } from "@/features/hygiene/hygiene-client"
+import { QuickClientProvider, type QuickClient } from "@/features/quick/quick-client"
 import { TEMPLATES } from "@/test/templates-fixture"
 
 import { matches, searchWords } from "./palette-model"
@@ -39,15 +42,32 @@ const ROWS: ItemSummary[] = [
   row({ id: "t1", kind: "note", title: "Old plans", state: "trashed" }),
 ]
 
-function Harness({ client, onOpen, onNotice, rows = ROWS }: { client: Client; onOpen: (id: string) => void; onNotice: (t: string) => void; rows?: ItemSummary[] }) {
+function Harness({
+  client,
+  onOpen,
+  onNotice,
+  rows = ROWS,
+  quick,
+  hygiene,
+}: {
+  client: Client
+  onOpen: (id: string) => void
+  onNotice: (t: string) => void
+  rows?: ItemSummary[]
+  quick?: QuickClient
+  hygiene?: HygieneClient
+}) {
   const [open, setOpen] = useState(false)
+  const palette = <QuickPalette open={open} onOpenChange={setOpen} rows={rows} onOpen={onOpen} onNotice={onNotice} />
   return (
     <ClientProvider value={client}>
       <SettingsProvider>
         <TemplatesProvider>
           <GateProvider>
-            <p>window</p>
-            <QuickPalette open={open} onOpenChange={setOpen} rows={rows} onOpen={onOpen} onNotice={onNotice} />
+            <QuickClientProvider value={quick ?? fakeQuick(rows)}>
+              <p>window</p>
+              {hygiene ? <HygieneClientProvider value={hygiene}>{palette}</HygieneClientProvider> : palette}
+            </QuickClientProvider>
           </GateProvider>
         </TemplatesProvider>
       </SettingsProvider>
@@ -165,7 +185,9 @@ describe("the quick-access palette (D111)", () => {
         <SettingsProvider>
           <TemplatesProvider>
             <GateProvider>
-              <Many />
+              <QuickClientProvider value={fakeQuick(rows)}>
+                <Many />
+              </QuickClientProvider>
             </GateProvider>
           </TemplatesProvider>
         </SettingsProvider>
@@ -178,5 +200,87 @@ describe("the quick-access palette (D111)", () => {
     await user.click(screen.getByRole("button", { name: "Confirm" }))
     await waitFor(() => expect(copySecret).toHaveBeenLastCalledWith("j1", "seed", 30, { confirmed: true }))
     expect(onNotice).toHaveBeenCalledWith("Copied the recovery phrase. The clipboard clears in 30 seconds.")
+  })
+
+  it("has its search in focus when it opens, and says when a result is a close match", async () => {
+    render(<Harness client={fakeClient({ templates: () => Promise.resolve(TEMPLATES) })} onOpen={() => {}} onNotice={() => {}} quick={fakeQuick(ROWS, {}, { forun: ["l1"] })} />)
+    const user = userEvent.setup()
+    await user.keyboard("{Control>}k{/Control}")
+    const input = await screen.findByPlaceholderText(/Search titles/)
+    await waitFor(() => expect(input).toHaveFocus())
+    await user.type(input, "forun")
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1))
+    expect(screen.getByRole("option", { name: /Forum/ })).toHaveTextContent("Close match")
+  })
+
+  it("Alt+Enter shows a code in place, kept out of screen captures, through the core", async () => {
+    const quickCode = vi.fn<QuickClient["quickCode"]>(() => Promise.resolve(new TextEncoder().encode("482913")))
+    const protect = vi.fn<HygieneClient["protect"]>(() => Promise.resolve(true))
+    render(
+      <Harness
+        client={fakeClient({ templates: () => Promise.resolve(TEMPLATES) })}
+        onOpen={() => {}}
+        onNotice={() => {}}
+        quick={fakeQuick(ROWS, { quickCode })}
+        hygiene={{ protect, memory: () => Promise.resolve(null) }}
+      />,
+    )
+    const user = userEvent.setup()
+    await user.keyboard("{Control>}k{/Control}")
+    await user.type(await screen.findByPlaceholderText(/Search titles/), "bank")
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1))
+    await user.keyboard("{Alt>}{Enter}{/Alt}")
+    expect(await screen.findByLabelText("Code 4 8 2 9 1 3")).toBeInTheDocument()
+    expect(quickCode).toHaveBeenCalledWith("c1", "code.0", {})
+    expect(protect).toHaveBeenCalledWith(true)
+    // The action bar offers it by pointer too; a login has no code to show.
+    expect(screen.getByRole("button", { name: /Show code/ })).toBeInTheDocument()
+  })
+
+  it("Shift+Enter fills a login in the browser; never a crown jewel", async () => {
+    const quickFill = vi.fn<QuickClient["quickFill"]>(() => Promise.resolve({ url: "https://forum.example.com/login", host: "forum.example.com", waits_secs: 120 }))
+    const onNotice = vi.fn()
+    render(<Harness client={fakeClient({ templates: () => Promise.resolve(TEMPLATES) })} onOpen={() => {}} onNotice={onNotice} quick={fakeQuick(ROWS, { quickFill })} />)
+    const user = userEvent.setup()
+    await user.keyboard("{Control>}k{/Control}")
+    await user.type(await screen.findByPlaceholderText(/Search titles/), "forum")
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1))
+    await screen.findByRole("button", { name: /Fill in the browser/ })
+    await user.keyboard("{Shift>}{Enter}{/Shift}")
+    await waitFor(() => expect(quickFill).toHaveBeenCalledWith("l1"))
+    expect(onNotice).toHaveBeenCalledWith(expect.stringContaining("Opened forum.example.com"))
+    await user.keyboard("{Control>}k{/Control}")
+    await user.type(await screen.findByPlaceholderText(/Search titles/), "cold")
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1))
+    expect(screen.queryByRole("button", { name: /Fill in the browser/ })).not.toBeInTheDocument()
+  })
+
+  it("the quick-access window draws it in place; Escape hides the window", async () => {
+    const hide = vi.fn<QuickClient["hide"]>(() => Promise.resolve())
+    const openMain = vi.fn<QuickClient["openMain"]>(() => Promise.resolve())
+    render(
+      <ClientProvider value={fakeClient({ templates: () => Promise.resolve(TEMPLATES) })}>
+        <SettingsProvider>
+          <TemplatesProvider>
+            <GateProvider>
+              <QuickClientProvider value={fakeQuick(ROWS, { hide, openMain })}>
+                <QuickPalette inline open onOpenChange={() => {}} rows={ROWS} onOpen={() => {}} onNotice={() => {}} />
+              </QuickClientProvider>
+            </GateProvider>
+          </TemplatesProvider>
+        </SettingsProvider>
+      </ClientProvider>,
+    )
+    const user = userEvent.setup()
+    const input = await screen.findByPlaceholderText(/Search titles/)
+    await waitFor(() => expect(input).toHaveFocus())
+    await user.type(input, "home")
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1))
+    await user.keyboard("{Enter}")
+    await waitFor(() => expect(openMain).toHaveBeenCalledWith("w1"))
+    expect(hide).toHaveBeenCalled()
+    await user.type(input, "x")
+    await user.keyboard("{Escape}")
+    expect(hide).toHaveBeenCalledTimes(2)
   })
 })

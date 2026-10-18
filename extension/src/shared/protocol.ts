@@ -21,6 +21,8 @@ export interface LoginCandidate {
   password: boolean
   code_field: string | null
   edited_at: number
+  /** Quick access asked to fill this login here a moment ago (docs/plan/26-desktop-finish.md §1); it comes first. */
+  asked?: boolean
 }
 
 export interface PageMatches {
@@ -57,7 +59,16 @@ export interface SearchItem {
   host: string
   subtitle: string
   crown_jewel: boolean
-  copy: { label: string; how: string } | null
+  copy: { label: string; how: string; field_id?: string } | null
+  /** `false` when the core's index forgave a typo to find it (docs/plan/26-desktop-finish.md §1). */
+  exact?: boolean
+}
+
+/** A one-time code shown in the popup: the code valid now and how long it lasts. */
+export interface ShownCode {
+  code: string
+  seconds_left: number | null
+  title: string
 }
 
 export interface SaveOffer {

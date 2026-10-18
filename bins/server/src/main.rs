@@ -10,6 +10,7 @@
 //!                 [--trusted-proxy CIDR]... [--blob-dir DIR]
 //!                 [--session-ttl SECS] [--signups open|closed]
 //!                 [--max-blob BYTES] [--blob-grace SECS]
+//!                 [--address-burst N] [--login-burst N]
 //!                 [--breach-feed-url URL] [--breach-feed-key KEY]
 //!                 [--breach-scan-hours N] [--breach-scan-pause-ms MS]
 //! lockdown-server backup keygen | create --out FILE | verify --in FILE
@@ -24,7 +25,8 @@
 //! `LOCKDOWN_HSTS_MAX_AGE`, `LOCKDOWN_REDIRECT_HTTP`,
 //! `LOCKDOWN_INSECURE_HTTP`, `LOCKDOWN_TRUSTED_PROXIES` (comma-separated),
 //! `LOCKDOWN_BLOB_DIR`, `LOCKDOWN_SESSION_TTL`, `LOCKDOWN_SIGNUPS`,
-//! `LOCKDOWN_MAX_BLOB`, `LOCKDOWN_BLOB_GRACE`, `LOCKDOWN_BREACH_FEED_URL`,
+//! `LOCKDOWN_MAX_BLOB`, `LOCKDOWN_BLOB_GRACE`, `LOCKDOWN_ADDRESS_BURST`,
+//! `LOCKDOWN_LOGIN_BURST`, `LOCKDOWN_BREACH_FEED_URL`,
 //! `LOCKDOWN_BREACH_FEED_KEY`, `LOCKDOWN_BREACH_SCAN_HOURS`,
 //! `LOCKDOWN_BREACH_SCAN_PAUSE_MS`, `LOCKDOWN_BACKUP_KEY`) so a container
 //! needs no command line. The email breach monitor runs only with a feed
@@ -364,6 +366,15 @@ struct ServeArgs {
     /// How long a blob nothing names is kept before it is collected, in seconds.
     #[arg(long, env = "LOCKDOWN_BLOB_GRACE", default_value_t = lockdown_server::DEFAULT_BLOB_GRACE.as_secs())]
     blob_grace: u64,
+    /// How many sign-in steps one client address may take in a burst before
+    /// the brake slows it to one every two seconds. Raise it where many
+    /// people reach the server from one address (an office behind NAT).
+    #[arg(long, env = "LOCKDOWN_ADDRESS_BURST", default_value_t = lockdown_server::Config::default().per_address.0)]
+    address_burst: u32,
+    /// How many sign-in steps one login name may take in a burst before the
+    /// brake slows it to one every six seconds.
+    #[arg(long, env = "LOCKDOWN_LOGIN_BURST", default_value_t = lockdown_server::Config::default().per_login.0)]
+    login_burst: u32,
     /// How many bytes of attachments the vaults one account owns may hold;
     /// 0 is no limit.
     #[arg(long, env = "LOCKDOWN_ATTACHMENT_QUOTA", default_value_t = lockdown_server::DEFAULT_ATTACHMENT_QUOTA)]
@@ -563,6 +574,14 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
         max_blob_bytes: cli.max_blob,
         blob_grace: Duration::from_secs(cli.blob_grace),
         attachment_quota: (cli.attachment_quota > 0).then_some(cli.attachment_quota),
+        per_address: (
+            cli.address_burst.max(1),
+            lockdown_server::Config::default().per_address.1,
+        ),
+        per_login: (
+            cli.login_burst.max(1),
+            lockdown_server::Config::default().per_login.1,
+        ),
         trusted_proxies,
         web_vault: match cli.web_vault {
             Some(dir) if dir.join("index.html").is_file() => Some(dir),
@@ -574,7 +593,6 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
             }
             None => None,
         },
-        ..Config::default()
     };
     let web = config.web_vault.is_some();
     let database = match &cli.store.database_url {
