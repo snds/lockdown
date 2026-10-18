@@ -19,6 +19,7 @@
 //! - [`api`] — the handlers; the wire types are `lockdown_sync::wire`
 //! - [`alerts`] — account alerts: a new device's sign-in, an email breach
 //! - [`breach_monitor`] — the email breach job over an injectable feed
+//! - [`breach_range`] — an operator's own breach feed, by k-anonymity
 //! - [`sessions`] — one row per session token, so a session can be ended
 //! - [`live`] — the live channel: content-free "something changed" events
 //! - [`tls`] — TLS on the server itself, hybrid post-quantum first
@@ -44,6 +45,7 @@ pub mod alerts;
 pub mod api;
 pub mod backup;
 pub mod breach_monitor;
+pub mod breach_range;
 pub mod client_addr;
 pub mod db;
 pub mod keys;

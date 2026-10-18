@@ -54,6 +54,9 @@ bytes = "1"
 # SDK.
 hmac.workspace = true
 sha2.workspace = true
+# The operator's own breach feed (breach_range.rs): addresses by SHA-1
+# range, as Pwned Passwords' k-anonymity does.
+sha1.workspace = true
 url.workspace = true
 
 [dev-dependencies]

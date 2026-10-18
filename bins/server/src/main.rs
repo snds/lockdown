@@ -324,6 +324,26 @@ struct ServeArgs {
         hide_env_values = true
     )]
     breach_feed_key: Option<String>,
+    /// A breach feed of your own, looked up by k-anonymity: a range file
+    /// (`SHA1(address):Breach;Breach` lines, read on this machine) or a
+    /// range service (`https://…`, sent the hash's first six hex digits
+    /// only). No paid key needed.
+    #[arg(
+        long,
+        env = "LOCKDOWN_BREACH_RANGE",
+        value_name = "FILE|URL",
+        conflicts_with = "breach_feed_url"
+    )]
+    breach_range: Option<String>,
+    /// Breach details for the range feed: Have I Been Pwned's free breach
+    /// list (`/api/v3/breaches`, JSON), saved to a file.
+    #[arg(
+        long,
+        env = "LOCKDOWN_BREACH_CATALOG",
+        value_name = "FILE",
+        requires = "breach_range"
+    )]
+    breach_catalog: Option<PathBuf>,
     /// Hours between breach checks of every account.
     #[arg(long, env = "LOCKDOWN_BREACH_SCAN_HOURS", default_value_t = 24)]
     breach_scan_hours: u64,
@@ -439,13 +459,41 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
     };
     let web = config.web_vault.is_some();
     let state = Arc::new(AppState::new(Box::new(storage), keys, config));
-    if let Some(url) = cli.breach_feed_url.as_deref() {
-        let feed = lockdown_server::breach_monitor::HttpBreachFeed::new(url, cli.breach_feed_key)?;
+    let feed: Option<Box<dyn lockdown_server::breach_monitor::BreachFeed>> =
+        match (cli.breach_feed_url.as_deref(), cli.breach_range.as_deref()) {
+            (Some(url), _) => Some(Box::new(
+                lockdown_server::breach_monitor::HttpBreachFeed::new(url, cli.breach_feed_key)?,
+            )),
+            (None, Some(range)) => {
+                let catalog = match &cli.breach_catalog {
+                    Some(path) => lockdown_server::breach_range::Catalog::load(path)?,
+                    None => lockdown_server::breach_range::Catalog::default(),
+                };
+                let feed = lockdown_server::breach_range::RangeBreachFeed::new(range, catalog)?;
+                eprintln!(
+                    "lockdown-server: email breach monitoring over the {}",
+                    feed.describe()
+                );
+                Some(Box::new(feed))
+            }
+            (None, None) => None,
+        };
+    if let Some(feed) = feed {
+        // A range file is local: no feed rate limit to keep under.
+        let pause = if cli
+            .breach_range
+            .as_deref()
+            .is_some_and(|r| !r.contains("://"))
+        {
+            Duration::ZERO
+        } else {
+            Duration::from_millis(cli.breach_scan_pause_ms)
+        };
         lockdown_server::breach_monitor::spawn(
             state.clone(),
-            Box::new(feed),
+            feed,
             Duration::from_secs(cli.breach_scan_hours.max(1) * 3600),
-            Duration::from_millis(cli.breach_scan_pause_ms),
+            pause,
         )
         .map_err(|e| format!("couldn't start the breach monitor: {e}"))?;
     }

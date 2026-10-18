@@ -233,3 +233,66 @@ async fn an_account_replaces_and_reads_its_watched_addresses() {
     let (status, _) = call(&router, "GET", "/v1/account/monitored", None, Vec::new()).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+#[test]
+fn an_operators_range_file_raises_breach_alerts_without_a_paid_key() {
+    use lockdown_server::alerts::AlertStore;
+    use lockdown_server::breach_monitor::scan_once;
+    use lockdown_server::breach_range::{Catalog, RangeBreachFeed};
+    use lockdown_server::storage::{SqlStorage, Storage};
+
+    let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let feed = RangeBreachFeed::new(
+        fixtures.join("breach-range.txt").to_str().unwrap(),
+        Catalog::load(&fixtures.join("breaches.json")).unwrap(),
+    )
+    .unwrap();
+    let s = SqlStorage::open_scratch().unwrap();
+    let sean = s
+        .create_account("sean@example.com", lockdown_vault::Id::new(), b"pf")
+        .unwrap();
+    let device = lockdown_vault::Id::new();
+    s.register_device(sean.account_id, device, &[1; 32])
+        .unwrap();
+    s.set_monitored(sean.account_id, &["alias.42@example.net".to_string()])
+        .unwrap();
+    s.create_account("clean@example.com", lockdown_vault::Id::new(), b"pf")
+        .unwrap();
+    let report = scan_once(&s, &feed, 100, std::time::Duration::ZERO).unwrap();
+    assert_eq!((report.checked, report.alerts, report.failed), (3, 3, 0));
+    let alerts = s.alerts_for(sean.account_id, device, 0).unwrap();
+    let seen: Vec<(String, String, Option<String>)> = alerts
+        .iter()
+        .map(|a| {
+            let b = a.breach.as_ref().unwrap();
+            (b.address.clone(), b.name.clone(), b.domain.clone())
+        })
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            (
+                "sean@example.com".into(),
+                "ExampleShop".into(),
+                Some("shop.example".into())
+            ),
+            (
+                "sean@example.com".into(),
+                "ForumLeak".into(),
+                Some("forum.example".into())
+            ),
+            (
+                "alias.42@example.net".into(),
+                "ForumLeak".into(),
+                Some("forum.example".into())
+            ),
+        ]
+    );
+    assert_eq!(
+        scan_once(&s, &feed, 200, std::time::Duration::ZERO)
+            .unwrap()
+            .alerts,
+        0,
+        "each breach once per address"
+    );
+}

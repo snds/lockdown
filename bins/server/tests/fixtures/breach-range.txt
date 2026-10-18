@@ -1,0 +1,5 @@
+# A breach range fixture: SHA-1 of each lower-cased address, then its breaches.
+# Made for the tests; every address is under example.com or example.net.
+34F728525AFA8C9F9F3CEEA4AF41987DDC44FC9A:ExampleShop;ForumLeak
+07B1E5003330FA6A16F1DFAE56FE84480149ADD5:ForumLeak
+34DAA904F06307ACEA40ED90DA98D5740B1F17D1:ExampleShop
