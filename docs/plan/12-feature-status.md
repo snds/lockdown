@@ -6,7 +6,7 @@ _Generated from `feature-status.json` (as of `dd7f045`) by `render-feature-statu
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **33** | **44** | **35** | **10** |
+| **All 122 v1 features** | **33** | **45** | **34** | **10** |
 | [Vault & item types](#vault--item-types) | 4 | 8 | 0 | 0 |
 | [Organization & search](#organization--search) | 6 | 1 | 0 | 0 |
 | [Autofill (browser)](#autofill-browser) | 7 | 1 | 1 | 0 |
@@ -20,7 +20,7 @@ _Generated from `feature-status.json` (as of `dd7f045`) by `render-feature-statu
 | [Privacy](#privacy) | 0 | 1 | 1 | 0 |
 | [Import/export & portability](#importexport--portability) | 3 | 3 | 2 | 0 |
 | [Self-hosting & deployment](#self-hosting--deployment) | 0 | 2 | 1 | 1 |
-| [Security architecture & crypto](#security-architecture--crypto) | 4 | 8 | 5 | 0 |
+| [Security architecture & crypto](#security-architecture--crypto) | 4 | 9 | 4 | 0 |
 | [Platforms & apps](#platforms--apps) | 2 | 3 | 3 | 1 |
 | [Trust & transparency](#trust--transparency) | 0 | 1 | 1 | 8 |
 
@@ -28,7 +28,7 @@ _Generated from `feature-status.json` (as of `dd7f045`) by `render-feature-statu
 
 ## Where things stand
 
-No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser extension exists: extension/ holds only the wasm matcher boundary, its JSON schema and a Playwright clickjacking harness. The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI and the self-host server. The CLI still carries its own copy of the flows and handles logins only for item kinds. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 today; the plan leaves the licence open (05-self-host §12 asks Sean between AGPL-3.0 and a source-available licence for the server), so oss-clients and oss-server wait on that call. Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for desktop, CLI and server only; every one still needs its mobile and extension half when those surfaces exist.
+No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is no web vault yet. The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and its web half once the web vault exists. OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.
 
 ## Vault & item types
 
@@ -168,11 +168,11 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser 
 - [ ] **Post-quantum key wrapping**: Partial · core. Wrapping vault, sharing, organisation and recovery keys to hybrid recipients, and ML-DSA signatures.
 - [ ] **New-device approval with code match**: Partial · core, desktop. Approving a new device from an existing one over an authenticated channel (a device joins with the password and kit today).
 - [ ] **Memory hygiene**: Partial · core, desktop. Locked memory pages kept out of swap; the webview still holds typed and revealed strings briefly (D91).
-- [ ] **High-risk item class**: Partial · core, desktop. Keep crown jewels out of bulk export unless opted in per item (they are exported today), moving an item into or out of the class, and the legacy-release rule.
+- [ ] **Verified local connections**: Partial · desktop, extension. Code-signature checks on macOS and Windows and the Windows named-pipe transport; on Linux and macOS the native host and the desktop check each other by path and SHA-256 today.
+- [ ] **High-risk item class**: Partial · core, desktop. The legacy-release rule. Crown jewels stay out of exports and backups unless opted in per item (D121), and items move into and out of the class.
 - [ ] **Post-quantum transport**: Not started · nowhere yet. Everything: hybrid X25519MLKEM768 TLS on the client and the self-host server.
 - [ ] **Hardware-backed biometric unlock**: Not started · nowhere yet. Everything: key slots in the Secure Enclave, StrongBox or TPM that reset when biometrics change.
 - [ ] **Security-key 2FA on the account**: Not started · nowhere yet. Everything: FIDO2 keys and passkeys as account second factors.
-- [ ] **Verified local connections**: Not started · nowhere yet. Everything: native-messaging and IPC peer checks by code signature or process identity on every OS.
 - [ ] **Per-item exposure tiers**: Not started · nowhere yet. Everything: the three per-item tiers and the approval default for high-risk items.
 
 ## Platforms & apps

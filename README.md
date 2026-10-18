@@ -14,7 +14,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**167 decisions, fifteen build slices, no release yet (2026-10-18).** Of the 122 features committed to v1, 33 are done, 44 are partial, 35 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server and a first browser extension (Chromium and Firefox, through the desktop app) exist; the web vault and the mobile apps do not yet.
+**167 decisions, fifteen build slices, no release yet (2026-10-18).** Of the 122 features committed to v1, 33 are done, 45 are partial, 34 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server and a first browser extension (Chromium and Firefox, through the desktop app) exist; the web vault and the mobile apps do not yet.
 
 | Slice | What it delivered |
 |---|---|

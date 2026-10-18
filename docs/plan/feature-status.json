@@ -1,7 +1,7 @@
 {
  "as_of": "dd7f045",
  "source": "docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)",
- "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). No browser extension exists: extension/ holds only the wasm matcher boundary, its JSON schema and a Playwright clickjacking harness. The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI and the self-host server. The CLI still carries its own copy of the flows and handles logins only for item kinds. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 today; the plan leaves the licence open (05-self-host §12 asks Sean between AGPL-3.0 and a source-available licence for the server), so oss-clients and oss-server wait on that call. Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for desktop, CLI and server only; every one still needs its mobile and extension half when those surfaces exist.",
+ "notes": "No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton) and there is no web vault yet. The shipped surfaces today are the core crates, the Tauri desktop app (built and tested on Linux in CI; macOS and Windows only compile-checked for platform-auth), the `lockdown` CLI, the self-host server, and an MV3 browser extension for Chromium and Firefox that works through the running desktop app (doc 16; Linux and macOS only until the identity crate has a Windows named-pipe transport; only Chromium is exercised in tests). The CLI still carries its own copy of several flows. policy, approval, bridge-host and ffi are skeletons. The code is licensed Apache-2.0 (D120). Client TLS uses rustls on ring (no post-quantum key exchange) and the server speaks plain HTTP. Rows judged `done` are done for today's surfaces only; each still needs its mobile half, and its web half once the web vault exists. OS-level integration and native mobile are deferred (D122): those rows carry `deferred`.",
  "non_v1_built": [
   {
    "id": "cli",
@@ -1853,9 +1853,12 @@
    "name": "Verified local connections",
    "target": "beat",
    "review": false,
-   "status": "not-started",
-   "surfaces": [],
-   "left": "Everything: native-messaging and IPC peer checks by code signature or process identity on every OS.",
+   "status": "partial",
+   "surfaces": [
+    "desktop",
+    "extension"
+   ],
+   "left": "Code-signature checks on macOS and Windows and the Windows named-pipe transport; on Linux and macOS the native host and the desktop check each other by path and SHA-256 today.",
    "evidence": [
     "D33 (process-identity check lives in the identity crate's Linux handshake, unused by Lockdown)",
     "D4"
@@ -1874,7 +1877,7 @@
     "core",
     "desktop"
    ],
-   "left": "Keep crown jewels out of bulk export unless opted in per item (they are exported today), moving an item into or out of the class, and the legacy-release rule.",
+   "left": "The legacy-release rule. Crown jewels stay out of exports and backups unless opted in per item (D121), and items move into and out of the class.",
    "evidence": [
     "crates/vault/src/crown_jewel.rs:12 CROWN_JEWEL_RULES",
     "crates/vault/src/vault.rs:1602 crown_jewel_items_need_the_crown_jewel_key",
