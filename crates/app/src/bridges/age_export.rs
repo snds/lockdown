@@ -4,9 +4,14 @@
 //! gate like every export (D101, D141).
 
 use std::path::PathBuf;
+// The clock and the gate are only used by the native export; the web
+// vault's stand-in below refuses in words (doc 17 §10).
+#[cfg(feature = "native")]
 use std::time::Instant;
 
-use crate::{App, AppError, AppResult, ApprovalKind, ExportDone, GateInput};
+#[cfg(feature = "native")]
+use crate::ApprovalKind;
+use crate::{App, AppError, AppResult, ExportDone, GateInput};
 
 impl App {
     /// Writes every vault (or the one `vault` names) to `path`, sealed to

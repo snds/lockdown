@@ -285,6 +285,7 @@ impl Session {
     /// sealed with age to `recipients` (docs/plan/23-bridges.md §11). The
     /// same document a Lockdown export holds, so the same crown jewels are
     /// left out (D121) and listed.
+    #[cfg(feature = "native")]
     pub(crate) fn export_to_recipients(
         &self,
         recipients: &[String],
