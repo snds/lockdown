@@ -32,6 +32,9 @@ import { VaultView } from "@/features/vault/vault-view"
 import { useLive } from "@/features/sessions/use-live"
 import { LiveClientProvider } from "@/features/sessions/live-client"
 import { tauriLiveClient } from "@/app/tauri-live"
+import { tauriDepthClient } from "@/app/tauri-depth"
+import { DepthClientProvider } from "@/features/depth/depth-client"
+import { RemindersPrompt } from "@/features/depth/reminders"
 
 /**
  * Locked is the default state. `status` is set when the core opened the
@@ -178,6 +181,7 @@ function Root() {
       />
       <PairingDialog onNotice={notice} />
       <PasskeyApprovalDialog onNotice={notice} />
+      <RemindersPrompt onNotice={notice} onChanged={refreshStatus} />
       </VaultsProvider>
     </LockedProvider>
   )
@@ -191,7 +195,9 @@ export default function App() {
           <TemplatesProvider>
             <GateProvider>
               <LiveClientProvider value={tauriLiveClient}>
-                <Root />
+                <DepthClientProvider value={tauriDepthClient}>
+                  <Root />
+                </DepthClientProvider>
               </LiveClientProvider>
             </GateProvider>
           </TemplatesProvider>

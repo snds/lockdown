@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
 use crate::session::Paths;
-use crate::session::recovery::DrillCheck;
+pub use crate::session::recovery::DrillCheck;
 use crate::{App, AppError, AppResult, ApprovalKind, ErrorCode, GateInput};
 
 const FILE: &str = "reminders.cbor";

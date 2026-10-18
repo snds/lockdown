@@ -6,6 +6,7 @@ import { PaneHeader } from "@/components/master-detail"
 import { decodeAndWipe } from "@/core/secret-bytes"
 import type { OncePage as OncePageData, Status } from "@/core/types"
 import { KitDialog } from "@/features/account/kit-dialog"
+import { DrillSection } from "@/features/depth/reminders"
 import { OncePage, type ShownPage } from "@/features/status/once-page"
 
 interface RecoveryViewProps {
@@ -70,6 +71,7 @@ export function RecoveryView({ status, onChanged, onNotice }: RecoveryViewProps)
           </ItemContent>
         </Item>
       </ItemGroup>
+      {kit !== "none" && <DrillSection key={kit} />}
       <KitDialog
         kind={dialog}
         hasAccount={status.account !== null}

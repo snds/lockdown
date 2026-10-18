@@ -48,6 +48,10 @@ pub struct LinkView {
     /// The QR payload (`lockdown:link:v1?…`): the server, the code and this
     /// device's fingerprint.
     pub qr: String,
+    /// The same as a QR code's module rows, for the shell to draw
+    /// (`crate::qr`); only while the link waits for the new device.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub qr_rows: Vec<String>,
     /// When the link closes on its own.
     pub expires_at: i64,
     /// The six digits, once the new device asked.
@@ -99,6 +103,11 @@ impl Session {
             state: link.state.into(),
             code: link.code.clone(),
             qr: link.qr.clone(),
+            qr_rows: if link.state == "waiting" {
+                crate::qr::rows(&link.qr).0
+            } else {
+                Vec::new()
+            },
             expires_at: link.expires_at,
             sas: link.asked.as_ref().map(|a| a.0.clone()),
             device_name: link.asked.as_ref().map(|a| a.1.clone()),

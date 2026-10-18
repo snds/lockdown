@@ -101,6 +101,7 @@ x-wing = { version = "0.1", default-features = false, features = ["zeroize", "ge
 # (04-security §2 "ML-DSA slot"; docs/plan/22-security-depth.md §6). Same
 # RustCrypto generation as `ml-kem` 0.3 (module-lattice, shake).
 ml-dsa = { version = "0.1.1", default-features = false, features = ["alloc", "zeroize"] }
+qrcode = { version = "0.14.1", default-features = false }
 blake3 = "1.8"
 # The passkey authenticator's P-256 ECDSA and Ed25519 (crates/passkey): the
 # same `ring` rustls already links on its `ring` provider.

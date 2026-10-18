@@ -25,11 +25,12 @@
 use std::time::Instant;
 
 use lockdown_sync::HttpTransport;
-use lockdown_sync::account_security::SecurityKeyList;
+pub use lockdown_sync::account_security::{SecurityKeyInfo, SecurityKeyList};
 use serde::Serialize;
 use zeroize::Zeroizing;
 
-use crate::session::devices_link::{JoinView, Joining, LinkView, SignIn, finish_joined};
+pub use crate::session::devices_link::{JoinView, LinkView};
+use crate::session::devices_link::{Joining, SignIn, finish_joined};
 use crate::session::second_factor::{Then, WaitingSignIn, sign_in_new_device};
 use crate::{App, AppError, AppResult, ApprovalKind, ErrorCode, GateInput, Registered, Status};
 

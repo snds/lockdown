@@ -24,6 +24,8 @@ import { useGate } from "@/app/gate"
 import { AccessNote, ItemShare } from "@/features/sharing/item-share"
 import { PasskeysBlock } from "@/features/passkeys/passkeys-block"
 
+import { ItemProtection } from "@/features/depth/item-protection"
+
 import { ItemCrownJewel } from "./crown-jewel"
 import { sectionsOf } from "./detail-model"
 import { conflictPair, kindLabel } from "./list-model"
@@ -280,6 +282,7 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
       {!trashed && <ItemSecurity key={`${item.id}:${item.version}`} itemId={item.id} onNotice={onNotice} />}
       {item.crown_jewel ? <ItemCrownJewel title={title}>{body}</ItemCrownJewel> : body}
       {item.crown_jewel && !trashed && <ExportOptIn item={item} onChanged={setItem} onNotice={onNotice} />}
+      {!trashed && !fillOnly && <ItemProtection key={`${item.id}:${item.version}`} itemId={item.id} crownJewel={item.crown_jewel === true} onNotice={onNotice} />}
       {!fillOnly && (
         <FilesPanel
           itemId={item.id}

@@ -18,7 +18,7 @@ use std::time::Instant;
 
 use lockdown_vault::exposure::Exposure;
 
-use crate::session::exposure::ExposureView;
+pub use crate::session::exposure::ExposureView;
 use crate::{App, AppError, AppResult, ApprovalKind, Core, GateInput};
 
 fn item_id(id: &str) -> AppResult<lockdown_vault::Id> {

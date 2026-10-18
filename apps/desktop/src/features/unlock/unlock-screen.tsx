@@ -5,6 +5,8 @@ import { Button, Field, FieldDescription, FieldError, FieldGroup, FieldLabel, In
 import { useSettings } from "@/app/settings"
 import { describeError, useClient } from "@/core/client"
 import type { LockReason, Probe, Status } from "@/core/types"
+import { needsSecurityKey } from "@/features/depth/depth-client"
+import { JoinWithDevice, SecondFactorWait } from "@/features/depth/join-device"
 
 import { FirstRunCreate, Step } from "./first-run"
 
@@ -163,6 +165,7 @@ function FirstRun({ onOpened }: { onOpened: (s: Status) => void }) {
           </TabsContent>
           <TabsContent value="join">
             <JoinForm mode="join" onOpened={onOpened} />
+            <JoinWithDeviceToggle onOpened={onOpened} />
           </TabsContent>
           <TabsContent value="recover">
             <JoinForm mode="recover" onOpened={onOpened} />
@@ -180,6 +183,7 @@ function JoinForm({ mode, onOpened }: { mode: "join" | "recover"; onOpened: (s: 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notes, setNotes] = useState<string[]>([])
+  const [waiting, setWaiting] = useState<string | null>(null)
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const form = e.currentTarget
@@ -198,11 +202,27 @@ function JoinForm({ mode, onOpened }: { mode: "join" | "recover"; onOpened: (s: 
       form.reset()
       onOpened(await client.openVault(true))
     } catch (err) {
-      setError(describeError(err))
+      // A new device on an account with security keys waits for one (D253).
+      if (needsSecurityKey(err)) {
+        form.reset()
+        setWaiting(field("server"))
+      } else setError(describeError(err))
     } finally {
       setBusy(false)
     }
   }
+  if (waiting !== null)
+    return (
+      <SecondFactorWait
+        server={waiting}
+        onCancel={() => setWaiting(null)}
+        onDone={(lines) => {
+          setWaiting(null)
+          setNotes(lines)
+          void client.openVault(true).then(onOpened, (e) => setError(describeError(e)))
+        }}
+      />
+    )
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
@@ -246,5 +266,23 @@ function JoinForm({ mode, onOpened }: { mode: "join" | "recover"; onOpened: (s: 
         {mode === "join" ? "Join" : "Recover"}
       </Button>
     </form>
+  )
+}
+
+/** "With another device instead": the approval path, no kit typed. */
+function JoinWithDeviceToggle({ onOpened }: { onOpened: (s: Status) => void }) {
+  const [open, setOpen] = useState(false)
+  if (!open)
+    return (
+      <div className="mt-2">
+        <Button variant="link" size="sm" onClick={() => setOpen(true)}>
+          Join with another device instead
+        </Button>
+      </div>
+    )
+  return (
+    <div className="mt-4 border-t pt-4">
+      <JoinWithDevice onOpened={onOpened} />
+    </div>
   )
 }

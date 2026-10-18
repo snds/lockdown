@@ -23,6 +23,7 @@ import { useSettings } from "@/app/settings"
 import { describeError, useClient } from "@/core/client"
 import { decodeAndWipe } from "@/core/secret-bytes"
 import type { Status } from "@/core/types"
+import { OptOutRegister } from "@/features/depth/join-device"
 import { OncePage, type ShownPage } from "@/features/status/once-page"
 
 /**
@@ -59,6 +60,7 @@ export function FirstRunCreate({ onOpened, onCancel }: FirstRunProps) {
   const [kitOpen, setKitOpen] = useState(false)
   const [printed, setPrinted] = useState(false)
   const [remind, setRemind] = useState(true)
+  const [optOut, setOptOut] = useState(false)
 
   const createIdentity = async () => (status ?? (await client.openVault(true)))
 
@@ -148,11 +150,40 @@ export function FirstRunCreate({ onOpened, onCancel }: FirstRunProps) {
             <Button type="button" variant="ghost-muted" onClick={deviceOnly} disabled={busy}>
               This device only
             </Button>
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              onClick={() =>
+                void createIdentity().then(
+                  (opened) => {
+                    setStatus(opened)
+                    setOptOut(true)
+                  },
+                  (e) => setError(describeError(e)),
+                )
+              }
+              disabled={busy}
+            >
+              An account without a Secret Key
+            </Button>
             <Button type="button" variant="link" size="sm" onClick={onCancel} disabled={busy}>
               Back
             </Button>
           </div>
         </form>
+        <OptOutRegister
+          open={optOut}
+          server={settings.server ?? ""}
+          onClose={() => setOptOut(false)}
+          onRegistered={(page) => {
+            setOptOut(false)
+            setWithAccount(true)
+            setKit({ title: "Your recovery kit", lines: page.lines, text: page.page.length ? decodeAndWipe(page.page) : null })
+            setKitOpen(true)
+            setStep("recovery")
+          }}
+        />
       </Step>
     )
   }

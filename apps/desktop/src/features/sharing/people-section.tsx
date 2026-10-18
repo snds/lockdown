@@ -25,6 +25,7 @@ import {
 } from "@unicron/ui"
 
 import { describeError } from "@/core/client"
+import { PhraseIncomingList, PhraseInvite } from "@/features/depth/key-check"
 
 import { useSharingClient, type ContactView } from "./sharing-client"
 
@@ -124,6 +125,7 @@ export function PeopleSection({ contacts, online, onChanged, onNotice }: PeopleS
                     Compare
                   </Button>
                 )}
+                {!c.verified && online && <PhraseInvite login={c.login} onVerified={onChanged} />}
                 <Button variant="ghost-destructive" size="sm" onClick={() => setForgetting(c)}>
                   Forget
                 </Button>
@@ -132,6 +134,7 @@ export function PeopleSection({ contacts, online, onChanged, onNotice }: PeopleS
           ))}
         </ItemGroup>
       )}
+      <PhraseIncomingList online={online} onVerified={onChanged} />
       <CompareDialog
         contact={comparing}
         onClose={() => setComparing(null)}
