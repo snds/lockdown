@@ -23,7 +23,9 @@
 #   docker build --secret id=cargo_ca,src=/path/to/ca.pem .
 
 # Reproducible (docs/plan/24-release.md §5): both base images are pinned by
-# digest, paths are remapped out of the binary, and with
+# digest, the compiler is the image's own Rust release (RUSTUP_TOOLCHAIN;
+# rust-toolchain.toml's "stable" would fetch whatever is newest), paths are
+# remapped out of the binary, and with
 # `docker buildx build --build-arg SOURCE_DATE_EPOCH=<commit time>
 # --output type=oci,...,rewrite-timestamp=true` two builds of one commit
 # are the same bytes (packaging/repro/build-image.sh; CI checks it).
@@ -39,6 +41,7 @@ RUN --mount=type=secret,id=cargo_ca,required=false \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/src/target \
     if [ -f /run/secrets/cargo_ca ]; then export CARGO_HTTP_CAINFO=/run/secrets/cargo_ca; fi; \
+    RUSTUP_TOOLCHAIN="$RUST_VERSION" \
     RUSTFLAGS="--remap-path-prefix=/src=/lockdown --remap-path-prefix=/usr/local/cargo=/cargo" \
     cargo build --locked --release -p lockdown-server \
     && install -D -m 0755 target/release/lockdown-server /out/lockdown-server \

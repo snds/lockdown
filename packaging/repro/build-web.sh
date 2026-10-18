@@ -3,7 +3,9 @@
 # (docs/plan/24-release.md §5): ring's C code is compiled by clang, and a
 # runner's own clang differs between Ubuntu releases, so the module is
 # built inside the digest-pinned Rust image the server uses, with Debian
-# bookworm's clang, at the same paths and with remapped paths. Then
+# bookworm's clang, the image's own Rust release (RUSTUP_TOOLCHAIN, not
+# rust-toolchain.toml's moving "stable"), at the same paths and with
+# remapped paths. Then
 # apps/web/wasm/lockdown_web.wasm is in place for `pnpm build`.
 #
 #   packaging/repro/build-web.sh
@@ -18,8 +20,10 @@ flags="--remap-path-prefix=/src=/lockdown --remap-path-prefix=/usr/local/cargo=/
 docker run --rm -v "$root:/src" -w /src \
   -e RUSTFLAGS="$flags" -e CARGO_INCREMENTAL=0 -e CARGO_TERM_COLOR=never \
   "$image" sh -ec '
+    # The image'"'"'s own Rust, not rust-toolchain.toml'"'"'s moving "stable".
+    export RUSTUP_TOOLCHAIN="$RUST_VERSION"
     apt-get update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends clang llvm > /dev/null
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends clang llvm git ca-certificates > /dev/null
     rustup target add wasm32-wasip1
     bash apps/web/build-wasm.sh
   '

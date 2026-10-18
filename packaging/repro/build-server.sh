@@ -5,6 +5,8 @@
 # /usr/local/cargo), with the same --remap-path-prefix flags, the lock file
 # and the release profile (codegen-units = 1). The server is built on its
 # own, exactly as the Dockerfile does, so its bytes equal the image's copy.
+# The compiler is the image's own Rust release (RUSTUP_TOOLCHAIN), so the
+# digest pins it.
 #
 #   packaging/repro/build-server.sh <out dir>
 #
@@ -22,6 +24,9 @@ docker run --rm \
   -v "$root:/src" -v "$out:/out" -w /src \
   -e RUSTFLAGS="$flags" -e CARGO_INCREMENTAL=0 -e CARGO_TERM_COLOR=never \
   "$image" sh -ec '
+    # The image'"'"'s own Rust, as the Dockerfile uses, not rust-toolchain.toml'"'"'s
+    # moving "stable".
+    export RUSTUP_TOOLCHAIN="$RUST_VERSION"
     cargo build --locked --release -p lockdown-server
     cargo build --locked --release -p lockdown-cli
     install -m 0755 target/release/lockdown-server /out/lockdown-server
