@@ -1,6 +1,6 @@
 # Lockdown: v1 feature status
 
-_Generated from `feature-status.json` (as of `263cf75`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
+_Generated from `feature-status.json` (as of `5b950a4`) by `render-feature-status.py`; edit the JSON, not this file. The feature list is the 122 v1 rows of docs/research/2026-10-15/feature-matrix.json with the moves in 06-roadmap.md §1 (D8, D9)._
 
 **Done** means it works end to end in today's surfaces (core, desktop, CLI, server, browser extension, web vault) with tests. **Partial** means some layer exists and the row says what is missing. **Not started** means nothing in code yet. **Not code yet** is work that is not software (an audit, a licence call, a bug bounty).
 
@@ -170,7 +170,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 - [x] **Per-item exposure tiers**: Done · core, desktop, web. Nothing for desktop and web; mobile.
 - [ ] **Malicious-server resistance**: Partial · core, server. The Tamarin or ProVerif model of login, sharing and recovery, and the academic review (not code); sharing's defences (signed envelopes, membership chain, KT-checked keys) are built.
 - [ ] **Authenticated public keys**: Partial · core, desktop, server, web. Log mirrors; phrase-verified checks and the People screen in the web vault are built.
-- [ ] **Post-quantum key wrapping**: Partial · core, desktop, web. ML-DSA on device signatures, vault heads and the key-transparency log (they stay Ed25519; plan in doc 26 §10); hybrid wraps, ML-DSA-65 on identity manifests and the D248 rollout rule are built.
+- [ ] **Post-quantum key wrapping**: Partial · core, desktop, web, server, cli. Shared vaults and items shared on their own (Ed25519, D343), session tokens and the device's live sign-in proof, a post-quantum state line in Security (D346), and an outside review; hybrid wraps, ML-DSA-65 on identity manifests, vault heads (covering every item version), the log's tree heads and checkpoints, and the rollout rule are built.
 - [ ] **Memory hygiene**: Partial · core, desktop, web. Locking the identity crate's own key types, and measuring web engines other than Chromium; secret pages are out of swap, core dumps are off, and typed secrets clear on hide and after a minute out of focus.
 - [ ] **Verified local connections**: Partial · desktop, extension. Code-signature checks on macOS and Windows, and a Windows variant of the identity crate's peer type; both ends check each other by process, path and SHA-256 on every platform, Windows through the named pipe.
 - [ ] **Hardware-backed biometric unlock**: Not started · nowhere yet. Everything: key slots in the Secure Enclave, StrongBox or TPM that reset when biometrics change.
