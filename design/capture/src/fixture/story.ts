@@ -214,12 +214,14 @@ export function securityReport(world: World, dismissed: Set<string>): SecurityRe
   const gone = findings.filter((f) => dismissed.has(f.id)).map((f) => ({ ...f, dismissed: { at: ago(1), until: null } }))
   const snoozed = { ...onItem(byTitle(world, "Stackwise"), "missing_2fa", "suggested", "Two-step sign-in is available", "missing-2fa", "Stackwise lets you add a second step when you sign in with an authenticator app."), dismissed: { at: ago(4), until: ahead(26) } }
   const count = (s: Finding["severity"]) => live.filter((f) => f.severity === s).length
+  const passwords = world.items.filter((i) => i.fields.pw).length
   return {
     findings: live,
     dismissed: [...gone, snoozed],
     counts: { urgent: count("urgent"), important: count("important"), suggested: count("suggested") },
-    passwords: world.items.filter((i) => i.fields.pw).length,
-    breach: { enabled: true, source: "Pwned Passwords (k-anonymity range API)", checked_at: ago(0.3), checked: 19, unchecked: 2, message: null },
+    passwords,
+    // Two passwords changed since the last check, so they wait for the next one.
+    breach: { enabled: true, source: "Pwned Passwords (k-anonymity range API)", checked_at: ago(0.3), checked: passwords - 2, unchecked: 2, message: null },
     alerts: { account: true, checked_at: ago(0.3), message: null },
     directory: { source: "2fa.directory", licence: "MIT", date: "2026-10-01", sites: 3_412 },
     generated_at: NOW,
