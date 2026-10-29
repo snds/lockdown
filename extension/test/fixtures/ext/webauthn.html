@@ -11,13 +11,16 @@
   </form>
   <button id="register" type="button">Create a passkey</button>
   <button id="signin" type="button">Sign in with a passkey</button>
+  <button id="upgrade" type="button">Add a passkey quietly</button>
   <p id="status">idle</p>
   <script>
     // A relying party as a server library is one, in the page so the suite
     // needs nothing else: it registers a passkey, keeps its public key, and
     // verifies every sign-in with WebCrypto. Query: ?uv=required|preferred|
     // discouraged, ?conditional=1 (a conditional get on load), ?cover=1 (the
-    // page covers whatever is added to the top of the document).
+    // page covers whatever is added to the top of the document). #upgrade
+    // asks for a passkey with conditional mediation: the automatic upgrade a
+    // site tries right after a password sign-in.
     const params = new URLSearchParams(location.search)
     const uv = params.get("uv") || "preferred"
     const rpId = location.hostname
@@ -83,16 +86,16 @@
       return cd
     }
 
-    async function register() {
+    async function register(mediation) {
       status("registering")
       const challenge = crypto.getRandomValues(new Uint8Array(32))
       try {
-        const cred = await navigator.credentials.create({ publicKey: {
+        const cred = await navigator.credentials.create({ mediation, publicKey: {
           rp: { id: rpId, name: "Fixture RP" },
           user: { id: userId, name: "sean@example.com", displayName: "Sean" },
           challenge, pubKeyCredParams: [{ type: "public-key", alg: -8 }, { type: "public-key", alg: -7 }],
           authenticatorSelection: { residentKey: "required", userVerification: uv },
-          excludeCredentials: (store.ids || []).map((id) => ({ type: "public-key", id: unb64(id) })),
+          excludeCredentials: mediation === "conditional" ? [] : (store.ids || []).map((id) => ({ type: "public-key", id: unb64(id) })),
           extensions: { credProps: true },
         } })
         if (!(cred instanceof PublicKeyCredential)) throw new Error("not a PublicKeyCredential")
@@ -151,7 +154,8 @@
       }
     }
 
-    document.getElementById("register").addEventListener("click", register)
+    document.getElementById("register").addEventListener("click", () => register(undefined))
+    document.getElementById("upgrade").addEventListener("click", () => register("conditional"))
     document.getElementById("signin").addEventListener("click", () => signin(false))
     if (params.get("conditional")) {
       PublicKeyCredential.isConditionalMediationAvailable().then((yes) => { window.rp.conditional = yes; if (yes) signin(true) })

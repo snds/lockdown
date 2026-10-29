@@ -519,9 +519,14 @@ export function commands(world: World): Record<string, Handler> {
         .map((i) => ({ item_id: i.id, title: i.title, kind: i.kind, crown_jewel: i.crown ?? false, fields: Object.keys(i.fields).map((f) => ({ field_id: f, label: f, secret: f === "pw", code: f.startsWith("code.") })) })),
     generator_preview: (a): GeneratorPreview => {
       const r = a.recipe as Recipe
-      return r.style === "words"
-        ? { words: `${r.words} words${r.separator ? `, separated by “${r.separator}”` : ""}${r.number ? ", with a number" : ""}`, bits: r.words * 12.9, strength: r.words >= 5 ? "strong" : "fair", site: null }
-        : { words: `${r.length} characters: letters${r.digits ? ", digits" : ""}${r.symbols ? " and symbols" : ""}`, bits: r.length * (r.symbols ? 6.5 : 5.9), strength: r.length >= 16 ? "strong" : r.length >= 12 ? "fair" : "weak", site: null }
+      // The core's own rule (crates/app/src/strength.rs `bits_word`): weak under 50 bits, fair under 75, else strong.
+      const word = (bits: number): GeneratorPreview["strength"] => (bits < 50 ? "weak" : bits < 75 ? "fair" : "strong")
+      if (r.style === "words") {
+        const bits = Math.round(r.words * Math.log2(7776) * 10) / 10
+        return { words: `${r.words} words${r.separator ? `, separated by “${r.separator}”` : ""}${r.number ? ", with a number" : ""}`, bits, strength: word(bits), site: null }
+      }
+      const bits = Math.round(r.length * (r.symbols ? 6.5 : 5.9) * 10) / 10
+      return { words: `${r.length} characters: letters${r.digits ? ", digits" : ""}${r.symbols ? " and symbols" : ""}`, bits, strength: word(bits), site: null }
     },
     wifi_qr: (a) => qrGrid(byId(a.id).n * 7919),
     log_away: (a) => {
@@ -743,6 +748,9 @@ export function commands(world: World): Record<string, Handler> {
     passkey_delete: () => 2,
     passkey_restore: () => 2,
     browser_passkey_pending: (): PasskeyApproval[] => [],
+    // The automatic passkey upgrade's notices (D210, D312): none until a state says so.
+    passkey_upgrades: () => [],
+    passkey_upgrade_seen: () => 0,
     browser_passkey_answer: () => undefined,
 
     // --- sessions and server checks ----------------------------------------------------------------

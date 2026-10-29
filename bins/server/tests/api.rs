@@ -1129,8 +1129,29 @@ async fn the_identity_chain_is_ordered_pinned_and_revokes_devices() {
         .unwrap();
     assert_eq!(accepted3.seq, 3);
 
-    // B's next head, item push and identity manifest are refused as a
-    // revoked device; its head 1 is still served.
+    // The revocation ended B's session at once (D405's follow-up): its
+    // token reads nothing now.
+    let (status, _) = h
+        .call(
+            "GET",
+            &format!("/v1/vaults/{vault_id}/heads?since=0"),
+            Some(&token_b),
+            Vec::new(),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    // Signed in again with the password, B's next head, item push and
+    // identity manifest are refused as a revoked device (D73); its head 1
+    // is still served.
+    let token_b = h
+        .login(
+            "me@example.com",
+            "correct horse battery staple",
+            &local.device,
+        )
+        .await
+        .unwrap()
+        .token;
     let head2 = local.head(2, accepted.hash, &[&item]);
     let (status, bytes) = h
         .call(

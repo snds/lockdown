@@ -23,6 +23,7 @@ import type { FieldView } from "@/core/types"
 import { dateLocal, whenLocal } from "@/lib/format"
 
 import { usePasskeyClient, type PasskeyView } from "./passkey-client"
+import { upgradeLine } from "./use-passkey-upgrades"
 
 /** What the item's own fields say about its passkeys, while the full view loads or when it can't. */
 function fromFields(fields: FieldView[]): { rp: string; user: string }[] {
@@ -54,6 +55,9 @@ function facts(p: PasskeyView): string {
  * Lockdown holds. The key is never drawn: it signs inside the core.
  * Undo and Delete change the item, so a shared item without edit
  * (docs/plan/18-sharing.md) offers neither; the core refuses them too.
+ * A passkey the site added by itself after a password sign-in says so
+ * until the item is opened once on this computer: opening it tells the
+ * core, and the line stays while the item stays open.
  */
 export function PasskeysBlock({
   itemId,
@@ -74,11 +78,22 @@ export function PasskeysBlock({
   const [confirm, setConfirm] = useState<PasskeyView | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [noticed, setNoticed] = useState<Record<string, { site: string; at: number }>>({})
 
   const load = useCallback(() => {
     client
       .list(itemId)
-      .then(setViews)
+      .then((list) => {
+        setViews(list)
+        const upgraded = list.filter((p) => p.upgrade)
+        if (upgraded.length === 0) return
+        setNoticed((cur) => {
+          const next = { ...cur }
+          for (const p of upgraded) if (p.upgrade) next[p.credential_id] = p.upgrade
+          return next
+        })
+        client.upgradeSeen(itemId).catch(() => {})
+      })
       .catch(() => setViews(null))
   }, [client, itemId])
   useEffect(() => {
@@ -128,10 +143,12 @@ export function PasskeysBlock({
                   </Badge>
                   {p.rp_id}
                   {p.hidden && <Badge variant="destructive">hidden by the site</Badge>}
+                  {(p.upgrade ?? noticed[p.credential_id]) && <Badge variant="outline">added by the site</Badge>}
                 </ItemTitle>
                 <ItemDescription>{p.user_display_name && p.user_display_name !== p.user_name ? `${p.user_name} (${p.user_display_name})` : p.user_name}</ItemDescription>
                 <ItemDescription>{facts(p)}</ItemDescription>
                 {p.aaguid && <ItemDescription>Provider ID {p.aaguid}</ItemDescription>}
+                {(p.upgrade ?? noticed[p.credential_id]) && <ItemDescription>{upgradeLine((p.upgrade ?? noticed[p.credential_id])!)}</ItemDescription>}
                 {p.hidden && (
                   <ItemDescription>
                     {p.hidden.reason} ({whenLocal(p.hidden.at)}). Lockdown hid it rather than deleting it, in case the site was wrong.

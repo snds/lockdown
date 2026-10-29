@@ -10,7 +10,9 @@
 //! files), so a server that later stops naming one doesn't stop the check.
 //! The last result per mirror is kept there too, so Status and Settings
 //! say it after a restart, and a split view isn't forgotten by the next
-//! quiet sync. Mirrors are public: no token goes to them.
+//! quiet sync, nor by one that can't reach the mirror (a split stands
+//! until the mirror agrees again or is removed; it pauses new sharing,
+//! `split_pause`). Mirrors are public: no token goes to them.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -89,6 +91,7 @@ pub(crate) fn check(
     }
     list.truncate(MAX_MIRRORS);
     let now = lockdown_vault::Timestamp::now().0;
+    let before = memory.last.get(server).cloned().unwrap_or_default();
     let checks: Vec<MirrorCheck> = list
         .into_iter()
         .map(|(url, named_by)| {
@@ -98,6 +101,14 @@ pub(crate) fn check(
                     message: format!("couldn't read its copy: {e}"),
                 },
             };
+            // A split clears only when the mirror is heard from again: one
+            // that can't be reached keeps the split it last showed, so
+            // blocking it doesn't lift the pause on sharing (split_pause).
+            if matches!(verdict, MirrorVerdict::Unreachable { .. })
+                && let Some(kept) = before.iter().find(|c| c.url == url && c.verdict.is_split())
+            {
+                return kept.clone();
+            }
             MirrorCheck {
                 url,
                 named_by: named_by.to_string(),

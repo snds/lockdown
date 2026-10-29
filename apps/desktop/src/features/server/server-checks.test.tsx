@@ -67,6 +67,10 @@ describe("Settings → This server", () => {
     expect(alert).toHaveTextContent("This server's public log doesn't match a mirror")
     expect(alert).toHaveTextContent("https://mine.example")
     expect(alert).toHaveTextContent("Split view")
+    // What the core pauses until it clears (D328 as changed by D375), and why.
+    expect(alert).toHaveTextContent("pauses new sharing through this server")
+    expect(alert).toHaveTextContent("naming an emergency contact and opening emergency access")
+    expect(alert).toHaveTextContent("keeps syncing")
   })
 
   it("saves the mirrors you add, one per line, and shows the core's refusal", async () => {

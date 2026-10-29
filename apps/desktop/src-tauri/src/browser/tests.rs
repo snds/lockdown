@@ -825,3 +825,79 @@ fn the_bridges_ops_need_the_pairing_and_answer_through_the_core() {
         "approval_needed"
     );
 }
+
+#[test]
+fn the_automatic_upgrade_over_the_protocol_is_silent_then_told_to_the_app() {
+    // D210 and D312 as changed by D375: the page gets its passkey with no
+    // prompt; the app hears of it for its toast, and the item says so.
+    let rig = rig();
+    let login = rig
+        .app
+        .add_login(
+            "https://example.com",
+            "sean",
+            b"pw".to_vec(),
+            Some("Example"),
+        )
+        .unwrap();
+    let mut host = paired(&rig);
+    let welcome = json!({ "top": "https://example.com/welcome", "frame": "https://example.com/welcome", "visible": false, "user_confirmed": false });
+    let create = json!({
+        "rp_name": "Example", "user_id": "dXNlci0x", "user_name": "sean", "user_display_name": "Sean",
+        "challenge": "Y2hhbGxlbmdl", "algs": [-7], "user_verification": "preferred", "conditional": true
+    });
+    // No password sign-in seen yet: refused, and nothing to tell.
+    let early = host.ok(
+        "passkey_create",
+        json!({ "page": welcome, "request": create }),
+    );
+    assert_eq!(early["outcome"], "refused", "{early}");
+    assert!(rig.app.passkey_upgrades().unwrap().is_empty());
+
+    // Lockdown fills the password; the site's upgrade then goes through
+    // at once: no confirm step, no approval waiting in the app.
+    let page = "https://example.com/login";
+    host.ok(
+        "fill",
+        json!({ "item_id": login, "what": "login", "top": page, "frame": page, "field_visible": true }),
+    );
+    let made = host.ok(
+        "passkey_create",
+        json!({ "page": welcome, "request": create }),
+    );
+    assert_eq!(made["outcome"], "done", "{made}");
+    assert_eq!(made["result"]["item_id"], login);
+    assert_eq!(made["result"]["user_verified"], false);
+    assert!(rig.endpoint.passkey_pending().is_empty());
+    for absent in ["upgraded", "upgrade", "site"] {
+        assert!(
+            made["result"].get(absent).is_none(),
+            "the page learns nothing of the notice: {absent}"
+        );
+    }
+
+    // The app's toast, once; the item's line until it is opened.
+    let notices = rig.app.passkey_upgrades().unwrap();
+    assert_eq!(notices.len(), 1);
+    assert_eq!(notices[0].site, "example.com");
+    assert_eq!(notices[0].title, "Example");
+    assert_eq!(notices[0].item_id, login);
+    assert!(rig.app.passkey_upgrades().unwrap().is_empty());
+    let view = &rig.app.passkeys(&login).unwrap()[0];
+    assert_eq!(
+        view.upgrade.as_ref().map(|u| u.site.as_str()),
+        Some("example.com")
+    );
+    assert_eq!(rig.app.passkey_upgrade_seen(&login).unwrap(), 1);
+    assert!(rig.app.passkeys(&login).unwrap()[0].upgrade.is_none());
+}
+
+#[test]
+fn a_suggested_password_carries_the_cores_strength_word() {
+    // D230 as changed by D375: the extension shows the core's word.
+    let rig = rig();
+    let mut host = paired(&rig);
+    let plain = host.ok("password_rule", json!({ "frame": "https://new.test/join" }));
+    assert_eq!(plain["strength"], "strong", "{plain}");
+    assert!(plain["bits"].as_f64().unwrap() >= 75.0);
+}

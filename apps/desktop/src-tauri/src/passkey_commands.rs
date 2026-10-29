@@ -1,12 +1,13 @@
 //! The webview's passkey commands (docs/plan/19-passkeys.md §6): the
 //! management view of an item's passkeys, a delete (through the `Use` gate
 //! for a crown jewel), the undo of a site's Signal, and the browser's
-//! passkey requests that wait for the person in the app. Nothing here
+//! passkey requests that wait for the person in the app, and the notice
+//! after a site's automatic upgrade. Nothing here
 //! carries a key: the core signs with it in place.
 
 use std::sync::Arc;
 
-use lockdown_app::passkeys::{B64, PasskeyView};
+use lockdown_app::passkeys::{B64, PasskeyView, UpgradeNotice};
 use lockdown_app::{App, AppError, AppResult, GateInput};
 use tauri::{AppHandle, Manager, State};
 
@@ -61,6 +62,19 @@ pub async fn passkey_restore(
         a.passkey_restore(&item_id, credential(&credential_id)?)
     })
     .await
+}
+
+/// The automatic passkey upgrades made since the last call, for the toast
+/// (D210, D312 as changed by D375); each once.
+#[tauri::command]
+pub async fn passkey_upgrades(app: State<'_, App>) -> AppResult<Vec<UpgradeNotice>> {
+    blocking(&app, |a| a.passkey_upgrades()).await
+}
+
+/// The person opened the item: its upgrade notices show no more here.
+#[tauri::command]
+pub async fn passkey_upgrade_seen(app: State<'_, App>, item_id: String) -> AppResult<u32> {
+    blocking(&app, move |a| a.passkey_upgrade_seen(&item_id)).await
 }
 
 fn endpoint(handle: &AppHandle) -> AppResult<Arc<Endpoint>> {

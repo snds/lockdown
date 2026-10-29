@@ -851,3 +851,89 @@ fn a_made_passkey_survives_a_cxf_export_and_import_and_still_signs() {
     assert_eq!(view.created, before.created);
     assert!(view.backup_eligible && view.backed_up);
 }
+
+#[test]
+fn an_automatic_upgrade_is_silent_then_said_on_the_item_and_once_as_a_toast() {
+    // D210 and D312 as changed by D375: no prompt at the moment, a notice
+    // afterwards.
+    let (_dir, app) = fresh();
+    let login = app
+        .add_login("https://example.com", "me", b"pw".to_vec(), None)
+        .unwrap();
+    // A passkey made through the sheet is no upgrade: nothing to say.
+    let asked = make(
+        &app,
+        "https://other.example/",
+        create_req(None, "me", b"other"),
+    );
+    assert!(app.passkey_upgrades().unwrap().is_empty());
+    assert!(app.passkeys(&asked.item_id).unwrap()[0].upgrade.is_none());
+
+    let facts = PageFacts {
+        top: "https://example.com/login".into(),
+        frame: "https://example.com/login".into(),
+        field_visible: true,
+        user_confirmed: false,
+    };
+    app.fill(&login, FillWhat::Login, None, facts).unwrap();
+    let mut req = create_req(None, "me", b"me");
+    req.conditional = true;
+    let made = done(
+        app.passkey_create(page("https://example.com/welcome", false), req, None)
+            .unwrap(),
+    );
+    assert_eq!(made.item_id, login);
+
+    // The toast's notice, handed out once.
+    let notices = app.passkey_upgrades().unwrap();
+    assert_eq!(notices.len(), 1);
+    assert_eq!(notices[0].item_id, login);
+    assert_eq!(notices[0].site, "example.com");
+    assert!(!notices[0].title.is_empty());
+    assert!(app.passkey_upgrades().unwrap().is_empty(), "once");
+
+    // The item's line, until it is opened once on this device.
+    let view = &app.passkeys(&login).unwrap()[0];
+    let upgrade = view.upgrade.as_ref().expect("the item says so");
+    assert_eq!(upgrade.site, "example.com");
+    assert_eq!(upgrade.at, notices[0].at);
+    assert_eq!(app.passkey_upgrade_seen(&login).unwrap(), 1);
+    assert!(app.passkeys(&login).unwrap()[0].upgrade.is_none());
+    assert_eq!(app.passkey_upgrade_seen(&login).unwrap(), 0);
+    // Seen stays seen across a lock; the record itself is on the item
+    // version, so the passkey still signs in as ever.
+    app.lock().unwrap();
+    app.unlock().unwrap();
+    assert!(app.passkeys(&login).unwrap()[0].upgrade.is_none());
+    assert!(app.passkey_upgrades().unwrap().is_empty());
+    assert_eq!(app.passkey_upgrade_seen(&asked.item_id).unwrap(), 0);
+
+    // A toast not taken before a lock is dropped with the session; the
+    // item still says so, since that is on the item.
+    let shop = app
+        .add_login("https://shop.example", "buyer", b"pw2".to_vec(), None)
+        .unwrap();
+    let facts = PageFacts {
+        top: "https://shop.example/login".into(),
+        frame: "https://shop.example/login".into(),
+        field_visible: true,
+        user_confirmed: false,
+    };
+    app.fill(&shop, FillWhat::Login, None, facts).unwrap();
+    let mut req = create_req(None, "buyer", b"buyer");
+    req.conditional = true;
+    done(
+        app.passkey_create(page("https://shop.example/account", false), req, None)
+            .unwrap(),
+    );
+    app.lock().unwrap();
+    app.unlock().unwrap();
+    assert!(app.passkey_upgrades().unwrap().is_empty());
+    assert_eq!(
+        app.passkeys(&shop).unwrap()[0]
+            .upgrade
+            .as_ref()
+            .map(|u| u.site.as_str()),
+        Some("shop.example")
+    );
+}

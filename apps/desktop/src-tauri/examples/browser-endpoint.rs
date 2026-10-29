@@ -328,6 +328,12 @@ fn main() {
                 let r = app.quick_fill(item);
                 emit(json!({ "event": "quick_fill", "started": r.ok() }));
             }
+            // The automatic upgrade's notices, as the app's toast takes them.
+            ["upgrades"] => {
+                emit(
+                    json!({ "event": "upgrades", "upgrades": app.passkey_upgrades().unwrap_or_default() }),
+                );
+            }
             ["quit"] => break,
             _ => emit(json!({ "event": "unknown", "line": line })),
         }

@@ -14,6 +14,7 @@ use lockdown_vault::phrase_check::{Inviter, Joiner, Outcome, Phrase, Views};
 use serde::Serialize;
 
 use super::*;
+use crate::session::split_pause::Paused;
 
 /// A check under way, kept in memory until the lock.
 pub(crate) struct Pending {
@@ -125,6 +126,7 @@ impl Session {
     /// Opens a check with `login`: pins them from the log and returns the
     /// phrase to tell them.
     pub fn phrase_invite(&mut self, login: &str) -> Result<PhraseCheckView, String> {
+        self.refuse_while_split(Paused::PhraseCheck)?;
         let (transport, token, server) = self.online()?;
         let sth = self.verified_sth(&transport, &token, &server)?;
         let me = self.learn_account(&transport, &token, &sth)?;
@@ -163,6 +165,7 @@ impl Session {
     /// The checks others opened with this person, their logins checked
     /// against the log.
     pub fn phrase_incoming(&mut self) -> Result<Vec<PhraseIncoming>, String> {
+        self.refuse_while_split(Paused::PhraseCheck)?;
         let (transport, token, server) = self.online()?;
         let sth = self.verified_sth(&transport, &token, &server)?;
         let me = self.learn_account(&transport, &token, &sth)?;
@@ -189,6 +192,7 @@ impl Session {
         verify_id: &str,
         phrase: &str,
     ) -> Result<PhraseCheckView, String> {
+        self.refuse_while_split(Paused::PhraseCheck)?;
         let verify_id = parse_id(verify_id)?;
         let phrase = Phrase::parse(phrase).map_err(|e| e.to_string())?;
         if self.phrase_checks.contains_key(&verify_id) {

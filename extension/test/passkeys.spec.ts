@@ -285,3 +285,30 @@ test("turned off in the app's Settings, the extension steps aside entirely", asy
   await expect.poll(sheetShown).toBe(false);
   await page.close();
 });
+
+test("the automatic upgrade right after a password fill: silent in the page, told to the app", async () => {
+  // D210 and D312 as changed by D375 (docs/plan/34-small-calls.md §1).
+  await desktop.ask("upgrades", "upgrades");
+  const page = await ctx.newPage();
+  await page.goto(rp("?uv=discouraged"));
+  // Lockdown fills the password here first: the upgrade rests on that.
+  await page.focus("#user");
+  const menu = await lockdownFrame(page, "menu");
+  await menu.getByRole("button", { name: /Local site/ }).first().click();
+  await expect(page.locator("#pass")).toHaveValue("correct-horse-1");
+  // The site asks for a passkey with conditional mediation: no sheet, no
+  // approval, no prompt anywhere; the RP still verifies what it got.
+  await page.click("#upgrade");
+  await expect(page.locator("#status")).toHaveText("registered", { timeout: 15_000 });
+  expect(page.frames().some((f) => f.url().includes("frame.html#passkey:"))).toBe(false);
+  const made = await last(page);
+  expect(made).toMatchObject({ aaguid: LOCKDOWN_AAGUID, up: false, uv: false, be: true, bs: true });
+  // The app hears of it for its toast, once, and the login says so.
+  const told = (await desktop.ask("upgrades", "upgrades")).upgrades as { item_id: string; title: string; site: string }[];
+  expect(told).toHaveLength(1);
+  expect(told[0]).toMatchObject({ item_id: items.local, title: "Local site", site: "localhost" });
+  expect((await desktop.ask("upgrades", "upgrades")).upgrades).toEqual([]);
+  const views = (await passkeysOn(items.local)) as unknown as { credential_id: string; upgrade: { site: string } | null }[];
+  expect(views.find((v) => v.credential_id === made.id)?.upgrade).toMatchObject({ site: "localhost" });
+  await page.close();
+});

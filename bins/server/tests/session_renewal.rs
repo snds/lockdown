@@ -604,3 +604,122 @@ async fn a_revoked_device_and_a_key_the_identity_doesnt_list_cant_renew() {
     // A, in good standing, renews as ever.
     assert!(h.renew(&token_a, &a.key()).await.is_ok());
 }
+
+#[tokio::test]
+async fn a_revocation_ends_every_session_of_that_device_at_once() {
+    // D405's follow-up: a revoked device's token stops reading the moment
+    // the identity that revokes it is accepted, not when it runs out.
+    let dir = tempfile::tempdir().unwrap();
+    let keystore = FileKeystore::open_or_create(&dir.path().join("k.cbor")).unwrap();
+    let identity =
+        Identity::create(&dir.path().join("root"), "lockdown", "laptop", &keystore).unwrap();
+    let isk = identity_signing_key(&identity, &keystore).unwrap();
+    let h = harness(Config::default());
+    h.register(identity.profile().profile_id).await;
+    let (a, b, c) = (Device::new(), Device::new(), Device::new());
+    let token_a = h.login(&a).await.token;
+    // B holds two sessions (a second sign-in); C one.
+    let token_b = h.login(&b).await.token;
+    let token_b2 = h.login(&b).await.token;
+    let token_c = h.login(&c).await.token;
+
+    let record = |d: &Device, name: &str| {
+        let mut r = identity.devices().next().unwrap().clone();
+        r.device_id = d.id;
+        r.device_pub = d.key().verifying_key().to_bytes();
+        r.name = name.into();
+        r.revoked_at = None;
+        r.sign(isk.inner()).unwrap();
+        r
+    };
+    let (rec_a, rec_b, rec_c) = (
+        record(&a, "laptop"),
+        record(&b, "phone"),
+        record(&c, "tablet"),
+    );
+    let set = |devices: Vec<_>, prev: Option<&RecordSet>, revocations: Vec<Revocation>| {
+        let mut s = RecordSet::from_records(
+            identity.profile(),
+            identity.personas().cloned(),
+            identity.devices().cloned().chain(devices),
+            identity.envelopes().cloned(),
+            identity.consents().cloned(),
+            prev.map(|p| &p.manifest),
+            revocations,
+            identity.device_id(),
+        )
+        .unwrap();
+        s.sign(&isk).unwrap();
+        s
+    };
+    let first = set(
+        vec![rec_a.clone(), rec_b.clone(), rec_c.clone()],
+        None,
+        Vec::new(),
+    );
+    put_identity(&h, &token_a, &first).await;
+    // Listing devices ends nobody's session.
+    assert_eq!(h.sessions(&token_b).await.sessions.len(), 4);
+
+    let mut revoked_b = rec_b.clone();
+    revoked_b.revoked_at = Some(lockdown_vault::Timestamp(START));
+    revoked_b.sign(isk.inner()).unwrap();
+    let second = set(
+        vec![rec_a, revoked_b, rec_c],
+        Some(&first),
+        vec![Revocation {
+            device_id: b.id,
+            vaults: Vec::new(),
+        }],
+    );
+    put_identity(&h, &token_a, &second).await;
+
+    // The clock hasn't moved: both of B's tokens still verify by signature,
+    // and neither reads anything.
+    for t in [&token_b, &token_b2] {
+        let (status, bytes) = h
+            .call("GET", "/v1/account/sessions", Some(t), Vec::new())
+            .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let body: ErrorBody = wire::decode(&bytes).unwrap();
+        assert_eq!(body.code, ErrorCode::Unauthenticated);
+        assert!(body.message.contains("was revoked"), "{}", body.message);
+    }
+    // Only the signed identity record set still answers it: that is how
+    // the device learns, from records it can verify, that it is out.
+    let (status, _) = h
+        .call("GET", "/v1/identity?since=0", Some(&token_b), Vec::new())
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = h
+        .call("GET", "/v1/vaults", Some(&token_b), Vec::new())
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    // Renewing one says why, in the code the client turns into words.
+    assert_eq!(
+        h.renew(&token_b2, &b.key()).await.unwrap_err(),
+        (StatusCode::FORBIDDEN, ErrorCode::RevokedDevice)
+    );
+    // A's list shows A and C only; C reads as ever.
+    let left = h.sessions(&token_a).await.sessions;
+    assert_eq!(left.len(), 2, "{left:?}");
+    assert!(left.iter().all(|s| s.device_id != b.id));
+    assert_eq!(h.sessions(&token_c).await.sessions.len(), 2);
+
+    // A later identity push (nothing newly revoked) ends no one else's.
+    let mut rec_a2 = record(&a, "laptop (renamed)");
+    rec_a2.sign(isk.inner()).unwrap();
+    let mut revoked_b = record(&b, "phone");
+    revoked_b.revoked_at = Some(lockdown_vault::Timestamp(START));
+    revoked_b.sign(isk.inner()).unwrap();
+    let third = set(
+        vec![rec_a2, revoked_b, record(&c, "tablet")],
+        Some(&second),
+        vec![Revocation {
+            device_id: b.id,
+            vaults: Vec::new(),
+        }],
+    );
+    put_identity(&h, &token_a, &third).await;
+    assert_eq!(h.sessions(&token_c).await.sessions.len(), 2);
+}
