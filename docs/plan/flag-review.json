@@ -30,7 +30,7 @@
   {"id": "backups", "name": "Backups and export", "ids": "D135-D145,D273,D274"},
   {"id": "browser", "name": "Browser and passkeys", "ids": "D156-D169,D200-D214,D264-D269,D331"},
   {"id": "web", "name": "Web vault", "ids": "D170-D184,D320,D321,D357"},
-  {"id": "sharing", "name": "Sharing and emergency", "ids": "D185-D199"},
+  {"id": "sharing", "name": "Sharing and emergency", "ids": "D185-D199,D430-D439"},
   {"id": "server", "name": "Self-host server", "ids": "D215-D229,D290-D304,D322-D330,D332"},
   {"id": "bridges", "name": "Vendor bridges", "ids": "D258-D260,D262,D263,D271"},
   {"id": "pq", "name": "Post-quantum", "ids": "D335-D349,D365-D374"},
