@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker"],
+    "module": "esnext",
+    "types": ["vite/client", "chrome"],
+    "allowArbitraryExtensions": true,
+    "skipLibCheck": true,
+
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": ["../../apps/desktop/src/*"],
+      "@tauri-apps/api/core": ["./src/host/tauri-core.ts"],
+      "@tauri-apps/api/event": ["./src/host/tauri-event.ts"],
+      "react": ["./node_modules/@types/react"],
+      "react/*": ["./node_modules/@types/react/*"],
+      "react-dom": ["./node_modules/@types/react-dom"],
+      "react-dom/*": ["./node_modules/@types/react-dom/*"],
+      "@unicron/ui": ["./node_modules/@unicron/ui/dist/index.d.ts"],
+      "@unicron/ui/icon": ["./node_modules/@unicron/ui/dist/components/icon.d.ts"],
+      "@unicron/ui/security/*": ["./node_modules/@unicron/ui/dist/components/security/*"],
+      "@unicron/ui/*": ["./node_modules/@unicron/ui/dist/components/ui/*"],
+      "sonner": ["./node_modules/sonner"],
+      "next-themes": ["./node_modules/next-themes"],
+      "@base-ui/react": ["./node_modules/@base-ui/react"],
+      "@base-ui/react/*": ["./node_modules/@base-ui/react/*"]
+    },
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true
+  },
+  "include": ["src"]
+}

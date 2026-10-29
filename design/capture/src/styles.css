@@ -1,0 +1,220 @@
+/*
+ * One sheet for every surface the harness draws: unicron (Tailwind, the
+ * tokens, Inter and the Material Symbols font as files), Lockdown's app
+ * roles, and the sources Tailwind reads for class names: the desktop's
+ * views, the web vault's own screens, the extension's popup. Then the
+ * review build's own few rules, all under `.ld-*`.
+ */
+@import "@unicron/ui/styles";
+@import "../../../apps/desktop/src/styles/app-extension.css";
+@source "../../../apps/desktop/src";
+@source "../../../apps/web/src";
+@source "../../../extension/src/popup";
+@source "./";
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    overscroll-behavior: none;
+  }
+}
+
+/* --- the review build ------------------------------------------------------ */
+
+:root {
+  --ld-bar-h: 52px;
+  --ld-fg: #1d1d1f;
+  --ld-muted: #5b5b62;
+  --ld-bg: #fbfbfc;
+  --ld-card: #ffffff;
+  --ld-line: #d9d9de;
+  --ld-accent: #0b57d0;
+}
+:root.dark {
+  --ld-fg: #ececf0;
+  --ld-muted: #a3a3ad;
+  --ld-bg: #151518;
+  --ld-card: #1e1e22;
+  --ld-line: #3a3a41;
+  --ld-accent: #8ab4f8;
+}
+
+.ld-start {
+  min-height: 100%;
+  background: var(--ld-bg);
+  color: var(--ld-fg);
+  font: 15px/1.5 Inter, system-ui, sans-serif;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 48px max(16px, env(safe-area-inset-left));
+}
+.ld-start header {
+  max-width: 56rem;
+  margin: 0 auto 1rem;
+}
+.ld-start h1 {
+  font-size: 1.4rem;
+  font-weight: 650;
+  margin: 0.5rem 0;
+}
+.ld-start h2 {
+  max-width: 56rem;
+  margin: 1.6rem auto 0.4rem;
+  font-size: 1.1rem;
+  font-weight: 650;
+}
+.ld-start p {
+  color: var(--ld-muted);
+  margin: 0 0 0.8rem;
+}
+.ld-screen {
+  max-width: 56rem;
+  margin: 0 auto 0.6rem;
+  background: var(--ld-card);
+  border: 1px solid var(--ld-line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.ld-screen h3 {
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--ld-line);
+}
+.ld-screen ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ld-screen li + li {
+  border-top: 1px solid var(--ld-line);
+}
+.ld-screen a {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.2rem 1rem;
+  min-height: 48px;
+  padding: 0.5rem 0.9rem;
+  color: var(--ld-fg);
+  text-decoration: none;
+}
+.ld-screen a:hover,
+.ld-screen a:focus-visible {
+  background: color-mix(in srgb, var(--ld-accent) 10%, transparent);
+}
+.ld-screen small {
+  color: var(--ld-muted);
+  font: 12px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+.ld-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+.ld-search {
+  flex: 1;
+}
+.ld-search input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 0.8rem;
+  border: 1px solid var(--ld-line);
+  border-radius: 10px;
+  background: var(--ld-card);
+  color: var(--ld-fg);
+  font: inherit;
+}
+.ld-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.ld-shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.ld-stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: auto;
+}
+.ld-framed {
+  overflow: hidden;
+  background: var(--ld-bg);
+}
+.ld-framed iframe {
+  display: block;
+  border: 0;
+  transform-origin: top left;
+}
+.ld-missing {
+  padding: 1rem;
+}
+.ld-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: var(--ld-bar-h);
+  padding: 4px max(8px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  background: var(--ld-card);
+  color: var(--ld-fg);
+  border-top: 1px solid var(--ld-line);
+  font: 14px/1.2 Inter, system-ui, sans-serif;
+  z-index: 2147483000;
+}
+.ld-button,
+.ld-seg button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 0.7rem;
+  border: 1px solid var(--ld-line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ld-fg);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.ld-seg {
+  display: inline-flex;
+}
+.ld-seg button {
+  border-radius: 0;
+  margin-left: -1px;
+}
+.ld-seg button:first-child {
+  border-radius: 10px 0 0 10px;
+}
+.ld-seg button:last-child {
+  border-radius: 0 10px 10px 0;
+}
+.ld-seg button[aria-pressed="true"] {
+  background: var(--ld-accent);
+  border-color: var(--ld-accent);
+  color: var(--ld-card);
+}
+.ld-id {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ld-muted);
+  font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: right;
+}

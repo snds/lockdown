@@ -1,0 +1,8 @@
+# This directory is its own pnpm root, like apps/desktop, apps/web and
+# extension/. Nothing here may run an install script.
+onlyBuiltDependencies: []
+
+overrides:
+  # As apps/desktop: @unicron/ui pins its tokens by exact version, which is
+  # not on a registry; point the dependency at the same release tarball.
+  "@unicron/tokens": https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.6.0/unicron-tokens-0.6.0.tgz
