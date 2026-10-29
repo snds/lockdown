@@ -25,7 +25,11 @@
   "D444": {"verdict": "accepted", "note": "Bringing the window forward reveals nothing; the app still asks for its own unlock."},
   "D455": {"verdict": "accepted", "note": "Sean asked for it after his first run on the Mac."},
   "D456": {"verdict": "accepted", "note": "The words say plainly that the file opens the account with the password, and where to keep it."},
-  "D459": {"verdict": "changed", "note": "A4 suits most of the world but not a US printer. The PDF uses US Letter where the system's region uses it (US, Canada, Mexico, the Philippines and the rest of the Letter regions) and A4 elsewhere; the first-run slice carries it, since it rebuilds the kit screen."}
+  "D459": {"verdict": "changed", "note": "A4 suits most of the world but not a US printer. The PDF uses US Letter where the system's region uses it (US, Canada, Mexico, the Philippines and the rest of the Letter regions) and A4 elsewhere; the first-run slice carries it, since it rebuilds the kit screen."},
+  "D482": {"verdict": "accepted", "note": "Everything Lockdown keeps on the device, found by the app's identifier and its own data folder; a guard refuses anything near the top of the disk or above the home folder."},
+  "D483": {"verdict": "accepted", "note": "The shared identity is erased only when no other app is named in it, so a reset can't take Mailbird's or Synapse's keys with it."},
+  "D487": {"verdict": "accepted", "note": "Every kind and the edge cases Sean asked for; password age isn't checked by Watchtower yet, so 'old passwords' waits on that."},
+  "D488": {"verdict": "accepted", "note": "Records Sean's Q5 call: the demo opens from first run with no account, a bar on every screen, and Leave the demo."}
  },
  "areas": [
   {"id": "keys", "name": "Keys and encryption", "ids": "D30-D49,D379"},
@@ -40,7 +44,7 @@
   {"id": "server", "name": "Self-host server", "ids": "D215-D229,D290-D304,D322-D330,D332"},
   {"id": "bridges", "name": "Vendor bridges", "ids": "D258-D260,D262,D263,D271"},
   {"id": "pq", "name": "Post-quantum", "ids": "D335-D349,D365-D374"},
-  {"id": "release", "name": "Release and packaging", "ids": "D90-D99,D275-D289,D350-D356,D358-D364,D450"},
+  {"id": "release", "name": "Release and packaging", "ids": "D90-D99,D275-D289,D350-D356,D358-D364,D450,D480-D489"},
   {"id": "plans", "name": "Plans and pricing", "ids": "D375-D378"},
   {"id": "small-calls", "name": "Follow-ups to the review", "ids": "D410-D429,D440-D449"},
   {"id": "design", "name": "Design and accessibility", "ids": "D380-D398,D451-D459"}
