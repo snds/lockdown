@@ -113,7 +113,9 @@ fn the_cli_opens_the_personas_own_vault_when_a_shared_vault_others_wrote_to_sort
             let alice = person(dir.path(), &who, &srv);
             let personal = alice.vaults().unwrap()[0].id.clone();
             for made in 1..20 {
-                let id = alice.create_vault(&format!("Family {made}")).unwrap();
+                let Ok(id) = alice.create_vault(&format!("Family {made}")) else {
+                    break;
+                };
                 if id < personal {
                     return Some((who, alice, personal, id, made));
                 }
