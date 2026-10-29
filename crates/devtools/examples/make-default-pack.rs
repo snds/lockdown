@@ -143,12 +143,14 @@ fn hist(versions: &[&[(&str, FieldKind, &str, &str)]]) -> Vec<Vec<DocField>> {
         .map(|v| {
             v.iter()
                 .map(|(id, kind, label, value)| {
-                    DocField::from_plain(&PlainField::new(
-                        *id,
-                        *kind,
-                        *label,
-                        FieldValue::Text((*value).into()),
-                    ))
+                    let value = match kind {
+                        FieldKind::Url => FieldValue::Url {
+                            value: (*value).into(),
+                            match_rule: "exact_host".into(),
+                        },
+                        _ => FieldValue::Text((*value).into()),
+                    };
+                    DocField::from_plain(&PlainField::new(*id, *kind, *label, value))
                 })
                 .collect()
         })
@@ -200,17 +202,17 @@ fn main() {
                     &[
                         ("user", FieldKind::Text, "Username", "sam.rivera@example.com"),
                         ("pw", FieldKind::Hidden, "Password", "Summer2019!"),
-                        ("url.0", FieldKind::Text, "Website", "https://mail.example.com"),
+                        ("url.0", FieldKind::Url, "Website", "https://mail.example.com"),
                     ],
                     &[
                         ("user", FieldKind::Text, "Username", "sam.rivera@example.com"),
                         ("pw", FieldKind::Hidden, "Password", "Winter-2022-mail"),
-                        ("url.0", FieldKind::Text, "Website", "https://mail.example.com"),
+                        ("url.0", FieldKind::Url, "Website", "https://mail.example.com"),
                     ],
                     &[
                         ("user", FieldKind::Text, "Username", "sam.rivera@example.com"),
                         ("pw", FieldKind::Hidden, "Password", "Spring-2024-mail-longer"),
-                        ("url.0", FieldKind::Text, "Website", "https://mail.example.com"),
+                        ("url.0", FieldKind::Url, "Website", "https://mail.example.com"),
                         ("notes", FieldKind::Text, "Notes", "Changed after the 2024 notice."),
                     ],
                 ]),

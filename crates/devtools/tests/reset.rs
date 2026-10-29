@@ -38,7 +38,7 @@ fn places(home: &Path, paths: &Paths) -> Places {
 }
 
 /// Everything under `dir`, as paths relative to it.
-fn files(dir: &Path) -> Vec<String> {
+fn files(dir: &Path) -> Vec<std::path::PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
@@ -47,7 +47,7 @@ fn files(dir: &Path) -> Vec<String> {
             if p.is_dir() {
                 stack.push(p);
             } else {
-                out.push(p.strip_prefix(dir).unwrap().display().to_string());
+                out.push(p.strip_prefix(dir).unwrap().to_path_buf());
             }
         }
     }
@@ -144,7 +144,10 @@ fn a_reset_of_a_fully_used_profile_leaves_nothing_and_the_next_launch_is_first_r
             "session:sam".to_string()
         )]
     );
-    assert_eq!(files(&home), vec!["Documents/export.json".to_string()]);
+    assert_eq!(
+        files(&home),
+        vec![Path::new("Documents").join("export.json")]
+    );
 
     // The second launch is the first run.
     let again = App::start(paths.clone(), None, LockPolicy::default());

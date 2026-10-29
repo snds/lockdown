@@ -448,6 +448,7 @@ pub fn finish_pending(places: &Places, keystore: &dyn Keystore) -> Option<Erased
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn the_guard_keeps_the_top_of_the_disk_and_home() {
         let home = Path::new("/home/sam");
@@ -458,12 +459,35 @@ mod tests {
             )
             .is_ok()
         );
+        assert!(guard(Path::new("/srv/data/lockdown"), Some(home)).is_ok());
         assert!(guard(Path::new("relative/a/b"), Some(home)).is_err());
         assert!(guard(Path::new("/home/sam"), Some(home)).is_err());
         assert!(guard(Path::new("/home"), Some(home)).is_err());
+        assert!(guard(Path::new("/"), Some(home)).is_err());
         assert!(guard(Path::new("/a/b"), None).is_err());
         assert!(guard(Path::new("/a/b/../c/d"), None).is_err());
-        assert!(guard(Path::new("/srv/data/lockdown"), Some(home)).is_ok());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_guard_keeps_the_top_of_the_disk_and_home() {
+        let home = Path::new(r"C:\Users\sam");
+        assert!(
+            guard(
+                Path::new(r"C:\Users\sam\AppData\Roaming\snds\lockdown"),
+                Some(home)
+            )
+            .is_ok()
+        );
+        assert!(guard(Path::new(r"D:\data\snds\lockdown"), Some(home)).is_ok());
+        assert!(guard(Path::new(r"relative\a\b"), Some(home)).is_err());
+        // Not absolute without a drive.
+        assert!(guard(Path::new(r"\Users\sam\AppData\x"), Some(home)).is_err());
+        assert!(guard(Path::new(r"C:\Users\sam"), Some(home)).is_err());
+        assert!(guard(Path::new(r"C:\Users"), Some(home)).is_err());
+        assert!(guard(Path::new(r"C:\"), Some(home)).is_err());
+        assert!(guard(Path::new(r"C:\a\b"), None).is_err());
+        assert!(guard(Path::new(r"C:\a\b\..\c\d"), None).is_err());
     }
 
     #[test]

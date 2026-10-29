@@ -88,7 +88,13 @@ export function ResetDialog({ client, open, onOpenChange }: { client: DevtoolsCl
                     <li>
                       {entries === 0
                         ? "No saved sign-ins in this computer's keychain."
-                        : `${entries === 1 ? "One entry" : `${entries} entries`} in this computer's keychain under ${plan.keystore.service}: ${plan.keystore.entries.join(", ")}.`}
+                        : `${entries === 1 ? "One entry" : `${entries} entries`} in this computer's keychain under ${plan.keystore.service}: `}
+                      {plan.keystore.entries.map((e, i) => (
+                        <code key={e} className="font-mono text-xs break-all">
+                          {i > 0 ? ", " : ""}
+                          {e}
+                        </code>
+                      ))}
                       {plan.keystore.problem && <> The keychain couldn't be searched: {plan.keystore.problem}</>}
                     </li>
                     {plan.web_storage && <li>Everything this app's web view has stored.</li>}

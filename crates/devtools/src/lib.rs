@@ -19,6 +19,8 @@
 /// `apps/desktop/src/devtools/marker.ts`.
 pub const MARKER: &str = "lockdown-devtools-6f1c2a";
 
+pub mod menu;
+
 #[cfg(feature = "reset")]
 pub mod reset;
 

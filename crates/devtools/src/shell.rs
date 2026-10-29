@@ -319,26 +319,11 @@ mod demo_commands {
     }
 }
 
-/// The menu's items: (id, words, action sent to the page).
-#[allow(clippy::vec_init_then_push)]
-pub fn menu_items() -> Vec<(&'static str, &'static str, &'static str)> {
-    let mut items = Vec::new();
-    #[cfg(feature = "demo")]
-    {
-        items.push(("devtools.demo.open", "Open the demo", "demo_open"));
-        items.push(("devtools.demo.reset", "Reset demo data", "demo_reset"));
-        items.push(("devtools.demo.load", "Load a demo pack…", "demo_load"));
-    }
-    #[cfg(feature = "reset")]
-    items.push(("devtools.reset", "Reset Lockdown…", "reset"));
-    items
-}
-
 /// The Developer menu, where the platform puts an app's menus.
 fn install_menu(handle: &AppHandle) -> tauri::Result<()> {
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
     let developer = Submenu::with_id(handle, "devtools", "Developer", true)?;
-    let items = menu_items();
+    let items = crate::menu::items();
     for (i, (id, words, _)) in items.iter().enumerate() {
         if *id == "devtools.reset" && i > 0 {
             developer.append(&PredefinedMenuItem::separator(handle)?)?;
@@ -360,7 +345,7 @@ fn install_menu(handle: &AppHandle) -> tauri::Result<()> {
     }
     handle.on_menu_event(|app, event| {
         let id = event.id().as_ref();
-        if let Some((_, _, action)) = menu_items().into_iter().find(|(i, _, _)| *i == id) {
+        if let Some((_, _, action)) = crate::menu::items().into_iter().find(|(i, _, _)| *i == id) {
             if let Some(main) = app.get_webview_window(MAIN_WINDOW) {
                 let _ = main.show();
                 let _ = main.set_focus();

@@ -6183,10 +6183,11 @@
           },
           {
             "id": "url.0",
-            "kind": "text",
+            "kind": "url",
             "label": "Website",
             "value": {
-              "text": "https://mail.example.com"
+              "url": "https://mail.example.com",
+              "matchRule": "exact_host"
             }
           }
         ],
@@ -6209,10 +6210,11 @@
           },
           {
             "id": "url.0",
-            "kind": "text",
+            "kind": "url",
             "label": "Website",
             "value": {
-              "text": "https://mail.example.com"
+              "url": "https://mail.example.com",
+              "matchRule": "exact_host"
             }
           }
         ],
@@ -6235,10 +6237,11 @@
           },
           {
             "id": "url.0",
-            "kind": "text",
+            "kind": "url",
             "label": "Website",
             "value": {
-              "text": "https://mail.example.com"
+              "url": "https://mail.example.com",
+              "matchRule": "exact_host"
             }
           },
           {
