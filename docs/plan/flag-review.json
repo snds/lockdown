@@ -18,7 +18,8 @@
   "D307": {"verdict": "accepted", "note": "Kept on by default. This takes back the system-wide shortcut you listed as deferred in D122; it was kept because it needed no OS-level integration. Ctrl+Shift+Space matches 1Password's quick access."},
   "D312": {"verdict": "changed", "note": "Same notice as D210 after an upgrade that follows a password you typed yourself."},
   "D328": {"verdict": "changed", "note": "A split view stays a warning for the vault, which keeps reading and syncing, but it pauses new contact look-ups, new shares and emergency-access grants through that server until the split clears. A server showing two histories is the moment it could swap someone's keys."},
-  "D346": {"verdict": "accepted", "note": "Being built now (slice/pq-status-line)."}
+  "D346": {"verdict": "accepted", "note": "Built by slice 29 (#21): the line on Security in the desktop app, the web vault and the CLI."},
+  "D371": {"verdict": "accepted", "note": "The link to the device is kept. The proposed \"Revoke it on Devices\" hint is left out: a device that is waiting usually just needs updating, and a nudge to revoke could cost someone a device they still use."}
  },
  "areas": [
   {"id": "keys", "name": "Keys and encryption", "ids": "D30-D49,D379"},
