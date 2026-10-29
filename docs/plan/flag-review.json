@@ -12,12 +12,12 @@
  "calls": {
   "D52": {"verdict": "changed", "note": "A signed-in device should renew its own session with its device key, so the account password is asked only on a new device, after a remote sign-out, or after 30 days without use. Today a session lasts 8 hours with no renewal, so a device that syncs all day asks for the password again. Built by slice 32 (#25, D400–D408)."},
   "D138": {"verdict": "needs-you", "note": "Crown jewels (wallet phrases, recovery codes) are left out of locked backups unless opted in one by one. If the account and the server are both lost, a restore brings back everything except the most valuable items. Recommendation: put crown jewels in locked Lockdown backups by default, sealed under the backup password, and keep them out of plain exports as your D121 says."},
-  "D210": {"verdict": "changed", "note": "Keep the silent passkey upgrade, and add a notice afterwards (\"github.com added a passkey to this login\") on the item and as a toast, so nothing is saved without the person ever hearing about it."},
+  "D210": {"verdict": "changed", "note": "Keep the silent passkey upgrade, and add a notice afterwards (\"github.com added a passkey to this login\") on the item and as a toast, so nothing is saved without the person ever hearing about it. Built by slice 33 (#26, D410)."},
   "D229": {"verdict": "deferred", "note": "A push relay that Lockdown runs for self-hosted servers is an ongoing service with a running cost. It waits for the native mobile apps, which you deferred under D122."},
-  "D230": {"verdict": "changed", "note": "Strength words: weak under 50 bits, fair 50 to 74, strong from 75. The default 6-word passphrase (77.5 bits) then reads strong, as it is, instead of fair."},
+  "D230": {"verdict": "changed", "note": "Strength words: weak under 50 bits, fair 50 to 74, strong from 75. The default 6-word passphrase (77.5 bits) then reads strong, as it is, instead of fair. Built by slice 33 (#26, D412)."},
   "D307": {"verdict": "accepted", "note": "Kept on by default. This takes back the system-wide shortcut you listed as deferred in D122; it was kept because it needed no OS-level integration. Ctrl+Shift+Space matches 1Password's quick access."},
-  "D312": {"verdict": "changed", "note": "Same notice as D210 after an upgrade that follows a password you typed yourself."},
-  "D328": {"verdict": "changed", "note": "A split view stays a warning for the vault, which keeps reading and syncing, but it pauses new contact look-ups, new shares and emergency-access grants through that server until the split clears. A server showing two histories is the moment it could swap someone's keys."},
+  "D312": {"verdict": "changed", "note": "Same notice as D210 after an upgrade that follows a password you typed yourself. Built by slice 33 (#26, D410)."},
+  "D328": {"verdict": "changed", "note": "A split view stays a warning for the vault, which keeps reading and syncing, but it pauses new contact look-ups, new shares and emergency-access grants through that server until the split clears. A server showing two histories is the moment it could swap someone's keys. Built by slice 33 (#26, D413)."},
   "D346": {"verdict": "accepted", "note": "Built by slice 29 (#21): the line on Security in the desktop app, the web vault and the CLI."},
   "D371": {"verdict": "accepted", "note": "The link to the device is kept. The proposed \"Revoke it on Devices\" hint is left out: a device that is waiting usually just needs updating, and a nudge to revoke could cost someone a device they still use."}
  },
@@ -36,6 +36,7 @@
   {"id": "pq", "name": "Post-quantum", "ids": "D335-D349,D365-D374"},
   {"id": "release", "name": "Release and packaging", "ids": "D90-D99,D275-D289,D350-D356,D358-D364"},
   {"id": "plans", "name": "Plans and pricing", "ids": "D375-D378"},
+  {"id": "small-calls", "name": "Follow-ups to the review", "ids": "D410-D419"},
   {"id": "design", "name": "Design and accessibility", "ids": "D380-D398"}
  ]
 }

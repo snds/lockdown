@@ -14,7 +14,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**400 decisions, thirty-two build slices, no release yet (2026-10-29).** Of the 122 features committed to v1, 83 are done, 15 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
+**408 decisions, thirty-three build slices, no release yet (2026-10-29).** Of the 122 features committed to v1, 83 are done, 15 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
 
 | Slice | What it delivered |
 |---|---|
@@ -51,6 +51,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 | **30 · Design fixes 1** ✅ | The defects from the [2026-10-29 design review](docs/design/2026-10-29-review.md): approve and deny keep their words at every width, the item's Security box draws once, the in-page lookalike stop is never clipped, copy that follows its decisions, the camera error on its own tab, one primary on Status, the first-run link. [Doc 31](docs/plan/31-design-fixes-1.md), D380–D389. |
 | **31 · Accessibility structure** ✅ | Every list's children are list items, the extension's in-page frames draw with unicron's roles from a generated plain-CSS sheet, one heading per screen at every width, named groups and landmarks, and an axe check in the extension suite. Over the full capture, axe's critical hits fell from 420 to 6 and serious from 41 to 0; what is left sits inside unicron. [Doc 32](docs/plan/32-a11y-structure.md), D390–D398. |
 | **32 · Sessions that renew themselves** ✅ | A signed-in device renews its own session by signing a one-time challenge with its device key, and the server rotates it. The account password is asked only on a new device, after a session was ended, after the device was revoked, or after 30 days without use, with words that say which. Desktop, CLI and web vault. [Doc 33](docs/plan/33-session-renewal.md), D400–D408. |
+| **33 · Four small calls** ✅ | A quiet passkey upgrade is told afterwards (a toast and a line on the item); one strength rule at 50 and 75 bits, so the default passphrase reads strong; while the server's public log disagrees with a mirror, the core refuses new look-ups, shares, links and emergency steps and says why; revoking a device ends its sessions at once. [Doc 34](docs/plan/34-small-calls.md), D410–D417. |
 | **Next** | Browser extension (fill, save, passkeys), mobile apps, sharing and family, breach monitoring, packaged and signed releases |
 
 | Real (with tests) | Skeleton (types, traits, one real rule each) |
