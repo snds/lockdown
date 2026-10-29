@@ -451,10 +451,24 @@ jobs:
   # WebKit, with Chromium beside it so the assertions are honest. Every
   # icon must draw as one glyph, a page that prints alone must hide the
   # app behind it, and the main screens are kept as screenshots.
+  #
+  # Twice: on Linux, where WebKit shapes text with HarfBuzz (as WebKitGTK
+  # does for the Linux app), and on macOS, where Playwright's WebKit is
+  # Apple's port and shapes with Core Text as WKWebView does. The first
+  # run showed the Linux engine drawing every icon right, so the Mac
+  # engine is the one that can show the Mac app's defect.
   engines:
-    name: desktop UI · webkit · chromium
-    # Pinned for the same reason as the extension and web jobs.
-    runs-on: ubuntu-24.04
+    name: desktop UI · ${{ matrix.engines }} (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Pinned for the same reason as the extension and web jobs.
+          - os: ubuntu-24.04
+            engines: webkit,chromium,firefox
+          - os: macos-latest
+            engines: webkit,chromium
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     defaults:
       run:
@@ -471,15 +485,15 @@ jobs:
           cache-dependency-path: design/capture/pnpm-lock.yaml
       - name: Install
         run: pnpm install --frozen-lockfile
-      - name: WebKit and Chromium
-        run: pnpm exec playwright install --with-deps webkit chromium
+      - name: The engines
+        run: pnpm exec playwright install --with-deps $(echo "${{ matrix.engines }}" | tr , ' ')
       - name: Build the harness
         run: pnpm build
-      - name: Icons, print and a smoke, in both engines
-        run: pnpm engine:check --engines webkit,chromium --out "$RUNNER_TEMP/engine-check"
+      - name: Icons, print and a smoke, in each engine
+        run: pnpm engine:check --engines ${{ matrix.engines }} --out "$RUNNER_TEMP/engine-check"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: engine-check
+          name: engine-check-${{ matrix.os }}
           path: ${{ runner.temp }}/engine-check
           if-no-files-found: error

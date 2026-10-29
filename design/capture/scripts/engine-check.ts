@@ -146,7 +146,8 @@ async function runEngine(name: string, site: string): Promise<{ engine: string; 
       await page.screenshot({ path: path.join(dir, screenshot), animations: "disabled" })
       states.push({ state, ready, fontLoaded: m.fontLoaded, fontFaces: m.fontFaces, icons: m.icons, wrong, print, screenshot, errors })
       if (!ready) failures.push(`${state}: the state did not report ready`)
-      if (!m.fontLoaded) failures.push(`${state}: the Material Symbols font did not load`)
+      // Engines load a face only once something uses it, so a screen with no icon has no font to check.
+      if (m.icons.length > 0 && !m.fontLoaded) failures.push(`${state}: the Material Symbols font did not load`)
       if (wrong.length) {
         const sample = wrong.slice(0, 4).map((i) => `${i.name} ${i.advance.toFixed(1)} wide`)
         failures.push(`${state}: ${wrong.length} of ${m.icons.length} icons are not one glyph (${sample.join("; ")})`)
