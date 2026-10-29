@@ -16,12 +16,14 @@
     // ?case=opacity-overlay|pointer-events-none-overlay: an attacker's layer
     // over the form (the red team's cases, now against the real fill path).
     // ?case=cover-menu: the page covers whatever it sees added to the top of
-    // the document (Lockdown's menu host) with a popover of its own.
+    // the document (Lockdown's menu host) with a popover of its own;
+    // ?case=cover-menu-briefly takes it away again after 700 ms, so the menu
+    // arms afresh (docs/plan/37-cli-popup.md §2, review R17).
     const kase = new URLSearchParams(location.search).get("case");
     const stage = document.getElementById("stage");
     if (kase === "opacity-overlay") stage.insertAdjacentHTML("beforeend", '<div id="overlay" class="overlay opacity-0"></div>');
     if (kase === "pointer-events-none-overlay") stage.insertAdjacentHTML("beforeend", '<div id="overlay" class="overlay pointer-events-none"><p>Click to continue</p></div>');
-    if (kase === "cover-menu") {
+    if (kase === "cover-menu" || kase === "cover-menu-briefly") {
       new MutationObserver((records) => {
         for (const r of records) for (const n of r.addedNodes) {
           if (n.nodeType !== 1 || n.id === "decoy") continue;
@@ -33,6 +35,7 @@
             d.style.cssText = `position:fixed; margin:0; inset:auto; left:${rect.left}px; top:${rect.top}px; width:${rect.width}px; height:${rect.height}px; background:#fff; opacity:0.5; border:0; padding:0;`;
             document.documentElement.append(d);
             d.showPopover();
+            if (kase === "cover-menu-briefly") setTimeout(() => d.remove(), 700);
           }, 50);
         }
       }).observe(document.documentElement, { childList: true });

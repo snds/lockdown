@@ -474,6 +474,11 @@ async function route(msg: ToBackground, sender: chrome.runtime.MessageSender): P
     case "pk_sheet_retry":
       if (!isExtensionPage(sender, "frame.html")) throw new Error("refused")
       return passkeys.sheetRetry(msg.nonce, sender)
+
+    // --- Open Lockdown from the popup (docs/plan/37-cli-popup.md §2) ---------
+    case "open_app":
+      if (!isExtensionPage(sender, "popup.html")) throw new Error("refused")
+      return link.openApp()
   }
   throw new Error("unknown message")
 }

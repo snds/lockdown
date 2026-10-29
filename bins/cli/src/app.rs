@@ -28,6 +28,8 @@ use ecosystem_identity::records::{KeyEnvelope, KeyRef, KeyRefKind, Purpose, Reco
 use ecosystem_identity::{
     AccountAuth, AccountCredentials, ExportKey, FileKeystore, Identity, RecoveryKit, default_root,
 };
+use lockdown_app::sharing::SharingState;
+use lockdown_app::vault_open::{self, PersonaVaults, Waiting};
 use lockdown_crypto::auth::{DeviceBinding, OpaqueAccountAuth};
 use lockdown_store::{
     HeadMemory, RememberedHead, SqliteStore, SyncedIdentity, TransparencyMemory, write_private,
@@ -38,9 +40,8 @@ use lockdown_sync::{
     VaultSyncState, pull_identity, push_identity,
 };
 use lockdown_vault::identity::{
-    self, APP, DeviceTrust, OpenVault, default_persona, device_keys, find_persona,
-    identity_signing_key, merge_records, open_or_create_identity, open_vault_trusting,
-    persona_vaults, record_set,
+    self, APP, OpenVault, default_persona, find_persona, identity_signing_key, merge_records,
+    open_or_create_identity, persona_vaults, record_set,
 };
 use lockdown_vault::identity_set::{Revocation, VaultBoundary};
 use lockdown_vault::transparency::{CHECKPOINT_V, Checkpoint};
@@ -192,6 +193,11 @@ pub struct App {
     transparency: TransparencyMemory,
     sync: Option<SyncConfig>,
     opened: OpenVault,
+    /// The persona's other vaults that opened, in the app's order. The
+    /// commands work in `opened`; these are counted in `status`.
+    more: Vec<OpenVault>,
+    /// The persona's vaults that name a signer this device hasn't met.
+    waiting: Vec<Waiting>,
     /// Whether this run created the identity.
     pub identity_created: bool,
 }
@@ -329,59 +335,46 @@ impl App {
                 cfg.save(&paths.sync_file())?;
             }
         }
-        let trust_for = |vault_id: Id| {
-            let mut keys = synced.device_keys();
-            for (id, key) in device_keys(&identity) {
-                keys.entry(id).or_insert(key);
+        // The persona's vaults open the way the app opens them (one code
+        // path, `lockdown_app::vault_open`): each with this identity's
+        // devices first; the persona's own first vault in the app's order,
+        // never by id, so a shared vault can't stand in front of it; a
+        // vault that names a signer the identity doesn't know tried again
+        // trusting its writers as this device pinned them, and otherwise
+        // left waiting instead of failing the command.
+        let PersonaVaults {
+            opened: mut all,
+            waiting,
+        } = vault_open::open_own_vaults(
+            &identity, persona_id, &store, &keystore, &memory, &synced,
+        )?;
+        let (opened, more, waiting) = if all.is_empty() {
+            if let Some(w) = waiting.into_iter().next() {
+                return Err(w.why);
             }
-            DeviceTrust {
-                keys,
-                revoked_after: synced.revoked_after(vault_id),
-            }
-        };
-
-        let opened = if mode == Mode::Init {
-            let last = |vault_id: Id| memory.last_accepted_seq(vault_id);
-            match persona_vaults(&identity, persona_id, &store)
-                .map_err(|e| e.to_string())?
-                .first()
-            {
-                Some(vault_id) => open_vault_trusting(
-                    &identity,
-                    *vault_id,
-                    &store,
-                    Box::new(keystore.clone()),
-                    last(*vault_id),
-                    &trust_for(*vault_id),
-                )
-                .map_err(|e| e.to_string())?,
-                None => identity::open_or_create_vault(
-                    &mut identity,
-                    persona_id,
-                    &mut store,
-                    Box::new(keystore.clone()),
-                    &last,
-                )
-                .map_err(|e| e.to_string())?,
-            }
-        } else {
-            let vaults =
-                persona_vaults(&identity, persona_id, &store).map_err(|e| e.to_string())?;
-            let Some(vault_id) = vaults.first() else {
+            if mode != Mode::Init {
                 return Err(format!(
                     "this persona has no vault at {} yet; run `lockdown init`",
                     paths.data.display()
                 ));
-            };
-            open_vault_trusting(
-                &identity,
-                *vault_id,
-                &store,
+            }
+            let last = |vault_id: Id| memory.last_accepted_seq(vault_id);
+            let created = identity::open_or_create_vault(
+                &mut identity,
+                persona_id,
+                &mut store,
                 Box::new(keystore.clone()),
-                memory.last_accepted_seq(*vault_id),
-                &trust_for(*vault_id),
+                &last,
             )
-            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+            (created, Vec::new(), Vec::new())
+        } else {
+            let opened = all.remove(0);
+            let still = open_with_pinned_writers(
+                &identity, persona_id, &paths, &store, &keystore, &memory, &synced, &opened,
+                waiting, &mut all,
+            )?;
+            (opened, all, still)
         };
         let mut opened = opened;
         opened
@@ -398,6 +391,8 @@ impl App {
             transparency,
             sync,
             opened,
+            more,
+            waiting,
             identity_created,
         };
         app.remember()?;
@@ -854,6 +849,7 @@ impl App {
                 self.synced.seq()
             ),
         ];
+        lines.extend(other_vault_lines(self.more.len(), self.waiting.len()));
         match &self.sync {
             Some(cfg) => {
                 let state = cfg.vaults.get(&vault_id).copied().unwrap_or_default();
@@ -2315,6 +2311,78 @@ fn pull_new_vaults(
         }
     }
     Ok(pulled)
+}
+
+/// What `status` says about the persona's vaults beside the one in use:
+/// how many more opened, and how many wait for their writers to be met
+/// (`lockdown_app::vault_open`).
+fn other_vault_lines(more: usize, waiting: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    if more > 0 {
+        lines.push(format!(
+            "other vaults   {more} more open; the command line works in the vault above"
+        ));
+    }
+    match waiting {
+        0 => {}
+        1 => lines.push(
+            "waiting        1 shared vault has changes from people this device hasn't met yet. \
+             It opens once the Lockdown app syncs and checks them against the server's log."
+                .into(),
+        ),
+        n => lines.push(format!(
+            "waiting        {n} shared vaults have changes from people this device hasn't met yet. \
+             They open once the Lockdown app syncs and checks them against the server's log."
+        )),
+    }
+    lines
+}
+
+/// Step 3 of `lockdown_app::vault_open`: each vault that waited is tried
+/// again trusting its writers as this device pinned them in the persona's
+/// sharing record (the app's, beside the store, sealed under the persona's
+/// App Data Key; the command line only reads it). What opens joins `more`
+/// in the app's order; what still names a signer nobody vouches for is
+/// returned, to wait for a sync that meets its writers.
+#[allow(clippy::too_many_arguments)]
+fn open_with_pinned_writers(
+    identity: &Identity,
+    persona_id: Id,
+    paths: &Paths,
+    store: &SqliteStore,
+    keystore: &Rc<FileKeystore>,
+    memory: &HeadMemory,
+    synced: &SyncedIdentity,
+    first: &OpenVault,
+    waiting: Vec<Waiting>,
+    more: &mut Vec<OpenVault>,
+) -> Result<Vec<Waiting>, String> {
+    if waiting.is_empty() {
+        return Ok(waiting);
+    }
+    let sharing = SharingState::open(
+        SharingState::path_in(&paths.data, persona_id),
+        persona_id,
+        &first.keys.app_data_key,
+    )?;
+    let own = vault_open::own_device_keys(identity, synced);
+    let mut still = Vec::new();
+    for w in waiting {
+        let writers = vault_open::pinned_writers(&sharing, &own, w.vault_id);
+        if writers.is_empty() {
+            still.push(w);
+            continue;
+        }
+        let (trust, members) = vault_open::vault_trust(identity, synced, w.vault_id, writers);
+        match vault_open::open_one(
+            identity, w.vault_id, store, keystore, memory, &trust, &members,
+        )? {
+            Ok(opened) => more.push(opened),
+            Err(w) => still.push(w),
+        }
+    }
+    vault_open::order_vaults(more);
+    Ok(still)
 }
 
 /// This device's binding for the OPAQUE client, from its keystore.

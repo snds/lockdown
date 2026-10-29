@@ -15,6 +15,9 @@
 //! time it is asked, so the passkey suite (extension/test/passkeys.spec.ts)
 //! can see user verification happen.
 //!
+//! The popup's Open Lockdown (docs/plan/37-cli-popup.md §2) prints a
+//! `shown` event where the app would bring its window forward.
+//!
 //! The bridges suite (extension/test/bridges.spec.ts) adds logins, an
 //! alias service pointed at its own fixture server, and reads back the
 //! sign-in map and a login's fill fix the same way.
@@ -181,6 +184,11 @@ fn main() {
     };
     let endpoint =
         Arc::new(Endpoint::start(app.clone(), Arc::new(PrintingClipboard), config).unwrap());
+    // No window here: bringing it forward prints a `shown` event instead.
+    endpoint.on_show(Box::new(|| {
+        emit(json!({ "event": "shown" }));
+        Ok(())
+    }));
     let status = endpoint.status();
     emit(json!({
         "event": "ready",

@@ -18,6 +18,9 @@ lockdown-vault.workspace = true
 lockdown-store.workspace = true
 lockdown-sync.workspace = true
 lockdown-crypto.workspace = true
+# Opening the persona's vaults the way the app does (`vault_open`), and
+# reading the pins of a shared vault's writers from its sharing record.
+lockdown-app.workspace = true
 ecosystem-identity.workspace = true
 clap.workspace = true
 serde.workspace = true

@@ -31,6 +31,7 @@ export function statesMeta(): StateMeta[] {
     compact: s.compact ?? false,
     frame: s.frame ?? null,
     trusted: s.trusted ?? [],
+    hold_clock: s.hold_clock ?? false,
   }))
 }
 

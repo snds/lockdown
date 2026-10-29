@@ -5,6 +5,12 @@
 // site fill fixes and "Hide my email". It shows summaries only: title,
 // username, site, kind (D113 for crown jewels). The in-page menu and prompts
 // stay plain HTML (frame.ts): they load nothing a page could influence.
+//
+// Every result is one row (design review R16, docs/plan/37-cli-popup.md §2):
+// the kind's glyph, the title, one line under it, and one action at the
+// trailing edge that never wraps under the words. Text is 13 px or more.
+// Where the popup can't act (locked, no app, not paired) it offers Open
+// Lockdown.
 
 import { useCallback, useEffect, useRef, useState } from "react"
 
@@ -21,13 +27,17 @@ import {
   ItemContent,
   ItemDescription,
   ItemGroup,
+  ItemMedia,
   ItemTitle,
   NativeSelect,
   NativeSelectOption,
   Spinner,
+  type IconName,
 } from "@unicron/ui"
 
-import type { AliasOption, ChangeLink, FieldMatch, FieldRole, FillFix, LinkState, PageField, PageMatches, PickAnswer, SearchItem, ShownCode, SiteFixView } from "../shared/protocol"
+import type { ReactNode } from "react"
+
+import { OPEN_HOW, type AliasOption, type ChangeLink, type FieldMatch, type FieldRole, type FillFix, type LinkState, type OpenedApp, type PageField, type PageMatches, type PickAnswer, type SearchItem, type ShownCode, type SiteFixView } from "../shared/protocol"
 
 const params = new URLSearchParams(location.search)
 const tabParam = params.has("tab") ? Number(params.get("tab")) : undefined
@@ -88,7 +98,10 @@ function Link({ state, onChange, onRetry, say }: { state: LinkState; onChange: (
       <section className="flex flex-col gap-2">
         <h1 className="text-base font-semibold">Lockdown</h1>
         <p className="text-sm">{state.message || "Lockdown isn't reachable."}</p>
-        <Button onClick={onRetry}>Try again</Button>
+        <OpenLockdown state={state} onChange={onChange} say={say} primary />
+        <Button variant="outline" onClick={onRetry}>
+          Try again
+        </Button>
       </section>
     )
   }
@@ -119,6 +132,7 @@ function Link({ state, onChange, onRetry, say }: { state: LinkState; onChange: (
         <Button disabled={busy} onClick={() => void pair()}>
           Pair with Lockdown
         </Button>
+        <OpenLockdown state={state} onChange={onChange} say={say} />
       </section>
     )
   }
@@ -126,7 +140,108 @@ function Link({ state, onChange, onRetry, say }: { state: LinkState; onChange: (
     <section className="flex flex-col gap-2">
       <h1 className="text-base font-semibold">Lockdown</h1>
       <p className="text-sm">Lockdown is locked. Unlock it in the app to fill and search.</p>
+      <OpenLockdown state={state} onChange={onChange} say={say} primary />
     </section>
+  )
+}
+
+/** How long the popup waits for an app the host started to answer. */
+const LAUNCH_WAIT_MS = 20_000
+
+/**
+ * Open Lockdown (review R16): a running app brings its window forward; with
+ * none, the native host starts it and the popup waits for it to answer,
+ * then shows where things stand. Where neither works, it says how.
+ */
+function OpenLockdown({ state, onChange, say, primary = false }: { state: LinkState; onChange: (s: LinkState) => void; say: Say; primary?: boolean }) {
+  const [busy, setBusy] = useState(false)
+  const open = async () => {
+    setBusy(true)
+    const r = await send<OpenedApp>({ t: "open_app" })
+    if (r?.opened === "shown") {
+      say(state.paired && state.locked ? "Lockdown is open on this computer. Unlock it there to fill and search." : "Lockdown is open on this computer.")
+    } else if (r?.opened === "launched") {
+      say("Opening Lockdown…")
+      const until = Date.now() + LAUNCH_WAIT_MS
+      for (;;) {
+        await new Promise((ok) => setTimeout(ok, 1000))
+        const s = await send<LinkState>({ t: "status" })
+        if (s?.link === "ready") {
+          say("Lockdown is open on this computer.")
+          onChange(s)
+          break
+        }
+        if (Date.now() > until) {
+          say(OPEN_HOW)
+          break
+        }
+      }
+    } else {
+      say(r?.error ?? OPEN_HOW)
+    }
+    setBusy(false)
+  }
+  return (
+    <Button variant={primary ? "default" : "outline"} disabled={busy} onClick={() => void open()}>
+      Open Lockdown
+    </Button>
+  )
+}
+
+/** Each kind's glyph, as the app's list draws it (decorative: the words say the kind). */
+const KIND_ICONS: Record<string, IconName> = {
+  login: "key",
+  passkey: "passkey",
+  code: "timer",
+  "wi-fi": "wifi",
+  "ssh-key": "terminal",
+  "api-credential": "api",
+  document: "description",
+  identity: "badge",
+  card: "credit_card",
+  "bank-account": "account_balance",
+  note: "sticky_note_2",
+  "crypto-wallet": "account_balance_wallet",
+  server: "dns",
+  database: "database",
+  "software-licence": "license",
+  membership: "card_membership",
+  custom: "category",
+}
+
+/**
+ * The lists of results. unicron's Item wraps its actions under its words
+ * when they run long (`flex-wrap`), so a copy button sat beside the title in
+ * one row and under the subtitle in the next (review R16). Here the action
+ * stays at the trailing edge and the words truncate first, one line each:
+ * set on the slots from this wrapper, not by className on the components,
+ * so the design-system ratchet stays where it was (a unicron host-contract
+ * gap, doc 37 §5).
+ */
+const ROWS =
+  "[&_[data-slot=item]]:flex-nowrap [&_[data-slot=item-content]]:min-w-0 [&_[data-slot=item-title]]:max-w-full [&_[data-slot=item-description]]:block [&_[data-slot=item-description]]:truncate [&_[data-slot=item-actions]]:shrink-0"
+
+/**
+ * One result: the kind's glyph, the title (and its badge), one line under
+ * it, anything shown in place (a code), and one action at the trailing
+ * edge, inside a `ROWS` list.
+ */
+function Row({ glyph, title, badge, subtitle, more, action }: { glyph: IconName; title: string; badge?: ReactNode; subtitle: ReactNode; more?: ReactNode; action?: ReactNode }) {
+  return (
+    <Item role="listitem" variant="outline" size="sm">
+      <ItemMedia variant="icon">
+        <Icon name={glyph} />
+      </ItemMedia>
+      <ItemContent>
+        <ItemTitle>
+          <span className="truncate">{title}</span>
+          {badge}
+        </ItemTitle>
+        <ItemDescription>{subtitle}</ItemDescription>
+        {more}
+      </ItemContent>
+      {action && <ItemActions>{action}</ItemActions>}
+    </Item>
   )
 }
 
@@ -165,25 +280,21 @@ function SiteSection({ site, say }: { site: Site; say: Say }) {
       {m.logins.length > 0 && (
         <>
           <h2 className="text-sm font-semibold">For {m.host}</h2>
-          <ItemGroup role="list" aria-label={`Logins for ${m.host}`}>
-            {m.logins.map((c) => (
-              <Item key={c.item_id} role="listitem" variant="outline" size="sm">
-                <ItemContent>
-                  <ItemTitle>
-                    {c.title || m.host}
-                    {c.asked && <Badge variant="secondary">From quick access</Badge>}
-                  </ItemTitle>
-                  <ItemDescription>{c.crown_jewel ? "protected" : c.username}</ItemDescription>
-                </ItemContent>
-                <ItemActions>
-                  <Button size="sm" onClick={() => void fill(c.item_id, c.title)}>
-                    Fill
-                  </Button>
-                  <ChangePassword itemId={c.item_id} title={c.title || m.host} say={say} />
-                </ItemActions>
-              </Item>
-            ))}
-          </ItemGroup>
+          <div className={ROWS}>
+            <ItemGroup role="list" aria-label={`Logins for ${m.host}`}>
+              {m.logins.map((c) => (
+                <Row
+                  key={c.item_id}
+                  glyph="key"
+                  title={c.title || m.host}
+                  badge={c.asked && <Badge variant="secondary">From quick access</Badge>}
+                  subtitle={c.crown_jewel ? "protected" : c.username}
+                  more={<ChangePassword itemId={c.item_id} title={c.title || m.host} say={say} />}
+                  action={<Button onClick={() => void fill(c.item_id, c.title)}>Fill</Button>}
+                />
+              ))}
+            </ItemGroup>
+          </div>
           <FixSection tabId={site.tab_id} say={say} />
         </>
       )}
@@ -206,9 +317,11 @@ function ChangePassword({ itemId, title, say }: { itemId: string; title: string;
     else say(r.checked ? `${r.host} has no change-password page Lockdown could find, so its front page is open.` : `Opened ${r.host}; look for its password settings.`)
   }
   return (
-    <Button variant="link" size="sm" onClick={() => void open()}>
-      Change password
-    </Button>
+    <div className="-ml-2.5">
+      <Button variant="link" onClick={() => void open()}>
+        Change password
+      </Button>
+    </div>
   )
 }
 
@@ -304,7 +417,7 @@ function FixSection({ tabId, say }: { tabId?: number; say: Say }) {
           ) : (
             <p>This page has no fields Lockdown can name.</p>
           )}
-          <Button size="sm" disabled={busy} onClick={() => void save()}>
+          <Button disabled={busy} onClick={() => void save()}>
             Save fix
           </Button>
         </div>
@@ -335,21 +448,23 @@ function Aliases({ site, say }: { site: Site; say: Say }) {
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-sm font-semibold">Hide my email</h2>
-      <ItemGroup role="list" aria-label="Alias services">
-        {services.map((svc) => (
-          <Item key={svc.item_id} role="listitem" variant="outline" size="sm">
-            <ItemContent>
-              <ItemTitle>{svc.name}</ItemTitle>
-              <ItemDescription>{svc.domain ? `on ${svc.domain}` : "a new address that forwards to you"}</ItemDescription>
-            </ItemContent>
-            <ItemActions>
-              <Button variant="outline" size="sm" aria-label={`New alias from ${svc.name}`} disabled={busy === svc.item_id} onClick={() => void make(svc)}>
-                New alias
-              </Button>
-            </ItemActions>
-          </Item>
-        ))}
-      </ItemGroup>
+      <div className={ROWS}>
+        <ItemGroup role="list" aria-label="Alias services">
+          {services.map((svc) => (
+            <Row
+              key={svc.item_id}
+              glyph="alternate_email"
+              title={svc.name}
+              subtitle={svc.domain ? `on ${svc.domain}` : "a new address that forwards to you"}
+              action={
+                <Button variant="outline" aria-label={`New alias from ${svc.name}`} disabled={busy === svc.item_id} onClick={() => void make(svc)}>
+                  New alias
+                </Button>
+              }
+            />
+          ))}
+        </ItemGroup>
+      </div>
     </section>
   )
 }
@@ -406,38 +521,41 @@ function Search({ lookalike, say }: { lookalike: string[]; say: Say }) {
   return (
     <section className="flex flex-col gap-2">
       <Input ref={input} type="search" placeholder="Search Lockdown" aria-label="Search Lockdown" value={query} onChange={(e) => setQuery(e.target.value)} />
-      <ItemGroup role="list" aria-label="Results">
-        {items.map((item) => (
-          <Item key={item.item_id} role="listitem" size="sm">
-            <ItemContent>
-              <ItemTitle>
-                {item.title || "Untitled"}
-                {item.exact === false && <Badge variant="outline">Close match</Badge>}
-              </ItemTitle>
-              <ItemDescription>
-                {item.crown_jewel ? `${item.kind} · protected` : [item.username, item.host || item.subtitle].filter(Boolean).join(" · ") || item.kind}
-              </ItemDescription>
-              {shown?.item_id === item.item_id && (
-                <p className="font-mono text-2xl tracking-widest" aria-label={`Code ${shown.code.split("").join(" ")}`}>
-                  {shown.code}
-                </p>
-              )}
-            </ItemContent>
-            <ItemActions>
-              {item.copy?.how === "code" && (
-                <Button variant="ghost" size="sm" aria-label={`Show code for ${item.title}`} onClick={() => void showCode(item)}>
-                  <Icon name="pin" />
-                </Button>
-              )}
-              {item.copy && (
-                <Button variant="outline" size="sm" onClick={() => void copy(item)}>
-                  {confirming === item.item_id ? "Copy anyway" : `Copy ${item.copy.label}`}
-                </Button>
-              )}
-            </ItemActions>
-          </Item>
-        ))}
-      </ItemGroup>
+      <div className={ROWS}>
+        <ItemGroup role="list" aria-label="Results">
+          {items.map((item) => {
+            const showing = shown?.item_id === item.item_id
+            // One action: Copy, or for a code, Show code and then Copy code
+            // while it is shown.
+            const action = !item.copy ? undefined : item.copy.how === "code" && !showing ? (
+              <Button variant="outline" aria-label={`Show code for ${item.title}`} onClick={() => void showCode(item)}>
+                Show code
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={() => void copy(item)}>
+                {confirming === item.item_id ? "Copy anyway" : `Copy ${item.copy.label}`}
+              </Button>
+            )
+            return (
+              <Row
+                key={item.item_id}
+                glyph={KIND_ICONS[item.kind] ?? "category"}
+                title={item.title || "Untitled"}
+                badge={item.exact === false && <Badge variant="outline">Close match</Badge>}
+                subtitle={item.crown_jewel ? `${item.kind} · protected` : [item.username, item.host || item.subtitle].filter(Boolean).join(" · ") || item.kind}
+                more={
+                  showing && (
+                    <p className="font-mono text-2xl tracking-widest" aria-label={`Code ${shown.code.split("").join(" ")}`}>
+                      {shown.code}
+                    </p>
+                  )
+                }
+                action={action}
+              />
+            )
+          })}
+        </ItemGroup>
+      </div>
     </section>
   )
 }

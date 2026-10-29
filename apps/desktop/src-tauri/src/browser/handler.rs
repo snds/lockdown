@@ -2,7 +2,7 @@
 //! §4, the message table). Every request is `{"id", "op", …}`; every answer
 //! is `{"id", "ok": true, "result"}` or `{"id", "ok": false, "error":
 //! {"code", "message"}}`. Until the connection proves a pairing, only
-//! `status`, `pair_begin`, `pair_status` and `auth` are answered.
+//! `status`, `pair_begin`, `pair_status`, `auth` and `show` are answered.
 //!
 //! A value to fill leaves here once: serialised straight from the core's
 //! bytes into the answer frame, which the caller wipes after sending.
@@ -165,6 +165,12 @@ pub fn handle(shared: &Shared, conn: &mut Conn, frame: &[u8]) -> Zeroizing<Vec<u
         "pair_status" => args::<ClientRef>(frame)
             .map(|a| json!({ "state": shared.pairings().state(&a.client_id) })),
         "auth" => auth(shared, conn, frame),
+        // Open Lockdown from the popup (docs/plan/37-cli-popup.md §2): the
+        // window comes forward, paired or not; nothing else is answered.
+        "show" => shared
+            .show_window()
+            .map(|()| json!({ "shown": true }))
+            .map_err(|m| Refusal::new("unsupported", m)),
         _ if conn.client.is_none() => Err(Refusal::new(
             "not_paired",
             "pair this browser with Lockdown first",

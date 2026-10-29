@@ -46,6 +46,7 @@ pub mod sharing;
 pub mod strength;
 mod transfer;
 pub mod types;
+pub mod vault_open;
 pub mod views;
 
 #[cfg(not(target_os = "wasi"))]

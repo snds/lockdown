@@ -12,13 +12,13 @@
 use std::collections::BTreeSet;
 
 use lockdown_store::Store as _;
-use lockdown_vault::identity::{OpenVault, keys_for, open_shared_vault_trusting};
+use lockdown_vault::identity::{OpenVault, keys_for};
 use lockdown_vault::{
     CrownJewelDefault, FieldChange, FieldInput, Id, ItemClass, ItemKind, ItemState, Organization,
     PlainField, Vault, VaultContext, VaultInfo, template_for,
 };
 
-use super::shared_sync::{Waiting, unknown_signers};
+use super::shared_sync::Waiting;
 use super::{Session, now_secs, parse_id, text_of};
 use crate::types::{
     AttachmentView, ExpiryReminder, FolderView, ItemPlace, OrganizationView, VaultView,
@@ -34,18 +34,7 @@ pub const OTHER_VAULT_NAME: &str = "Vault";
 /// ceiling that keeps a sync round bounded).
 pub const MAX_VAULTS: usize = 20;
 
-/// The vaults in the order they were made: by the place each one's info
-/// names (none for the first), then its first head's time, then its id.
-/// Every device orders the same vaults the same way.
-pub(crate) fn order_vaults(all: &mut [OpenVault]) {
-    all.sort_by_cached_key(|o| {
-        (
-            o.vault.info().ok().and_then(|i| i.order).unwrap_or(0),
-            o.vault.heads().first().map(|h| h.signed_at.0).unwrap_or(0),
-            o.vault.context().vault_id,
-        )
-    });
-}
+pub(crate) use crate::vault_open::order_vaults;
 
 fn parse_vault(id: &str) -> Result<Id, String> {
     Id::parse(id).map_err(|_| format!("'{id}' isn't a vault id"))
@@ -118,38 +107,22 @@ impl Session {
                 continue;
             }
             let (trust, members) = self.vault_trust(vault_id);
-            let opened = open_shared_vault_trusting(
+            match crate::vault_open::open_one(
                 &self.identity,
                 vault_id,
                 &self.store,
-                Box::new(self.keystore.clone()),
-                self.memory.last_accepted_seq(vault_id),
+                &self.keystore,
+                &self.memory,
                 &trust,
                 &members,
-            );
-            match opened {
-                Ok(mut opened) => {
-                    opened
-                        .vault
-                        .require_post_quantum_from(self.memory.pq_since(vault_id))
-                        .map_err(|e| e.to_string())?;
+            )? {
+                Ok(opened) => {
                     self.more.push(opened);
                     if self.rosters.contains_key(&vault_id) {
                         self.apply_roster(vault_id)?;
                     }
                 }
-                Err(e) => {
-                    let known = |d: Id| trust.keys.contains_key(&d) || members.contains_key(&d);
-                    let unmet =
-                        unknown_signers(&self.store, vault_id, self.identity.device_id(), &known)?;
-                    if unmet.is_empty() {
-                        return Err(e.to_string());
-                    }
-                    waiting.push(Waiting {
-                        vault_id,
-                        why: e.to_string(),
-                    });
-                }
+                Err(w) => waiting.push(w),
             }
         }
         order_vaults(&mut self.more);

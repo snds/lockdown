@@ -192,3 +192,25 @@ test("the passkey sheet, saving and then signing in, has no serious or critical 
     await page.close();
   }
 });
+
+// docs/plan/37-cli-popup.md §2 (review R16): the popup's results in their one
+// row anatomy, and the locked state with Open Lockdown, against the same axe
+// rules in light and dark.
+for (const scheme of SCHEMES) {
+  test(`the popup's rows and its locked state have no serious or critical axe violation (${scheme})`, async () => {
+    const p = await ctx.newPage();
+    await p.emulateMedia({ colorScheme: scheme });
+    await p.goto(`chrome-extension://${DEV_ID}/popup.html`);
+    await p.getByRole("searchbox", { name: "Search Lockdown" }).fill("local");
+    const results = p.getByRole("list", { name: "Results" });
+    await expect(results.getByRole("listitem").first()).toBeVisible();
+    await expect(results.getByRole("listitem")).toHaveCount(await results.locator('[data-slot="item-media"]').count());
+    expect(blocking(await axeIn(p.mainFrame()))).toEqual([]);
+    await desktop.ask("lock", "locked");
+    await p.reload();
+    await expect(p.getByRole("button", { name: "Open Lockdown" })).toBeVisible();
+    expect(blocking(await axeIn(p.mainFrame()))).toEqual([]);
+    await desktop.ask("unlock", "unlocked");
+    await p.close();
+  });
+}

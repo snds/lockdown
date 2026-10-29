@@ -19,6 +19,7 @@ The MV3 extension for Chromium (Chrome, Edge, Brave, Chromium) and Firefox, buil
 | `test/extension.spec.ts`, `test/fixtures/ext/`, `test/desktop.ts` | End to end: the unpacked build in Chromium, the real `lockdown-native-host`, the real desktop endpoint and core over a throwaway vault (`apps/desktop/src-tauri/examples/browser-endpoint.rs`), local fixture pages. |
 | `test/passkeys.spec.ts`, `test/fixtures/ext/webauthn.html` | Passkeys end to end against a real relying-party page that verifies every attestation and signature with WebCrypto; the endpoint fixture runs with `--platform-check`. |
 | `test/manifest.spec.ts` | What differs between the two manifests, and where the passkey scripts run. |
+| `test/open-app.spec.ts` | The popup's Open Lockdown with no app running: a private copy of the real host starts a stand-in app beside it, or the popup says how ([`docs/plan/37-cli-popup.md`](../docs/plan/37-cli-popup.md) §2). |
 | `test/server.ts` | The static server for every fixture, reachable as any name the suite maps to it; `/basic/` answers only with the fixture's Basic Auth credentials. |
 
 ## Run it
