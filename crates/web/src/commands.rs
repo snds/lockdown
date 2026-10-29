@@ -499,7 +499,9 @@ fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult<Reply> {
 mod depth;
 /// After it: what docs/plan/26-desktop-finish.md adds.
 mod finish;
-/// Last: what docs/plan/27-web-server-finish.md adds.
+/// Last: what docs/plan/38-mac-fixes.md adds.
+mod paper;
+/// Then: what docs/plan/27-web-server-finish.md adds.
 mod server;
 
 fn unknown(other: &str) -> AppResult<Reply> {
