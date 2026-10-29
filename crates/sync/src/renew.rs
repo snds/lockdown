@@ -39,13 +39,17 @@ pub const RENEW_MARGIN_SECS: i64 = 5 * 60;
 /// The longest token this client accepts from a renewal.
 const TOKEN_MAX: usize = 4096;
 
-/// Why only the account password helps now.
+/// Why the device can't renew its own session: only the account password
+/// helps now, or, for [`SignInReason::Revoked`], not even that (the device
+/// joins again as a new one).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SignInReason {
     /// The session was ended from one of the account's devices or by the
     /// server's operator.
     Ended,
-    /// This device was revoked from the identity.
+    /// This device was revoked from the identity. Its password sign-in is
+    /// refused too (docs/plan/35-revoke-split.md §1): it joins again, as a
+    /// new device, from one still in use.
     Revoked,
     /// The session went unused for longer than the server's idle limit.
     Idle,
@@ -90,7 +94,7 @@ impl SignInReason {
                 "This device's session was ended from one of your devices or by whoever runs the server, so it can't renew itself. Log in again with your account password."
             }
             Self::Revoked => {
-                "This device was revoked from your account on another device, so its session can't be renewed. Log in again with your account password."
+                "This device was revoked from your account. Join it again from a device you still use."
             }
             Self::Idle => {
                 "This device went unused for longer than the server allows (30 days unless whoever runs it changed that), so its session can't be renewed. Log in again with your account password."
@@ -185,7 +189,11 @@ fn refusal(e: TransportError) -> RenewError {
     match e {
         TransportError::Refused { code, status, .. } => match code {
             ErrorCode::SessionEnded => RenewError::SignIn(SignInReason::Ended),
-            ErrorCode::RevokedDevice => RenewError::SignIn(SignInReason::Revoked),
+            // A server from slice 33 answers `revoked_device`; from slice 35
+            // on, `revoked_sign_in` (docs/plan/35-revoke-split.md §1).
+            ErrorCode::RevokedDevice | ErrorCode::RevokedSignIn => {
+                RenewError::SignIn(SignInReason::Revoked)
+            }
             ErrorCode::SessionIdle => RenewError::SignIn(SignInReason::Idle),
             ErrorCode::RenewalOff => RenewError::SignIn(SignInReason::NotRenewable),
             ErrorCode::Unauthenticated | ErrorCode::BadSignature | ErrorCode::UnknownDevice => {
@@ -385,6 +393,11 @@ mod tests {
             (
                 403,
                 ErrorCode::RevokedDevice,
+                RenewError::SignIn(SignInReason::Revoked),
+            ),
+            (
+                403,
+                ErrorCode::RevokedSignIn,
                 RenewError::SignIn(SignInReason::Revoked),
             ),
             (

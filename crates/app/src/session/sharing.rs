@@ -245,7 +245,7 @@ impl Session {
 
     /// Every device this device knows the owner of: its own identity's
     /// (under this persona's account) and every pinned contact's.
-    fn device_table(&self) -> BTreeMap<Id, (Id, VerifyingKey)> {
+    pub(super) fn device_table(&self) -> BTreeMap<Id, (Id, VerifyingKey)> {
         let mut out = BTreeMap::new();
         for c in self.sharing.contacts().values() {
             for id in c.devices.keys() {
@@ -760,6 +760,7 @@ impl Session {
                 members: Vec::new(),
                 history: Vec::new(),
                 blocked,
+                held: self.held_words(vault_id),
             });
         };
         let members = roster
@@ -801,6 +802,7 @@ impl Session {
             members,
             history,
             blocked,
+            held: self.held_words(vault_id),
         })
     }
 
@@ -1193,11 +1195,16 @@ impl Session {
         let me = self.learn_account(transport, token, sth)?;
         let list = transport.shared_vaults(token).map_err(|e| e.to_string())?;
         let mut listed: BTreeSet<Id> = BTreeSet::new();
+        // What waits for a split to clear is worked out again (`split_hold`).
+        self.held_vaults.clear();
         // Own shared vaults: other managers' changes.
         for own in &list.sharing {
             listed.insert(own.vault_id);
             self.sharing.vault_mut(own.vault_id).owned = true;
             self.pull_membership(transport, token, sth, own.vault_id)?;
+            if self.held_vaults.contains(&own.vault_id) {
+                continue;
+            }
             self.take_new_key(transport, token, own.vault_id, own.key_ref)?;
         }
         // Vaults shared with this persona.
@@ -1209,6 +1216,11 @@ impl Session {
             listed.insert(vault_id);
             self.sharing.vault_mut(vault_id).owned = false;
             self.pull_membership(transport, token, sth, vault_id)?;
+            // Changes from someone this device hasn't met wait during a
+            // split: the vault isn't joined yet and its key doesn't move.
+            if self.held_vaults.contains(&vault_id) {
+                continue;
+            }
             let open = self.vaults().any(|v| v.context().vault_id == vault_id);
             if !open {
                 self.join_shared(transport, token, sth, shared)?;
@@ -1251,32 +1263,49 @@ impl Session {
         if since.events.is_empty() && self.rosters.contains_key(&vault_id) {
             return Ok(());
         }
-        let mut accounts = BTreeSet::new();
-        for bytes in &since.events {
-            let e = MembershipEvent::from_bytes(bytes).map_err(|e| e.to_string())?;
-            accounts.insert(e.by_account);
-            match e.change {
-                Change::Create { owner, .. } => {
-                    accounts.insert(owner.account_id);
-                }
-                Change::Add { member, .. } => {
-                    accounts.insert(member.account_id);
-                }
-                Change::SetRight { account_id, .. } | Change::Remove { account_id } => {
-                    accounts.insert(account_id);
-                }
-            }
+        let events = since
+            .events
+            .iter()
+            .map(|b| MembershipEvent::from_bytes(b))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        // During a split, the changes that would have this device meet
+        // someone (a new member, a member's new device) wait with every
+        // change after them (`split_hold`).
+        let take = self.membership_take(&events);
+        if take.count < events.len() {
+            self.held_vaults.insert(vault_id);
         }
+        let mut accounts: BTreeSet<Id> = events[..take.count]
+            .iter()
+            .flat_map(super::split_hold::named)
+            .collect();
         if let Some(r) = self.rosters.get(&vault_id) {
             accounts.insert(r.owner.account_id);
         }
-        self.pin_all(transport, token, sth, accounts)?;
+        self.pin_all(transport, token, sth, accounts.iter().copied())?;
+        // A pinned member who signed with a device this device doesn't know
+        // is looked up again, and must continue the pin.
+        for account in &take.refresh {
+            self.pin(transport, token, sth, Ok(*account))?;
+        }
+        let lockdown_sync::sharing::MembershipSince {
+            events: mut taken,
+            logins,
+            ..
+        } = since;
+        taken.truncate(take.count);
         let share = self.sharing.vault_mut(vault_id);
-        share.events.extend(since.events);
-        share.logins.extend(since.logins);
-        let roster = self
-            .replay(vault_id)?
-            .ok_or("the server listed a shared vault with no membership")?;
+        share.events.extend(taken);
+        share
+            .logins
+            .extend(logins.into_iter().filter(|(a, _)| accounts.contains(a)));
+        let Some(roster) = self.replay(vault_id)? else {
+            if self.held_vaults.contains(&vault_id) {
+                return Ok(());
+            }
+            return Err("the server listed a shared vault with no membership".into());
+        };
         self.rosters.insert(vault_id, roster);
         if self.vaults().any(|v| v.context().vault_id == vault_id) {
             self.apply_roster(vault_id)?;
@@ -1482,6 +1511,26 @@ impl Session {
             }
         }
         self.save()
+    }
+
+    /// Looks every writer of a shared vault up again (each must continue its
+    /// pin) and trusts their devices now: a member's new device, met once
+    /// the split cleared (`split_hold`; docs/plan/35-revoke-split.md §2).
+    pub(super) fn refresh_writers(
+        &mut self,
+        transport: &HttpTransport,
+        token: &str,
+        sth: &SignedTreeHead,
+        vault_id: Id,
+    ) -> Result<(), String> {
+        let Some(roster) = self.rosters.get(&vault_id).cloned() else {
+            return Ok(());
+        };
+        let me = self.sharing.account_id();
+        for account in roster.writers.iter().copied().filter(|a| Some(*a) != me) {
+            self.pin(transport, token, sth, Ok(account))?;
+        }
+        self.apply_roster(vault_id)
     }
 
     /// Takes a vault out of this session and the store.

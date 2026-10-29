@@ -339,6 +339,10 @@ pub struct VaultSharingView {
     pub history: Vec<HistoryLine>,
     /// Why it can't be shared yet, if it can't (a crown jewel inside).
     pub blocked: Option<String>,
+    /// While the server's public log disagrees with a mirror and changes
+    /// from people this device hasn't met wait: the sentence that says so
+    /// (docs/plan/35-revoke-split.md §2). Added under D62.
+    pub held: Option<String>,
 }
 
 /// One line of a record: when and what.

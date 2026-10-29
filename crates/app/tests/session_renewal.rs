@@ -3,7 +3,10 @@
 //! token's lifetime without the password, whether it renews ahead of time
 //! or after the server refused the token; an ended session, a revoked
 //! device and a session idle past the limit each stop at a password prompt
-//! whose words and machine reason say which; a sign-in clears it.
+//! whose words and machine reason say which; a sign-in clears it. A
+//! revoked device can't sign back in with the password either, and the same
+//! machine returns as a new device through the join flow
+//! (docs/plan/35-revoke-split.md §1).
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -236,4 +239,77 @@ fn revoking_a_device_ends_its_sessions_at_once_so_it_stops_reading_too() {
     a.add_login("https://two.example", "me", b"pw2".to_vec(), None)
         .unwrap();
     a.sync().unwrap();
+}
+
+#[test]
+fn a_revoked_device_cant_sign_back_in_and_joins_again_as_a_new_device() {
+    // docs/plan/35-revoke-split.md §1: the password no longer brings a
+    // revoked device back; the same machine returns through the join flow.
+    let dir = tempfile::tempdir().unwrap();
+    let (running, _clock) = server(Duration::from_secs(8 * 3600));
+    let url = running.url();
+    let (a, b) = two_devices(dir.path(), &url);
+    let b_id = b
+        .device_list()
+        .unwrap()
+        .into_iter()
+        .find(|d| d.this_device)
+        .unwrap()
+        .id;
+    let gate = || GateInput {
+        password: Some(PASSWORD.into()),
+        confirmed: false,
+    };
+    a.device_revoke(&b_id, gate()).unwrap();
+
+    // B types the password: refused, in the revoked words, which say what
+    // helps instead.
+    let e = b.account_login(&url, LOGIN, PASSWORD, None).unwrap_err();
+    assert_eq!(e.code, ErrorCode::SignInNeeded, "{e:?}");
+    assert_eq!(e.detail.as_deref(), Some("revoked"));
+    assert_eq!(
+        e.message,
+        "This device was revoked from your account. Join it again from a device you still use."
+    );
+    // Its old token still reads the signed identity record set, so its
+    // sync verifies that it is out (D73), as before.
+    let e = b.sync().unwrap_err();
+    assert!(e.message.contains("was revoked"), "{e:?}");
+
+    // A is untouched: it signs in with the password and syncs.
+    a.account_login(&url, LOGIN, PASSWORD, None).unwrap();
+    let two = a
+        .add_login("https://two.example", "me", b"pw2".to_vec(), None)
+        .unwrap();
+    a.sync().unwrap();
+
+    // The same machine, set up afresh, joins from A as a new device (D246).
+    let again = device(dir.path(), "b-again");
+    let offered = a.link_offer().unwrap();
+    again.join_start(&url, &offered.code).unwrap();
+    assert_eq!(a.link_poll().unwrap().state, "compare");
+    assert_eq!(again.join_poll().unwrap().state, "compare");
+    a.link_approve(gate()).unwrap();
+    assert_eq!(again.join_poll().unwrap().state, "approved");
+    let status = again.join_finish(LOGIN, PASSWORD).unwrap();
+    assert!(status.account.is_some());
+    assert!(
+        again.list().unwrap().iter().any(|r| r.id == two),
+        "the vault came over"
+    );
+    let devices = a.device_list().unwrap();
+    assert_eq!(devices.len(), 3, "{devices:?}");
+    assert_eq!(
+        devices.iter().filter(|d| d.revoked_at.is_some()).count(),
+        1,
+        "{devices:?}"
+    );
+    let new_id = again
+        .device_list()
+        .unwrap()
+        .into_iter()
+        .find(|d| d.this_device)
+        .unwrap()
+        .id;
+    assert_ne!(new_id, b_id);
 }

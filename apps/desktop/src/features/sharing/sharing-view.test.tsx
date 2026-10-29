@@ -178,6 +178,31 @@ describe("the Sharing screen", () => {
     expect(within(dialog).queryByRole("button", { name: "Add" })).not.toBeInTheDocument()
   })
 
+  it("during a split, the vault says new members wait, in the core's words (docs/plan/35)", async () => {
+    const held = "New members wait until the server's log matches its mirrors again."
+    const view: VaultSharingView = {
+      vault_id: "v2",
+      shared: true,
+      kind: "shared",
+      right: "view",
+      can_manage: false,
+      members: [
+        { account_id: "acc-ann", login: "ann@example.com", right: "manage", right_words: "Manage", owner: true, you: false, verified: true },
+        { account_id: "me", login: "me@example.com", right: "view", right_words: "View", owner: false, you: true, verified: true },
+      ],
+      history: [],
+      blocked: null,
+      held,
+    }
+    const theirs: VaultView = { ...personal, id: "v2", name: "Ann's", primary: false, sharing: { kind: "shared", right: "view", owned: false, owner: "ann@example.com", people: 2 } }
+    mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview()), vault: () => Promise.resolve(view) }), [theirs])
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole("button", { name: "Who has it" }))
+    const dialog = await screen.findByRole("dialog")
+    expect(await within(dialog).findByText(held)).toHaveAttribute("role", "note")
+    expect(within(dialog).getByText("ann@example.com")).toBeInTheDocument()
+  })
+
   it("a vault with a crown jewel says why it can't be shared and offers no Add", async () => {
     const view: VaultSharingView = { vault_id: "v1", shared: false, kind: "shared", right: "manage", can_manage: true, members: [], history: [], blocked: "Move the crown jewels out first." }
     mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview()), vault: () => Promise.resolve(view) }))

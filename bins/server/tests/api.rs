@@ -35,6 +35,7 @@ use tower::ServiceExt;
 struct Harness {
     router: Router,
     clock: Arc<AtomicI64>,
+    state: Arc<AppState>,
 }
 
 fn harness(config: Config) -> Harness {
@@ -42,9 +43,11 @@ fn harness(config: Config) -> Harness {
     let mut state = AppState::in_memory(config).unwrap();
     let c = clock.clone();
     state.clock = Box::new(move || c.load(Ordering::SeqCst));
+    let state = Arc::new(state);
     Harness {
-        router: app(Arc::new(state)),
+        router: app(state.clone()),
         clock,
+        state,
     }
 }
 
@@ -1140,18 +1143,32 @@ async fn the_identity_chain_is_ordered_pinned_and_revokes_devices() {
         )
         .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
-    // Signed in again with the password, B's next head, item push and
+    // Nor does the password bring it back (docs/plan/35-revoke-split.md
+    // §1). Should B hold a token all the same (one minted here, as a server
+    // bug or a stolen signing key would), its next head, item push and
     // identity manifest are refused as a revoked device (D73); its head 1
     // is still served.
-    let token_b = h
-        .login(
+    assert_eq!(
+        h.login(
             "me@example.com",
             "correct horse battery staple",
             &local.device,
         )
         .await
-        .unwrap()
-        .token;
+        .unwrap_err(),
+        (StatusCode::FORBIDDEN, ErrorCode::RevokedSignIn)
+    );
+    let claims = h.state.tokens.verify_any_age(&token_b).unwrap();
+    let (token_b, _) = h
+        .state
+        .tokens
+        .issue(
+            claims.account_id,
+            claims.device_id,
+            h.clock.load(Ordering::SeqCst),
+            3600,
+        )
+        .unwrap();
     let head2 = local.head(2, accepted.hash, &[&item]);
     let (status, bytes) = h
         .call(

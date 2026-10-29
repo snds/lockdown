@@ -174,6 +174,11 @@ export function VaultSharingDialog({ vault, contacts, onClose, onNotice }: Vault
                 {view.blocked}
               </p>
             )}
+            {view.held && (
+              <p role="note" className="text-sm text-attention-text">
+                {view.held}
+              </p>
+            )}
             {view.shared && (
               <ItemGroup role="list" aria-label="Members">
                 {members.map((m) => (

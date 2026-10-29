@@ -18,6 +18,19 @@ use super::{App, SyncConfig};
 /// What to add to the words of a refused renewal: how to sign in here.
 const HOW: &str = " (`lockdown account login`)";
 
+/// What to add for a revoked device, whose password sign-in is refused too
+/// (docs/plan/35-revoke-split.md §1): it comes back only as a new device.
+pub(super) const HOW_REVOKED: &str = " (it comes back only as a new device: `lockdown recover` with your recovery kit into an empty `--root`)";
+
+/// The command that helps after a refusal for `reason`.
+pub(super) fn how(reason: SignInReason) -> &'static str {
+    if reason == SignInReason::Revoked {
+        HOW_REVOKED
+    } else {
+        HOW
+    }
+}
+
 /// The token for the next call, renewed first when due; with `refused`,
 /// the server refused the one in hand: a newer one another process of this
 /// device saved, or a renewal now.
@@ -80,7 +93,7 @@ pub(super) fn fresh_token(
             cfg.token = String::new();
             cfg.expires_at = 0;
             cfg.save(path)?;
-            Err(format!("{}{HOW}", reason.message()))
+            Err(format!("{}{}", reason.message(), how(reason)))
         }
         Err(RenewError::Failed(_)) if alive && !refused => Ok(cfg.token.clone()),
         Err(e @ RenewError::Failed(_)) => Err(e.to_string()),
