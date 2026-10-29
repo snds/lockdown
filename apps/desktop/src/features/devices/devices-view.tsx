@@ -4,8 +4,6 @@ import {
   Badge,
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -26,6 +24,7 @@ import {
 } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { PaneHeader } from "@/components/master-detail"
 import { describeError, useClient } from "@/core/client"
 import type { DeviceInfo, Status } from "@/core/types"
@@ -156,11 +155,11 @@ export function DevicesView({ status, onChanged, onNotice, focus }: DevicesViewP
               comes back. You will be asked to confirm it is you.
             </DialogDescription>
           </DialogHeader>
-          <DialogActions>
-            <DialogAction kind="cancel" onClick={() => setRevoking(null)}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={() => setRevoking(null)}>
               Cancel
-            </DialogAction>
-            <DialogAction
+            </LabelledAction>
+            <LabelledAction
               kind="destructive"
               onClick={() => {
                 const id = revoking?.id
@@ -169,8 +168,8 @@ export function DevicesView({ status, onChanged, onNotice, focus }: DevicesViewP
               }}
             >
               Revoke
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
     </div>

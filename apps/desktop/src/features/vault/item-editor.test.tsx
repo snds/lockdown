@@ -54,6 +54,9 @@ describe("the generic item editor (D110)", () => {
     expect(screen.getByText(/A new one is made when you save: 20 characters: letters and digits/)).toBeInTheDocument()
     await user.selectOptions(screen.getByLabelText("Security"), "WPA3")
     await user.click(screen.getByRole("switch", { name: "Hidden network" }))
+    // The crown-jewel switch says how to undo it (D148), never that it can't be.
+    expect(screen.getByText(/To undo it later, choose Stop keeping as a crown jewel in the item's menu/)).toBeInTheDocument()
+    expect(screen.queryByText(/can't be undone/)).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Add" }))
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith("w1", true))
     const sent = addItem.mock.calls[0]![0]

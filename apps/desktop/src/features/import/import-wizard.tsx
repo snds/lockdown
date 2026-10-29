@@ -3,8 +3,6 @@ import { useEffect, useRef, useState, type FormEvent } from "react"
 import {
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -20,6 +18,7 @@ import {
   Spinner,
 } from "@unicron/ui"
 
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 import { encodeSecret } from "@/core/secret-bytes"
 import type { ImportFormatView, ImportPreview, ImportReport } from "@/core/types"
@@ -223,14 +222,14 @@ export function ImportWizard({ open, restore = null, onClose, onImported }: Impo
               </Field>
             </FieldGroup>
             {error && <FieldError role="alert">{error}</FieldError>}
-            <DialogActions>
-              <DialogAction kind="cancel" type="button" onClick={close}>
+            <LabelledActions>
+              <LabelledAction kind="cancel" type="button" onClick={close}>
                 Cancel
-              </DialogAction>
-              <DialogAction kind="confirm" type="submit">
+              </LabelledAction>
+              <LabelledAction kind="confirm" type="submit">
                 Check the file
-              </DialogAction>
-            </DialogActions>
+              </LabelledAction>
+            </LabelledActions>
           </form>
         )}
 
@@ -246,14 +245,14 @@ export function ImportWizard({ open, restore = null, onClose, onImported }: Impo
               </FieldDescription>
             </Field>
             {error && <FieldError role="alert">{error}</FieldError>}
-            <DialogActions>
-              <DialogAction kind="cancel" type="button" onClick={close}>
+            <LabelledActions>
+              <LabelledAction kind="cancel" type="button" onClick={close}>
                 Cancel
-              </DialogAction>
-              <DialogAction kind="confirm" type="submit">
+              </LabelledAction>
+              <LabelledAction kind="confirm" type="submit">
                 Open the file
-              </DialogAction>
-            </DialogActions>
+              </LabelledAction>
+            </LabelledActions>
           </form>
         )}
 
@@ -296,14 +295,14 @@ export function ImportWizard({ open, restore = null, onClose, onImported }: Impo
               </section>
             )}
             {error && <FieldError role="alert">{error}</FieldError>}
-            <DialogActions>
-              <DialogAction kind="cancel" type="button" onClick={close}>
+            <LabelledActions>
+              <LabelledAction kind="cancel" type="button" onClick={close}>
                 Cancel
-              </DialogAction>
-              <DialogAction kind="confirm" type="button" onClick={() => void commit()} disabled={preview.new + preview.updated === 0}>
+              </LabelledAction>
+              <LabelledAction kind="confirm" type="button" onClick={() => void commit()} disabled={preview.new + preview.updated === 0}>
                 {confirmWords(preview)}
-              </DialogAction>
-            </DialogActions>
+              </LabelledAction>
+            </LabelledActions>
           </div>
         )}
 
@@ -313,11 +312,11 @@ export function ImportWizard({ open, restore = null, onClose, onImported }: Impo
               {doneLine(report)}
             </p>
             {!restore && <p className="text-sm text-muted-foreground">You can delete the file you imported now.</p>}
-            <DialogActions>
-              <DialogAction kind="confirm" type="button" onClick={close}>
+            <LabelledActions>
+              <LabelledAction kind="confirm" type="button" onClick={close}>
                 Done
-              </DialogAction>
-            </DialogActions>
+              </LabelledAction>
+            </LabelledActions>
           </div>
         )}
       </DialogContent>

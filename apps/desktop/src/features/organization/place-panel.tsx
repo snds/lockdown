@@ -4,8 +4,6 @@ import {
   Button,
   Chip,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -23,6 +21,7 @@ import {
 } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 import type { ItemDetail, ItemSummary } from "@/core/types"
 
@@ -199,18 +198,18 @@ export function PlacePanel({ item, title, rows, onChanged, onReplaced, onError }
             <DialogTitle>{ask === "jewel-on" ? "Keep as a crown jewel?" : "Stop keeping it as a crown jewel?"}</DialogTitle>
             <DialogDescription>
               {ask === "jewel-on"
-                ? "Showing or using it will ask it's you first, it is never filled into a page, and lists show only its name. It is sealed again under the crown-jewel key."
+                ? "Showing or using it will ask it's you first, it is never filled into a page, and lists show only its name. It is sealed again under the crown-jewel key. You can stop later from this menu, with your account password."
                 : "It will be shown, copied and filled like any other item. Your account password is asked for first, and it is sealed again under the vault's key."}
             </DialogDescription>
           </DialogHeader>
-          <DialogActions>
-            <DialogAction kind="cancel" onClick={() => setAsk(null)}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={() => setAsk(null)}>
               Cancel
-            </DialogAction>
-            <DialogAction kind={ask === "jewel-off" ? "destructive" : "confirm"} onClick={() => jewel(ask === "jewel-on")}>
+            </LabelledAction>
+            <LabelledAction kind={ask === "jewel-off" ? "destructive" : "confirm"} onClick={() => jewel(ask === "jewel-on")}>
               {ask === "jewel-on" ? "Keep as a crown jewel" : "Stop protecting it"}
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
     </section>

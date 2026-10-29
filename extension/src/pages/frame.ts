@@ -44,9 +44,12 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 
 /** Two heights only, so the page learns no more from the frame's size than
  *  "something to offer" or "a message". */
+function heightFor(list: boolean): number {
+  return mode === "passkey" ? (list ? 260 : 150) : list ? 232 : mode === "prompt" ? 150 : 64
+}
+
 function size(list: boolean) {
-  const px = mode === "passkey" ? (list ? 260 : 150) : list ? 232 : mode === "prompt" ? 150 : 64
-  window.parent.postMessage({ lockdown: "height", px }, "*")
+  window.parent.postMessage({ lockdown: "height", px: heightFor(list) }, "*")
 }
 
 function send<T>(msg: Record<string, unknown>): Promise<T> {
@@ -72,7 +75,10 @@ function message(host: string, text: string, tone: "plain" | "stop" = "plain") {
   const p = el("p", tone === "stop" ? "msg stop" : "msg", text)
   p.setAttribute("role", tone === "stop" ? "alert" : "status")
   root.append(p)
-  size(false)
+  // Sized to its words within the two heights (design review R3): a stop
+  // always takes the larger one and wraps inside it, so its sentence is
+  // never cut; a plain message takes it only when its words need it.
+  size(tone === "stop" || root.scrollHeight > heightFor(false))
 }
 
 function deliberate(e: MouseEvent | KeyboardEvent): boolean {

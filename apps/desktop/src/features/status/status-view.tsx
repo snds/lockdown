@@ -115,7 +115,7 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
         title="Account and sync"
         actions={
           account ? (
-            <Button size="sm" onClick={syncNow} disabled={busy !== null}>
+            <Button size="sm" variant="outline" onClick={syncNow} disabled={busy !== null}>
               {busy === "sync" ? <Spinner /> : <Icon name="sync" data-icon="inline-start" />}
               Sync now
             </Button>

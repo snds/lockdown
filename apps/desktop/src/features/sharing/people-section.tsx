@@ -4,8 +4,6 @@ import {
   Badge,
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -24,6 +22,7 @@ import {
   ItemTitle,
 } from "@unicron/ui"
 
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
 import { PhraseIncomingList, PhraseInvite } from "@/features/depth/key-check"
 import { CameraView } from "@/features/scan/camera-view"
@@ -155,14 +154,14 @@ export function PeopleSection({ contacts, online, onChanged, onNotice }: PeopleS
               that. Looking them up again pins whatever keys the log has then.
             </DialogDescription>
           </DialogHeader>
-          <DialogActions>
-            <DialogAction kind="cancel" onClick={() => setForgetting(null)}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={() => setForgetting(null)}>
               Cancel
-            </DialogAction>
-            <DialogAction kind="destructive" onClick={() => forgetting && void forget(forgetting)}>
+            </LabelledAction>
+            <LabelledAction kind="destructive" onClick={() => forgetting && void forget(forgetting)}>
               Forget
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
     </section>
@@ -235,14 +234,14 @@ function CompareDialog({ contact, onClose, onVerified }: { contact: ContactView 
           </Button>
         )}
         {error && <FieldError role="alert">{error}</FieldError>}
-        <DialogActions>
-          <DialogAction kind="cancel" onClick={onClose}>
+        <LabelledActions>
+          <LabelledAction kind="cancel" onClick={onClose}>
             Later
-          </DialogAction>
-          <DialogAction kind="confirm" type="submit" form="compare-fingerprint">
+          </LabelledAction>
+          <LabelledAction kind="confirm" type="submit" form="compare-fingerprint">
             They match
-          </DialogAction>
-        </DialogActions>
+          </LabelledAction>
+        </LabelledActions>
       </DialogContent>
     </Dialog>
   )

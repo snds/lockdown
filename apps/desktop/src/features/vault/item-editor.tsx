@@ -3,8 +3,6 @@ import { useMemo, useState, type FormEvent } from "react"
 import {
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -27,6 +25,7 @@ import { CrownJewelMark } from "@unicron/ui/security/crown-jewel"
 
 import { useGate } from "@/app/gate"
 import { useTemplates } from "@/app/templates"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 import type { ItemDetail, TemplateView } from "@/core/types"
 
@@ -321,20 +320,20 @@ function EditorForm({
               <Switch id="editor-crown-jewel" checked={crownJewel} onCheckedChange={setCrownJewel} />
               <FieldContent>
                 <FieldLabel htmlFor="editor-crown-jewel">Keep as a crown jewel</FieldLabel>
-                <FieldDescription>Showing or using it will ask it's you first, and it is never filled into a page. This can't be undone later.</FieldDescription>
+                <FieldDescription>Showing or using it will ask it's you first, and it is never filled into a page. To undo it later, choose Stop keeping as a crown jewel in the item's menu; it asks for your account password.</FieldDescription>
               </FieldContent>
             </Field>
           ))}
       </FieldGroup>
       {error && <FieldError role="alert">{error}</FieldError>}
-      <DialogActions>
-        <DialogAction kind="cancel" type="button" onClick={close} disabled={busy}>
+      <LabelledActions>
+        <LabelledAction kind="cancel" type="button" onClick={close} disabled={busy}>
           Cancel
-        </DialogAction>
-        <DialogAction kind="confirm" type="submit" disabled={busy}>
+        </LabelledAction>
+        <LabelledAction kind="confirm" type="submit" disabled={busy}>
           {busy ? "Saving…" : editing ? "Save" : "Add"}
-        </DialogAction>
-      </DialogActions>
+        </LabelledAction>
+      </LabelledActions>
     </form>
   )
 }

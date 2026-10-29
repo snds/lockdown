@@ -3,8 +3,6 @@ import { useEffect, useRef, useState } from "react"
 import {
   Checkbox,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -22,6 +20,7 @@ import {
 } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 import { encodeSecret } from "@/core/secret-bytes"
 import type { ExportDone, ExportPreview } from "@/core/types"
@@ -171,11 +170,11 @@ export function ExportDialog({ open, onClose, onNotice }: ExportDialogProps) {
             {!done.preview.encrypted && (
               <p className="text-attention-text">This file isn't protected. Move it somewhere safe, or delete it when you're done with it.</p>
             )}
-            <DialogActions>
-              <DialogAction kind="confirm" type="button" onClick={close}>
+            <LabelledActions>
+              <LabelledAction kind="confirm" type="button" onClick={close}>
                 Done
-              </DialogAction>
-            </DialogActions>
+              </LabelledAction>
+            </LabelledActions>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
@@ -278,14 +277,14 @@ export function ExportDialog({ open, onClose, onNotice }: ExportDialogProps) {
             )}
 
             {error && <FieldError role="alert">{error}</FieldError>}
-            <DialogActions>
-              <DialogAction kind="cancel" type="button" onClick={close} disabled={busy}>
+            <LabelledActions>
+              <LabelledAction kind="cancel" type="button" onClick={close} disabled={busy}>
                 Cancel
-              </DialogAction>
-              <DialogAction kind="confirm" type="button" onClick={() => void save()} disabled={busy || !preview}>
+              </LabelledAction>
+              <LabelledAction kind="confirm" type="button" onClick={() => void save()} disabled={busy || !preview}>
                 Choose where to save…
-              </DialogAction>
-            </DialogActions>
+              </LabelledAction>
+            </LabelledActions>
           </div>
         )}
       </DialogContent>

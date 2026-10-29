@@ -110,7 +110,7 @@ export const DESKTOP_STATES: StateDef[] = [
     setup: (w) => {
       w.device = { identity: false, deviceKey: false }
     },
-    steps: [{ click: "Create", role: "button", within: '[role="tabpanel"]' }, { wait: "Your Secret Key and recovery kit" }],
+    steps: [{ click: "Create my vault", role: "button", within: '[role="tabpanel"]' }, { wait: "Your Secret Key and recovery kit" }],
   }),
   d({
     id: "desktop-first-run-join",

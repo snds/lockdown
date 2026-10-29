@@ -2,8 +2,6 @@ import { useState, type FormEvent } from "react"
 
 import {
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -15,6 +13,7 @@ import {
   Input,
 } from "@unicron/ui"
 
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
 
 export interface NameAsk {
@@ -67,14 +66,14 @@ function NameForm({ ask, onClose }: { ask: NameAsk; onClose: () => void }) {
         {ask.hint && <FieldDescription>{ask.hint}</FieldDescription>}
       </Field>
       {error && <FieldError role="alert">{error}</FieldError>}
-      <DialogActions>
-        <DialogAction kind="cancel" type="button" onClick={onClose} disabled={busy}>
+      <LabelledActions>
+        <LabelledAction kind="cancel" type="button" onClick={onClose} disabled={busy}>
           Cancel
-        </DialogAction>
-        <DialogAction kind="confirm" type="submit" disabled={busy || !name.trim()}>
+        </LabelledAction>
+        <LabelledAction kind="confirm" type="submit" disabled={busy || !name.trim()}>
           {ask.confirm}
-        </DialogAction>
-      </DialogActions>
+        </LabelledAction>
+      </LabelledActions>
     </form>
   )
 }
@@ -120,14 +119,14 @@ export function ConfirmPrompt({ ask, onClose }: { ask: ConfirmAsk | null; onClos
           <DialogDescription>{ask?.description}</DialogDescription>
         </DialogHeader>
         {error && <FieldError role="alert">{error}</FieldError>}
-        <DialogActions>
-          <DialogAction kind="cancel" onClick={onClose} disabled={busy}>
+        <LabelledActions>
+          <LabelledAction kind="cancel" onClick={onClose} disabled={busy}>
             Cancel
-          </DialogAction>
-          <DialogAction kind={ask?.destructive ? "destructive" : "confirm"} onClick={() => void go()} disabled={busy}>
+          </LabelledAction>
+          <LabelledAction kind={ask?.destructive ? "destructive" : "confirm"} onClick={() => void go()} disabled={busy}>
             {ask?.confirm}
-          </DialogAction>
-        </DialogActions>
+          </LabelledAction>
+        </LabelledActions>
       </DialogContent>
     </Dialog>
   )

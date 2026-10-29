@@ -4,8 +4,6 @@ import {
   Badge,
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -28,6 +26,7 @@ import {
 } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
 import type { Access, VaultView } from "@/core/types"
 import { whenLocal } from "@/lib/format"
@@ -266,11 +265,11 @@ export function VaultSharingDialog({ vault, contacts, onClose, onNotice }: Vault
           </div>
         )}
         {error && <FieldError role="alert">{error}</FieldError>}
-        <DialogActions>
-          <DialogAction kind="cancel" onClick={onClose}>
+        <LabelledActions>
+          <LabelledAction kind="cancel" onClick={onClose}>
             Done
-          </DialogAction>
-        </DialogActions>
+          </LabelledAction>
+        </LabelledActions>
       </DialogContent>
       <Dialog open={removing !== null} onOpenChange={(o) => !o && setRemoving(null)}>
         <DialogContent>
@@ -281,11 +280,11 @@ export function VaultSharingDialog({ vault, contacts, onClose, onNotice }: Vault
               What they already saw, they may have kept.
             </DialogDescription>
           </DialogHeader>
-          <DialogActions>
-            <DialogAction kind="cancel" onClick={() => setRemoving(null)}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={() => setRemoving(null)}>
               Cancel
-            </DialogAction>
-            <DialogAction
+            </LabelledAction>
+            <LabelledAction
               kind="destructive"
               onClick={() => {
                 const m = removing
@@ -294,8 +293,8 @@ export function VaultSharingDialog({ vault, contacts, onClose, onNotice }: Vault
               }}
             >
               Remove and change the key
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
     </Dialog>

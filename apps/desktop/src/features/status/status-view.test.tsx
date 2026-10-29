@@ -41,6 +41,17 @@ function fakeClient(overrides: Partial<Client>): Client {
 }
 
 describe("the Status screen", () => {
+  it("has one primary action, Check now; Sync now is secondary (design review R19)", () => {
+    render(
+      <ClientProvider value={fakeClient({})}>
+        <StatusView status={status} onStatus={() => {}} onNotice={() => {}} />
+      </ClientProvider>,
+    )
+    const filled = screen.getAllByRole("button").filter((b) => b.className.split(" ").includes("bg-primary"))
+    expect(filled).toEqual([screen.getByRole("button", { name: "Check now" })])
+    expect(screen.getByRole("button", { name: "Sync now" }).className).toContain("border-border")
+  })
+
   it("shows the verified log, and the audit's words when a sync is refused", async () => {
     const sync = vi.fn(() =>
       Promise.reject({

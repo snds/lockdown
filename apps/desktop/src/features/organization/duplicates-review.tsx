@@ -4,8 +4,6 @@ import {
   Badge,
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -20,6 +18,7 @@ import {
 } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 import type { DuplicateGroup, ItemSummary } from "@/core/types"
 import { whenLocal } from "@/lib/format"
@@ -155,11 +154,11 @@ function ReviewBody({ onOpenChange, rows, onChanged, onOpen }: Omit<DuplicatesRe
             </section>
           ))}
         </div>
-        <DialogActions>
-          <DialogAction kind="cancel" onClick={() => onOpenChange(false)}>
+        <LabelledActions>
+          <LabelledAction kind="cancel" onClick={() => onOpenChange(false)}>
             Done
-          </DialogAction>
-        </DialogActions>
+          </LabelledAction>
+        </LabelledActions>
         <Dialog open={pending !== null} onOpenChange={(o) => !o && setPending(null)}>
           <DialogContent>
             <DialogHeader>
@@ -170,14 +169,14 @@ function ReviewBody({ onOpenChange, rows, onChanged, onOpen }: Omit<DuplicatesRe
                   : `"${pending ? titleOf(pending.id) : ""}" stays readable in Deleted through its grace period.`}
               </DialogDescription>
             </DialogHeader>
-            <DialogActions>
-              <DialogAction kind="cancel" onClick={() => setPending(null)}>
+            <LabelledActions>
+              <LabelledAction kind="cancel" onClick={() => setPending(null)}>
                 Cancel
-              </DialogAction>
-              <DialogAction kind={pending?.kind === "merge" ? "confirm" : "destructive"} onClick={() => void go()}>
+              </LabelledAction>
+              <LabelledAction kind={pending?.kind === "merge" ? "confirm" : "destructive"} onClick={() => void go()}>
                 {pending?.kind === "merge" ? "Merge" : "Trash"}
-              </DialogAction>
-            </DialogActions>
+              </LabelledAction>
+            </LabelledActions>
           </DialogContent>
         </Dialog>
     </>

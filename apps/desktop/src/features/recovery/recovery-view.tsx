@@ -14,14 +14,16 @@ interface RecoveryViewProps {
   status: Status
   onChanged: () => void
   onNotice: (text: string) => void
+  /** Opens Sharing, where emergency access lives; without it the row only says where. */
+  onEmergency?: () => void
 }
 
 /**
  * The Recovery screen (brief §3.2): the kit's status, the drill's entry
- * point, and later trusted contacts. The kit page is shown once, through
+ * point, and the way to emergency access, which lives under Sharing. The kit page is shown once, through
  * the once-page dialog (LargeTypeView's placeholder for the kit).
  */
-export function RecoveryView({ status, onChanged, onNotice }: RecoveryViewProps) {
+export function RecoveryView({ status, onChanged, onNotice, onEmergency }: RecoveryViewProps) {
   const [dialog, setDialog] = useState<"kit-create" | "kit-verify" | null>(null)
   const [once, setOnce] = useState<ShownPage | null>(null)
   const kit = status.recovery
@@ -66,12 +68,19 @@ export function RecoveryView({ status, onChanged, onNotice }: RecoveryViewProps)
         </Item>
         <Item variant="outline" data-row="">
           <ItemContent>
-            <ItemTitle>
-              Trusted contacts
-              <Badge variant="outline">later</Badge>
-            </ItemTitle>
-            <ItemDescription>People who can vouch for you when the kit is lost. Comes with the social-recovery slice.</ItemDescription>
+            <ItemTitle>Trusted contacts</ItemTitle>
+            <ItemDescription>
+              Someone you trust can ask for your vaults if something happens to you, and you get a waiting period to stop it. Set it up in Sharing →
+              Emergency access.
+            </ItemDescription>
           </ItemContent>
+          {onEmergency && (
+            <ItemActions>
+              <Button size="sm" variant="outline" onClick={onEmergency}>
+                Open Emergency access
+              </Button>
+            </ItemActions>
+          )}
         </Item>
       </ItemGroup>
       {kit !== "none" && <DrillSection key={kit} />}

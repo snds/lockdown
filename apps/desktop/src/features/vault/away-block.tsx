@@ -4,8 +4,6 @@ import {
   Badge,
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -27,6 +25,7 @@ import {
 } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 import type { AwayView } from "@/core/types"
 import { whenLocal } from "@/lib/format"
@@ -42,7 +41,7 @@ interface LogAwayDialogProps {
 }
 
 /**
- * "Signing in on someone else's screen?" (matrix `large-type`, the hotel
+ * "Signing in on a TV?" (matrix `large-type`, the hotel
  * and rental mode; D237): where (a hotel room's TV, a rental's console)
  * and when to be reminded to sign out there. Logged on the item, so every
  * device reminds; nothing about the sign-in itself leaves the vault.
@@ -72,7 +71,7 @@ export function LogAwayDialog({ itemId, title, open, onOpenChange, onLogged }: L
       <DialogContent>
         <form onSubmit={submit} className="grid gap-4">
           <DialogHeader>
-            <DialogTitle>Signing in on someone else's screen?</DialogTitle>
+            <DialogTitle>Signing in on a TV?</DialogTitle>
             <DialogDescription>A hotel TV or a rental's console keeps you signed in after you leave. Lockdown will remind you to sign out of {title} there.</DialogDescription>
           </DialogHeader>
           <FieldGroup>
@@ -92,14 +91,14 @@ export function LogAwayDialog({ itemId, title, open, onOpenChange, onLogged }: L
             </Field>
           </FieldGroup>
           {error && <FieldError role="alert">{error}</FieldError>}
-          <DialogActions>
-            <DialogAction kind="cancel" type="button" onClick={() => onOpenChange(false)}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" type="button" onClick={() => onOpenChange(false)}>
               Cancel
-            </DialogAction>
-            <DialogAction kind="confirm" type="submit">
+            </LabelledAction>
+            <LabelledAction kind="confirm" type="submit">
               Remind me
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </form>
       </DialogContent>
     </Dialog>

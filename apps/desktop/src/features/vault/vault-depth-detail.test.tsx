@@ -126,6 +126,8 @@ describe("vault depth in the detail (docs/plan/21-vault-depth.md)", () => {
     await userEvent.click(within(block).getByRole("button", { name: "Signed out" }))
     await waitFor(() => expect(clearAway.mock.calls[0]!.slice(0, 2)).toEqual(["i1", 100]))
     await userEvent.click(within(block).getByRole("button", { name: "Signing in on a TV?" }))
+    // D237's words on the dialog too (design review R5).
+    expect(await screen.findByRole("heading", { name: "Signing in on a TV?" })).toBeInTheDocument()
     await userEvent.type(await screen.findByLabelText("Where"), "Rental flat")
     await userEvent.selectOptions(screen.getByLabelText("Remind me"), "72")
     await userEvent.click(screen.getByRole("button", { name: "Remind me" }))

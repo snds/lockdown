@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react"
 
-import { Dialog, DialogAction, DialogActions, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@unicron/ui"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
 
 import { spaced, useBrowserClient, type PendingPairing } from "./browser-client"
@@ -67,14 +68,14 @@ export function PairingDialog({ onNotice }: { onNotice: (text: string) => void }
             {error}
           </p>
         )}
-        <DialogActions>
-          <DialogAction kind="cancel" onClick={() => void answer(false)} disabled={busy}>
+        <LabelledActions>
+          <LabelledAction kind="cancel" onClick={() => void answer(false)} disabled={busy}>
             The codes differ
-          </DialogAction>
-          <DialogAction kind="confirm" onClick={() => void answer(true)} disabled={busy}>
+          </LabelledAction>
+          <LabelledAction kind="confirm" onClick={() => void answer(true)} disabled={busy}>
             Pair
-          </DialogAction>
-        </DialogActions>
+          </LabelledAction>
+        </LabelledActions>
       </DialogContent>
     </Dialog>
   )

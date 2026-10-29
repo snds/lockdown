@@ -2,10 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react"
 
 import {
   Badge,
-  Checkbox,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -24,7 +21,8 @@ import {
   NativeSelectOption,
 } from "@unicron/ui"
 
-import { describeError, isAppError } from "@/core/client"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
+import { describeError } from "@/core/client"
 import { dateLocal } from "@/lib/format"
 import { KitDialog } from "@/features/account/kit-dialog"
 
@@ -33,7 +31,8 @@ import { PASSWORD_DAYS, promptFor, useDepthClient, type DrillCheck, type Reminde
 /**
  * The reminders around recovery, asked once each time they come due
  * (docs/plan/22-security-depth.md §7): the first run's kit test
- * (skipped only with an explicit "I understand"), the account password
+ * (skipped only by pressing "I understand an untested kit can fail", D251),
+ * the account password
  * every 14 days where unlocking never asks for it, and the yearly drill.
  */
 export function RemindersPrompt({ onNotice, onChanged }: { onNotice: (text: string) => void; onChanged: () => void }) {
@@ -41,7 +40,6 @@ export function RemindersPrompt({ onNotice, onChanged }: { onNotice: (text: stri
   const [reminders, setReminders] = useState<RemindersView | null>(null)
   const [kit, setKit] = useState(false)
   const [dismissed, setDismissed] = useState(false)
-  const [understood, setUnderstood] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -61,9 +59,8 @@ export function RemindersPrompt({ onNotice, onChanged }: { onNotice: (text: stri
     setError(null)
     try {
       setReminders(await f())
-      setUnderstood(false)
     } catch (e) {
-      setError(isAppError(e) && e.detail === "confirm_skip" ? "Tick the box to confirm first." : describeError(e))
+      setError(describeError(e))
     } finally {
       setBusy(false)
     }
@@ -95,14 +92,14 @@ export function RemindersPrompt({ onNotice, onChanged }: { onNotice: (text: stri
                 <Input id="reminder-password" name="password" type="password" required autoComplete="current-password" />
               </Field>
               {error && <FieldError role="alert">{error}</FieldError>}
-              <DialogActions>
-                <DialogAction kind="cancel" type="button" onClick={() => void act(() => depth.passwordSnooze())} disabled={busy}>
+              <LabelledActions>
+                <LabelledAction kind="cancel" type="button" onClick={() => void act(() => depth.passwordSnooze())} disabled={busy}>
                   Tomorrow
-                </DialogAction>
-                <DialogAction kind="confirm" type="submit" disabled={busy}>
+                </LabelledAction>
+                <LabelledAction kind="confirm" type="submit" disabled={busy}>
                   Check
-                </DialogAction>
-              </DialogActions>
+                </LabelledAction>
+              </LabelledActions>
             </form>
           ) : (
             <>
@@ -110,31 +107,23 @@ export function RemindersPrompt({ onNotice, onChanged }: { onNotice: (text: stri
                 <DialogTitle>{which === "kit-test" ? "Test your recovery kit" : "Time for the recovery drill"}</DialogTitle>
                 <DialogDescription>
                   {which === "kit-test"
-                    ? "Type the Secret Key and recovery code from the kit back in. It takes a minute and proves the page you kept gets you back in."
+                    ? "Type the Secret Key and recovery code from the kit back in. It takes a minute and proves the page you kept gets you back in. Skip it, and Lockdown asks again in a week."
                     : "Once a year, type the kit back in, and check that your emergency contacts' keys still hold."}
                 </DialogDescription>
               </DialogHeader>
-              {which === "kit-test" && (
-                <Field orientation="horizontal">
-                  <Checkbox id="kit-skip-understood" checked={understood} onCheckedChange={(v) => setUnderstood(v === true)} />
-                  <FieldLabel htmlFor="kit-skip-understood">
-                    I understand an untested kit can fail on the day I need it.
-                  </FieldLabel>
-                </Field>
-              )}
               {error && <FieldError role="alert">{error}</FieldError>}
-              <DialogActions>
-                <DialogAction
+              <LabelledActions>
+                <LabelledAction
                   kind="cancel"
-                  onClick={() => void act(() => (which === "kit-test" ? depth.kitTestSkip(understood) : depth.drillSnooze()))}
+                  onClick={() => void act(() => (which === "kit-test" ? depth.kitTestSkip(true) : depth.drillSnooze()))}
                   disabled={busy}
                 >
-                  {which === "kit-test" ? "Skip for now" : "Next week"}
-                </DialogAction>
-                <DialogAction kind="confirm" onClick={() => setKit(true)} disabled={busy}>
+                  {which === "kit-test" ? "I understand an untested kit can fail" : "Next week"}
+                </LabelledAction>
+                <LabelledAction kind="confirm" onClick={() => setKit(true)} disabled={busy}>
                   Test it now
-                </DialogAction>
-              </DialogActions>
+                </LabelledAction>
+              </LabelledActions>
             </>
           )}
         </DialogContent>

@@ -1,8 +1,6 @@
 import {
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -10,6 +8,7 @@ import {
   Icon,
 } from "@unicron/ui"
 
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import type { Finding, Playbook } from "@/core/types"
 
 import { FindingFix } from "./finding-actions"
@@ -53,10 +52,10 @@ export function PlaybookDialog({ finding, playbook, onClose, onNotice, onOpenIte
             ) : (
               <p className="text-sm text-muted-foreground">The steps didn't load.</p>
             )}
-            <DialogActions>
-              <DialogAction kind="cancel" onClick={onClose}>
+            <LabelledActions>
+              <LabelledAction kind="cancel" onClick={onClose}>
                 Close
-              </DialogAction>
+              </LabelledAction>
               {finding.item_id && onOpenItem && (
                 <Button
                   variant="ghost"
@@ -71,7 +70,7 @@ export function PlaybookDialog({ finding, playbook, onClose, onNotice, onOpenIte
                 </Button>
               )}
               <FindingFix finding={finding} onNotice={onNotice} onDevices={onDevices} />
-            </DialogActions>
+            </LabelledActions>
           </>
         )}
       </DialogContent>

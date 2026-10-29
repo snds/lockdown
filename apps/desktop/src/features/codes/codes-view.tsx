@@ -3,8 +3,6 @@ import { useMemo, useState, type FormEvent } from "react"
 import {
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -26,6 +24,7 @@ import {
   Spinner,
 } from "@unicron/ui"
 
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { PaneHeader } from "@/components/master-detail"
 import { ClockBanner } from "@/features/bridges/clock"
 import { describeError, useClient } from "@/core/client"
@@ -90,7 +89,10 @@ export function CodesView({ rows, onChanged }: CodesViewProps) {
                 <Icon name="timer" />
               </EmptyMedia>
               <EmptyTitle>No codes yet</EmptyTitle>
-              <EmptyDescription>Add one by pasting its otpauth:// link. Scanning a QR code comes with the camera later.</EmptyDescription>
+              <EmptyDescription>
+                Add one from the set-up link the site gives you (otpauth:// or steam://). The camera here is for signing in a TV, not for adding
+                codes.
+              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         )}
@@ -169,14 +171,14 @@ function AddCodeDialog({ open, logins, onClose, onAdded }: { open: boolean; logi
             </Field>
           </FieldGroup>
           {error && <FieldError role="alert">{error}</FieldError>}
-          <DialogActions>
-            <DialogAction kind="cancel" type="button" onClick={onClose} disabled={busy}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" type="button" onClick={onClose} disabled={busy}>
               Cancel
-            </DialogAction>
-            <DialogAction kind="confirm" type="submit" disabled={busy}>
+            </LabelledAction>
+            <LabelledAction kind="confirm" type="submit" disabled={busy}>
               Add
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </form>
       </DialogContent>
     </Dialog>

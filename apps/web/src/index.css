@@ -1,11 +1,13 @@
 /*
  * The desktop's look: the shared design system (unicron), Lockdown's app
- * roles (apps/desktop/src/styles/app-extension.css) and the desktop's base
+ * roles (apps/desktop/src/styles/app-extension.css), the labelled dialog
+ * actions (dialog-actions.css, beside it) and the desktop's base
  * rules; then the desktop's sources, which hold the views the web vault
  * draws, for Tailwind to read.
  */
 @import "@unicron/ui/styles";
 @import "../../desktop/src/styles/app-extension.css";
+@import "../../desktop/src/styles/dialog-actions.css";
 @source "../../desktop/src";
 
 @layer base {

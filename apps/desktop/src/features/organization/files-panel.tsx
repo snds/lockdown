@@ -3,8 +3,6 @@ import { useEffect, useRef, useState } from "react"
 import {
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -21,6 +19,7 @@ import {
 } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 import type { AttachmentView, StorageView } from "@/core/types"
 
@@ -229,14 +228,14 @@ export function FilesPanel({ itemId, files, editable, onChanged, onNotice }: Fil
             <DialogTitle>Take off "{removing?.name}"?</DialogTitle>
             <DialogDescription>The item saves a new version without it. Earlier versions in its history still hold the file.</DialogDescription>
           </DialogHeader>
-          <DialogActions>
-            <DialogAction kind="cancel" onClick={() => setRemoving(null)}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={() => setRemoving(null)}>
               Cancel
-            </DialogAction>
-            <DialogAction kind="destructive" onClick={() => void remove()}>
+            </LabelledAction>
+            <LabelledAction kind="destructive" onClick={() => void remove()}>
               Take it off
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
     </section>

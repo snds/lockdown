@@ -28,7 +28,8 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.tsx"],
-    css: false,
+    // Only the dialog-actions sheet, which its test reads as text (R1).
+    css: { include: [/dialog-actions\.css/] },
     // The release tarballs land in the pnpm store under a directory named
     // after their URL, with "%2F" in it, which Node's own loader refuses;
     // let Vite transform the design system instead of importing it natively.

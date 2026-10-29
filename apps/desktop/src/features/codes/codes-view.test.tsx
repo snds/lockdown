@@ -31,6 +31,17 @@ const code = (over: Partial<CodeView>): CodeView => ({
 })
 
 describe("the Codes view on unicron's CodeDisplay", () => {
+  it("with no codes, says what adds one today and what the camera is for (design review R5)", async () => {
+    render(
+      <ClientProvider value={fakeClient({ codes: () => Promise.resolve([]) })}>
+        <CodesView rows={[]} onChanged={() => {}} />
+      </ClientProvider>,
+    )
+    expect(await screen.findByText("No codes yet")).toBeInTheDocument()
+    expect(screen.getByText(/Add one from the set-up link the site gives you \(otpauth:\/\/ or steam:\/\/\)\. The camera here is for signing in a TV/)).toBeInTheDocument()
+    expect(screen.queryByText(/comes with the camera later/)).not.toBeInTheDocument()
+  })
+
   it("shows the current code and, in its last seconds, the next one from the command output", async () => {
     const codes = vi.fn(() => Promise.resolve([code({})]))
     render(

@@ -36,13 +36,20 @@ describe("the first run (D94)", () => {
     expect(screen.queryByText(/encrypted on this device/)).not.toBeInTheDocument()
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: "Learn more" }))
+    // "Learn more" is a link in the sentence, not plain text (design review R20).
+    const learnMore = screen.getByRole("button", { name: "Learn more" })
+    expect(learnMore.parentElement?.tagName).toBe("P")
+    expect(learnMore.parentElement?.className).toContain("[&>[data-slot=button]]:underline")
+    // The Create door's button says what it makes; the tab alone says "Create".
+    expect(screen.getByRole("tab", { name: "Create" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument()
+    await user.click(learnMore)
     const dialog = await screen.findByRole("dialog")
     expect(dialog).toHaveTextContent(/encrypted on this device/)
     await user.click(screen.getByRole("button", { name: "Got it" }))
 
     // Screen 2: the Secret Key and the kit, one sentence, its own Learn more.
-    await user.click(screen.getByRole("button", { name: "Create" }))
+    await user.click(screen.getByRole("button", { name: "Create my vault" }))
     expect(await screen.findByRole("heading", { name: /Secret Key and recovery kit/ })).toBeInTheDocument()
     expect(screen.getByText(/syncs your vault between devices and makes the one page/)).toBeInTheDocument()
     expect(screen.queryByText(/OPAQUE/)).not.toBeInTheDocument()
@@ -65,7 +72,7 @@ describe("the first run (D94)", () => {
       </ClientProvider>,
     )
     const user = userEvent.setup()
-    await user.click(await screen.findByRole("button", { name: "Create" }))
+    await user.click(await screen.findByRole("button", { name: "Create my vault" }))
     await user.type(screen.getByLabelText("Server"), "https://vault.example")
     await user.type(screen.getByLabelText("Login name"), "me@example.com")
     await user.type(screen.getByLabelText("Account password"), "a long account password")

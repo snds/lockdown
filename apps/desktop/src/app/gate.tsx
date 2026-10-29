@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 
-import { Dialog, DialogAction, DialogActions, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@unicron/ui"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@unicron/ui"
 import { CrownJewelGate, crownJewelGateErrors, type CrownJewelProofKind } from "@unicron/ui/security/crown-jewel"
 
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { isAppError, useClient } from "@/core/client"
 import type { ApprovalRoute, GateInput } from "@/core/types"
 
@@ -184,14 +185,14 @@ export function GateProvider({ children }: { children: ReactNode }) {
             <DialogTitle>Are you sure?</DialogTitle>
             <DialogDescription>{pending?.reason} This computer has no built-in check and no account yet, so this is only a confirmation.</DialogDescription>
           </DialogHeader>
-          <DialogActions>
-            <DialogAction kind="cancel" type="button" onClick={() => close(null)}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" type="button" onClick={() => close(null)}>
               Cancel
-            </DialogAction>
-            <DialogAction kind="confirm" type="button" onClick={() => close({ confirmed: true })}>
+            </LabelledAction>
+            <LabelledAction kind="confirm" type="button" onClick={() => close({ confirmed: true })}>
               Confirm
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
     </GateContext.Provider>

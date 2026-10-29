@@ -244,12 +244,16 @@ export function Step({ title, sentence, learnMore, children }: { title: string; 
     <section className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
-        <p className="text-sm text-muted-foreground">
+        {/* "Learn more" reads as a link at rest (design review R20): unicron's
+            link variant underlines only on hover, in the same ink as the
+            sentence, so the sentence underlines it; it sits on the
+            sentence's baseline in its size. */}
+        <p className="text-sm text-muted-foreground [&>[data-slot=button]]:text-foreground [&>[data-slot=button]]:underline [&>[data-slot=button]]:underline-offset-4">
           {sentence}
           {learnMore && (
             <>
               {" "}
-              <Button variant="link" size="xs" onClick={() => setOpen(true)}>
+              <Button variant="link" size="inline" onClick={() => setOpen(true)}>
                 Learn more
               </Button>
             </>

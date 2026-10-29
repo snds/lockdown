@@ -43,7 +43,7 @@ button:disabled { opacity: 0.6; cursor: default; }
 .brand { font-weight: 600; }
 .host { color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .close { background: transparent; color: var(--muted); min-height: 24px; padding: 0 6px; }
-.msg { margin: 8px 10px; }
+.msg { margin: 8px 10px; overflow-wrap: anywhere; }
 .msg.stop, .warn { background: var(--stop-bg); color: var(--stop-fg); border-radius: 6px; padding: 8px 10px; }
 .list { overflow-y: auto; max-height: calc(100vh - 44px); }
 .item { display: flex; flex-direction: column; align-items: flex-start; width: 100%; text-align: left; background: transparent; color: var(--fg); border-radius: 0; border-bottom: 1px solid var(--line); padding: 8px 10px; }

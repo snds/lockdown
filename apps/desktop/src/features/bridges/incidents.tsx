@@ -4,8 +4,6 @@ import {
   Button,
   Checkbox,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -24,6 +22,7 @@ import {
   Spinner,
 } from "@unicron/ui"
 
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
 
 import { useBridges, type IncidentSummary, type IncidentView, type StepView } from "./bridges-client"
@@ -230,14 +229,14 @@ function IncidentDialog({
                 </li>
               ))}
             </ol>
-            <DialogActions>
+            <LabelledActions>
               <Button variant="ghost" disabled={busy || !view.started_at} onClick={() => void run(() => bridges.incidentReset(view.id))}>
                 Start over
               </Button>
-              <DialogAction kind="cancel" onClick={onClose}>
+              <LabelledAction kind="cancel" onClick={onClose}>
                 Close
-              </DialogAction>
-            </DialogActions>
+              </LabelledAction>
+            </LabelledActions>
           </>
         )}
       </DialogContent>

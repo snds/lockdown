@@ -3,8 +3,6 @@ import { useCallback, useEffect, useState, type FormEvent } from "react"
 import {
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -27,6 +25,7 @@ import {
   Textarea,
 } from "@unicron/ui"
 
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
 import { decodeAndWipe, encodeSecret } from "@/core/secret-bytes"
 import { whenLocal } from "@/lib/format"
@@ -198,8 +197,8 @@ export function ShareLinksSection({ online, onNotice }: LinksProps) {
               <LinkFields />
             </form>
           )}
-          <DialogActions>
-            <DialogAction
+          <LabelledActions>
+            <LabelledAction
               kind="cancel"
               onClick={() => {
                 setMaking(false)
@@ -207,13 +206,13 @@ export function ShareLinksSection({ online, onNotice }: LinksProps) {
               }}
             >
               {link ? "Done" : "Cancel"}
-            </DialogAction>
+            </LabelledAction>
             {!link && (
-              <DialogAction kind="confirm" type="submit" form="send-text">
+              <LabelledAction kind="confirm" type="submit" form="send-text">
                 Make the link
-              </DialogAction>
+              </LabelledAction>
             )}
-          </DialogActions>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
     </section>
@@ -372,8 +371,8 @@ export function RequestLinksSection({ online, onNotice }: LinksProps) {
               </Field>
             </form>
           )}
-          <DialogActions>
-            <DialogAction
+          <LabelledActions>
+            <LabelledAction
               kind="cancel"
               onClick={() => {
                 setMaking(false)
@@ -381,13 +380,13 @@ export function RequestLinksSection({ online, onNotice }: LinksProps) {
               }}
             >
               {link ? "Done" : "Cancel"}
-            </DialogAction>
+            </LabelledAction>
             {!link && (
-              <DialogAction kind="confirm" type="submit" form="request-make">
+              <LabelledAction kind="confirm" type="submit" form="request-make">
                 Make the link
-              </DialogAction>
+              </LabelledAction>
             )}
-          </DialogActions>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
       <AnswerDialog
@@ -446,14 +445,14 @@ function AnswerDialog({ answering, onClose, onSent }: { answering: { link: strin
           </Field>
         </form>
         {error && <FieldError role="alert">{error}</FieldError>}
-        <DialogActions>
-          <DialogAction kind="cancel" onClick={onClose}>
+        <LabelledActions>
+          <LabelledAction kind="cancel" onClick={onClose}>
             Cancel
-          </DialogAction>
-          <DialogAction kind="confirm" type="submit" form="request-answer">
+          </LabelledAction>
+          <LabelledAction kind="confirm" type="submit" form="request-answer">
             Send it
-          </DialogAction>
-        </DialogActions>
+          </LabelledAction>
+        </LabelledActions>
       </DialogContent>
     </Dialog>
   )
