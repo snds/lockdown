@@ -20,7 +20,7 @@
 //! per app, and they are the same app), and the two share one memory of
 //! the server's key-transparency log.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -78,6 +78,7 @@ pub(crate) mod renewal;
 pub(crate) mod second_factor;
 pub(crate) mod secret_key;
 pub(crate) mod security;
+pub(crate) mod shared_sync;
 pub(crate) mod sharing;
 pub(crate) mod split_hold;
 pub(crate) mod split_pause;
@@ -297,9 +298,13 @@ pub struct Session {
     /// Each shared vault's membership as its signed chain says.
     rosters: BTreeMap<Id, lockdown_vault::sharing::Roster>,
     /// Shared vaults with changes from people this device hasn't met,
-    /// waiting while the server's log is split (`split_hold`); every sync
-    /// works it out again.
-    held_vaults: BTreeSet<Id>,
+    /// waiting while the server's log is split, and why (`split_hold`,
+    /// `shared_sync`); every sync works it out again.
+    held_vaults: BTreeMap<Id, shared_sync::Hold>,
+    /// Items shared on their own by people this device hasn't met, waiting
+    /// while the server's log is split (`shared_sync`); every sync counts
+    /// them again.
+    held_items: usize,
     /// Items others shared on their own, held in memory only, read only.
     received: Vec<Vault>,
     /// The share link or answer opened last, until the next or the lock.
@@ -432,85 +437,68 @@ impl Session {
                 cfg.save(&paths.sync_file())?;
             }
         }
-        let trust_for = |vault_id: Id| {
-            let mut keys = synced.device_keys();
+        // Every vault of the persona opens under the same checks; the
+        // oldest is the first vault, whichever opens. A vault whose heads or
+        // versions name another member's devices waits here and opens once
+        // their pins are read from the sharing record (below) or met in the
+        // next sync (`shared_sync`); any other refusal stops the unlock.
+        let mut all = Vec::new();
+        let mut waiting: Option<String> = None;
+        {
+            let mut own = synced.device_keys();
             for (id, key) in device_keys(&identity) {
-                keys.entry(id).or_insert(key);
+                own.entry(id).or_insert(key);
             }
-            DeviceTrust {
-                keys,
-                revoked_after: synced.revoked_after(vault_id),
-            }
-        };
-
-        let opened = if mode == Mode::Init {
-            let last = |vault_id: Id| memory.last_accepted_seq(vault_id);
-            match persona_vaults(&identity, persona_id, &store)
-                .map_err(|e| e.to_string())?
-                .first()
+            for vault_id in
+                persona_vaults(&identity, persona_id, &store).map_err(|e| e.to_string())?
             {
-                Some(vault_id) => open_vault_trusting(
-                    &identity,
-                    *vault_id,
-                    &store,
-                    Box::new(keystore.clone()),
-                    last(*vault_id),
-                    &trust_for(*vault_id),
-                )
-                .map_err(|e| e.to_string())?,
-                None => identity::open_or_create_vault(
-                    &mut identity,
-                    persona_id,
-                    &mut store,
-                    Box::new(keystore.clone()),
-                    &last,
-                )
-                .map_err(|e| e.to_string())?,
-            }
-        } else {
-            let vaults =
-                persona_vaults(&identity, persona_id, &store).map_err(|e| e.to_string())?;
-            let Some(vault_id) = vaults.first() else {
-                return Err(format!(
-                    "this persona has no vault at {} yet",
-                    paths.data.display()
-                ));
-            };
-            open_vault_trusting(
-                &identity,
-                *vault_id,
-                &store,
-                Box::new(keystore.clone()),
-                memory.last_accepted_seq(*vault_id),
-                &trust_for(*vault_id),
-            )
-            .map_err(|e| e.to_string())?
-        };
-        // Every other vault of the persona opens too, under the same checks;
-        // the oldest is the first vault, whichever opened above.
-        let mut all = vec![opened];
-        let trust_for = |vault_id: Id| {
-            let mut keys = synced.device_keys();
-            for (id, key) in device_keys(&identity) {
-                keys.entry(id).or_insert(key);
-            }
-            DeviceTrust {
-                keys,
-                revoked_after: synced.revoked_after(vault_id),
-            }
-        };
-        for vault_id in persona_vaults(&identity, persona_id, &store).map_err(|e| e.to_string())? {
-            if all.iter().any(|o| o.vault.context().vault_id == vault_id) {
-                continue;
-            }
-            all.push(
-                open_vault_trusting(
+                let trust = DeviceTrust {
+                    keys: own.clone(),
+                    revoked_after: synced.revoked_after(vault_id),
+                };
+                match open_vault_trusting(
                     &identity,
                     vault_id,
                     &store,
                     Box::new(keystore.clone()),
                     memory.last_accepted_seq(vault_id),
-                    &trust_for(vault_id),
+                    &trust,
+                ) {
+                    Ok(o) => all.push(o),
+                    Err(e) => {
+                        let known = |d: Id| own.contains_key(&d);
+                        let unmet = shared_sync::unknown_signers(
+                            &store,
+                            vault_id,
+                            identity.device_id(),
+                            &known,
+                        )?;
+                        if unmet.is_empty() {
+                            return Err(e.to_string());
+                        }
+                        waiting.get_or_insert(e.to_string());
+                    }
+                }
+            }
+        }
+        if all.is_empty() {
+            if let Some(why) = waiting {
+                return Err(why);
+            }
+            if mode != Mode::Init {
+                return Err(format!(
+                    "this persona has no vault at {} yet",
+                    paths.data.display()
+                ));
+            }
+            let last = |vault_id: Id| memory.last_accepted_seq(vault_id);
+            all.push(
+                identity::open_or_create_vault(
+                    &mut identity,
+                    persona_id,
+                    &mut store,
+                    Box::new(keystore.clone()),
+                    &last,
                 )
                 .map_err(|e| e.to_string())?,
             );
@@ -549,7 +537,8 @@ impl Session {
             recency,
             sharing: sharing_state,
             rosters: BTreeMap::new(),
-            held_vaults: BTreeSet::new(),
+            held_vaults: BTreeMap::new(),
+            held_items: 0,
             received: Vec::new(),
             opened_send: None,
             link: None,
@@ -558,6 +547,9 @@ impl Session {
             identity_confirmed,
         };
         session.load_sharing()?;
+        // A vault left waiting above opens now when its writers' pins
+        // vouch for it; one that still can't waits for the sync.
+        session.open_new_vaults()?;
         session.remember()?;
         session.sweep_trash()?;
         Ok(session)
@@ -1671,7 +1663,7 @@ impl Session {
         }?;
         // The sync that saw the split clear takes what waited for it at
         // once (`split_hold`; docs/plan/35-revoke-split.md §2).
-        if !self.held_vaults.is_empty() && !self.split_view() {
+        if self.anything_held() && !self.split_view() {
             let token = self.token()?;
             let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
             return self.sync_with(&transport, &server, &token);
@@ -1708,13 +1700,14 @@ impl Session {
         let label = device_name();
         // Vaults another device of this persona made since: pulled under
         // the same log, then opened like the rest.
-        let pulled = pull_new_vaults(transport, &token, &self.identity, &mut self.store, cfg, &kt)?;
-        if pulled > 0 {
-            self.open_new_vaults()?;
-        }
+        pull_new_vaults(transport, &token, &self.identity, &mut self.store, cfg, &kt)?;
         // Sharing in step first: vaults shared with this persona, new key
-        // generations, items shared on their own (docs/plan/18-sharing.md).
+        // generations, items shared on their own (docs/plan/18-sharing.md),
+        // and the writers of every shared vault pinned through the log.
         self.sync_sharing(transport, &token, kt.sth())?;
+        // Then the vaults of this persona not open yet (pulled just now, or
+        // waiting since the unlock), trusting those writers (`shared_sync`).
+        self.open_pulled_vaults(transport, &token, kt.sth())?;
         let syncer = Syncer {
             transport,
             token: &token,
@@ -1766,7 +1759,7 @@ impl Session {
                                 .unwrap_or(false)
                         {
                             if self.split_view() {
-                                self.held_vaults.insert(vault_id);
+                                self.hold(vault_id, shared_sync::Hold::Heads);
                                 break None;
                             }
                             if !refreshed {
@@ -1857,9 +1850,7 @@ impl Session {
         }
         let mut outcome = sync_outcome(&report, &view);
         outcome.lines.extend(mirrors::lines(&checks));
-        if !self.held_vaults.is_empty() {
-            outcome.lines.push(split_hold::HELD_LINE.into());
-        }
+        outcome.lines.extend(self.held_lines());
         outcome.transparency.mirrors = checks;
         Ok(outcome)
     }

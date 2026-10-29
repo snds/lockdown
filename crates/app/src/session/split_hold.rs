@@ -76,8 +76,8 @@ impl Session {
     /// Whether a shared vault's changes wait for the split to clear.
     pub(crate) fn held_words(&self, vault_id: Id) -> Option<String> {
         self.held_vaults
-            .contains(&vault_id)
-            .then(|| HELD.to_string())
+            .get(&vault_id)
+            .map(|h| h.words().to_string())
     }
 
     /// Takes `events` (new membership changes, oldest first) in order, up

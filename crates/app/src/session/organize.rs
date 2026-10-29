@@ -12,14 +12,13 @@
 use std::collections::BTreeSet;
 
 use lockdown_store::Store as _;
-use lockdown_vault::identity::{
-    DeviceTrust, OpenVault, device_keys, keys_for, open_vault_trusting,
-};
+use lockdown_vault::identity::{OpenVault, keys_for, open_shared_vault_trusting};
 use lockdown_vault::{
     CrownJewelDefault, FieldChange, FieldInput, Id, ItemClass, ItemKind, ItemState, Organization,
     PlainField, Vault, VaultContext, VaultInfo, template_for,
 };
 
+use super::shared_sync::{Waiting, unknown_signers};
 use super::{Session, now_secs, parse_id, text_of};
 use crate::types::{
     AttachmentView, ExpiryReminder, FolderView, ItemPlace, OrganizationView, VaultView,
@@ -102,14 +101,15 @@ impl Session {
     }
 
     /// Opens every vault of the persona the store holds that isn't open yet
-    /// (one a sync just pulled), under the same checks as at unlock.
-    pub(crate) fn open_new_vaults(&mut self) -> Result<(), String> {
+    /// (one a sync just pulled, or one that waited at unlock), under the
+    /// same checks as at unlock, trusting this identity's devices and, for a
+    /// shared vault, its writers' as pinned here (`shared_sync`). A vault
+    /// whose copy names a signer nobody vouches for yet stays unopened and
+    /// comes back as waiting; any other refusal is the load's own.
+    pub(crate) fn open_new_vaults(&mut self) -> Result<Vec<Waiting>, String> {
         let persona_id = self.vault().context().persona_id;
         let have = self.vault_ids();
-        let mut keys = self.synced.device_keys();
-        for (id, key) in device_keys(&self.identity) {
-            keys.entry(id).or_insert(key);
-        }
+        let mut waiting = Vec::new();
         for vault_id in
             lockdown_vault::identity::persona_vaults(&self.identity, persona_id, &self.store)
                 .map_err(|e| e.to_string())?
@@ -117,23 +117,44 @@ impl Session {
             if have.contains(&vault_id) {
                 continue;
             }
-            let trust = DeviceTrust {
-                keys: keys.clone(),
-                revoked_after: self.synced.revoked_after(vault_id),
-            };
-            let opened = open_vault_trusting(
+            let (trust, members) = self.vault_trust(vault_id);
+            let opened = open_shared_vault_trusting(
                 &self.identity,
                 vault_id,
                 &self.store,
                 Box::new(self.keystore.clone()),
                 self.memory.last_accepted_seq(vault_id),
                 &trust,
-            )
-            .map_err(|e| e.to_string())?;
-            self.more.push(opened);
+                &members,
+            );
+            match opened {
+                Ok(mut opened) => {
+                    opened
+                        .vault
+                        .require_post_quantum_from(self.memory.pq_since(vault_id))
+                        .map_err(|e| e.to_string())?;
+                    self.more.push(opened);
+                    if self.rosters.contains_key(&vault_id) {
+                        self.apply_roster(vault_id)?;
+                    }
+                }
+                Err(e) => {
+                    let known = |d: Id| trust.keys.contains_key(&d) || members.contains_key(&d);
+                    let unmet =
+                        unknown_signers(&self.store, vault_id, self.identity.device_id(), &known)?;
+                    if unmet.is_empty() {
+                        return Err(e.to_string());
+                    }
+                    waiting.push(Waiting {
+                        vault_id,
+                        why: e.to_string(),
+                    });
+                }
+            }
         }
         order_vaults(&mut self.more);
-        self.remember()
+        self.remember()?;
+        Ok(waiting)
     }
 
     /// Every vault of the persona with its name, folders and counts.

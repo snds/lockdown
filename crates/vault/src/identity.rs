@@ -711,6 +711,32 @@ pub fn open_vault_trusting(
     last_accepted_seq: u64,
     trust: &DeviceTrust,
 ) -> Result<OpenVault> {
+    open_shared_vault_trusting(
+        identity,
+        vault_id,
+        store,
+        signer,
+        last_accepted_seq,
+        trust,
+        &BTreeMap::new(),
+    )
+}
+
+/// [`open_vault_trusting`] for a vault of this identity that other people
+/// write to as well (a shared vault it owns): `members` are the devices of
+/// its other writers, as the caller pinned them. Their heads and versions
+/// verify like the identity's own, but they never count as the identity's
+/// devices, so the post-quantum rule (doc 28) holds only this identity's
+/// heads to its key.
+pub fn open_shared_vault_trusting(
+    identity: &Identity,
+    vault_id: Id,
+    store: &dyn Store,
+    signer: Box<dyn Signer>,
+    last_accepted_seq: u64,
+    trust: &DeviceTrust,
+    members: &BTreeMap<Id, VerifyingKey>,
+) -> Result<OpenVault> {
     let record = store.get_vault(vault_id)?;
     let ctx = record.context;
     if ctx.profile_id != identity.profile().profile_id {
@@ -729,9 +755,12 @@ pub fn open_vault_trusting(
     for (id, key) in &trust.keys {
         devices.entry(*id).or_insert_with(|| key.clone());
     }
+    let pq = vault_pq(identity, signer.as_ref(), devices.keys().copied())?;
+    for (id, key) in members {
+        devices.entry(*id).or_insert_with(|| key.clone());
+    }
     let known = |id: Id| devices.get(&id).cloned();
     let revoked = |id: Id| trust.revoked_after.get(&id).copied();
-    let pq = vault_pq(identity, signer.as_ref(), devices.keys().copied())?;
     let mut vault = Vault::load(
         store,
         vault_id,
