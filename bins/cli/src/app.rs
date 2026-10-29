@@ -1698,6 +1698,61 @@ impl App {
         Ok(lines)
     }
 
+    // --- the post-quantum status line (docs/plan/30-pq-status-line.md) ------
+
+    /// `lockdown security`: the Security screen's post-quantum line (D346),
+    /// in the same words. With an account, the identity's records are
+    /// brought in step with the server first, so the line rests on what the
+    /// server holds now; when that fails it says it can't check, and why.
+    pub fn security_lines(&mut self) -> Result<Vec<String>, String> {
+        use lockdown_vault::pq_status::{Reported, RolloutDevice, rollout};
+        let mut failure = None;
+        let reported = match self.sync.as_ref() {
+            None => Reported::NoAccount,
+            Some(cfg) => {
+                let server = cfg.server.clone();
+                let pulled = cfg.session_token().map(str::to_string).and_then(|token| {
+                    let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
+                    sync_identity_records(
+                        &transport,
+                        &token,
+                        &mut self.identity,
+                        self.keystore.as_ref(),
+                        &mut self.synced,
+                        &mut self.memory,
+                    )
+                });
+                match pulled {
+                    Err(e) => {
+                        failure = Some(e);
+                        Reported::Unreached
+                    }
+                    Ok(()) if self.synced.verified().is_none() => Reported::Silent,
+                    Ok(()) => Reported::Confirmed,
+                }
+            }
+        };
+        let status = rollout(&self.identity, reported).map_err(|e| e.to_string())?;
+        let mut lines = vec![status.headline(), status.explanation().to_string()];
+        let row = |d: &RolloutDevice, what: &str| format!("  {}  {}  ({what})", d.id, d.name);
+        for d in &status.without_level_1 {
+            lines.push(row(
+                d,
+                "needs the latest Lockdown to read your account's quantum-safe key",
+            ));
+        }
+        for d in &status.without_level_2 {
+            lines.push(row(
+                d,
+                "needs the latest Lockdown to read quantum-safe vault signatures",
+            ));
+        }
+        if let Some(e) = failure {
+            lines.push(format!("The server couldn't be checked: {e}"));
+        }
+        Ok(lines)
+    }
+
     // --- key transparency ---------------------------------------------------
 
     /// `lockdown audit`: brings the identity's records in step, then prints

@@ -18,6 +18,8 @@
 //! are key transparency (04-security §6): `sync` checks the server's
 //! public log before and after every run; `audit` prints what it checked;
 //! `checkpoint` exports a signed page another device can verify.
+//! `security` prints the Security screen's quantum-safe signatures line
+//! (docs/plan/30-pq-status-line.md).
 //!
 //! A password, a Secret Key or a recovery code never arrives as an
 //! argument, where it would land in shell history and `ps`: they are read
@@ -160,6 +162,10 @@ enum Command {
         /// The URL of the current page.
         current: String,
     },
+    /// Where the quantum-safe signatures stand for this account: on, or
+    /// which devices hold them back. Brings the identity's records in step
+    /// with the server first when there is an account.
+    Security,
 }
 
 #[derive(Subcommand, Debug)]
@@ -676,6 +682,9 @@ fn run(cli: Cli) -> Result<Vec<String>, String> {
                 DeviceWhat::List => App::open_existing(paths, persona)?.device_lines(),
                 DeviceWhat::Revoke { id } => App::open_existing(paths, persona)?.device_revoke(&id),
             }
+        }
+        Command::Security => {
+            App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?.security_lines()
         }
     }
 }

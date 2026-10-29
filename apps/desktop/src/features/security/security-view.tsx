@@ -28,6 +28,7 @@ import { GuideAttribution } from "@/features/bridges/setup-guide"
 
 import { FindingRow } from "./finding-row"
 import { PlaybookDialog } from "./playbook-dialog"
+import { PqStatusLine } from "./pq-status-line"
 import { SEVERITIES, SEVERITY_TEXT, groupBySeverity, summaryWords } from "./security-model"
 import { SecuritySettings } from "./security-settings"
 import { usePlaybooks } from "./use-playbooks"
@@ -38,8 +39,8 @@ const RECHECK_AFTER_SECS = 24 * 3600
 interface SecurityViewProps {
   /** Opens an item in the vault. */
   onOpenItem: (id: string) => void
-  /** Goes to the Devices screen (a new device's sign-in). */
-  onDevices: () => void
+  /** Goes to the Devices screen (a new device's sign-in), to one device when named. */
+  onDevices: (deviceId?: string) => void
   /** Goes to the Recovery screen (a guided flow's new kit). */
   onRecovery?: () => void
   /** A dismissal wrote a new version of an item: reload the list. */
@@ -66,6 +67,8 @@ export function SecurityView({ onOpenItem, onDevices, onRecovery, onChanged, onN
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState<Finding | null>(null)
   const [showDismissed, setShowDismissed] = useState(false)
+  // Read the post-quantum line again after each check.
+  const [checks, setChecks] = useState(0)
   const autoChecked = useRef(false)
 
   const check = useCallback(async () => {
@@ -77,6 +80,7 @@ export function SecurityView({ onOpenItem, onDevices, onRecovery, onChanged, onN
       setError(describeError(e))
     } finally {
       setChecking(false)
+      setChecks((n) => n + 1)
     }
   }, [client])
 
@@ -163,6 +167,7 @@ export function SecurityView({ onOpenItem, onDevices, onRecovery, onChanged, onN
               </Item>
             ))}
           </div>
+          <PqStatusLine onDevice={(id) => onDevices(id)} refresh={checks} />
           <CheckFacts report={report} />
           {report.findings.length === 0 && (
             <Empty>

@@ -1884,7 +1884,7 @@
     "server",
     "cli"
    ],
-   "left": "Shared vaults and items shared on their own (Ed25519, D343), session tokens and the device's live sign-in proof, a post-quantum state line in Security (D346), and an outside review; hybrid wraps, ML-DSA-65 on identity manifests, vault heads (covering every item version), the log's tree heads and checkpoints, and the rollout rule are built.",
+   "left": "Shared vaults and items shared on their own (Ed25519, D343), session tokens and the device's live sign-in proof, and an outside review; hybrid wraps, ML-DSA-65 on identity manifests, vault heads (covering every item version), the log's tree heads and checkpoints, the rollout rule, and the quantum-safe signatures line in Security, the web vault and the CLI (D346, D365) are built.",
    "evidence": [
     "crates/crypto/src/kem.rs:35 x_wing_round_trip",
     "D23, D30 (X-Wing peer wraps in the identity crate)",

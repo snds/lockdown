@@ -42,6 +42,9 @@ import { LinksView } from "../features/links-view"
 import { Frame, SignInScreen } from "../features/sign-in-screen"
 import { WebSettingsView } from "../features/web-settings-view"
 import { WebUnlockScreen } from "../features/web-unlock-screen"
+import { WebSecurityView } from "../features/web-security-view"
+import { webPqStatusClient } from "../core/web-pq-status-client"
+import { PqStatusClientProvider } from "@/features/security/pq-status-client"
 
 /** A sync whose mirrors caught a split view says so until dismissed (docs/plan/27-web-server-finish.md §4). */
 function warnOnSplit(lines: readonly string[]) {
@@ -57,6 +60,7 @@ const WEB_SCREENS: ReadonlyArray<ShellScreen> = [
   ["sharing", "link", "Links"],
   ["people", "group", "People"],
   ["devices", "devices", "Devices"],
+  ["security", "security", "Security"],
   ["settings", "settings", "Settings"],
 ]
 
@@ -309,7 +313,8 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
           {nav.area === "codes" && <CodesView rows={rows ?? []} onChanged={syncThenList} />}
           {nav.area === "sharing" && <LinksView link={link} clipboard={clipboard} />}
           {nav.area === "people" && <PeopleView link={link} onNotice={notice} />}
-          {nav.area === "devices" && <DevicesView status={status} onChanged={syncThenList} onNotice={notice} />}
+          {nav.area === "devices" && <DevicesView status={status} onChanged={syncThenList} onNotice={notice} focus={nav.device} />}
+          {nav.area === "security" && <WebSecurityView onDevice={(device) => setNav({ area: "devices", view: "all", device })} />}
           {nav.area === "settings" && <WebSettingsView server={server} login={web.login ?? ""} onLock={setLock} onSignOut={signOut} />}
         </AppShell>
         <QuickPalette
@@ -361,13 +366,16 @@ function WebDepth({ link, children }: { link: Link; children: ReactNode }) {
   const hygiene = useMemo(() => webHygieneClient(link), [link])
   const live = useMemo(() => webLiveClient(link), [link])
   const serverChecks = useMemo(() => webServerClient(link), [link])
+  const pqStatus = useMemo(() => webPqStatusClient(link), [link])
   return (
     <LiveClientProvider value={live}>
     <DepthClientProvider value={depth}>
       <QuickClientProvider value={quick}>
         <ScanClientProvider value={scan}>
           <HygieneClientProvider value={hygiene}>
-            <ServerClientProvider value={serverChecks}>{children}</ServerClientProvider>
+            <ServerClientProvider value={serverChecks}>
+              <PqStatusClientProvider value={pqStatus}>{children}</PqStatusClientProvider>
+            </ServerClientProvider>
           </HygieneClientProvider>
         </ScanClientProvider>
       </QuickClientProvider>
