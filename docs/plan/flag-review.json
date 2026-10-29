@@ -1,0 +1,39 @@
+{
+ "v": 1,
+ "reviewed": "2026-10-29",
+ "decision": "D375",
+ "basis": "Sean, 2026-10-29: \"take a stab at reasonable decisions for the items that require my input\". Claude reviewed every decision flagged for Sean. Anything not listed under calls was accepted as built.",
+ "verdicts": {
+  "accepted": "Accepted as built",
+  "changed": "Changed: a follow-up build carries it out",
+  "needs-you": "Kept for Sean: a serious concern or his own earlier call",
+  "deferred": "Deferred: waits on work Sean postponed"
+ },
+ "calls": {
+  "D52": {"verdict": "changed", "note": "A signed-in device should renew its own session with its device key, so the account password is asked only on a new device, after a remote sign-out, or after 30 days without use. Today a session lasts 8 hours with no renewal, so a device that syncs all day asks for the password again."},
+  "D138": {"verdict": "needs-you", "note": "Crown jewels (wallet phrases, recovery codes) are left out of locked backups unless opted in one by one. If the account and the server are both lost, a restore brings back everything except the most valuable items. Recommendation: put crown jewels in locked Lockdown backups by default, sealed under the backup password, and keep them out of plain exports as your D121 says."},
+  "D210": {"verdict": "changed", "note": "Keep the silent passkey upgrade, and add a notice afterwards (\"github.com added a passkey to this login\") on the item and as a toast, so nothing is saved without the person ever hearing about it."},
+  "D229": {"verdict": "deferred", "note": "A push relay that Lockdown runs for self-hosted servers is an ongoing service with a running cost. It waits for the native mobile apps, which you deferred under D122."},
+  "D230": {"verdict": "changed", "note": "Strength words: weak under 50 bits, fair 50 to 74, strong from 75. The default 6-word passphrase (77.5 bits) then reads strong, as it is, instead of fair."},
+  "D307": {"verdict": "accepted", "note": "Kept on by default. This takes back the system-wide shortcut you listed as deferred in D122; it was kept because it needed no OS-level integration. Ctrl+Shift+Space matches 1Password's quick access."},
+  "D312": {"verdict": "changed", "note": "Same notice as D210 after an upgrade that follows a password you typed yourself."},
+  "D328": {"verdict": "changed", "note": "A split view stays a warning for the vault, which keeps reading and syncing, but it pauses new contact look-ups, new shares and emergency-access grants through that server until the split clears. A server showing two histories is the moment it could swap someone's keys."},
+  "D346": {"verdict": "accepted", "note": "Being built now (slice/pq-status-line)."}
+ },
+ "areas": [
+  {"id": "keys", "name": "Keys and encryption", "ids": "D30-D49,D379"},
+  {"id": "sign-in", "name": "Sign-in and recovery", "ids": "D50-D75,D245-D257"},
+  {"id": "sync", "name": "Sync and the public log", "ids": "D76-D89"},
+  {"id": "vault", "name": "Vault and items", "ids": "D100-D123,D146-D155,D230-D244,D272,D305-D319"},
+  {"id": "security", "name": "Security center", "ids": "D125-D134,D261,D270"},
+  {"id": "backups", "name": "Backups and export", "ids": "D135-D145,D273,D274"},
+  {"id": "browser", "name": "Browser and passkeys", "ids": "D156-D169,D200-D214,D264-D269,D331"},
+  {"id": "web", "name": "Web vault", "ids": "D170-D184,D320,D321,D357"},
+  {"id": "sharing", "name": "Sharing and emergency", "ids": "D185-D199"},
+  {"id": "server", "name": "Self-host server", "ids": "D215-D229,D290-D304,D322-D330,D332"},
+  {"id": "bridges", "name": "Vendor bridges", "ids": "D258-D260,D262,D263,D271"},
+  {"id": "pq", "name": "Post-quantum", "ids": "D335-D349,D365-D374"},
+  {"id": "release", "name": "Release and packaging", "ids": "D90-D99,D275-D289,D350-D356,D358-D364"},
+  {"id": "plans", "name": "Plans and pricing", "ids": "D375-D378"}
+ ]
+}
