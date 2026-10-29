@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
 import { GateProvider } from "@/app/gate"
@@ -66,6 +66,21 @@ describe("frames for the core", () => {
 })
 
 describe("signing in a TV (docs/plan/26-desktop-finish.md §3)", () => {
+  it("keeps the camera's error on the Camera tab; Picture and Paste don't show it (design review R6)", async () => {
+    render(<Harness scan={scanClient()} />)
+    // jsdom has no camera, so the Camera tab says so.
+    const camera = await screen.findByRole("tabpanel")
+    expect(within(camera).getByRole("alert")).toHaveTextContent("This window can't use a camera.")
+    const user = userEvent.setup()
+    for (const name of ["Picture", "Paste"]) {
+      await user.click(screen.getByRole("tab", { name }))
+      expect(screen.queryByText(/can't use a camera/)).not.toBeInTheDocument()
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    }
+    await user.click(screen.getByRole("tab", { name: "Camera" }))
+    expect(await within(screen.getByRole("tabpanel")).findByRole("alert")).toHaveTextContent("This window can't use a camera.")
+  })
+
   it("shows a paste's refusal in the core's words, with no way to approve", async () => {
     const refused: ScanOutcome = {
       ...APPROVE,

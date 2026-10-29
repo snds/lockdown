@@ -4,8 +4,6 @@ import {
   Badge,
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -19,6 +17,7 @@ import {
   Spinner,
 } from "@unicron/ui"
 
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
 import { shortId, whenLocal } from "@/lib/format"
 
@@ -143,11 +142,11 @@ function Sessions({ live, onNotice }: SessionsSectionProps & { live: LiveClient 
               again. If you don't know the device, revoke it too.
             </DialogDescription>
           </DialogHeader>
-          <DialogActions>
-            <DialogAction kind="cancel" onClick={() => setEnding(null)}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={() => setEnding(null)}>
               Cancel
-            </DialogAction>
-            <DialogAction
+            </LabelledAction>
+            <LabelledAction
               kind="destructive"
               onClick={() => {
                 const what = ending
@@ -156,8 +155,8 @@ function Sessions({ live, onNotice }: SessionsSectionProps & { live: LiveClient 
               }}
             >
               End
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
     </section>

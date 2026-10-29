@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react"
 
-import { Badge, Button, Dialog, DialogAction, DialogActions, DialogContent, DialogDescription, DialogHeader, DialogTitle, Icon, ItemGroup, Spinner } from "@unicron/ui"
+import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Icon, ItemGroup, Spinner } from "@unicron/ui"
 
 import { useTemplates } from "@/app/templates"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 import type { FieldView, ItemDetail, ItemSummary, TemplateView } from "@/core/types"
 import { codeKey, useCodes } from "@/features/codes/use-codes"
@@ -293,14 +294,14 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
           </div>
         </section>
       )}
-      {!trashed && <ItemSecurity key={`${item.id}:${item.version}`} itemId={item.id} onNotice={onNotice} />}
+      {!trashed && <ItemSecurity key={`security:${item.id}:${item.version}`} itemId={item.id} onNotice={onNotice} />}
       {item.crown_jewel ? <ItemCrownJewel title={title}>{body}</ItemCrownJewel> : body}
       {item.reprompt && <p className="text-sm text-muted-foreground">This card asks it's you before its security code is shown, copied or filled.</p>}
       {!trashed && !fillOnly && (item.kind === "login" || (item.away?.length ?? 0) > 0) && (
         <AwayBlock itemId={item.id} title={title} away={item.away ?? []} canEdit={canEdit} onChanged={onChanged} />
       )}
       {item.crown_jewel && !trashed && <ExportOptIn item={item} onChanged={setItem} onNotice={onNotice} />}
-      {!trashed && !fillOnly && <ItemProtection key={`${item.id}:${item.version}`} itemId={item.id} crownJewel={item.crown_jewel === true} onNotice={onNotice} />}
+      {!trashed && !fillOnly && <ItemProtection key={`protection:${item.id}:${item.version}`} itemId={item.id} crownJewel={item.crown_jewel === true} onNotice={onNotice} />}
       {item.kind === "login" && !trashed && !fillOnly && (
         <FillFixPanel key={item.id} itemId={item.id} crownJewel={item.crown_jewel} canEdit={canEdit} onNotice={onNotice} />
       )}
@@ -321,14 +322,14 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
               Its keys are destroyed now, here and on every device at the next sync, so no copy anywhere can be read again. This can't be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogActions>
-            <DialogAction kind="cancel" onClick={() => setPurging(false)}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={() => setPurging(false)}>
               Cancel
-            </DialogAction>
-            <DialogAction kind="destructive" onClick={() => void purge()}>
+            </LabelledAction>
+            <LabelledAction kind="destructive" onClick={() => void purge()}>
               Delete for good
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
       <Dialog open={resolving !== null} onOpenChange={(o) => !o && setResolving(null)}>
@@ -340,14 +341,14 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
               Deleted through its grace period and can be restored from there.
             </DialogDescription>
           </DialogHeader>
-          <DialogActions>
-            <DialogAction kind="cancel" onClick={() => setResolving(null)}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={() => setResolving(null)}>
               Cancel
-            </DialogAction>
-            <DialogAction kind="destructive" onClick={() => resolving && void resolve(resolving)}>
+            </LabelledAction>
+            <LabelledAction kind="destructive" onClick={() => resolving && void resolve(resolving)}>
               {resolving === "keep-this" ? "Trash the other" : "Trash this copy"}
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
       <Dialog open={confirm} onOpenChange={setConfirm}>
@@ -359,14 +360,14 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
               device. Nothing is destroyed yet.
             </DialogDescription>
           </DialogHeader>
-          <DialogActions>
-            <DialogAction kind="cancel" onClick={() => setConfirm(false)}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={() => setConfirm(false)}>
               Cancel
-            </DialogAction>
-            <DialogAction kind="destructive" onClick={trash}>
+            </LabelledAction>
+            <LabelledAction kind="destructive" onClick={trash}>
               Trash
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
     </article>

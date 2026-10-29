@@ -145,18 +145,17 @@ describe("an item's protection", () => {
 })
 
 describe("the reminders", () => {
-  it("skips the first-run kit test only once the warning is ticked", async () => {
+  it("skips the first-run kit test only with D251's words on the button", async () => {
     const kitTestSkip = vi.fn((understood: boolean) =>
       understood ? Promise.resolve(reminders({})) : Promise.reject({ code: "refused", message: "confirm", detail: "confirm_skip" }),
     )
     mount(fakeDepth({ reminders: () => Promise.resolve(reminders({ drill: { kit: "created", last_drilled_at: null, kit_test_pending: true, due: true } })), kitTestSkip }), <RemindersPrompt onNotice={() => {}} onChanged={() => {}} />)
     const user = userEvent.setup()
     expect(await screen.findByRole("heading", { name: "Test your recovery kit" })).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "Skip for now" }))
-    expect(await screen.findByRole("alert")).toHaveTextContent("Tick the box")
-    await user.click(screen.getByRole("checkbox", { name: /untested kit can fail/ }))
-    await user.click(screen.getByRole("button", { name: "Skip for now" }))
-    await waitFor(() => expect(kitTestSkip).toHaveBeenLastCalledWith(true))
+    expect(screen.queryByRole("button", { name: "Skip for now" })).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "I understand an untested kit can fail" }))
+    await waitFor(() => expect(kitTestSkip).toHaveBeenCalledWith(true))
+    expect(kitTestSkip).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Test your recovery kit" })).not.toBeInTheDocument())
   })
 

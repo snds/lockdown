@@ -1,0 +1,57 @@
+/*
+ * Dialog actions keep their words at every width (design review R1; brief
+ * §6 rule 5: nothing security-relevant rides on an icon alone).
+ *
+ * Below `sm`, unicron's DialogAction draws a round icon button (× or ✓) and
+ * keeps its words only for screen readers. Lockdown's own dialogs use
+ * LabelledActions (src/components/labelled-actions.tsx), which never does.
+ * Two unicron components draw DialogActions inside themselves, where no prop
+ * reaches: the crown-jewel gate (Reveal / Approve, every gated action) and
+ * the approval sheet. These rules give their actions back their words and
+ * stack them full width below `sm`, primary last, as LabelledActions does.
+ *
+ * Only an action that is a direct child of unicron's DialogActions row is
+ * touched (a dialog footer, or the approval sheet's own row); LabelledActions
+ * nests its buttons one level deeper, so these rules never reach it. The rules are
+ * unlayered, so they win over Tailwind's utilities whatever their order.
+ * Requested from unicron (docs/plan/31-design-fixes-1.md, "unicron
+ * requests"); this sheet goes when DialogAction keeps its label.
+ */
+
+/* unicron's DialogActions is a dialog footer; the approval sheet renames its own. */
+:is([data-slot="dialog-footer"], [data-slot="approval-sheet-actions"]) > [data-kind] > svg[data-slot="icon"] {
+  display: none;
+}
+
+:is([data-slot="dialog-footer"], [data-slot="approval-sheet-actions"]) > [data-kind] > span {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  clip: auto;
+  clip-path: none;
+  white-space: nowrap;
+}
+
+@media (width < 40rem) {
+  :is([data-slot="dialog-footer"], [data-slot="approval-sheet-actions"]):has(> [data-kind]) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* The approval sheet writes Approve first and lays its row out reversed,
+     so Approve sits right; reversed as a column it sits last, at the bottom. */
+  [data-slot="approval-sheet-actions"]:has(> [data-kind]) {
+    flex-direction: column-reverse;
+  }
+
+  :is([data-slot="dialog-footer"], [data-slot="approval-sheet-actions"]) > [data-kind] {
+    @apply m-0 h-8 w-full rounded-lg px-2.5;
+  }
+
+  :is([data-slot="dialog-footer"], [data-slot="approval-sheet-actions"]) > [data-kind="destructive"] {
+    background-color: transparent;
+  }
+}

@@ -4,8 +4,6 @@ import {
   Badge,
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -23,6 +21,7 @@ import {
 } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, isAppError } from "@/core/client"
 import { useCaptureProtect } from "@/features/hygiene/hygiene-client"
 
@@ -65,6 +64,8 @@ export function ScanDialog({ open, onOpenChange, onNotice }: ScanDialogProps) {
   const [tab, setTab] = useState("camera")
   const [outcome, setOutcome] = useState<ScanOutcome | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** The camera's own trouble, shown on the Camera tab only (design review R6). */
+  const [cameraError, setCameraError] = useState<string | null>(null)
   const [account, setAccount] = useState<string | null>(null)
   const [started, setStarted] = useState<ActivationStarted | null>(null)
   const [busy, setBusy] = useState(false)
@@ -73,6 +74,7 @@ export function ScanDialog({ open, onOpenChange, onNotice }: ScanDialogProps) {
   const reset = () => {
     setOutcome(null)
     setError(null)
+    setCameraError(null)
     setAccount(null)
     setStarted(null)
   }
@@ -150,13 +152,28 @@ export function ScanDialog({ open, onOpenChange, onNotice }: ScanDialogProps) {
           </DialogDescription>
         </DialogHeader>
         {!outcome && (
-          <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
+          <Tabs
+            value={tab}
+            onValueChange={(v) => {
+              // A tab's trouble stays on that tab: the camera tries again when
+              // its tab comes back, and a picture's or a paste's error is about
+              // what was tried there.
+              setTab(String(v))
+              setError(null)
+              setCameraError(null)
+            }}
+          >
             <TabsList>
               <TabsTrigger value="camera">Camera</TabsTrigger>
               <TabsTrigger value="image">Picture</TabsTrigger>
               <TabsTrigger value="paste">Paste</TabsTrigger>
             </TabsList>
-            <TabsContent value="camera">{open && tab === "camera" && <CameraView label="The camera's picture" onFrame={onFrame} onError={setError} />}</TabsContent>
+            <TabsContent value="camera">
+              <div className="flex flex-col gap-2">
+                {open && tab === "camera" && <CameraView label="The camera's picture" onFrame={onFrame} onError={setCameraError} />}
+                {cameraError && <FieldError role="alert">{cameraError}</FieldError>}
+              </div>
+            </TabsContent>
             <TabsContent value="image">
               <Field>
                 <FieldLabel htmlFor="scan-file">A picture of the code</FieldLabel>
@@ -179,27 +196,27 @@ export function ScanDialog({ open, onOpenChange, onNotice }: ScanDialogProps) {
         )}
         {outcome && <Outcome outcome={outcome} account={account} onAccount={setAccount} started={started} />}
         {error && <FieldError role="alert">{error}</FieldError>}
-        <DialogActions>
+        <LabelledActions>
           {outcome && !started && outcome.decision !== "approve" && (
-            <DialogAction kind="cancel" onClick={reset}>
+            <LabelledAction kind="cancel" onClick={reset}>
               Scan again
-            </DialogAction>
+            </LabelledAction>
           )}
           {outcome?.decision === "approve" && !started ? (
             <>
-              <DialogAction kind="cancel" onClick={deny}>
+              <LabelledAction kind="cancel" onClick={deny}>
                 Don't sign in
-              </DialogAction>
-              <DialogAction kind="confirm" disabled={busy} onClick={() => void approve()}>
+              </LabelledAction>
+              <LabelledAction kind="confirm" disabled={busy} onClick={() => void approve()}>
                 Sign in on {outcome.host}
-              </DialogAction>
+              </LabelledAction>
             </>
           ) : (
-            <DialogAction kind="confirm" onClick={() => close(false)}>
+            <LabelledAction kind="confirm" onClick={() => close(false)}>
               Done
-            </DialogAction>
+            </LabelledAction>
           )}
-        </DialogActions>
+        </LabelledActions>
       </DialogContent>
     </Dialog>
   )

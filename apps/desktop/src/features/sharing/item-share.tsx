@@ -4,8 +4,6 @@ import {
   Badge,
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -28,6 +26,7 @@ import {
 } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
 import { decodeAndWipe } from "@/core/secret-bytes"
 import type { Access, ItemDetail } from "@/core/types"
@@ -149,14 +148,14 @@ function SharePersonDialog({ open, item, title, onClose, onNotice }: { open: boo
           </FieldGroup>
         )}
         {error && <FieldError role="alert">{error}</FieldError>}
-        <DialogActions>
-          <DialogAction kind="cancel" onClick={onClose}>
+        <LabelledActions>
+          <LabelledAction kind="cancel" onClick={onClose}>
             Cancel
-          </DialogAction>
-          <DialogAction kind="confirm" disabled={!who} onClick={() => void share()}>
+          </LabelledAction>
+          <LabelledAction kind="confirm" disabled={!who} onClick={() => void share()}>
             Share
-          </DialogAction>
-        </DialogActions>
+          </LabelledAction>
+        </LabelledActions>
       </DialogContent>
     </Dialog>
   )
@@ -206,16 +205,16 @@ function ShareLinkDialog({ open, item, title, onClose }: { open: boolean; item: 
           </form>
         )}
         {error && <FieldError role="alert">{error}</FieldError>}
-        <DialogActions>
-          <DialogAction kind="cancel" onClick={close}>
+        <LabelledActions>
+          <LabelledAction kind="cancel" onClick={close}>
             {link ? "Done" : "Cancel"}
-          </DialogAction>
+          </LabelledAction>
           {!link && (
-            <DialogAction kind="confirm" type="submit" form="share-link">
+            <LabelledAction kind="confirm" type="submit" form="share-link">
               Make the link
-            </DialogAction>
+            </LabelledAction>
           )}
-        </DialogActions>
+        </LabelledActions>
       </DialogContent>
     </Dialog>
   )

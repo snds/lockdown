@@ -183,7 +183,18 @@ test("red team: a lookalike page gets a hard stop, in the menu and the popup", a
   await page.goto(at("paypal.com.evil.net", "/ext/login.html"));
   await page.focus("#user");
   const menu = await lockdownFrame(page);
-  await expect(menu.getByRole("alert")).toContainText("isn't www.paypal.com");
+  const stop = menu.getByRole("alert");
+  await expect(stop).toHaveText(/^Stop: \S+ isn't www\.paypal\.com\. It looks like a site you have a login for, so Lockdown won't fill here\.$/);
+  // The whole sentence shows (design review R3): the frame takes its larger
+  // height for a stop, and the stop's box ends inside it with nothing cut.
+  await expect
+    .poll(() =>
+      stop.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return r.top >= 0 && r.bottom <= innerHeight && r.right <= innerWidth && el.scrollHeight <= el.clientHeight && el.scrollWidth <= el.clientWidth;
+      }),
+    )
+    .toBe(true);
   await expect(menu.getByRole("button", { name: /PayPal/ })).toHaveCount(0);
   const tab = await tabId("*://paypal.com.evil.net/*");
   const p = await popup(`?tab=${tab}`);

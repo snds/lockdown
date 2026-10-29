@@ -2,8 +2,6 @@ import { useState, type FormEvent } from "react"
 
 import {
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -17,6 +15,7 @@ import {
 } from "@unicron/ui"
 
 import { useSettings } from "@/app/settings"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 import type { OncePage } from "@/core/types"
 
@@ -89,14 +88,14 @@ export function AccountDialog({ kind, onClose, onDone }: AccountDialogProps) {
             </Field>
           </FieldGroup>
           {error && <FieldError role="alert">{error}</FieldError>}
-          <DialogActions>
-            <DialogAction kind="cancel" type="button" onClick={onClose} disabled={busy}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" type="button" onClick={onClose} disabled={busy}>
               Cancel
-            </DialogAction>
-            <DialogAction kind="confirm" type="submit" disabled={busy}>
+            </LabelledAction>
+            <LabelledAction kind="confirm" type="submit" disabled={busy}>
               {kind === "register" ? "Register" : "Log in"}
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </form>
       </DialogContent>
     </Dialog>

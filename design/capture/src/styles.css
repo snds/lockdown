@@ -1,12 +1,13 @@
 /*
  * One sheet for every surface the harness draws: unicron (Tailwind, the
  * tokens, Inter and the Material Symbols font as files), Lockdown's app
- * roles, and the sources Tailwind reads for class names: the desktop's
+ * roles and labelled dialog actions, and the sources Tailwind reads for class names: the desktop's
  * views, the web vault's own screens, the extension's popup. Then the
  * review build's own few rules, all under `.ld-*`.
  */
 @import "@unicron/ui/styles";
 @import "../../../apps/desktop/src/styles/app-extension.css";
+@import "../../../apps/desktop/src/styles/dialog-actions.css";
 @source "../../../apps/desktop/src";
 @source "../../../apps/web/src";
 @source "../../../extension/src/popup";

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react"
 
-import { Button, Dialog, DialogAction, DialogActions, DialogContent, DialogDescription, DialogHeader, DialogTitle, Icon } from "@unicron/ui"
+import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Icon } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
 import { useLocked } from "@/app/locked"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 import { useCaptureProtect } from "@/features/hygiene/hygiene-client"
 
@@ -142,14 +143,14 @@ export function WifiCard({ itemId, ssid, hasPassword }: WifiCardProps) {
               <p>Scan with a phone camera to join.</p>
             </div>
           )}
-          <DialogActions>
-            <DialogAction kind="cancel" onClick={close}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={close}>
               Hide
-            </DialogAction>
-            <DialogAction kind="confirm" onClick={() => void print()}>
+            </LabelledAction>
+            <LabelledAction kind="confirm" onClick={() => void print()}>
               Print a card
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
     </>

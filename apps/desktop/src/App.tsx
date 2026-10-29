@@ -187,7 +187,9 @@ function Root() {
         )}
         {nav.area === "codes" && <CodesView rows={rows ?? []} onChanged={reload} />}
         {nav.area === "devices" && <DevicesView status={status} onChanged={refreshStatus} onNotice={notice} focus={nav.device} />}
-        {nav.area === "recovery" && <RecoveryView status={status} onChanged={refreshStatus} onNotice={notice} />}
+        {nav.area === "recovery" && (
+          <RecoveryView status={status} onChanged={refreshStatus} onNotice={notice} onEmergency={() => setNav({ area: "sharing", view: nav.view })} />
+        )}
         {nav.area === "status" && <StatusView status={status} onStatus={setStatus} onNotice={notice} />}
         {nav.area === "settings" && <SettingsView status={status} lock={lock} onLock={setLock} onChanged={refreshStatus} onNotice={notice} />}
         {nav.area === "sharing" && (

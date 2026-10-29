@@ -160,7 +160,7 @@ function FirstRun({ onOpened }: { onOpened: (s: Status) => void }) {
           <TabsContent value="create">
             <div className="flex flex-col gap-4">
               <p className="text-sm text-muted-foreground">Start a new identity on this computer.</p>
-              <Button onClick={() => setCreating(true)}>Create</Button>
+              <Button onClick={() => setCreating(true)}>Create my vault</Button>
             </div>
           </TabsContent>
           <TabsContent value="join">

@@ -4,8 +4,6 @@ import {
   Button,
   Checkbox,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -19,6 +17,7 @@ import {
   Spinner,
 } from "@unicron/ui"
 
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, isAppError } from "@/core/client"
 import type { OncePage, Status } from "@/core/types"
 
@@ -313,14 +312,14 @@ export function OptOutRegister({ open, server, onClose, onRegistered }: { open: 
             </Field>
           </FieldGroup>
           {error && <FieldError role="alert">{error}</FieldError>}
-          <DialogActions>
-            <DialogAction kind="cancel" type="button" onClick={onClose} disabled={busy}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" type="button" onClick={onClose} disabled={busy}>
               Keep the Secret Key
-            </DialogAction>
-            <DialogAction kind="destructive" type="submit" disabled={busy}>
+            </LabelledAction>
+            <LabelledAction kind="destructive" type="submit" disabled={busy}>
               Make it without
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </form>
       </DialogContent>
     </Dialog>

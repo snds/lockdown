@@ -2,8 +2,6 @@ import { useMemo, useState, type FormEvent } from "react"
 
 import {
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -19,6 +17,7 @@ import {
   Switch,
 } from "@unicron/ui"
 
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 import type { ItemSummary } from "@/core/types"
 
@@ -105,14 +104,14 @@ function OrganizeForm({ target, rows, onClose, onSaved }: { target: OrganizeTarg
         </Field>
       </FieldGroup>
       {error && <FieldError role="alert">{error}</FieldError>}
-      <DialogActions>
-        <DialogAction kind="cancel" type="button" onClick={onClose} disabled={busy}>
+      <LabelledActions>
+        <LabelledAction kind="cancel" type="button" onClick={onClose} disabled={busy}>
           Cancel
-        </DialogAction>
-        <DialogAction kind="confirm" type="submit" disabled={busy}>
+        </LabelledAction>
+        <LabelledAction kind="confirm" type="submit" disabled={busy}>
           Save
-        </DialogAction>
-      </DialogActions>
+        </LabelledAction>
+      </LabelledActions>
     </form>
   )
 }

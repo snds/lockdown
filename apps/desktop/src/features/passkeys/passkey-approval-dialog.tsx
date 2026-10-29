@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react"
 
-import { Dialog, DialogAction, DialogActions, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@unicron/ui"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
 
 import { usePasskeyClient, type PasskeyApproval } from "./passkey-client"
@@ -68,14 +69,14 @@ export function PasskeyApprovalDialog({ onNotice }: { onNotice: (text: string) =
             {error}
           </p>
         )}
-        <DialogActions>
-          <DialogAction kind="cancel" onClick={() => void answer(false)} disabled={busy}>
+        <LabelledActions>
+          <LabelledAction kind="cancel" onClick={() => void answer(false)} disabled={busy}>
             Decline
-          </DialogAction>
-          <DialogAction kind="confirm" onClick={() => void answer(true)} disabled={busy}>
+          </LabelledAction>
+          <LabelledAction kind="confirm" onClick={() => void answer(true)} disabled={busy}>
             Approve
-          </DialogAction>
-        </DialogActions>
+          </LabelledAction>
+        </LabelledActions>
       </DialogContent>
     </Dialog>
   )

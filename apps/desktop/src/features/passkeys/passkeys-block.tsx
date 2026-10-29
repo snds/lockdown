@@ -4,8 +4,6 @@ import {
   Badge,
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -19,6 +17,7 @@ import {
 } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
 import type { FieldView } from "@/core/types"
 import { dateLocal, whenLocal } from "@/lib/format"
@@ -169,18 +168,18 @@ export function PasskeysBlock({
                 : `Lockdown won't sign in to ${confirm?.rp_id ?? "the site"} with this passkey any more. The site still lists it until you remove it there. The item's history keeps the version that had it.`}
             </DialogDescription>
           </DialogHeader>
-          <DialogActions>
-            <DialogAction kind="cancel" onClick={() => setConfirm(null)} disabled={busy}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={() => setConfirm(null)} disabled={busy}>
               Cancel
-            </DialogAction>
-            <DialogAction
+            </LabelledAction>
+            <LabelledAction
               kind="destructive"
               disabled={busy}
               onClick={() => confirm && void run(() => gate.run((g) => client.remove(itemId, confirm.credential_id, g)), `The passkey for ${confirm.rp_id} was deleted.`)}
             >
               {confirm?.only_sign_in ? "Delete anyway" : "Delete"}
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
     </div>

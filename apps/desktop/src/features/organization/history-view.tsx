@@ -4,8 +4,6 @@ import {
   Badge,
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -15,6 +13,7 @@ import {
 } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 import type { ItemDetail, VersionView } from "@/core/types"
 import { whenLocal } from "@/lib/format"
@@ -141,25 +140,25 @@ function HistoryBody({ itemId, title, editable, onClose, onRestored }: HistoryVi
             <p className="text-xs text-muted-foreground">Hidden values stay hidden here; restore the version to use them.</p>
           </section>
         )}
-        <DialogActions>
-          <DialogAction kind="cancel" onClick={onClose}>
+        <LabelledActions>
+          <LabelledAction kind="cancel" onClick={onClose}>
             Done
-          </DialogAction>
-        </DialogActions>
+          </LabelledAction>
+        </LabelledActions>
         <Dialog open={restoring !== null} onOpenChange={(o) => !o && setRestoring(null)}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Restore version {restoring?.n}?</DialogTitle>
               <DialogDescription>Its fields are saved again as the newest version. The current one stays in the history; where the item is filed stays as it is.</DialogDescription>
             </DialogHeader>
-            <DialogActions>
-              <DialogAction kind="cancel" onClick={() => setRestoring(null)}>
+            <LabelledActions>
+              <LabelledAction kind="cancel" onClick={() => setRestoring(null)}>
                 Cancel
-              </DialogAction>
-              <DialogAction kind="confirm" onClick={() => void restore()}>
+              </LabelledAction>
+              <LabelledAction kind="confirm" onClick={() => void restore()}>
                 Restore
-              </DialogAction>
-            </DialogActions>
+              </LabelledAction>
+            </LabelledActions>
           </DialogContent>
         </Dialog>
     </>

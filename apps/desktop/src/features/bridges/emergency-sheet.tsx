@@ -3,8 +3,6 @@ import { useState } from "react"
 import {
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -13,6 +11,7 @@ import {
   Spinner,
 } from "@unicron/ui"
 
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
 
 import { useBridges, type EmergencySheet } from "./bridges-client"
@@ -73,15 +72,15 @@ export function EmergencySheetButton({ onNotice }: { onNotice: (text: string) =>
                   ))}
                 </section>
               </article>
-              <DialogActions>
-                <DialogAction kind="cancel" onClick={() => setSheet(null)}>
+              <LabelledActions>
+                <LabelledAction kind="cancel" onClick={() => setSheet(null)}>
                   Close
-                </DialogAction>
+                </LabelledAction>
                 <Button onClick={() => window.print()}>
                   <Icon name="print" data-icon="inline-start" />
                   Print
                 </Button>
-              </DialogActions>
+              </LabelledActions>
             </>
           )}
         </DialogContent>

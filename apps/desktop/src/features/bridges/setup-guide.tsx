@@ -3,8 +3,6 @@ import { useEffect, useState } from "react"
 import {
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -13,6 +11,7 @@ import {
   Spinner,
 } from "@unicron/ui"
 
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 
 import { useBridges, type SetupGuide } from "./bridges-client"
@@ -105,17 +104,17 @@ export function SetupGuideDialog({
                 {guide.attribution.map((a) => `${a.name} (${a.licence})`).join(" and ")}. Built into Lockdown; looking a site up tells no one which sites you use.
               </p>
             </div>
-            <DialogActions>
-              <DialogAction kind="cancel" onClick={onClose}>
+            <LabelledActions>
+              <LabelledAction kind="cancel" onClick={onClose}>
                 Close
-              </DialogAction>
+              </LabelledAction>
               {guide.setup_url && (
                 <Button onClick={() => open(guide.setup_url ?? "")}>
                   <Icon name="open_in_new" data-icon="inline-start" />
                   Set it up
                 </Button>
               )}
-            </DialogActions>
+            </LabelledActions>
           </>
         )}
       </DialogContent>

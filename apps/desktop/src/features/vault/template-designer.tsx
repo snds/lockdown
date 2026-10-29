@@ -3,8 +3,6 @@ import { useState, type FormEvent } from "react"
 import {
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -31,6 +29,7 @@ import {
 } from "@unicron/ui"
 
 import { useTemplates } from "@/app/templates"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 import type { UserTemplateView } from "@/core/types"
 
@@ -132,14 +131,14 @@ export function TemplateDesigner({ template, onDone, onCancel }: TemplateDesigne
         </FieldSet>
       </FieldGroup>
       {error && <FieldError role="alert">{error}</FieldError>}
-      <DialogActions>
-        <DialogAction kind="cancel" type="button" onClick={onCancel} disabled={busy}>
+      <LabelledActions>
+        <LabelledAction kind="cancel" type="button" onClick={onCancel} disabled={busy}>
           Cancel
-        </DialogAction>
-        <DialogAction kind="confirm" type="submit" disabled={busy}>
+        </LabelledAction>
+        <LabelledAction kind="confirm" type="submit" disabled={busy}>
           {busy ? "Saving…" : "Save template"}
-        </DialogAction>
-      </DialogActions>
+        </LabelledAction>
+      </LabelledActions>
     </form>
   )
 }
@@ -216,14 +215,14 @@ export function TemplatesManager({ open, onOpenChange, onNotice }: TemplatesMana
               </ItemGroup>
             )}
             {error && <FieldError role="alert">{error}</FieldError>}
-            <DialogActions>
-              <DialogAction kind="cancel" onClick={() => onOpenChange(false)}>
+            <LabelledActions>
+              <LabelledAction kind="cancel" onClick={() => onOpenChange(false)}>
                 Close
-              </DialogAction>
-              <DialogAction kind="confirm" onClick={() => setEditing("new")}>
+              </LabelledAction>
+              <LabelledAction kind="confirm" onClick={() => setEditing("new")}>
                 New template
-              </DialogAction>
-            </DialogActions>
+              </LabelledAction>
+            </LabelledActions>
           </>
         )}
       </DialogContent>
@@ -233,14 +232,14 @@ export function TemplatesManager({ open, onOpenChange, onNotice }: TemplatesMana
             <DialogTitle>Delete "{deleting?.name}"?</DialogTitle>
             <DialogDescription>It goes to the trash like an item. Items you made from it stay as they are.</DialogDescription>
           </DialogHeader>
-          <DialogActions>
-            <DialogAction kind="cancel" onClick={() => setDeleting(null)}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={() => setDeleting(null)}>
               Cancel
-            </DialogAction>
-            <DialogAction kind="destructive" onClick={() => void remove()}>
+            </LabelledAction>
+            <LabelledAction kind="destructive" onClick={() => void remove()}>
               Delete
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
     </Dialog>

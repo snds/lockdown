@@ -5,8 +5,6 @@ import {
   Button,
   Checkbox,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -29,6 +27,7 @@ import {
 } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
 import type { VaultView } from "@/core/types"
 import { whenLocal } from "@/lib/format"
@@ -122,11 +121,11 @@ export function EmergencySection({ grants, contacts, vaults, online, onGrants, o
                 : "The keys you sealed for them are dropped and they can't ask again."}
             </DialogDescription>
           </DialogHeader>
-          <DialogActions>
-            <DialogAction kind="cancel" onClick={() => setRevoking(null)}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={() => setRevoking(null)}>
               Cancel
-            </DialogAction>
-            <DialogAction
+            </LabelledAction>
+            <LabelledAction
               kind="destructive"
               onClick={() => {
                 const g = revoking
@@ -135,8 +134,8 @@ export function EmergencySection({ grants, contacts, vaults, online, onGrants, o
               }}
             >
               End it
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
     </section>
@@ -283,16 +282,16 @@ function AddEmergencyDialog({
           </form>
         )}
         {error && <FieldError role="alert">{error}</FieldError>}
-        <DialogActions>
-          <DialogAction kind="cancel" onClick={onClose}>
+        <LabelledActions>
+          <LabelledAction kind="cancel" onClick={onClose}>
             Cancel
-          </DialogAction>
+          </LabelledAction>
           {verified.length > 0 && (
-            <DialogAction kind="confirm" type="submit" form="emergency-add" disabled={picked.length === 0}>
+            <LabelledAction kind="confirm" type="submit" form="emergency-add" disabled={picked.length === 0}>
               Ask them
-            </DialogAction>
+            </LabelledAction>
           )}
-        </DialogActions>
+        </LabelledActions>
       </DialogContent>
     </Dialog>
   )

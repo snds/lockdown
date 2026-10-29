@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
-import { Button, Dialog, DialogAction, DialogActions, DialogContent, DialogDescription, DialogHeader, DialogTitle, FieldError, Icon, Spinner } from "@unicron/ui"
+import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, FieldError, Icon, Spinner } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
 
 import { POLL_MS, useDepthClient, type LinkView } from "./depth-client"
@@ -120,16 +121,16 @@ export function AddDevice({ onNotice, onChanged }: AddDeviceProps) {
             </p>
           )}
           {error && <FieldError role="alert">{error}</FieldError>}
-          <DialogActions>
-            <DialogAction kind="cancel" onClick={close} disabled={busy}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={close} disabled={busy}>
               {link?.state === "compare" ? "They don't match" : "Cancel"}
-            </DialogAction>
+            </LabelledAction>
             {link?.state === "compare" && (
-              <DialogAction kind="confirm" onClick={approve} disabled={busy}>
+              <LabelledAction kind="confirm" onClick={approve} disabled={busy}>
                 Approve
-              </DialogAction>
+              </LabelledAction>
             )}
-          </DialogActions>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
     </>

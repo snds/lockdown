@@ -1,11 +1,14 @@
-import { render, screen, within } from "@testing-library/react"
+import { act, render, screen, within } from "@testing-library/react"
 
 import { GateProvider } from "@/app/gate"
+import { LockedProvider } from "@/app/locked"
 import { SettingsProvider } from "@/app/settings"
 import { TemplatesProvider } from "@/app/templates"
 import { ClientProvider, type Client } from "@/core/client"
-import type { FieldView, ItemDetail } from "@/core/types"
+import type { FieldView, Finding, ItemDetail, SecurityReport } from "@/core/types"
+import { DepthClientProvider, type ExposureView } from "@/features/depth/depth-client"
 import { fakeClient } from "@/test/fake-client"
+import { fakeDepth } from "@/test/fake-depth"
 import { TEMPLATES } from "@/test/templates-fixture"
 
 import { DetailPane } from "./detail-pane"
@@ -65,5 +68,62 @@ describe("detail layouts from the templates (D110)", () => {
   it("names the item when it can't be opened", async () => {
     mount(fakeClient({ templates: () => Promise.resolve(TEMPLATES), show: () => Promise.reject({ code: "refused", message: "the field 'pw' was tampered with" }) }))
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't open this item (i1): the field 'pw' was tampered with")
+  })
+})
+
+describe("one Security box (design review R2)", () => {
+  it("draws the item's Security box once, however often the lock poll redraws the detail", async () => {
+    const finding = {
+      id: "f1",
+      kind: "weak",
+      severity: "important",
+      title: "Weak password",
+      detail: "It could be guessed.",
+      key: "weak:pw",
+      item_id: "i1",
+      item_title: "Thing",
+      item_kind: "login",
+      field_id: "login.password",
+      site: null,
+      related: [],
+      setup_url: null,
+      change_password: true,
+      playbook: "weak",
+      alert: null,
+    } as unknown as Finding
+    const report = { findings: [finding], dismissed: [], counts: { urgent: 0, important: 1, suggested: 0 } } as unknown as SecurityReport
+    const client = fakeClient({
+      templates: () => Promise.resolve(TEMPLATES),
+      show: () => Promise.resolve(item("login", [plain("login.username", "username", "sam")])),
+      securityReport: () => Promise.resolve(report),
+      securityPlaybooks: () => Promise.resolve([]),
+    })
+    const depth = fakeDepth({
+      exposure: () => Promise.resolve({ id: "i1", tier: "fill", source: "default", default_tier: "fill", reason: null, choices: ["fill", "ask", "app-only"] } satisfies ExposureView),
+    })
+    const tree = (locked: boolean) => (
+      <ClientProvider value={client}>
+        <DepthClientProvider value={depth}>
+          <LockedProvider value={locked}>
+            <SettingsProvider>
+              <TemplatesProvider>
+                <GateProvider>
+                  <DetailPane id="i1" rows={[]} onEdit={() => {}} onTrashed={() => {}} onChanged={() => {}} onNotice={() => {}} />
+                </GateProvider>
+              </TemplatesProvider>
+            </SettingsProvider>
+          </LockedProvider>
+        </DepthClientProvider>
+      </ClientProvider>
+    )
+    const { rerender } = render(tree(false))
+    await screen.findByRole("region", { name: "Security" })
+    await screen.findByRole("region", { name: "Protection" })
+    for (let poll = 0; poll < 3; poll += 1) {
+      rerender(tree(false))
+      await act(() => Promise.resolve())
+    }
+    expect(screen.getAllByRole("region", { name: "Security" })).toHaveLength(1)
+    expect(screen.getAllByRole("region", { name: "Protection" })).toHaveLength(1)
   })
 })

@@ -3,8 +3,6 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import {
   Button,
   Dialog,
-  DialogAction,
-  DialogActions,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -17,6 +15,7 @@ import {
   Spinner,
 } from "@unicron/ui"
 
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
 
 import { POLL_MS, phraseDigits, useDepthClient, type PhraseCheckView, type PhraseIncoming } from "./depth-client"
@@ -109,11 +108,11 @@ export function PhraseInvite({ login, onVerified }: { login: string; onVerified:
             </p>
           )}
           {check && <CheckState check={check} />}
-          <DialogActions>
-            <DialogAction kind={check?.state === "waiting" ? "cancel" : "confirm"} onClick={close}>
+          <LabelledActions>
+            <LabelledAction kind={check?.state === "waiting" ? "cancel" : "confirm"} onClick={close}>
               {check?.state === "waiting" ? "Cancel" : "Done"}
-            </DialogAction>
-          </DialogActions>
+            </LabelledAction>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
     </>
@@ -193,16 +192,16 @@ export function PhraseIncomingList({ online, onVerified }: { online: boolean; on
             </form>
           )}
           {error && <FieldError role="alert">{error}</FieldError>}
-          <DialogActions>
-            <DialogAction kind="cancel" onClick={close}>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={close}>
               {check && check.state !== "waiting" ? "Done" : "Cancel"}
-            </DialogAction>
+            </LabelledAction>
             {!check && (
-              <DialogAction kind="confirm" type="submit" form="phrase-answer">
+              <LabelledAction kind="confirm" type="submit" form="phrase-answer">
                 Check
-              </DialogAction>
+              </LabelledAction>
             )}
-          </DialogActions>
+          </LabelledActions>
         </DialogContent>
       </Dialog>
     </div>
