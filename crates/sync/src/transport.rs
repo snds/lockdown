@@ -196,6 +196,25 @@ pub fn install_local_server(hook: LocalHook) -> bool {
     LOCAL_HOOK.set(hook).is_ok()
 }
 
+static LOCAL_CLOSE: std::sync::OnceLock<Box<dyn Fn(&std::path::Path) + Send + Sync>> =
+    std::sync::OnceLock::new();
+
+/// Installs how the in-process server of a data directory is closed (every
+/// file it holds let go), once per process, beside [`install_local_server`].
+pub fn install_local_server_close(close: Box<dyn Fn(&std::path::Path) + Send + Sync>) -> bool {
+    LOCAL_CLOSE.set(close).is_ok()
+}
+
+/// Closes the in-process server of `home`, so its folder can be removed
+/// (a move to a real server, docs/plan/39-first-run.md §1.11). A request
+/// after this opens it again, which nothing does once the account names
+/// another server.
+pub fn close_local_server(home: &std::path::Path) {
+    if let Some(close) = LOCAL_CLOSE.get() {
+        close(home);
+    }
+}
+
 /// Whether a local server is installed in this process.
 pub fn local_server_installed() -> bool {
     LOCAL_HOOK.get().is_some()

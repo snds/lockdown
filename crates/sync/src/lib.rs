@@ -51,8 +51,9 @@ pub use identity::{pull_identity, push_identity};
 pub use kt::{AuditExpectations, AuditReport, DeviceExpectations, KtSession};
 pub use transport::{
     HttpHook, HttpRequest, HttpTransport, LOCAL_BASE, LocalHook, Method, Transport, TransportError,
-    hold_network, install_http_hook, install_local_server, is_local, local_server_installed,
-    network_held, set_default_local_home, set_local_home,
+    close_local_server, hold_network, install_http_hook, install_local_server,
+    install_local_server_close, is_local, local_server_installed, network_held,
+    set_default_local_home, set_local_home,
 };
 
 use std::collections::BTreeMap;

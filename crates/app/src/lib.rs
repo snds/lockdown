@@ -234,6 +234,9 @@ impl Core {
         // Requests to the local account's server from this thread reach
         // the one for these paths (docs/plan/39-first-run.md §1.1).
         lockdown_sync::set_local_home(Some(paths.data.clone()));
+        // A local server retired by a move whose folder couldn't go then
+        // goes now, before anything could open it.
+        session::local_account::finish_retirement(&paths.data);
         Self {
             paths,
             persona,

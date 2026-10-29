@@ -359,6 +359,7 @@ fn a_local_vault_moves_to_a_real_server_and_another_device_finds_it_there() {
     assert_eq!(account.server, url);
     assert_eq!(titles(&app), ["Alpha", "Beta"]);
     assert!(!data(&app).join("local-server").exists());
+    assert!(!data(&app).join("local-server.retired").exists());
     // Still opened by the master password here, offline or not.
     app.lock().unwrap();
     app.unlock_with_password(PASSWORD).unwrap();
@@ -394,4 +395,33 @@ fn a_local_vault_moves_to_a_real_server_and_another_device_finds_it_there() {
     c.password_check(PASSWORD).unwrap();
     c.sync().unwrap();
     c.kit_create(true, Some(PASSWORD)).unwrap();
+}
+
+#[test]
+fn a_retirement_that_could_not_finish_finishes_at_the_next_launch_and_the_server_stays_shut() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = start(dir.path());
+    let data = data(&app);
+    drop(app);
+    // As a move leaves it when a file was still open (Windows).
+    std::fs::create_dir_all(data.join("local-server")).unwrap();
+    std::fs::write(data.join("local-server/server.sqlite"), b"x").unwrap();
+    std::fs::write(data.join("local-server.retired"), b"").unwrap();
+    let app = start(dir.path());
+    app.probe().unwrap();
+    assert!(!data.join("local-server").exists());
+    assert!(!data.join("local-server.retired").exists());
+
+    // While a mark stands, the server inside the app refuses.
+    std::fs::write(data.join("local-server.retired"), b"").unwrap();
+    let refused = std::thread::spawn(move || {
+        lockdown_sync::set_local_home(Some(data.clone()));
+        let t = lockdown_sync::HttpTransport::new(lockdown_sync::LOCAL_BASE).unwrap();
+        let err = t.kt_mirror_head().unwrap_err().to_string();
+        (err, data.join("local-server").exists())
+    })
+    .join()
+    .unwrap();
+    assert!(refused.0.contains("retired"), "{}", refused.0);
+    assert!(!refused.1, "a retired server is never opened again");
 }

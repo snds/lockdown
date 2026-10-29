@@ -215,9 +215,14 @@ impl Session {
         }
         match self.sync() {
             Ok(outcome) => {
-                // The server inside the app is no longer used; its folder goes
-                // (best effort: a process may still hold it open).
-                let _ = std::fs::remove_dir_all(self.paths.data.join("local-server"));
+                // The server inside the app is no longer used: closed, so
+                // every file it held is let go, then its folder removed. A
+                // file another process still holds (Windows refuses to
+                // delete an open one) leaves a mark, and the next launch
+                // finishes; nothing reaches that server again, since
+                // `sync.cbor` names the new one and a marked server refuses.
+                lockdown_sync::close_local_server(&self.paths.data);
+                retire_local_server(&self.paths.data);
                 let _ = std::fs::remove_file(&parked);
                 Ok(outcome)
             }
@@ -228,5 +233,32 @@ impl Session {
     /// Whether this device's keys are sealed under a master password.
     pub(crate) fn keys_sealed(&self) -> bool {
         local_unlock::key_file(&self.paths.data) == local_unlock::KeyFile::Sealed
+    }
+}
+
+/// The folder of the server that ran inside the app, and its retirement mark.
+const LOCAL_SERVER_DIR: &str = "local-server";
+const RETIRED_MARK: &str = "local-server.retired";
+
+/// Removes the retired local server's folder, or marks it to be removed at
+/// the next launch when a file in it is still open.
+pub(crate) fn retire_local_server(data: &std::path::Path) {
+    let dir = data.join(LOCAL_SERVER_DIR);
+    let mark = data.join(RETIRED_MARK);
+    if !dir.exists() {
+        let _ = std::fs::remove_file(&mark);
+        return;
+    }
+    let _ = lockdown_store::write_private(&mark, b"");
+    if std::fs::remove_dir_all(&dir).is_ok() || !dir.exists() {
+        let _ = std::fs::remove_file(&mark);
+    }
+}
+
+/// At launch, before anything could start the local server: finishes a
+/// retirement an earlier run couldn't.
+pub(crate) fn finish_retirement(data: &std::path::Path) {
+    if data.join(RETIRED_MARK).exists() {
+        retire_local_server(data);
     }
 }

@@ -168,15 +168,34 @@ pub fn handle(data: &Path, req: &HttpRequest<'_>) -> Result<(u16, Vec<u8>), Stri
     server_for(data)?.handle(req)
 }
 
-/// Forgets the open server of `data` (after its folder was removed, by a
-/// move to a real server or a reset), so the next request opens it again.
+/// The mark left when the server's folder couldn't be removed at once (a
+/// file still open, as Windows refuses); the next launch finishes the job.
+pub const RETIRED: &str = "local-server.retired";
+
+/// Closes the open server of `data`: the router, its `AppState`, the
+/// SQLite store and the runtime are dropped here, so every file under the
+/// folder is let go (each request holds its own `Arc` only while it runs,
+/// and nothing else keeps one). The next request would open it again.
 pub fn close(data: &Path) {
-    let mut servers = SERVERS.lock().unwrap_or_else(|p| p.into_inner());
-    servers.remove(data);
+    let server = {
+        let mut servers = SERVERS.lock().unwrap_or_else(|p| p.into_inner());
+        servers.remove(data)
+    };
+    // Dropped outside the lock; a runtime is dropped off any async context.
+    drop(server);
+}
+
+/// Answers one request, unless the server of `data` was retired.
+fn handle_unless_retired(data: &Path, req: &HttpRequest<'_>) -> Result<(u16, Vec<u8>), String> {
+    if data.join(RETIRED).exists() {
+        return Err("the vault's server on this computer was retired after a move".into());
+    }
+    handle(data, req)
 }
 
 /// Installs this module as the process's local server. Returns `false`
 /// when one was installed already.
 pub fn install() -> bool {
-    lockdown_sync::install_local_server(Box::new(handle))
+    lockdown_sync::install_local_server_close(Box::new(close));
+    lockdown_sync::install_local_server(Box::new(handle_unless_retired))
 }
