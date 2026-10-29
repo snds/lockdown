@@ -155,6 +155,34 @@ jobs:
       - name: Shell unit tests
         run: cargo test -p lockdown-desktop --features shell
 
+  # The design-review harness (design/capture/README.md): its typecheck,
+  # which also checks the desktop's, the web vault's and the extension's
+  # sources it imports, and its lint. The capture itself drives a browser
+  # and writes outside the repo, so it runs on a person's machine, not here.
+  design-capture:
+    name: design capture harness · typecheck · lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: design/capture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: design/capture/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: design/capture/pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Lint
+        run: pnpm lint
+
   # The web vault (docs/plan/17-web-vault.md): lockdown-app built for
   # wasm32-wasip1 (ring's C needs clang, which the runner has), the page's
   # typecheck, lint, unit tests (the shim and the real module among them)
