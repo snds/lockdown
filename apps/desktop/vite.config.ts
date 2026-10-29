@@ -17,6 +17,9 @@ export default defineConfig({
     // contexts break across the line.
     dedupe: ["react", "react-dom", "@base-ui/react"],
   },
+  // The developer tools (docs/plan/40-devtools.md): on unless LOCKDOWN_DEVTOOLS=off,
+  // which a tagged release sets; off, the bundle carries none of src/devtools.
+  define: { __LOCKDOWN_DEVTOOLS__: JSON.stringify(process.env.LOCKDOWN_DEVTOOLS !== "off") },
   clearScreen: false,
   server: {
     port: 5173,

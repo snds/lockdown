@@ -26,6 +26,8 @@ interface SettingsContextValue {
   error: string | null
   /** Writes the change through the core (`settings.cbor`) and applies it. */
   update: (change: Partial<Settings>) => Promise<Settings>
+  /** Reads the file again: the app moved to another home (the demo, docs/plan/40-devtools.md). */
+  reload: () => void
 }
 
 const SettingsContext = createContext<SettingsContextValue>({
@@ -33,6 +35,7 @@ const SettingsContext = createContext<SettingsContextValue>({
   loaded: false,
   error: null,
   update: () => Promise.resolve(DEFAULT_SETTINGS),
+  reload: () => {},
 })
 
 /** Where the density lands (D92): `<html data-density="comfortable|compact">`. */
@@ -52,6 +55,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [reads, setReads] = useState(0)
+  const reload = useCallback(() => setReads((n) => n + 1), [])
+
   useEffect(() => {
     let live = true
     client
@@ -65,7 +71,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     return () => {
       live = false
     }
-  }, [client])
+  }, [client, reads])
 
   // Before paint, in the same commit that shows the new settings: a passive
   // effect could let one frame draw the old row height after the file is read.
@@ -83,7 +89,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     [client, settings],
   )
 
-  const value = useMemo(() => ({ settings, loaded, error, update }), [settings, loaded, error, update])
+  const value = useMemo(() => ({ settings, loaded, error, update, reload }), [settings, loaded, error, update, reload])
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>
 }
 

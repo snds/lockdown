@@ -1,9 +1,10 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
 import { ClientProvider, type Client } from "@/core/client"
 import type { Probe } from "@/core/types"
 
+import { setDemoEntry } from "./demo-entry"
 import { UnlockScreen } from "./unlock-screen"
 
 const probe: Probe = {
@@ -72,5 +73,23 @@ describe("the unlock screen's error path", () => {
     await user.click(await screen.findByRole("button", { name: "Unlock" }))
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Rollback attempt blocked"))
     expect(screen.getByText(/without you/)).toBeInTheDocument()
+  })
+})
+
+describe("the first run's way into a demo", () => {
+  it("shows Explore the demo only while a demo is installed", async () => {
+    render(
+      <ClientProvider value={fakeClient({})}>
+        <UnlockScreen onOpened={() => {}} />
+      </ClientProvider>,
+    )
+    expect(await screen.findByRole("tab", { name: "Create" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Explore the demo" })).not.toBeInTheDocument()
+    const explore = vi.fn()
+    act(() => setDemoEntry({ explore, busy: false }))
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Explore the demo" }))
+    expect(explore).toHaveBeenCalled()
+    act(() => setDemoEntry(null))
+    expect(screen.queryByRole("button", { name: "Explore the demo" })).not.toBeInTheDocument()
   })
 })

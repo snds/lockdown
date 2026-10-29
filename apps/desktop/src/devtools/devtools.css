@@ -1,0 +1,22 @@
+/*
+ * The demo's bar (docs/plan/40-devtools.md §3): fixed above the app, and
+ * the app's root moved down by its measured height, so every screen keeps
+ * its whole height below the bar.
+ */
+[data-devtools-bar] {
+  position: fixed;
+  inset-inline: 0;
+  top: 0;
+  z-index: 60;
+}
+
+html[data-lockdown-demo] #root {
+  margin-top: var(--devtools-bar, 0px);
+  height: calc(100% - var(--devtools-bar, 0px));
+}
+
+@media print {
+  [data-devtools-bar] {
+    display: none;
+  }
+}
