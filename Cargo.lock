@@ -3427,6 +3427,7 @@ dependencies = [
  "lockdown-pipe",
  "lockdown-platform-auth",
  "lockdown-security",
+ "lockdown-server",
  "log",
  "objc2-app-kit",
  "objc2-foundation",

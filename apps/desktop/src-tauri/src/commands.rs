@@ -950,5 +950,18 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         crate::passkey_commands::passkey_upgrade_seen,
         crate::paper::commands::print_page,
         crate::paper::commands::kit_save_pdf,
+        crate::first_run::commands::first_run_create,
+        crate::first_run::commands::unlock_with_password,
+        crate::first_run::commands::set_master_password,
+        crate::first_run::commands::password_reset_with_kit,
+        crate::first_run::commands::onboarding_stage,
+        crate::first_run::commands::set_name,
+        crate::first_run::commands::check_master_password,
+        crate::first_run::commands::quick_unlock_status,
+        crate::first_run::commands::discovery_candidates,
+        crate::first_run::commands::discovery_check,
+        crate::first_run::commands::discovery_domain,
+        crate::first_run::commands::discovery_confirm,
+        crate::first_run::commands::discovery_forget,
     ]
 }

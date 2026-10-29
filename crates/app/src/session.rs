@@ -165,6 +165,7 @@ impl Paths {
 }
 
 /// The account's server as `sync.cbor` names it, read without a session.
+#[cfg(feature = "native")]
 pub(crate) fn account_server_on_disk(paths: &Paths) -> Option<String> {
     SyncConfig::load_plain(&paths.sync_file()).map(|c| c.server)
 }
