@@ -35,6 +35,7 @@ use lockdown_vault::transparency::SignedTreeHead;
 use lockdown_vault::{Item, ItemState, Member, Unlock, VaultRecord, member_record};
 use serde_bytes::ByteBuf;
 
+use super::split_pause::Paused;
 use super::*;
 use crate::sharing::{
     ContactView, EmergencyView, HistoryLine, HouseholdView, MemberView, OpenedFile, OpenedValue,
@@ -625,6 +626,7 @@ impl Session {
     /// Looks someone up by login name, checks their keys against the
     /// server's log and pins them.
     pub fn lookup_contact(&mut self, login: &str) -> Result<ContactView, String> {
+        self.refuse_while_split(Paused::Lookup)?;
         let (transport, token, server) = self.online()?;
         let sth = self.verified_sth(&transport, &token, &server)?;
         self.learn_account(&transport, &token, &sth)?;
@@ -849,6 +851,7 @@ impl Session {
         right: &str,
         kind: VaultKind,
     ) -> Result<VaultSharingView, String> {
+        self.refuse_while_split(Paused::ShareVault)?;
         let vault_id = parse_vault_id(vault_id)?;
         let right = right_named(right)?;
         self.check_shareable(vault_id)?;
@@ -1609,6 +1612,7 @@ impl Session {
         login: &str,
         right: &str,
     ) -> Result<SentShareView, String> {
+        self.refuse_while_split(Paused::ShareItem)?;
         let item_id = parse_id(id)?;
         let right = right_named(right)?;
         if !matches!(right, Right::View | Right::FillOnly) {
@@ -1819,6 +1823,7 @@ impl Session {
         password: Option<&[u8]>,
         options: &SendOptions,
     ) -> Result<Revealed, String> {
+        self.refuse_while_split(Paused::ShareLink)?;
         if !(1..=30).contains(&options.days) {
             return Err("a share link lasts 1 to 30 days".into());
         }
@@ -2031,6 +2036,7 @@ impl Session {
     /// Makes a request link: someone else answers it with a secret sealed
     /// to this persona's receiving key.
     pub fn create_request(&mut self, label: &str, days: u32) -> Result<Revealed, String> {
+        self.refuse_while_split(Paused::RequestLink)?;
         if !(1..=30).contains(&days) {
             return Err("a request stays open 1 to 30 days".into());
         }
@@ -2186,6 +2192,7 @@ impl Session {
         days: u32,
         vaults: &[String],
     ) -> Result<Vec<EmergencyView>, String> {
+        self.refuse_while_split(Paused::EmergencyContact)?;
         let contact = self.contact_named(login)?;
         if contact.verified_at.is_none() {
             return Err(format!(
@@ -2294,6 +2301,7 @@ impl Session {
     /// As the contact, once the wait ran out: takes the released keys and
     /// opens the vaults they cover, to read.
     pub fn emergency_open(&mut self, grant: &str) -> Result<Vec<EmergencyView>, String> {
+        self.refuse_while_split(Paused::EmergencyRelease)?;
         let grant = parse_id(grant)?;
         let (transport, token, server) = self.online()?;
         let sth = self.verified_sth(&transport, &token, &server)?;
@@ -2412,6 +2420,7 @@ impl Session {
         }
         let (fingerprint, fingerprint_qr) = self.own_fingerprint().unwrap_or_default();
         Ok(SharingOverview {
+            paused: self.sharing_paused(),
             online,
             fingerprint,
             fingerprint_qr,

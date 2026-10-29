@@ -22,16 +22,11 @@ use crate::types::{
 };
 use crate::{App, AppError, AppResult, ApprovalKind, GateInput, Revealed};
 
-/// zxcvbn's word for a password of `bits` of entropy, as the editor's
-/// meter says it (D116): under 50 bits weak, under 80 fair, else strong.
+/// The word for a generated password of `bits` of entropy: under 50 bits
+/// weak, under 75 fair, else strong. Decided in one place,
+/// [`crate::strength::bits_word`]; kept here under its old name.
 pub fn strength_word(bits: f64) -> &'static str {
-    if bits < 50.0 {
-        "weak"
-    } else if bits < 80.0 {
-        "fair"
-    } else {
-        "strong"
-    }
+    crate::strength::bits_word(bits)
 }
 
 /// The rules saved on the logins exactly for `page`, when they agree on
@@ -780,7 +775,12 @@ mod tests {
             .unwrap();
         assert_eq!(words.words, "6 words joined by \"-\"");
         assert!((words.bits - 77.5).abs() < 0.1);
-        assert_eq!(words.strength, "fair");
+        // The default passphrase reads strong (D230 as changed by D375).
+        assert_eq!(words.strength, "strong");
+        let five = app
+            .generator_preview(&Recipe::words(5), None, None)
+            .unwrap();
+        assert_eq!(five.strength, "fair");
         let site = app
             .generator_preview(&Recipe::words(6), Some("https://www.1800flowers.com"), None)
             .unwrap();

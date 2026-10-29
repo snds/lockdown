@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { PasskeyClientProvider, type PasskeyClient, type PasskeyView } from "./passkey-client"
 import { PasskeyApprovalDialog } from "./passkey-approval-dialog"
 import { PasskeysBlock } from "./passkeys-block"
+import { dateLocal } from "@/lib/format"
 
 const view = (over: Partial<PasskeyView> = {}): PasskeyView => ({
   credential_id: "Y3JlZC0x",
@@ -29,6 +30,8 @@ function fake(overrides: Partial<PasskeyClient>): PasskeyClient {
     restore: () => Promise.resolve(2),
     pending: () => Promise.resolve([]),
     answer: () => Promise.resolve(),
+    upgrades: () => Promise.resolve([]),
+    upgradeSeen: () => Promise.resolve(0),
     ...overrides,
   }
 }
@@ -85,6 +88,27 @@ describe("the passkeys on an item", () => {
     expect(row).not.toHaveTextContent("Provider ID")
     await userEvent.setup().click(within(row).getByRole("button", { name: "Delete" }))
     expect(await screen.findByRole("dialog")).toHaveTextContent("The site still lists it until you remove it there")
+  })
+})
+
+describe("a passkey the site added by itself after a password sign-in", () => {
+  it("says so on the item until it is opened, and opening it tells the core", async () => {
+    const at = 1_761_700_000
+    const upgradeSeen = vi.fn(() => Promise.resolve(1))
+    mount(fake({ list: () => Promise.resolve([view({ rp_id: "github.com", upgrade: { site: "github.com", at } })]), upgradeSeen }))
+    const row = await screen.findByRole("listitem", { name: "Passkey for github.com" })
+    expect(within(row).getByText("added by the site")).toBeInTheDocument()
+    expect(row).toHaveTextContent(`Added by github.com on ${dateLocal(at)}, after a password sign-in.`)
+    await waitFor(() => expect(upgradeSeen).toHaveBeenCalledWith("i1"))
+    expect(upgradeSeen).toHaveBeenCalledTimes(1)
+  })
+
+  it("says nothing, and tells the core nothing, for a passkey made any other way", async () => {
+    const upgradeSeen = vi.fn(() => Promise.resolve(0))
+    mount(fake({ list: () => Promise.resolve([view()]), upgradeSeen }))
+    const row = await screen.findByRole("listitem", { name: "Passkey for example.com" })
+    expect(row).not.toHaveTextContent("Added by")
+    expect(upgradeSeen).not.toHaveBeenCalled()
   })
 })
 

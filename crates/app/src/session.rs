@@ -79,6 +79,7 @@ pub(crate) mod second_factor;
 pub(crate) mod secret_key;
 pub(crate) mod security;
 pub(crate) mod sharing;
+pub(crate) mod split_pause;
 pub(crate) mod transfer;
 
 const KEYSTORE_FILE: &str = "device-key.cbor";
@@ -924,17 +925,35 @@ impl Session {
     /// another device (`live`): the account stays, and the next sync asks
     /// for a login instead of failing on a dead token.
     pub(crate) fn forget_session_token(&mut self, token: &str) -> Result<(), String> {
+        use lockdown_sync::renew::{RenewRounds, SignInReason};
         let path = self.paths.sync_file();
         if let Some(cfg) = self.sync.as_mut()
             && cfg.token == token
         {
+            // A renewal challenge asks the server why, changing nothing: a
+            // device revoked elsewhere (its sessions end with it) is told
+            // so, in the revoked words; any other answer, or none, is the
+            // ending.
+            let revoked = HttpTransport::new(&cfg.server)
+                .ok()
+                .and_then(|t| t.renew_challenge(token).err())
+                .is_some_and(|e| {
+                    matches!(
+                        e,
+                        lockdown_sync::TransportError::Refused {
+                            code: lockdown_sync::wire::ErrorCode::RevokedDevice,
+                            ..
+                        }
+                    )
+                });
+            let reason = if revoked {
+                SignInReason::Revoked
+            } else {
+                SignInReason::Ended
+            };
             cfg.token = String::new();
             cfg.expires_at = 0;
-            cfg.sign_in = Some(
-                lockdown_sync::renew::SignInReason::Ended
-                    .as_str()
-                    .to_string(),
-            );
+            cfg.sign_in = Some(reason.as_str().to_string());
             cfg.save(&path)?;
         }
         Ok(())

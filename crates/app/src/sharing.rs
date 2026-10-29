@@ -477,6 +477,9 @@ pub struct HouseholdView {
 /// Everything on the Sharing screen at once.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct SharingOverview {
+    /// While the server's public log disagrees with a mirror: what is
+    /// paused and why, in words (D328 as changed by D375). Added under D62.
+    pub paused: Option<String>,
     /// Whether an account (and so a server) is here; sharing needs one.
     pub online: bool,
     /// This person's own fingerprint, for someone comparing it with theirs.
@@ -515,8 +518,17 @@ pub struct ReceivedView {
 // --- the command surface (docs/plan/18-sharing.md §8) -------------------------
 
 use crate::session::sharing::{SendWhat, answer_request, request_label};
-use crate::{App, AppError, AppResult, ApprovalKind, GateInput, Revealed};
+use crate::session::split_pause::Paused;
+use crate::{App, AppError, AppResult, ApprovalKind, Core, GateInput, Revealed};
 use lockdown_vault::sharing::VaultKind;
+
+/// A paused step is refused before its gate asks for anything (the session
+/// refuses it again on its own; split_pause).
+fn paused(core: &mut Core, step: Paused) -> AppResult<()> {
+    core.session()?
+        .refuse_while_split(step)
+        .map_err(AppError::refused)
+}
 
 impl App {
     /// Everything the Sharing screen draws.
@@ -561,6 +573,7 @@ impl App {
         let (vault_id, login, right) = (vault_id.to_string(), login.to_string(), right.to_string());
         self.call(move |core| {
             core.clock.touch(std::time::Instant::now());
+            paused(core, Paused::ShareVault)?;
             core.approve(ApprovalKind::Approve, "share this vault", &gate)?;
             core.session()?
                 .share_vault(&vault_id, &login, &right, VaultKind::Shared)
@@ -603,6 +616,7 @@ impl App {
         let (vault_id, login, right) = (vault_id.to_string(), login.to_string(), right.to_string());
         self.call(move |core| {
             core.clock.touch(std::time::Instant::now());
+            paused(core, Paused::ShareVault)?;
             core.approve(
                 ApprovalKind::Approve,
                 "add someone to your household",
@@ -633,6 +647,7 @@ impl App {
             {
                 return Err(AppError::refused("a crown jewel is never shared"));
             }
+            paused(core, Paused::ShareItem)?;
             core.approve(ApprovalKind::Approve, "share this item", &gate)?;
             core.session()?
                 .share_item(&id, &login, &right)
@@ -672,6 +687,7 @@ impl App {
                     "a crown jewel never goes into a share link",
                 ));
             }
+            paused(core, Paused::ShareLink)?;
             core.approve(
                 ApprovalKind::Approve,
                 "put this item in a share link",
@@ -812,6 +828,7 @@ impl App {
         let login = login.to_string();
         self.call(move |core| {
             core.clock.touch(std::time::Instant::now());
+            paused(core, Paused::EmergencyContact)?;
             core.approve(ApprovalKind::Approve, "name an emergency contact", &gate)?;
             core.session()?
                 .add_emergency_contact(&login, days, &vaults)

@@ -946,5 +946,7 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         crate::server_checks::commands::kt_mirrors,
         crate::server_checks::commands::kt_mirrors_set,
         crate::pq_status::commands::pq_status,
+        crate::passkey_commands::passkey_upgrades,
+        crate::passkey_commands::passkey_upgrade_seen,
     ]
 }

@@ -10,6 +10,7 @@
 //! | `created` | text | seconds since the epoch, when made here |
 //! | `backup_eligible`, `backed_up` | boolean | the BE and BS flags it signs with; absent means both (it syncs) |
 //! | `hidden` | text | `unknown <secs>` or `not-accepted <secs>`: hidden by the site's Signal, undone by removing it |
+//! | `upgraded` | text | `<site> <secs>`: the site added it without a prompt, after a password sign-in Lockdown saw (the automatic upgrade, D210, D312); absent on any other |
 //!
 //! The key part never leaves this crate: [`Session::passkey_key`] is
 //! crate-internal and the app signs with it in place; `reveal` refuses
@@ -35,6 +36,17 @@ pub struct Stored {
     pub backup_eligible: bool,
     pub backed_up: bool,
     pub hidden: Option<Hidden>,
+    pub upgraded: Option<Upgraded>,
+}
+
+/// Added by the site's automatic upgrade (conditional create), recorded on
+/// the item version that holds the passkey so every device can say so.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Upgraded {
+    /// The site (the passkey's RP ID).
+    pub site: String,
+    /// Seconds since the epoch.
+    pub at: i64,
 }
 
 /// Hidden by a Signal from the site (never deleted by one).
@@ -59,6 +71,8 @@ pub struct NewPasskey {
     pub created: i64,
     pub backup_eligible: bool,
     pub backed_up: bool,
+    /// Made by the automatic upgrade: who and when.
+    pub upgraded: Option<Upgraded>,
 }
 
 /// One passkey found in the vault, with the item that holds it.
@@ -132,6 +146,17 @@ pub fn groups(fields: &[PlainField]) -> Vec<Stored> {
                         at: at.parse().ok()?,
                     })
                 }),
+                upgraded: text_of(fields, &p("upgraded")).and_then(|t| {
+                    let (site, at) = t.trim().rsplit_once(' ')?;
+                    let site = site.trim();
+                    if site.is_empty() {
+                        return None;
+                    }
+                    Some(Upgraded {
+                        site: site.to_ascii_lowercase(),
+                        at: at.parse().ok()?,
+                    })
+                }),
             })
         })
         .collect()
@@ -188,6 +213,13 @@ pub fn append(fields: &mut Vec<PlainField>, p: &NewPasskey) -> usize {
             FieldKind::Boolean,
             label,
             FieldValue::Boolean(v),
+        ));
+    }
+    if let Some(u) = &p.upgraded {
+        fields.push(PlainField::text(
+            &id("upgraded"),
+            "added by the site after a password sign-in",
+            &format!("{} {}", u.site, u.at),
         ));
     }
     n
@@ -360,6 +392,35 @@ impl Session {
         self.recency.passkey(item_id, credential_id)
     }
 
+    /// When this device last saw the automatic-upgrade notice of the
+    /// passkey `credential_id` on `item_id` (its upgrade time), if ever.
+    pub(crate) fn passkey_upgrade_seen(&self, item_id: Id, credential_id: &[u8]) -> Option<i64> {
+        self.recency.upgrade_seen(item_id, credential_id)
+    }
+
+    /// Notes that the person opened `item_id`, so the notice of each
+    /// automatic upgrade on it shows no more on this device. Returns how
+    /// many notices it closed.
+    pub(crate) fn note_upgrades_seen(&mut self, item_id: Id) -> Result<u32, String> {
+        let (_, fields) = self.passkeys_on(item_id)?;
+        let mut closed = 0u32;
+        for p in groups(&fields) {
+            let Some(u) = &p.upgraded else { continue };
+            if self
+                .recency
+                .upgrade_seen(item_id, &p.credential_id)
+                .is_some_and(|seen| seen >= u.at)
+            {
+                continue;
+            }
+            let key = &self.opened.keys.app_data_key;
+            self.recency
+                .note_upgrade_seen(item_id, &p.credential_id, u.at, key)?;
+            closed += 1;
+        }
+        Ok(closed)
+    }
+
     /// The id of an item named by text, for the app's passkey calls.
     pub(crate) fn passkey_item(&self, id: &str) -> Result<Id, String> {
         let item_id = parse_id(id)?;
@@ -384,6 +445,7 @@ mod tests {
             created: 100,
             backup_eligible: true,
             backed_up: true,
+            upgraded: None,
         }
     }
 
@@ -442,5 +504,40 @@ mod tests {
         assert_eq!(g[0].rp_id, "example.com");
         assert_eq!(g[0].aaguid, None);
         assert!(g[0].backup_eligible && g[0].backed_up);
+    }
+
+    #[test]
+    fn an_automatic_upgrade_is_recorded_on_the_passkey_and_read_back() {
+        let mut fields = Vec::new();
+        let mut p = new("github.com", 1);
+        p.upgraded = Some(Upgraded {
+            site: "github.com".into(),
+            at: 1_700_000_000,
+        });
+        append(&mut fields, &p);
+        append(&mut fields, &new("b.example", 2));
+        let g = groups(&fields);
+        assert_eq!(
+            g[0].upgraded,
+            Some(Upgraded {
+                site: "github.com".into(),
+                at: 1_700_000_000
+            })
+        );
+        assert_eq!(
+            g[1].upgraded, None,
+            "a passkey made any other way says nothing"
+        );
+        assert!(
+            fields
+                .iter()
+                .any(|f| f.field_id == "passkey.0.upgraded" && f.kind == FieldKind::Text),
+            "a plain text part, added under D62"
+        );
+        // A value from elsewhere that doesn't read is no notice, not an error.
+        for bad in ["", "github.com", " 12", "github.com soon"] {
+            set_text(&mut fields, 0, "upgraded", "", Some(bad));
+            assert_eq!(groups(&fields)[0].upgraded, None, "{bad:?}");
+        }
     }
 }

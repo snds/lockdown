@@ -75,6 +75,21 @@ describe("the Sharing screen", () => {
     expect(screen.queryByText(/needs an account/)).not.toBeInTheDocument()
   })
 
+  it("a split view: says what is paused and why, in the core's words", async () => {
+    const paused =
+      "Sharing is paused: this server's public log doesn't match a mirror, and a server showing two histories could swap someone's keys. Until it clears, Lockdown won't look anyone up or check their keys with a phrase, share a vault or an item, make share or request links, name an emergency contact or open emergency access. Your vault still opens and syncs."
+    mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview({ paused })) }))
+    const alert = await screen.findByText(/^Sharing is paused/)
+    expect(alert.closest("[role=alert]")).toHaveTextContent("This server's public log doesn't match a mirror")
+    expect(alert).toHaveTextContent("name an emergency contact")
+  })
+
+  it("no split: no pause banner", async () => {
+    mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview({ paused: null })) }))
+    expect(await screen.findByText("11111 22222 33333 44444 55555 66666")).toBeInTheDocument()
+    expect(screen.queryByText(/Sharing is paused/)).not.toBeInTheDocument()
+  })
+
   it("offline: says so, and nothing that needs the server is offered", async () => {
     mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview({ online: false, contacts: [] })) }))
     expect(await screen.findByText(/Sharing needs an account/)).toBeInTheDocument()

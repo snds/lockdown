@@ -26,6 +26,19 @@ const item = (title: string): Step[] => [{ click: starts(title), within: "main" 
 const WIDE = [1280, 900]
 const settings: Step[] = [...open, side("Settings"), { wait: "Density" }]
 
+/** The core's words while a split view pauses sharing (crates/app/src/session/split_pause.rs). */
+const SHARING_PAUSED =
+  "Sharing is paused: this server's public log doesn't match a mirror, and a server showing two histories could swap someone's keys. Until it clears, Lockdown won't look anyone up or check their keys with a phrase, share a vault or an item, make share or request links, name an emergency contact or open emergency access. Your vault still opens and syncs."
+const PAUSED_REASON =
+  "is paused: this server's public log doesn't match a mirror, and a server showing two histories could swap someone's keys. Your vault still opens and syncs; this works again once the split clears."
+/** Picks an option of a native select the way a person would, so React hears the change. */
+function choose(selector: string, value: string) {
+  const el = document.querySelector<HTMLSelectElement>(selector)
+  if (!el) throw new Error(`no select at ${selector}`)
+  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(el, value)
+  el.dispatchEvent(new Event("change", { bubbles: true }))
+}
+
 type DesktopDef = Omit<StateDef, "surface" | "widths" | "mount"> & Partial<Pick<StateDef, "widths" | "mount">>
 const d = (s: DesktopDef): StateDef => ({ surface: "desktop", widths: WIDTHS, mount: () => <App />, ...s })
 const fresh = (w: World) => {
@@ -207,5 +220,75 @@ export const DESKTOP_MORE: StateDef[] = [
   d({ id: "desktop-live-split", screen: "Shell", state: "Log split warning", brief_row: "Status", notes: "A sync's mirrors caught a split view: the sticky warning.", steps: [...open, { emit: LIVE_EVENT, payload: { kind: "synced", pulled: 2, lines: ["Split view: the mirror at kt.witness.example disagrees."] } }, { pause: 600 }] }),
   d({ id: "desktop-locked-wash-narrow", screen: "Unlock", state: "Locked, behind the wash", brief_row: "Vault", notes: "The vault locked: the wash and skeleton rows, nothing readable (brief §4).", steps: [...open, side("Lock"), { wait: "Unlock", role: "button" }] }),
   d({ id: "desktop-palette-crown-jewel", screen: "Quick-access palette", state: "Crown jewel by title", brief_row: "Quick-access palette", notes: "Crown jewels are listed by title only; copying asks first.", steps: [...open, { click: "Quick access" }, DIALOG, { fill: /Search/i, value: "cold" }, { pause: 400 }] }),
+  // --- small calls (docs/plan/34-small-calls.md) --------------------------------------------------------------------------
+  d({
+    id: "desktop-passkey-upgrade-toast",
+    screen: "Shell",
+    state: "A site added a passkey",
+    brief_row: "Passkeys block",
+    notes: "After a password sign-in Lockdown saw, the site added a passkey with no prompt; the app says so afterwards, with Show (D210, D312 as changed by D375).",
+    answers: (w) => {
+      let told = false
+      const login = w.items.find((i) => i.title === "Northwind Mail")!
+      return {
+        passkey_upgrades: () => {
+          if (told) return []
+          told = true
+          return [{ item_id: login.id, title: login.title, site: "mail.northwind.example", at: ago(0.001) }]
+        },
+      }
+    },
+    steps: [...open, { wait: "mail.northwind.example added a passkey to this login" }, { pause: 400 }],
+  }),
+  d({
+    id: "desktop-item-passkey-upgraded",
+    screen: "Item detail",
+    state: "Passkey added by the site",
+    brief_row: "Passkeys block",
+    notes: "The login says who added its passkey, and when, until it is opened once (D210, D312 as changed by D375).",
+    answers: () => ({
+      passkeys: (a) => (as("passkeys")(a) as Array<Record<string, unknown>>).map((p, i) => (i === 0 ? { ...p, upgrade: { site: String(p.rp_id), at: ago(0.02) } } : p)),
+    }),
+    steps: [...open, ...item("Northwind Mail"), { wait: /^Added by / }],
+  }),
+  d({
+    id: "desktop-editor-generator-words",
+    screen: "Generator options",
+    state: "Six words: strong",
+    brief_row: "Generator options",
+    notes: "The default passphrase, six words (77.5 bits), reads strong: weak under 50 bits, fair under 75 (D230 as changed by D375).",
+    steps: [
+      ...open,
+      { click: /^New item/ },
+      { click: /^Login/, role: "menuitem" },
+      DIALOG,
+      { click: "Generate password" },
+      { click: "Options" },
+      { pause: 300 },
+      { run: () => choose('[aria-label="Generator options"] select', "words") },
+      { wait: /bits, strong/ },
+    ],
+  }),
+  d({
+    id: "desktop-sharing-paused",
+    screen: "Sharing",
+    state: "Paused: split view",
+    brief_row: "Sharing",
+    notes: "The server's log doesn't match a mirror: new look-ups, shares, links and emergency steps wait; the vault keeps syncing (D328 as changed by D375).",
+    answers: () => ({ sharing_overview: () => ({ ...(as("sharing_overview")({}) as object), paused: SHARING_PAUSED }) }),
+    steps: [...open, side("Sharing"), { wait: /^Sharing is paused/ }],
+  }),
+  d({
+    id: "desktop-sharing-paused-request",
+    screen: "Share and request links",
+    state: "Paused: a request link refused",
+    brief_row: "Share and request links",
+    notes: "Asking for a secret during a split view: the core refuses it and says why (D328 as changed by D375).",
+    answers: () => ({
+      sharing_overview: () => ({ ...(as("sharing_overview")({}) as object), paused: SHARING_PAUSED }),
+      request_create: () => fail("refused", `Making a request link ${PAUSED_REASON}`),
+    }),
+    steps: [...open, side("Sharing"), { click: /^Ask someone for a secret/ }, DIALOG, { fill: "What you're asking for (they see this)", value: "The Wi-Fi password" }, { click: "Make the link" }, { wait: /^Making a request link is paused/ }],
+  }),
   d({ id: "desktop-backup-late", screen: "Backup line", state: "Late", brief_row: "Backup line", notes: "The sidebar's last-backup line when a backup is overdue.", answers: () => ({ backup_status: () => ({ ...(as("backup_status")({}) as object), last_success_at: ago(4), next_due_at: ago(3) }) }), steps: open }),
 ]

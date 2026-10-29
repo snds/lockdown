@@ -21,7 +21,13 @@
 //!   the old one.
 //! - **Conditional create** (the automatic upgrade after a password
 //!   sign-in) happens only when this core itself filled that login's
-//!   password into that site within the last five minutes.
+//!   password into that site within the last five minutes, or saw that
+//!   login's saved password typed there (D312). It stays silent at the
+//!   moment, and is said afterwards (D210 and D312 as changed by D375):
+//!   the passkey carries `upgraded` (the site and when) on the item
+//!   version, the item says so until it is opened once on this device
+//!   ([`PasskeyView::upgrade`], [`App::passkey_upgrade_seen`]), and the
+//!   shell toasts each one it hears of ([`App::passkey_upgrades`]).
 
 use std::time::{Duration, Instant};
 
@@ -44,6 +50,9 @@ pub const UPGRADE_WINDOW: Duration = Duration::from_secs(5 * 60);
 
 /// The most password fills remembered for the upgrade rule.
 const MAX_RECENT_FILLS: usize = 32;
+
+/// The most upgrade notices held for the shell between its looks.
+const MAX_UPGRADE_NOTICES: usize = 16;
 
 /// Bytes that cross as base64url text.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -245,6 +254,34 @@ pub struct PasskeyView {
     /// Deleting it would leave this account with no way in that Lockdown
     /// holds (no password, no other passkey).
     pub only_sign_in: bool,
+    /// The site added it by itself after a password sign-in (the automatic
+    /// upgrade), and the item hasn't been opened on this device since.
+    /// Added under D62.
+    pub upgrade: Option<UpgradeView>,
+}
+
+/// An automatic upgrade the item still has to tell the person about:
+/// "Added by github.com on 29 Oct 2026, after a password sign-in".
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct UpgradeView {
+    /// The site that added it (the passkey's RP ID).
+    pub site: String,
+    /// When, in seconds since the epoch.
+    pub at: i64,
+}
+
+/// One automatic upgrade made here, for the shell's toast ("github.com
+/// added a passkey to this login", with Show). Nothing secret.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct UpgradeNotice {
+    /// The login it joined, for Show.
+    pub item_id: String,
+    /// That login's title.
+    pub title: String,
+    /// The site that added it (the passkey's RP ID).
+    pub site: String,
+    /// When, in seconds since the epoch.
+    pub at: i64,
 }
 
 /// A Signal's hide, for the badge and its Undo.
@@ -524,6 +561,11 @@ impl Core {
             created: now(),
             backup_eligible: flags.be,
             backed_up: flags.bs,
+            // Silent now, said afterwards (D210, D312 as changed by D375).
+            upgraded: req.conditional.then(|| store::Upgraded {
+                site: rp_id.clone(),
+                at: now(),
+            }),
         };
         let session = self.session()?;
         // A passkey for the same site and the same user handle replaces the
@@ -563,6 +605,22 @@ impl Core {
                     .map_err(AppError::refused)?
             }
         };
+        if let Some(u) = &new.upgraded {
+            let title = session
+                .passkeys_on(item_id)
+                .ok()
+                .and_then(|(_, f)| crate::browser::text(&f, "title"))
+                .unwrap_or_else(|| rp_id.clone());
+            self.passkey_upgrades.push(UpgradeNotice {
+                item_id: item_id.to_string(),
+                title,
+                site: u.site.clone(),
+                at: u.at,
+            });
+            if self.passkey_upgrades.len() > MAX_UPGRADE_NOTICES {
+                self.passkey_upgrades.remove(0);
+            }
+        }
         Ok(Outcome::Done(Created {
             item_id: item_id.to_string(),
             credential_id: B64(made.credential_id),
@@ -843,6 +901,13 @@ fn views_of(
                     at: h.at,
                 }),
                 only_sign_in: !has_password && !through_another && others == 0,
+                upgrade: p.upgraded.as_ref().and_then(|u| {
+                    let seen = session.passkey_upgrade_seen(item_id, &p.credential_id);
+                    (seen.is_none_or(|at| at < u.at)).then(|| UpgradeView {
+                        site: u.site.clone(),
+                        at: u.at,
+                    })
+                }),
             }
         })
         .collect()
@@ -1023,6 +1088,23 @@ impl App {
                 Ok(true)
             })?
             .ok_or_else(|| "that passkey isn't hidden".to_string())
+        })
+    }
+
+    /// The automatic upgrades made here since the last call, oldest first,
+    /// for the shell's toast; each is handed out once. The item says so
+    /// too, until it is opened ([`PasskeyView::upgrade`]).
+    pub fn passkey_upgrades(&self) -> AppResult<Vec<UpgradeNotice>> {
+        self.call(|core| Ok(std::mem::take(&mut core.passkey_upgrades)))
+    }
+
+    /// The person opened `item_id`: the notice of each automatic upgrade
+    /// on it shows no more on this device. Answers how many it closed.
+    pub fn passkey_upgrade_seen(&self, item_id: &str) -> AppResult<u32> {
+        let item_id = item_id.to_string();
+        self.with_session(move |s| {
+            let id = s.passkey_item(&item_id)?;
+            s.note_upgrades_seen(id)
         })
     }
 

@@ -329,11 +329,31 @@ fn check_session(
             ErrorCode::Unauthenticated,
             "this session was renewed; the device holds a newer one",
         )),
-        Some(row) if row.ended_at.is_some() => Err(ApiError::new(
-            StatusCode::UNAUTHORIZED,
-            ErrorCode::Unauthenticated,
-            "this session was ended from one of your devices; log in again",
-        )),
+        Some(row) if row.ended_at.is_some() => {
+            let revoked = state
+                .storage
+                .revoked_after(claims.account_id, claims.device_id, claims.device_id)?
+                .is_some();
+            // A device whose sessions ended with its revocation may still
+            // read the signed identity record set, and nothing else: that
+            // is how it learns, from records it can verify, that it is out
+            // and shuts its own copy (D73).
+            if revoked
+                && parts.method == axum::http::Method::GET
+                && parts.uri.path() == "/v1/identity"
+            {
+                return Ok(());
+            }
+            Err(ApiError::new(
+                StatusCode::UNAUTHORIZED,
+                ErrorCode::Unauthenticated,
+                if revoked {
+                    "this device was revoked from the identity, and its sessions ended with it"
+                } else {
+                    "this session was ended from one of your devices; log in again"
+                },
+            ))
+        }
         Some(row) => {
             if now.saturating_sub(row.last_seen) >= crate::sessions::TOUCH_EVERY_SECS
                 || row.address != address
@@ -1037,6 +1057,20 @@ pub async fn put_identity(
         }
     }
     let revoked: Vec<Id> = manifest.revocations.iter().map(|r| r.device_id).collect();
+    // The devices this push revokes (by the manifest, or by their record):
+    // their sessions end once it is accepted (D405's follow-up).
+    let newly_revoked: std::collections::BTreeSet<Id> = revoked
+        .iter()
+        .copied()
+        .chain(
+            verified
+                .devices
+                .iter()
+                .filter(|(_, d)| d.revoked_at.is_some())
+                .map(|(id, _)| *id),
+        )
+        .filter(|d| previous.as_ref().is_none_or(|p| p.revocation(*d).is_none()))
+        .collect();
     let rows: Vec<RevocationRow> = manifest
         .revocations
         .iter()
@@ -1059,9 +1093,35 @@ pub async fn put_identity(
             revocations: &rows,
         },
     )? {
-        Ok(accepted) => Ok(Cbor(accepted)),
+        Ok(accepted) => {
+            end_revoked_sessions(&state, session.account_id, &newly_revoked)?;
+            Ok(Cbor(accepted))
+        }
         Err(refused) => Err(ApiError::head_refused(refused)),
     }
+}
+
+/// Ends every session of each device just revoked, at once: its token stops
+/// reading too, not only writing (D73), and its live channel is told. The
+/// device can't renew either (`renewal`), so the account password is what
+/// it needs next, with the words that say it was revoked.
+fn end_revoked_sessions(
+    state: &AppState,
+    account_id: Id,
+    devices: &std::collections::BTreeSet<Id>,
+) -> ApiResult<()> {
+    let Some(store) = state.storage.sessions() else {
+        return Ok(());
+    };
+    let now = state.now();
+    let mut ended = Vec::new();
+    for device in devices {
+        ended.extend(store.end_device_sessions(account_id, *device, now)?);
+    }
+    if !ended.is_empty() {
+        announce_ended(state, account_id, &ended);
+    }
+    Ok(())
 }
 
 // --- vaults -----------------------------------------------------------------

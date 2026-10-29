@@ -24,6 +24,16 @@ export interface PasskeyView {
   hidden: { reason: string; at: number } | null
   /** Deleting it leaves the account with no way in that Lockdown holds. */
   only_sign_in: boolean
+  /** The site added it by itself after a password sign-in, and the item hasn't been opened on this computer since (D210, D312). */
+  upgrade?: { site: string; at: number } | null
+}
+
+/** An automatic passkey upgrade made here, for its toast (crates/app/src/passkeys.rs `UpgradeNotice`). No secret. */
+export interface PasskeyUpgrade {
+  item_id: string
+  title: string
+  site: string
+  at: number
 }
 
 /** A passkey request from a browser waiting for the person (src-tauri/src/browser/passkeys.rs). */
@@ -48,6 +58,10 @@ export interface PasskeyClient {
   pending(): Promise<PasskeyApproval[]>
   /** An approval goes through the `Approve` gate (the account password here). */
   answer(requestId: string, approve: boolean, gate?: GateInput): Promise<void>
+  /** The automatic upgrades made since the last call, each once. */
+  upgrades(): Promise<PasskeyUpgrade[]>
+  /** The item was opened: its upgrade notices show no more on this computer. */
+  upgradeSeen(itemId: string): Promise<number>
 }
 
 export const tauriPasskeyClient: PasskeyClient = {
@@ -56,6 +70,8 @@ export const tauriPasskeyClient: PasskeyClient = {
   restore: (itemId, credentialId) => invoke("passkey_restore", { itemId, credentialId }),
   pending: () => invoke("browser_passkey_pending"),
   answer: (requestId, approve, gate) => invoke("browser_passkey_answer", { requestId, approve, gate }),
+  upgrades: () => invoke("passkey_upgrades"),
+  upgradeSeen: (itemId) => invoke("passkey_upgrade_seen", { itemId }),
 }
 
 const PasskeyClientContext = createContext<PasskeyClient>(tauriPasskeyClient)

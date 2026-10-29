@@ -186,3 +186,53 @@ fn a_revoked_device_and_an_idle_one_ask_for_the_password_and_say_which() {
         "idle"
     );
 }
+
+#[test]
+fn revoking_a_device_ends_its_sessions_at_once_so_it_stops_reading_too() {
+    // D405's follow-up (docs/plan/34-small-calls.md §4): no waiting for the
+    // token to run out.
+    let dir = tempfile::tempdir().unwrap();
+    let (running, _clock) = server(Duration::from_secs(8 * 3600));
+    let url = running.url();
+    let (a, b) = two_devices(dir.path(), &url);
+    assert_eq!(a.sessions().unwrap().len(), 2);
+    let b_id = b
+        .device_list()
+        .unwrap()
+        .into_iter()
+        .find(|d| d.this_device)
+        .unwrap()
+        .id;
+    a.device_revoke(
+        &b_id,
+        GateInput {
+            password: Some(PASSWORD.into()),
+            confirmed: false,
+        },
+    )
+    .unwrap();
+    // A's list holds none of B's sessions any more (the password check
+    // A's gate made is a session of A's own, doc 33 §7).
+    let left = a.sessions().unwrap();
+    assert!(
+        !left.is_empty() && left.iter().all(|s| s.device_id != b_id),
+        "{left:?}"
+    );
+    assert!(left.iter().any(|s| s.current));
+    // B's token, hours from running out, reads nothing now: its next call
+    // asks for the password and says it was revoked.
+    let e = b.sync().unwrap_err();
+    assert_eq!(e.code, ErrorCode::SignInNeeded, "{e:?}");
+    assert_eq!(e.detail.as_deref(), Some("revoked"));
+    assert!(e.message.contains("was revoked"), "{}", e.message);
+    assert_eq!(b.sessions().unwrap_err().detail.as_deref(), Some("revoked"));
+    assert_eq!(
+        b.status().unwrap().account.unwrap().sign_in.unwrap().reason,
+        "revoked"
+    );
+    // What B holds on disk still opens; A goes on as ever.
+    assert!(!b.list().unwrap().is_empty());
+    a.add_login("https://two.example", "me", b"pw2".to_vec(), None)
+        .unwrap();
+    a.sync().unwrap();
+}

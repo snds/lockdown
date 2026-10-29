@@ -119,7 +119,15 @@ export function ShareLinksSection({ online, onNotice }: LinksProps) {
         Share links
       </h2>
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" disabled={!online} onClick={() => setMaking(true)}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!online}
+          onClick={() => {
+            setError(null)
+            setMaking(true)
+          }}
+        >
           <Icon name="add_link" data-icon="inline-start" />
           Share some text…
         </Button>
@@ -197,6 +205,8 @@ export function ShareLinksSection({ online, onNotice }: LinksProps) {
               <LinkFields />
             </form>
           )}
+          {/* A refusal (a split view pauses links, D328 as changed by D375) shows where the person is looking. */}
+          {error && !link && <FieldError role="alert">{error}</FieldError>}
           <LabelledActions>
             <LabelledAction
               kind="cancel"
@@ -294,7 +304,15 @@ export function RequestLinksSection({ online, onNotice }: LinksProps) {
         Request links
       </h2>
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" disabled={!online} onClick={() => setMaking(true)}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!online}
+          onClick={() => {
+            setError(null)
+            setMaking(true)
+          }}
+        >
           <Icon name="inbox" data-icon="inline-start" />
           Ask someone for a secret…
         </Button>
@@ -371,6 +389,7 @@ export function RequestLinksSection({ online, onNotice }: LinksProps) {
               </Field>
             </form>
           )}
+          {error && !link && <FieldError role="alert">{error}</FieldError>}
           <LabelledActions>
             <LabelledAction
               kind="cancel"

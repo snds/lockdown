@@ -229,20 +229,8 @@ fn standing(state: &AppState, claims: &TokenClaims) -> ApiResult<(SessionRow, Ve
             "the session token doesn't match the session it names",
         ));
     }
-    if let Some(at) = row.ended_at {
-        // Ended by a renewal whose answer may never have arrived: the same
-        // device may try once more, briefly. Ended any other way: done.
-        let retry = row.renewed_to.is_some() && now.saturating_sub(at) <= RETRY_SECS;
-        if !retry {
-            return Err(ended());
-        }
-    }
-    if now.saturating_sub(row.last_seen) > idle {
-        return Err(idle_refusal());
-    }
-    if state.storage.account(claims.account_id)?.is_none() {
-        return Err(ended());
-    }
+    // A revoked device hears that first: revoking it also ended its
+    // sessions (`api::put_identity`), and "revoked" is what it must say.
     let revoked = || {
         refuse(
             StatusCode::FORBIDDEN,
@@ -256,6 +244,20 @@ fn standing(state: &AppState, claims: &TokenClaims) -> ApiResult<(SessionRow, Ve
         .is_some()
     {
         return Err(revoked());
+    }
+    if let Some(at) = row.ended_at {
+        // Ended by a renewal whose answer may never have arrived: the same
+        // device may try once more, briefly. Ended any other way: done.
+        let retry = row.renewed_to.is_some() && now.saturating_sub(at) <= RETRY_SECS;
+        if !retry {
+            return Err(ended());
+        }
+    }
+    if now.saturating_sub(row.last_seen) > idle {
+        return Err(idle_refusal());
+    }
+    if state.storage.account(claims.account_id)?.is_none() {
+        return Err(ended());
     }
     let held = state
         .storage

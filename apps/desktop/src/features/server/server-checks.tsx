@@ -11,7 +11,8 @@ import { mirrorLine, splits } from "./server-words"
  * The warning a split view earns (docs/plan/27-web-server-finish.md §4):
  * a mirror holds a head this server signed that its log can't be connected
  * to, so the server shows different people different histories. Plain
- * words and what to do; nothing in the vault was changed by it.
+ * words and what to do; nothing in the vault was changed by it, and what
+ * the core pauses until it clears (D328 as changed by D375) is named.
  */
 export function SplitWarning({ checks }: { checks: readonly MirrorCheck[] | undefined | null }) {
   const found = splits(checks)
@@ -23,8 +24,10 @@ export function SplitWarning({ checks }: { checks: readonly MirrorCheck[] | unde
         This server's public log doesn't match {found.length === 1 ? "a mirror" : `${found.length} mirrors`}.
       </p>
       <p>
-        The server signed one history for you and another for the world. Your vault is unchanged, but don't share keys with anyone through this
-        server until it's explained: tell whoever runs it, and check your devices and the people you share with.
+        The server signed one history for you and another for the world, and that is when it could swap someone's keys. Your vault is unchanged and
+        keeps syncing, but until this clears Lockdown pauses new sharing through this server: looking people up, sharing vaults and items, share
+        and request links, naming an emergency contact and opening emergency access. Tell whoever runs the server, and check your devices and the
+        people you share with.
       </p>
       <ul className="list-disc pl-5">
         {found.map((c) => (

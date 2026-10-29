@@ -6,6 +6,7 @@ import { PaneHeader } from "@/components/master-detail"
 import { describeError } from "@/core/client"
 import { PeopleSection } from "@/features/sharing/people-section"
 import { SharingClientProvider, type SharingOverview } from "@/features/sharing/sharing-client"
+import { SharingPaused } from "@/features/sharing/sharing-paused"
 
 import type { Link } from "../core/link"
 import { webSharingClient } from "../core/web-finish-client"
@@ -44,6 +45,7 @@ export function PeopleView({ link, onNotice }: { link: Link; onNotice: (text: st
         {!overview && !error && <Spinner />}
         {overview && (
           <>
+            <SharingPaused text={overview.paused} />
             <p className="text-sm">
               Your fingerprint: <code>{overview.fingerprint}</code>
             </p>

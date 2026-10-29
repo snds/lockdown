@@ -109,6 +109,8 @@ export interface HouseholdView {
 }
 
 export interface SharingOverview {
+  /** While the server's public log disagrees with a mirror: what is paused and why (D328 as changed by D375). */
+  paused?: string | null
   online: boolean
   fingerprint: string
   fingerprint_qr: string

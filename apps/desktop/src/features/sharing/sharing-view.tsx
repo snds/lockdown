@@ -11,6 +11,7 @@ import { whenLocal } from "@/lib/format"
 import { EmergencySection } from "./emergency-section"
 import { RequestLinksSection, ShareLinksSection } from "./links-section"
 import { PeopleSection } from "./people-section"
+import { SharingPaused } from "./sharing-paused"
 import { RIGHT_NAMES, useSharingClient, type SentShareView, type SharingOverview } from "./sharing-client"
 import { HouseholdsSection, VaultsSection } from "./vault-sharing"
 
@@ -83,6 +84,7 @@ export function SharingView({ rows, onOpenItem, onChanged, onNotice }: SharingVi
       {!overview && !error && <Spinner />}
       {overview && (
         <>
+          <SharingPaused text={overview.paused} />
           {!overview.online && (
             <p role="note" className="text-sm text-muted-foreground">
               Sharing needs an account on a sync server. Set one up in Settings; until then this screen only shows what is already here.

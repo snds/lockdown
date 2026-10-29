@@ -40,6 +40,11 @@ struct Body {
     /// (base64url); added within v1, so an older file reads with none.
     #[serde(default)]
     passkeys: BTreeMap<Id, BTreeMap<String, i64>>,
+    /// Which automatic passkey upgrades the person has seen on this
+    /// device: by item and credential id (base64url), the upgrade's time.
+    /// Added within v1, so an older file reads with none.
+    #[serde(default)]
+    upgrades_seen: BTreeMap<Id, BTreeMap<String, i64>>,
 }
 
 /// The device's record of uses, for one persona.
@@ -48,6 +53,7 @@ pub struct Recency {
     path: PathBuf,
     uses: BTreeMap<Id, Use>,
     passkeys: BTreeMap<Id, BTreeMap<String, i64>>,
+    upgrades_seen: BTreeMap<Id, BTreeMap<String, i64>>,
 }
 
 impl Recency {
@@ -58,18 +64,19 @@ impl Recency {
 
     /// Reads the record, or starts an empty one.
     pub fn open(path: PathBuf, key: &AppDataKey) -> Self {
-        let (uses, passkeys) = std::fs::read(&path)
+        let (uses, passkeys, upgrades_seen) = std::fs::read(&path)
             .ok()
             .and_then(|bytes| lockdown_crypto::cbor::from_slice::<Sealed>(&bytes).ok())
             .and_then(|sealed| open(key, AAD, &sealed).ok())
             .and_then(|plain| lockdown_crypto::cbor::from_slice::<Body>(&plain).ok())
             .filter(|b| b.v <= RECENCY_V)
-            .map(|b| (b.uses, b.passkeys))
+            .map(|b| (b.uses, b.passkeys, b.upgrades_seen))
             .unwrap_or_default();
         Self {
             path,
             uses,
             passkeys,
+            upgrades_seen,
         }
     }
 
@@ -99,6 +106,34 @@ impl Recency {
         self.save(key)
     }
 
+    /// The upgrade time of the automatic-upgrade notice of the passkey
+    /// `credential_id` on `item` that the person saw here, if any.
+    pub fn upgrade_seen(&self, item: Id, credential_id: &[u8]) -> Option<i64> {
+        self.upgrades_seen
+            .get(&item)?
+            .get(&lockdown_passkey::encode::b64url(credential_id))
+            .copied()
+    }
+
+    /// Notes that the person saw the notice of the upgrade made at `at`
+    /// and writes the record. Not a use (D151): it ranks nothing.
+    pub fn note_upgrade_seen(
+        &mut self,
+        item: Id,
+        credential_id: &[u8],
+        at: i64,
+        key: &AppDataKey,
+    ) -> Result<(), String> {
+        let seen = self
+            .upgrades_seen
+            .entry(item)
+            .or_default()
+            .entry(lockdown_passkey::encode::b64url(credential_id))
+            .or_default();
+        *seen = (*seen).max(at);
+        self.save(key)
+    }
+
     /// One item's use, if any.
     pub fn get(&self, item: Id) -> Option<Use> {
         self.uses.get(&item).copied()
@@ -118,10 +153,14 @@ impl Recency {
         if let Some(p) = &pk {
             self.passkeys.insert(to, p.clone());
         }
+        let seen = self.upgrades_seen.remove(&from);
+        if let Some(s) = &seen {
+            self.upgrades_seen.insert(to, s.clone());
+        }
         if let Some(u) = self.uses.remove(&from) {
             self.uses.insert(to, u);
             self.save(key)?;
-        } else if pk.is_some() {
+        } else if pk.is_some() || seen.is_some() {
             self.save(key)?;
         }
         Ok(())
@@ -131,11 +170,16 @@ impl Recency {
     pub fn forget(&mut self, gone: &[Id], key: &AppDataKey) -> Result<(), String> {
         let before = self.uses.len();
         let before_pk = self.passkeys.len();
+        let before_seen = self.upgrades_seen.len();
         for id in gone {
             self.uses.remove(id);
             self.passkeys.remove(id);
+            self.upgrades_seen.remove(id);
         }
-        if self.uses.len() != before || self.passkeys.len() != before_pk {
+        if self.uses.len() != before
+            || self.passkeys.len() != before_pk
+            || self.upgrades_seen.len() != before_seen
+        {
             self.save(key)?;
         }
         Ok(())
@@ -151,6 +195,7 @@ impl Recency {
             match oldest {
                 Some(id) => {
                     self.passkeys.remove(&id);
+                    self.upgrades_seen.remove(&id);
                     self.uses.remove(&id)
                 }
                 None => break,
@@ -160,6 +205,7 @@ impl Recency {
             v: RECENCY_V,
             uses: self.uses.clone(),
             passkeys: self.passkeys.clone(),
+            upgrades_seen: self.upgrades_seen.clone(),
         };
         let plain = zeroize::Zeroizing::new(
             lockdown_crypto::cbor::to_canonical(&body).map_err(|e| e.to_string())?,
@@ -210,6 +256,13 @@ mod tests {
         let back = Recency::open(path.clone(), &key);
         assert_eq!(back.passkey(a, &[1, 2, 3]), Some(300));
         assert_eq!(back.passkey(a, &[9]), None);
+        assert_eq!(back.get(a).map(|u| u.count), Some(2));
+        // So does which automatic-upgrade notice was seen; not a use.
+        let mut r = Recency::open(path.clone(), &key);
+        r.note_upgrade_seen(a, &[1, 2, 3], 400, &key).unwrap();
+        let back = Recency::open(path.clone(), &key);
+        assert_eq!(back.upgrade_seen(a, &[1, 2, 3]), Some(400));
+        assert_eq!(back.upgrade_seen(a, &[9]), None);
         assert_eq!(back.get(a).map(|u| u.count), Some(2));
         // Another key reads nothing (and never fails).
         let other = Recency::open(path, &AppDataKey::from_bytes([4; 32]));

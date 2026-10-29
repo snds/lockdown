@@ -193,6 +193,9 @@ struct Core {
     /// Password fills this core made lately, for the passkey upgrade rule
     /// (`passkeys`); dropped on lock.
     recent_fills: Vec<passkeys::RecentFill>,
+    /// Automatic passkey upgrades made here since the shell last asked,
+    /// for its notice (D210, D312 as changed by D375); dropped on lock.
+    passkey_upgrades: Vec<passkeys::UpgradeNotice>,
     /// Joins and sign-ins waiting for a security key (`devices`).
     depth: devices::Depth,
     /// The bridges slice's state: the clock check, the extension's
@@ -228,6 +231,7 @@ impl Core {
             approver: None,
             security: security::SecurityState::default(),
             recent_fills: Vec::new(),
+            passkey_upgrades: Vec::new(),
             depth: devices::Depth::default(),
             bridges: bridges::BridgesState::default(),
             quick_fills: Vec::new(),
@@ -517,6 +521,7 @@ impl Core {
         // the vault: every key type zeroes itself on drop.
         self.session = None;
         self.recent_fills.clear();
+        self.passkey_upgrades.clear();
         self.depth.forget();
         self.security_forget();
         self.bridges.forget();

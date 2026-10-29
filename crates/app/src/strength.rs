@@ -43,6 +43,29 @@ pub fn score(candidate: &[u8], context: &[&str]) -> Result<Option<u8>, String> {
     Ok(Some(u8::from(estimate.score())))
 }
 
+/// The fewest bits a generated password needs to read "fair" (D230 as
+/// changed by D375).
+pub const FAIR_FROM_BITS: f64 = 50.0;
+
+/// The fewest bits a generated password needs to read "strong": the
+/// default six-word passphrase (77.5 bits) clears it.
+pub const STRONG_FROM_BITS: f64 = 75.0;
+
+/// The word for a generated password of `bits` of entropy, the one place
+/// that decides it (D230 as changed by D375): under 50 bits weak, 50 to
+/// under 75 fair, from 75 strong. The generator's preview carries it to
+/// every shell (the desktop's and the web vault's editors, the
+/// extension's suggestion), so none of them decides on its own.
+pub fn bits_word(bits: f64) -> &'static str {
+    if bits < FAIR_FROM_BITS {
+        "weak"
+    } else if bits < STRONG_FROM_BITS {
+        "fair"
+    } else {
+        "strong"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,5 +103,18 @@ mod tests {
         // A long paste is scored on its first hundred characters, quickly.
         let long = "ab".repeat(5_000);
         assert!(score(long.as_bytes(), &[]).unwrap().unwrap() <= 2);
+    }
+
+    #[test]
+    fn the_strength_word_turns_at_fifty_and_seventy_five_bits() {
+        assert_eq!(bits_word(0.0), "weak");
+        assert_eq!(bits_word(49.9), "weak");
+        assert_eq!(bits_word(50.0), "fair");
+        assert_eq!(bits_word(74.9), "fair");
+        assert_eq!(bits_word(75.0), "strong");
+        // The default passphrase: six words from EFF's long list.
+        assert_eq!(bits_word(6.0 * 7776f64.log2()), "strong");
+        assert_eq!(bits_word(5.0 * 7776f64.log2()), "fair");
+        assert_eq!(bits_word(129.0), "strong");
     }
 }

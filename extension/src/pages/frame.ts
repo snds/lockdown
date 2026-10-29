@@ -191,7 +191,7 @@ function renderMenu(data: MenuData) {
   if (data.suggest) {
     const s = data.suggest
     list.push(
-      row("Use a strong password", s.site ? `Follows ${s.site.host}'s password rules` : `Made by Lockdown · ${Math.round(s.bits)} bits`, (e) => {
+      row("Use a strong password", s.site ? `Follows ${s.site.host}'s password rules` : `Made by Lockdown · ${Math.round(s.bits)} bits, ${s.strength}`, (e) => {
         if (deliberate(e)) void suggestPick(data)
       }),
     )

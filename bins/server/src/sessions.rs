@@ -121,6 +121,11 @@ pub trait SessionStore: Send + Sync {
         now: i64,
         idle_secs: i64,
     ) -> Result<Vec<[u8; 16]>>;
+    /// Ends every session of one device of the account that isn't ended
+    /// yet, whether its token still runs or it could only be renewed: the
+    /// device was revoked (D405's follow-up). The ids ended, oldest first.
+    fn end_device_sessions(&self, account_id: Id, device_id: Id, now: i64)
+    -> Result<Vec<[u8; 16]>>;
     /// Drops rows whose token ran out [`KEEP_AFTER_END_SECS`] ago or more,
     /// but keeps a session that was never ended while its device may still
     /// renew it: until `idle_secs` (the server's idle limit) and the week
@@ -330,6 +335,33 @@ impl SessionStore for SqlStorage {
                 "UPDATE sessions SET ended_at = ?2 WHERE account_id = ?1 AND {STANDING} AND session_id != ?4"
             ),
             params![account_id.to_string(), now, since, &keep[..]],
+        )?;
+        tx.commit()?;
+        Ok(ended)
+    }
+
+    fn end_device_sessions(
+        &self,
+        account_id: Id,
+        device_id: Id,
+        now: i64,
+    ) -> Result<Vec<[u8; 16]>> {
+        let tx = self.begin()?;
+        let ended = tx
+            .query_map(
+                "SELECT session_id FROM sessions WHERE account_id = ?1 AND device_id = ?2 AND ended_at IS NULL ORDER BY created_at, session_id",
+                params![account_id.to_string(), device_id.to_string()],
+                |r| r.get::<Vec<u8>>(0),
+            )?
+            .into_iter()
+            .map(|id| {
+                <[u8; 16]>::try_from(id)
+                    .map_err(|_| StorageError::Backend("a stored session has a bad id".into()))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        tx.execute(
+            "UPDATE sessions SET ended_at = ?3 WHERE account_id = ?1 AND device_id = ?2 AND ended_at IS NULL",
+            params![account_id.to_string(), device_id.to_string(), now],
         )?;
         tx.commit()?;
         Ok(ended)
@@ -616,6 +648,54 @@ mod tests {
         assert!(store.session(&[3; 16]).unwrap().unwrap().ended_at.is_none());
         assert!(store.session(&[4; 16]).unwrap().unwrap().ended_at.is_none());
         assert_eq!(store.session(&[5; 16]).unwrap().unwrap().device_id, device);
+    }
+
+    #[test]
+    fn a_revoked_devices_sessions_all_end_and_no_others() {
+        let store = SqlStorage::open_scratch().unwrap();
+        let a = Id::new();
+        let held = row(a, 1, 100, 1_000);
+        let device = held.device_id;
+        let same = |n: u8, created: i64, expires: i64| SessionRow {
+            id: [n; 16],
+            created_at: created,
+            expires_at: expires,
+            ..held.clone()
+        };
+        store.open_session(&same(2, 200, 5_000)).unwrap();
+        store.open_session(&held).unwrap();
+        // Run out but still renewable: it ends too.
+        store.open_session(&same(3, 50, 90)).unwrap();
+        // Ended already: not counted again.
+        store.open_session(&same(4, 60, 5_000)).unwrap();
+        assert!(store.end_session(a, &[4; 16], 150, 0).unwrap());
+        // Another device of the account, and another account: untouched.
+        store.open_session(&row(a, 5, 100, 5_000)).unwrap();
+        store.open_session(&row(Id::new(), 6, 100, 5_000)).unwrap();
+        let ended = store.end_device_sessions(a, device, 300).unwrap();
+        assert_eq!(
+            ended.iter().map(|id| id[0]).collect::<Vec<_>>(),
+            vec![3, 1, 2],
+            "oldest first"
+        );
+        for n in [1, 2, 3] {
+            assert_eq!(
+                store.session(&[n; 16]).unwrap().unwrap().ended_at,
+                Some(300)
+            );
+        }
+        assert_eq!(
+            store.session(&[4; 16]).unwrap().unwrap().ended_at,
+            Some(150)
+        );
+        assert!(store.session(&[5; 16]).unwrap().unwrap().ended_at.is_none());
+        assert!(store.session(&[6; 16]).unwrap().unwrap().ended_at.is_none());
+        assert!(
+            store
+                .end_device_sessions(a, device, 400)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

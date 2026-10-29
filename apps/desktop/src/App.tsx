@@ -21,6 +21,8 @@ import { DevicesView } from "@/features/devices/devices-view"
 import { QuickPalette } from "@/features/palette/quick-palette"
 import { PairingDialog } from "@/features/browsers/pairing-dialog"
 import { PasskeyApprovalDialog } from "@/features/passkeys/passkey-approval-dialog"
+import type { PasskeyUpgrade } from "@/features/passkeys/passkey-client"
+import { upgradeToast, usePasskeyUpgrades } from "@/features/passkeys/use-passkey-upgrades"
 import { RecoveryView } from "@/features/recovery/recovery-view"
 import { SecurityView } from "@/features/security/security-view"
 import { SettingsView } from "@/features/settings/settings-view"
@@ -130,6 +132,20 @@ function Root() {
   // A sign-in on someone else's screen that is due to be signed out (D237).
   const showAttention = useCallback(() => setNav({ area: "vault", view: "attention" }), [])
   useAwayReminder(client, status !== null, remind, showAttention)
+  // A site's automatic passkey upgrade, quiet in the browser, told here (D210, D312).
+  const upgraded = useCallback((u: PasskeyUpgrade) => {
+    toast(upgradeToast(u), {
+      description: u.title,
+      action: {
+        label: "Show",
+        onClick: () => {
+          setNav({ area: "vault", view: "all" })
+          setSelected(u.item_id)
+        },
+      },
+    })
+  }, [])
+  usePasskeyUpgrades(status !== null, upgraded)
   // The person's own templates live in the vault: load them once it is open (D232).
   const { refreshUserTemplates } = useTemplates()
   const open = status !== null
@@ -144,7 +160,13 @@ function Root() {
       client.status().then(setStatus).catch(() => {})
       warnOnSplit(n.lines)
     }
-    else if (n.kind === "session_ended") toast.error("This device's session was ended from another of your devices. Log in again on Status to keep syncing.")
+    else if (n.kind === "session_ended")
+      // A device revoked elsewhere hears that, in the core's words (its sessions end with it).
+      client
+        .status()
+        .then((s) => (s.account?.sign_in?.reason === "revoked" ? s.account.sign_in.message : null))
+        .catch(() => null)
+        .then((revoked) => toast.error(revoked ?? "This device's session was ended from another of your devices. Log in again on Status to keep syncing."))
     else if (n.kind === "sync_failed") toast.error(`A change from another device didn't sync: ${n.message}`)
   })
 
@@ -238,7 +260,7 @@ function Root() {
 function warnOnSplit(lines: readonly string[]) {
   const split = lines.find((l) => l.includes("Split view"))
   if (split)
-    toast.error("This server's public log doesn't match a mirror: it may be showing you a different history from everyone else. See Status.", {
+    toast.error("This server's public log doesn't match a mirror: it may be showing you a different history from everyone else. New sharing is paused until it clears. See Status.", {
       id: "kt-split",
       duration: Infinity,
     })
