@@ -23,12 +23,19 @@ impl App {
     /// with that sentence; with `None`, everything is as at launch.
     /// Returns the paths the app left.
     pub fn rehome(&self, paths: Paths, confined: Option<String>) -> AppResult<Paths> {
+        #[cfg(not(target_os = "wasi"))]
+        let mirror = self.confined.clone();
         self.call(move |core| {
             core.lock(LockReason::Requested);
             let mut next = Core::new(paths, core.persona.clone(), core.policy);
             next.approver = core.approver.take();
             next.confined = confined.clone();
             let left = std::mem::replace(core, next);
+            #[cfg(not(target_os = "wasi"))]
+            match mirror.write() {
+                Ok(mut m) => *m = confined.clone(),
+                Err(poisoned) => *poisoned.into_inner() = confined.clone(),
+            }
             lockdown_sync::hold_network(confined.clone());
             lockdown_security::http::hold_network(confined);
             Ok(left.paths)
@@ -36,7 +43,17 @@ impl App {
     }
 
     /// The sentence a confined home refuses with, while the app is in one.
+    /// Answered without waiting for the worker (a long call there never
+    /// holds it up).
     pub fn confinement(&self) -> AppResult<Option<String>> {
+        #[cfg(not(target_os = "wasi"))]
+        {
+            Ok(match self.confined.read() {
+                Ok(c) => c.clone(),
+                Err(poisoned) => poisoned.into_inner().clone(),
+            })
+        }
+        #[cfg(target_os = "wasi")]
         self.call(|core| Ok(core.confined.clone()))
     }
 }

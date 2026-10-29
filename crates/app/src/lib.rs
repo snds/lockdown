@@ -570,6 +570,9 @@ type Job = Box<dyn FnOnce(&mut Core) + Send>;
 #[derive(Clone)]
 pub struct App {
     tx: Sender<Job>,
+    /// A copy of the core's confinement (`confine`), readable without a
+    /// round trip to the worker: the browser endpoint asks on every frame.
+    confined: std::sync::Arc<std::sync::RwLock<Option<String>>>,
 }
 
 /// The app in a build with no threads (the web vault, compiled for
@@ -646,7 +649,10 @@ impl App {
                 core.lock(LockReason::Requested);
             })
             .expect("the app's worker thread starts");
-        Self { tx }
+        Self {
+            tx,
+            confined: Default::default(),
+        }
     }
 
     /// Runs `f` on the worker and waits for its answer.

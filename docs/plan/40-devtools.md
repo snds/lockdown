@@ -279,6 +279,7 @@ The review harness (`design/capture`) draws the first run with **Explore the dem
 - **The lookalike pair is in the pack, but its finding isn't asserted.** Whether `examp1epay.test` is flagged depends on the matcher's rules for `.test` names.
 - **Consent items** aren't in the demo, because no path in the core makes one.
 - **A reset while another ecosystem app shares the identity** leaves this device unenrolled in it (§2.4). That is by design, but it's a dead end until the person joins from that app or recovers with the kit.
+- **The extension suite's one-time-code test read the field at once.** With the first version of the confinement check, every frame past pairing waited for a round trip to the core's worker, and in CI the code's fill landed after the test had already read `#code`. That was a slower path of ours exposing a test that didn't wait. Both are fixed: `App::confinement` now reads a copy the app keeps beside the worker (no round trip), and `test/extension.spec.ts` waits for the field to fill before reading it. The suite passes locally (70 passed, 1 skipped).
 - **The harness draws the demo from a TypeScript reading of the CXF document** that follows `to_item`. Fresh keys are drawn as stand-ins.
 
 ## 9. Proposed decisions
