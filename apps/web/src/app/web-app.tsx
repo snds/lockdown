@@ -262,6 +262,8 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
   if (!web) {
     return (
       <Frame>
+        {/* Every screen has one page heading (design review R18); this one only for a screen reader. */}
+        <h1 className="sr-only">Lockdown web vault</h1>
         <Spinner />
         <p className="mt-2 text-sm text-muted-foreground">Starting the vault…</p>
       </Frame>

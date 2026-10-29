@@ -1,70 +1,72 @@
-/* The extension's own surfaces: the in-page menu frame, the save prompt and
-   the popup. Plain CSS for now (docs/plan/16-browser-extension.md §9: the
-   popup moves onto unicron once its tokens ship as a plain stylesheet).
-   Opaque, a minimum size, and never a page's look (03-architecture §9). */
+/* The extension's in-page frames: the fill menu, the save prompt and the
+   passkey sheet. Plain CSS, since a frame has no Tailwind. Opaque, a minimum
+   size, and never a page's look (03-architecture §9). The popup is React on
+   unicron (src/popup/popup.css); the popup rules further down are from its
+   plain version and draw nothing today.
+
+   Colours alias unicron's roles from tokens.css (loaded first; generated
+   from @unicron/tokens by scripts/tokens-css.mjs), so the frames draw from
+   the same set as the popup and the app and meet WCAG AA in light and dark
+   (design review R4): text 4.5:1 on its surface, control edges 3:1. Every
+   name here is prefixed `--ld-`, since unicron's `--muted` and `--accent`
+   are surfaces, not inks. */
 :root {
-  --bg: #ffffff;
-  --fg: #1b1c1f;
-  --muted: #5d6068;
-  --line: #d9dbe0;
-  --hover: #eef0f4;
-  --accent: #1f4fd1;
-  --accent-fg: #ffffff;
-  --stop-bg: #fde8e8;
-  --stop-fg: #8a1414;
+  --ld-surface: var(--popover);
+  --ld-ink: var(--popover-foreground);
+  /* Secondary text: hosts, usernames, "Protected", sub-lines. */
+  --ld-ink-muted: var(--muted-foreground);
+  /* Dividers between rows; decoration, not a control's edge. */
+  --ld-line: var(--border);
+  /* A control's edge (outlined buttons, fields): unicron's input role, 3:1. */
+  --ld-control-line: var(--input);
+  --ld-hover: var(--accent);
+  --ld-primary: var(--primary);
+  --ld-primary-ink: var(--primary-foreground);
+  /* Links are the ink, underlined, as unicron's link is. */
+  --ld-link: var(--popover-foreground);
+  --ld-focus: var(--ring);
+  --ld-stop-ink: var(--destructive);
+  --ld-stop-surface: color-mix(in oklab, var(--destructive) 12%, var(--popover));
   font: 14px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
-  color: var(--fg);
-  background: var(--bg);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1d1f23;
-    --fg: #eceef2;
-    --muted: #a3a7b0;
-    --line: #3a3d44;
-    --hover: #2a2d33;
-    --accent: #8aa9ff;
-    --accent-fg: #0d1430;
-    --stop-bg: #3d1a1a;
-    --stop-fg: #ffc9c9;
-  }
+  color: var(--ld-ink);
+  background: var(--ld-surface);
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); }
-body.frame { overflow: hidden; height: 100vh; border: 1px solid var(--line); border-radius: 10px; }
+body { margin: 0; background: var(--ld-surface); color: var(--ld-ink); }
+body.frame { overflow: hidden; height: 100vh; border: 1px solid var(--ld-line); border-radius: 10px; }
 body.popup { width: 360px; min-height: 120px; padding: 12px; }
 button { font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid transparent; padding: 6px 10px; min-height: 32px; }
-button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-button.primary { background: var(--accent); color: var(--accent-fg); }
-button.secondary { background: transparent; color: var(--fg); border-color: var(--line); }
-button.link { background: transparent; color: var(--accent); padding: 4px; min-height: 24px; text-decoration: underline; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--ld-focus); outline-offset: 2px; }
+button.primary { background: var(--ld-primary); color: var(--ld-primary-ink); }
+button.secondary { background: transparent; color: var(--ld-ink); border-color: var(--ld-control-line); }
+button.link { background: transparent; color: var(--ld-link); padding: 4px; min-height: 24px; text-decoration: underline; }
 button:disabled { opacity: 0.6; cursor: default; }
-.head { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
-.brand { font-weight: 600; }
-.host { color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.close { background: transparent; color: var(--muted); min-height: 24px; padding: 0 6px; }
+.head { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--ld-line); }
+.brand { font-size: inherit; font-weight: 600; margin: 0; }
+.host { color: var(--ld-ink-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.close { background: transparent; color: var(--ld-ink-muted); min-height: 24px; padding: 0 6px; }
 .msg { margin: 8px 10px; overflow-wrap: anywhere; }
-.msg.stop, .warn { background: var(--stop-bg); color: var(--stop-fg); border-radius: 6px; padding: 8px 10px; }
+.msg.stop, .warn { background: var(--ld-stop-surface); color: var(--ld-stop-ink); border-radius: 6px; padding: 8px 10px; }
 .list { overflow-y: auto; max-height: calc(100vh - 44px); }
-.item { display: flex; flex-direction: column; align-items: flex-start; width: 100%; text-align: left; background: transparent; color: var(--fg); border-radius: 0; border-bottom: 1px solid var(--line); padding: 8px 10px; }
-.item:hover, .item:focus-visible { background: var(--hover); }
+.item { display: flex; flex-direction: column; align-items: flex-start; width: 100%; text-align: left; background: transparent; color: var(--ld-ink); border-radius: 0; border-bottom: 1px solid var(--ld-line); padding: 8px 10px; }
+.item:hover, .item:focus-visible { background: var(--ld-hover); }
 .title { font-weight: 600; display: flex; gap: 6px; align-items: center; }
-.sub { color: var(--muted); font-size: 12px; }
+.sub { color: var(--ld-ink-muted); font-size: 12px; }
 .sub.block { display: block; margin-top: 4px; }
-.badge { font-weight: 400; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.badge { font-weight: 400; font-size: 11px; color: var(--ld-ink-muted); border: 1px solid var(--ld-line); border-radius: 4px; padding: 0 4px; }
 .actions { display: flex; gap: 8px; padding: 0 10px 10px; }
 h1 { font-size: 16px; margin: 0 0 8px; }
-h2 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); font-weight: 600; }
-.search { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; margin-top: 8px; }
+h2 { font-size: 13px; margin: 12px 0 4px; color: var(--ld-ink-muted); font-weight: 600; }
+.search { width: 100%; padding: 8px 10px; border: 1px solid var(--ld-control-line); border-radius: 6px; background: var(--ld-surface); color: var(--ld-ink); font: inherit; margin-top: 8px; }
 .rows { list-style: none; margin: 8px 0 0; padding: 0; }
-.row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--ld-line); }
 .row .text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .row .text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .code { font: 600 28px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.08em; margin: 8px 0; }
-.live { color: var(--muted); margin: 8px 0 0; min-height: 1em; }
+.live { color: var(--ld-ink-muted); margin: 8px 0 0; min-height: 1em; }
 /* Bridges in the popup (docs/plan/23-bridges.md): "Fix this page" and "Hide my email". */
 details.fix { margin: 8px 0 0; }
-details.fix summary { cursor: pointer; color: var(--accent); padding: 4px 0; }
-.fix-body .row .text select { margin-top: 4px; font: inherit; min-height: 28px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--fg); }
+details.fix summary { cursor: pointer; color: var(--ld-link); text-decoration: underline; padding: 4px 0; }
+.fix-body .row .text select { margin-top: 4px; font: inherit; min-height: 28px; border-radius: 6px; border: 1px solid var(--ld-control-line); background: transparent; color: var(--ld-ink); }
 .fix-body label.check { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
 .fix-body button.primary { margin-top: 8px; }

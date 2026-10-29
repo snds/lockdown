@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 
 import { ClientProvider } from "@/core/client"
 import type { Status } from "@/core/types"
+import { malformedLists } from "@/test/a11y"
 import { fakeClient } from "@/test/fake-client"
 
 import { RecoveryView } from "./recovery-view"
@@ -22,5 +23,17 @@ describe("the Recovery screen", () => {
     expect(row).not.toHaveTextContent("later")
     await userEvent.setup().click(within(row).getByRole("button", { name: "Open Emergency access" }))
     expect(onEmergency).toHaveBeenCalledTimes(1)
+  })
+
+  it("draws one page heading and its rows as a list of items (design review R7, R18)", () => {
+    const { container } = render(
+      <ClientProvider value={fakeClient({})}>
+        <RecoveryView status={status} onChanged={() => {}} onNotice={() => {}} />
+      </ClientProvider>,
+    )
+    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual(["Recovery"])
+    const list = screen.getByText("Trusted contacts").closest("[role=list]") as HTMLElement
+    expect(within(list).getAllByRole("listitem")).toHaveLength(3)
+    expect(malformedLists(container)).toEqual([])
   })
 })

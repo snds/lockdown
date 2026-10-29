@@ -27,10 +27,12 @@ interface LargeTypeButtonProps {
  */
 export function ShowLargeType({ title, getSecret, groupSize = 3 }: LargeTypeButtonProps) {
   const [open, setOpen] = useState(false)
+  // Disabled while the gate asks, as the field's own reveal and copy are (gate.tsx `asking`).
+  const { asking } = useGate()
   useCaptureProtect(open)
   return (
     <>
-      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
+      <Button variant="ghost" size="sm" disabled={asking} onClick={() => setOpen(true)}>
         <Icon name="format_size" data-icon="inline-start" />
         Show large type
       </Button>

@@ -36,12 +36,21 @@ interface GateContextValue {
   requestProof: (kind: CrownJewelProofKind, reason: string) => Promise<boolean>
   /** Which check `use` would go to on this computer, for the biometric's name. */
   route: ApprovalRoute | null
+  /**
+   * The gate is asking now (its password or confirm dialog is open). A
+   * secret field disables its own reveal and copy meanwhile, and unicron's
+   * field then dims everything in its row; an action Lockdown puts in that
+   * row (Show large type) goes disabled too, so it never reads as dimmed yet
+   * pressable (design review R4, the crown-jewel field's contrast).
+   */
+  asking: boolean
 }
 
 const GateContext = createContext<GateContextValue>({
   run: (call) => call({}),
   requestProof: () => Promise.resolve(true),
   route: null,
+  asking: false,
 })
 
 interface Pending {
@@ -162,9 +171,10 @@ export function GateProvider({ children }: { children: ReactNode }) {
   }
 
   const biometricName = route?.route === "platform" ? route.method : null
+  const asking = pending !== null
   const value = useMemo<GateContextValue>(
-    () => ({ run, requestProof, route }),
-    [run, requestProof, route],
+    () => ({ run, requestProof, route, asking }),
+    [run, requestProof, route, asking],
   )
   return (
     <GateContext.Provider value={value}>

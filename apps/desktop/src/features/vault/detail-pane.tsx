@@ -4,6 +4,7 @@ import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogHeader, 
 
 import { useTemplates } from "@/app/templates"
 import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
+import { ListItems } from "@/components/list-items"
 import { describeError, useClient } from "@/core/client"
 import type { FieldView, ItemDetail, ItemSummary, TemplateView } from "@/core/types"
 import { codeKey, useCodes } from "@/features/codes/use-codes"
@@ -385,7 +386,9 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2" aria-label={title}>
       <h3 className="text-xs font-medium text-muted-foreground uppercase">{title}</h3>
-      <ItemGroup>{children}</ItemGroup>
+      <ItemGroup>
+        <ListItems>{children}</ListItems>
+      </ItemGroup>
     </section>
   )
 }

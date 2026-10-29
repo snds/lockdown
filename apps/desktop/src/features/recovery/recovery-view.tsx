@@ -35,7 +35,7 @@ export function RecoveryView({ status, onChanged, onNotice, onEmergency }: Recov
         <EmergencySheetButton onNotice={onNotice} />
       </PaneHeader>
       <ItemGroup>
-        <Item variant="outline" data-row="">
+        <Item variant="outline" role="listitem" data-row="">
           <ItemContent>
             <ItemTitle>
               Recovery kit
@@ -49,7 +49,7 @@ export function RecoveryView({ status, onChanged, onNotice, onEmergency }: Recov
             </Button>
           </ItemActions>
         </Item>
-        <Item variant="outline" data-row="">
+        <Item variant="outline" role="listitem" data-row="">
           <ItemContent>
             <ItemTitle>
               Recovery drill
@@ -66,7 +66,7 @@ export function RecoveryView({ status, onChanged, onNotice, onEmergency }: Recov
             </Button>
           </ItemActions>
         </Item>
-        <Item variant="outline" data-row="">
+        <Item variant="outline" role="listitem" data-row="">
           <ItemContent>
             <ItemTitle>Trusted contacts</ItemTitle>
             <ItemDescription>

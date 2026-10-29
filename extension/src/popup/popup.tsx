@@ -62,6 +62,9 @@ export function Popup() {
 
   return (
     <main className="flex w-[360px] flex-col gap-3 bg-background p-3 text-foreground">
+      {/* The pairing and locked states title themselves; the others get the same
+          page heading for a screen reader only (design review R18). */}
+      {(!state || (state.link === "ready" && state.paired && !state.locked)) && <h1 className="sr-only">Lockdown</h1>}
       {!state ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <Spinner /> Connecting to Lockdown…

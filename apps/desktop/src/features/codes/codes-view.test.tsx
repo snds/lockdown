@@ -1,9 +1,10 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { toast } from "sonner"
 
 import { ClientProvider, type Client } from "@/core/client"
 import type { CodeView } from "@/core/types"
+import { malformedLists } from "@/test/a11y"
 
 import { CodesView } from "./codes-view"
 
@@ -58,6 +59,21 @@ describe("the Codes view on unicron's CodeDisplay", () => {
     expect(next!.textContent).toContain("330")
     expect(next!.textContent).toContain("558")
     expect(list.textContent).not.toContain("secret")
+  })
+
+  it("is a list with one item per code, and CodeDisplayList's live region sits beside it, not in it (design review R7)", async () => {
+    const { container } = render(
+      <ClientProvider value={fakeClient({ codes: () => Promise.resolve([code({}), code({ item_id: "i2", title: "Mail", issuer: "Mail" })]) })}>
+        <CodesView rows={[]} onChanged={() => {}} />
+      </ClientProvider>,
+    )
+    const list = await screen.findByRole("list", { name: "One-time codes" })
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(2))
+    for (const item of within(list).getAllByRole("listitem")) expect(item.querySelector('[data-slot="code-display"]')).toBeInTheDocument()
+    const live = container.querySelector('[data-slot="code-display-live"]')
+    expect(live).toBeInTheDocument()
+    expect(list.contains(live)).toBe(false)
+    expect(malformedLists(container)).toEqual([])
   })
 
   it("copies through the core's clipboard path (`copy_code`), never the value through the webview", async () => {

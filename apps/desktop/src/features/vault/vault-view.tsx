@@ -83,6 +83,7 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
   const paths = useMemo(() => folderPaths(vaults), [vaults])
   const scoped = useMemo(() => (rows && scope ? inScope(rows, scope, vaults) : rows), [rows, scope, vaults])
   const scopeName = scope ? scopeTitle(scope, vaults) : null
+  const paneTitle = scopeName ?? VIEW_LABELS[view]
   const [query, setQuery] = useState("")
   const [sort, setSort] = useState<SortKey>(DEFAULT_SORT)
   const [groupBy, setGroupBy] = useState<GroupBy>(DEFAULT_GROUP)
@@ -101,7 +102,7 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
   const [emptyTitle, emptyText] = scope ? ["Nothing here", "Nothing filed here is in this view; pick All items in the sidebar to see everything."] : EMPTY[view]
 
   const header = (
-    <PaneHeader title={scopeName ?? VIEW_LABELS[view]}>
+    <PaneHeader title={paneTitle}>
       <DropdownMenu>
         <DropdownMenuTrigger render={<Button variant="ghost" size="sm" aria-label="Sort and group" />}>
           <Icon name="sort" data-icon="inline-start" />
@@ -152,7 +153,9 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
         </p>
       )}
       {!rows && !error && (
-        <div className="flex flex-col gap-2 px-2" aria-busy="true" aria-label="Loading">
+        // A status with its words in it: a plain div may not carry a label (review R18).
+        <div className="flex flex-col gap-2 px-2" role="status">
+          <span className="sr-only">Loading items</span>
           <Skeleton variant="row" />
           <Skeleton variant="row" />
           <Skeleton variant="row" />
@@ -170,11 +173,14 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
         </Empty>
       )}
       {groups.map((g) => (
-        <section key={g.key} aria-label={g.label || VIEW_LABELS[view]}>
+        // The list's groups are named with their counts ("Notes, 2 items"), so a
+        // group never shares its name with a section of the open item (an item's
+        // own "Notes"; design review R18: landmarks need unique names).
+        <section key={g.key} aria-label={g.label ? `${g.label}, ${itemCount(g.rows.length)}` : VIEW_LABELS[view]}>
           {g.label && (
             <h2 data-group-header="" className="flex items-baseline justify-between px-3 pb-1 text-xs font-medium text-muted-foreground uppercase">
               <span>{g.label}</span>
-              <span aria-label={`${g.rows.length} ${g.rows.length === 1 ? "item" : "items"}`}>{g.rows.length}</span>
+              <span aria-label={itemCount(g.rows.length)}>{g.rows.length}</span>
             </h2>
           )}
           <ItemGroup role="list">
@@ -214,6 +220,7 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
     <>
       <MasterDetail
         header={header}
+        title={paneTitle}
         list={list}
         detail={
           selected ? (
@@ -279,4 +286,9 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
       />
     </>
   )
+}
+
+/** "1 item", "14 items". */
+function itemCount(n: number): string {
+  return `${n} ${n === 1 ? "item" : "items"}`
 }

@@ -59,7 +59,12 @@ export function OncePage({ page, onClose }: OncePageProps) {
         ))}
         {values.secretKey && <LargeTypeView print getSecret={secretKey} title="Secret Key" groupSize={4} />}
         {values.recoveryCode && <LargeTypeView print getSecret={recoveryCode} title="Recovery code" groupSize={4} />}
-        {text && <pre className="overflow-x-auto rounded-md border bg-muted p-3 font-mono text-xs leading-relaxed">{text}</pre>}
+        {/* It scrolls sideways on a phone, so a keyboard can reach it (review R18). */}
+        {text && (
+          <pre tabIndex={0} role="region" aria-label="The page as text" className="overflow-x-auto rounded-md border bg-muted p-3 font-mono text-xs leading-relaxed">
+            {text}
+          </pre>
+        )}
         <DialogFooter>
           <Button onClick={() => window.print()} variant="outline">
             Print

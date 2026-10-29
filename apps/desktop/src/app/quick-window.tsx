@@ -83,9 +83,12 @@ export function QuickWindow() {
             <GateProvider>
               <QuickClientProvider value={tauriQuickClient}>
                 <HygieneClientProvider value={tauriHygieneClient}>
-                  <div className="h-full bg-background">
+                  {/* The window's one landmark and heading (review R18); the heading is the
+                      window's own title (quick.rs), for a screen reader only. */}
+                  <main className="h-full bg-background">
+                    <h1 className="sr-only">Lockdown quick access</h1>
                     <QuickRoot />
-                  </div>
+                  </main>
                 </HygieneClientProvider>
               </QuickClientProvider>
             </GateProvider>

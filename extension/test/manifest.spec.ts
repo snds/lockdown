@@ -30,7 +30,7 @@ test("Firefox: an event page, the add-on id, blocking webRequest, no Chromium ke
 test("both: one menu frame open to pages, wasm allowed only for the extension's own pages", async () => {
   for (const family of ["chromium", "firefox"] as const) {
     const m = await manifest(family);
-    expect(m.web_accessible_resources[0].resources).toEqual(["frame.html", "frame.js", "ui.css"]);
+    expect(m.web_accessible_resources[0].resources).toEqual(["frame.html", "frame.js", "tokens.css", "ui.css"]);
     expect(m.web_accessible_resources[0].resources).not.toContain("popup.html");
     expect(m.content_security_policy.extension_pages).toBe("script-src 'self' 'wasm-unsafe-eval'; object-src 'self'");
     expect(m.commands["fill-login"].suggested_key.default).toBe("Ctrl+Shift+L");

@@ -198,7 +198,7 @@ export function TemplatesManager({ open, onOpenChange, onNotice }: TemplatesMana
             ) : (
               <ItemGroup>
                 {userTemplates.map((t) => (
-                  <Item key={t.id} size="sm">
+                  <Item key={t.id} role="listitem" size="sm">
                     <ItemMedia variant="icon">
                       <Icon name="category" />
                     </ItemMedia>
