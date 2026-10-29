@@ -146,12 +146,7 @@ pub(crate) fn received_take(
     out
 }
 
-/// A vault of the persona that couldn't open with the trust it has yet.
-pub(crate) struct Waiting {
-    pub(crate) vault_id: Id,
-    /// The load's own refusal, said if nothing more can vouch for it.
-    pub(crate) why: String,
-}
+pub(crate) use crate::vault_open::Waiting;
 
 impl Session {
     /// Marks a shared vault as waiting for the split to clear, keeping the
@@ -186,25 +181,12 @@ impl Session {
     /// set verifies heads and versions but never counts as the identity's
     /// own (the post-quantum rule holds only those to its key).
     pub(crate) fn vault_trust(&self, vault_id: Id) -> (DeviceTrust, BTreeMap<Id, VerifyingKey>) {
-        let mut keys = self.synced.device_keys();
-        for (id, key) in lockdown_vault::identity::device_keys(&self.identity) {
-            keys.entry(id).or_insert(key);
-        }
-        let members = self
+        let writers = self
             .rosters
             .get(&vault_id)
             .map(|roster| self.writer_keys(roster))
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|(id, _)| !keys.contains_key(id))
-            .collect();
-        (
-            DeviceTrust {
-                keys,
-                revoked_after: self.synced.revoked_after(vault_id),
-            },
-            members,
-        )
+            .unwrap_or_default();
+        crate::vault_open::vault_trust(&self.identity, &self.synced, vault_id, writers)
     }
 
     /// After the sync's sharing step: opens every vault of the persona in

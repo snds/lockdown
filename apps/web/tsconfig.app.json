@@ -37,5 +37,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["src"]
+  "include": ["src", "../desktop/src/app/virtual-icon-codepoints.d.ts"]
 }

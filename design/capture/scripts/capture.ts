@@ -28,6 +28,7 @@ interface StateMeta {
   compact: boolean
   frame: string | null
   trusted: string[]
+  hold_clock?: boolean
 }
 
 interface Shot {
@@ -127,8 +128,9 @@ async function main() {
     // A state that hangs the page is recorded and skipped, never waited on forever.
     const guard = setTimeout(() => void ctx.close().catch(() => {}), 120_000)
     try {
-      // The extension's frames arm their buttons by Date.now(), so a frozen clock would keep them disabled.
-      if (s.surface !== "extension") await page.clock.setFixedTime(PINNED)
+      // The extension's frames arm their buttons by Date.now(), so a frozen clock would keep them disabled;
+      // a state that shows the arming wait itself holds it on purpose.
+      if (s.surface !== "extension" || s.hold_clock) await page.clock.setFixedTime(PINNED)
       await page.addInitScript(() => {
         ;(window as unknown as { __LD_CAPTURE__: boolean }).__LD_CAPTURE__ = true
       })

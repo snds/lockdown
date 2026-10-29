@@ -22,10 +22,12 @@
 pub mod approval;
 pub mod bridges;
 pub mod browser;
+mod confine;
 pub mod depth;
 pub mod devices;
 pub mod hygiene;
 pub mod key_check;
+pub mod kit_pdf;
 pub mod live;
 pub mod lock;
 pub mod passkeys;
@@ -46,6 +48,7 @@ pub mod sharing;
 pub mod strength;
 mod transfer;
 pub mod types;
+pub mod vault_open;
 pub mod views;
 
 #[cfg(not(target_os = "wasi"))]
@@ -205,6 +208,9 @@ struct Core {
     quick_fills: Vec<quick::PendingFill>,
     /// The scan flow's gate, last outcome and waiting activations (`scan`).
     scan: scan::ScanState,
+    /// Set in a confined home (`confine`): the sentence exports and
+    /// backups are refused with.
+    confined: Option<String>,
 }
 
 impl Core {
@@ -236,6 +242,7 @@ impl Core {
             bridges: bridges::BridgesState::default(),
             quick_fills: Vec::new(),
             scan: scan::ScanState::default(),
+            confined: None,
         }
     }
 
@@ -563,6 +570,9 @@ type Job = Box<dyn FnOnce(&mut Core) + Send>;
 #[derive(Clone)]
 pub struct App {
     tx: Sender<Job>,
+    /// A copy of the core's confinement (`confine`), readable without a
+    /// round trip to the worker: the browser endpoint asks on every frame.
+    confined: std::sync::Arc<std::sync::RwLock<Option<String>>>,
 }
 
 /// The app in a build with no threads (the web vault, compiled for
@@ -639,7 +649,10 @@ impl App {
                 core.lock(LockReason::Requested);
             })
             .expect("the app's worker thread starts");
-        Self { tx }
+        Self {
+            tx,
+            confined: Default::default(),
+        }
     }
 
     /// Runs `f` on the worker and waits for its answer.
@@ -910,6 +923,7 @@ impl App {
         let format = format.to_string();
         self.call(move |core| {
             core.clock.touch(Instant::now());
+            core.refuse_confined()?;
             core.approve(ApprovalKind::Reveal, "export the vault", &gate)?;
             let bytes = core
                 .session()?
@@ -1179,6 +1193,29 @@ impl App {
     pub fn kit_create(&self, replace: bool, password: Option<&str>) -> AppResult<KitCreated> {
         let password = password.map(|p| zeroize::Zeroizing::new(p.to_string()));
         self.with_session(move |s| s.kit_create(replace, password.as_deref().map(|p| p.as_str())))
+    }
+
+    /// The recovery kit's page, as shown, laid out as a PDF
+    /// (docs/plan/38-mac-fixes.md §4). Only while the vault is open: the
+    /// page reaches a shell only from a call that needed the vault open
+    /// (and, with an account, the account password), and it can be saved
+    /// only while that is still so. The bytes are wiped when they drop.
+    pub fn kit_pdf(&self, notes: &[String], page: &str) -> AppResult<zeroize::Zeroizing<Vec<u8>>> {
+        self.with_session(|_| Ok(()))?;
+        kit_pdf::render(notes, page).map_err(AppError::refused)
+    }
+
+    /// Writes the kit's PDF to `path`, the place the person picked, and
+    /// nowhere else; the bytes are wiped once written.
+    #[cfg(feature = "native")]
+    pub fn kit_pdf_save(
+        &self,
+        notes: &[String],
+        page: &str,
+        path: &std::path::Path,
+    ) -> AppResult<()> {
+        let bytes = self.kit_pdf(notes, page)?;
+        kit_pdf::write_file(path, &bytes).map_err(AppError::refused)
     }
 
     /// Checks a kit against this identity, changing nothing unless `drill`.

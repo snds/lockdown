@@ -340,6 +340,28 @@ fn locked_is_said_plainly() {
 }
 
 #[test]
+fn a_confined_home_reads_as_locked_and_answers_no_page() {
+    let rig = rig();
+    let mut host = paired(&rig);
+    let elsewhere = tempfile::tempdir().unwrap();
+    let demo = Paths::resolve(Some(elsewhere.path().join("snds/identity")), None).unwrap();
+    let home = rig
+        .app
+        .rehome(demo, Some("the demo never goes online".into()))
+        .unwrap();
+    rig.app.open_or_create(true).unwrap();
+    assert_eq!(host.ok("status", json!({}))["locked"], true);
+    assert_eq!(
+        host.err("matches", json!({ "frame": "https://example.com" })),
+        "locked"
+    );
+    assert_eq!(host.err("wallet", json!({})), "locked");
+    rig.app.rehome(home, None).unwrap();
+    rig.app.unlock().unwrap();
+    assert_eq!(host.ok("status", json!({}))["locked"], false);
+}
+
+#[test]
 fn another_extension_or_an_untrusted_program_is_refused_at_once() {
     let rig = rig();
     let other = Caller {
@@ -900,4 +922,34 @@ fn a_suggested_password_carries_the_cores_strength_word() {
     let plain = host.ok("password_rule", json!({ "frame": "https://new.test/join" }));
     assert_eq!(plain["strength"], "strong", "{plain}");
     assert!(plain["bits"].as_f64().unwrap() >= 75.0);
+}
+
+#[test]
+fn open_lockdown_brings_the_window_forward_before_pairing_and_answers_nothing_else() {
+    // docs/plan/37-cli-popup.md §2: the popup's Open Lockdown in the
+    // locked and unpaired states.
+    let rig = rig();
+    let (mut host, _) = connect(
+        Arc::clone(&rig.endpoint.shared),
+        Box::new(AllowAll),
+        chrome(),
+    );
+    // Without a window (a fixture, or before the shell gave one) it says so.
+    assert_eq!(host.err("show", json!({})), "unsupported");
+    let shown = Arc::new(Mutex::new(0));
+    let count = Arc::clone(&shown);
+    rig.endpoint.on_show(Box::new(move || {
+        *count.lock().unwrap() += 1;
+        Ok(())
+    }));
+    assert_eq!(host.ok("show", json!({})), json!({ "shown": true }));
+    // A second press within a second is answered without moving it again.
+    assert_eq!(host.ok("show", json!({})), json!({ "shown": true }));
+    assert_eq!(*shown.lock().unwrap(), 1);
+    // Still unpaired: nothing else is answered.
+    assert_eq!(host.err("search", json!({ "query": "" })), "not_paired");
+    rig.app.lock().unwrap();
+    std::thread::sleep(SHOW_EVERY);
+    assert_eq!(host.ok("show", json!({})), json!({ "shown": true }));
+    assert_eq!(*shown.lock().unwrap(), 2);
 }

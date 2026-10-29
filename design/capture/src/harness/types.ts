@@ -55,6 +55,12 @@ export interface StateDef {
    * review build leaves these taps to the reviewer.
    */
   trusted?: string[]
+  /**
+   * An extension state captured with the clock held still, so an in-page
+   * frame stays in its 400 ms arming wait (design review R17) instead of
+   * arming before the picture is taken. The review build arms as usual.
+   */
+  hold_clock?: boolean
 }
 
 /** What the capture and the start screen read: everything but the code. */
@@ -69,6 +75,7 @@ export interface StateMeta {
   compact: boolean
   frame: string | null
   trusted: string[]
+  hold_clock: boolean
 }
 
 export const WIDTHS = [1280, 900, 390]

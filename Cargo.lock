@@ -3261,6 +3261,7 @@ dependencies = [
  "lockdown-store",
  "lockdown-sync",
  "lockdown-vault",
+ "pdf-writer",
  "qrcode",
  "ring",
  "rqrr",
@@ -3304,6 +3305,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "ecosystem-identity",
+ "lockdown-app",
  "lockdown-codes",
  "lockdown-crypto",
  "lockdown-matcher",
@@ -3416,6 +3418,7 @@ dependencies = [
  "lockdown-app",
  "lockdown-codesign",
  "lockdown-crypto",
+ "lockdown-devtools",
  "lockdown-matcher",
  "lockdown-native-messaging",
  "lockdown-pipe",
@@ -3437,6 +3440,37 @@ dependencies = [
  "tauri-plugin-opener",
  "tempfile",
  "webkit2gtk",
+ "zeroize",
+]
+
+[[package]]
+name = "lockdown-devtools"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "data-encoding",
+ "dbus-secret-service",
+ "ecosystem-identity",
+ "ed25519-dalek",
+ "getrandom 0.3.4",
+ "keyring",
+ "lockdown-app",
+ "lockdown-crypto",
+ "lockdown-cxf",
+ "lockdown-native-messaging",
+ "lockdown-passkey",
+ "lockdown-server",
+ "lockdown-sync",
+ "lockdown-vault",
+ "security-framework 3.7.0",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tauri",
+ "tauri-plugin",
+ "tauri-plugin-dialog",
+ "tempfile",
+ "windows-sys 0.60.2",
  "zeroize",
 ]
 
@@ -4458,6 +4492,18 @@ checksum = "112d82ceb8c5bf524d9af484d4e4970c9fd5a0cc15ba14ad93dccd28873b0629"
 dependencies = [
  "digest 0.11.3",
  "hmac 0.13.0",
+]
+
+[[package]]
+name = "pdf-writer"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5e456864a7a304047bff84977dc6fb162bd956475d40ba50b2dcecaada7f753"
+dependencies = [
+ "bitflags 2.13.2",
+ "itoa",
+ "memchr",
+ "ryu",
 ]
 
 [[package]]

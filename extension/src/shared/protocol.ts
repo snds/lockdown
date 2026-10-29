@@ -216,3 +216,15 @@ export interface AliasOption {
   name: string
   domain: string | null
 }
+
+/** What the popup says when the app can't be opened from the browser (the
+ *  native host's own words for it are the same). */
+export const OPEN_HOW = "Lockdown couldn't open the app from the browser. Open Lockdown from your applications, then unlock it."
+
+/** What the popup's Open Lockdown did (docs/plan/37-cli-popup.md §2):
+ *  `shown`, the running app's window came forward; `launched`, the native
+ *  host started the app; otherwise `error` says how to open it by hand. */
+export interface OpenedApp {
+  opened?: "shown" | "launched"
+  error?: string
+}

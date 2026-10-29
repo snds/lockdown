@@ -150,10 +150,67 @@ jobs:
       - name: Design-system ratchet
         run: pnpm ds:ratchet
       # The shell embeds dist/ (built above), so generate_context! has it.
+      # With the developer tools, as a development build has them
+      # (docs/plan/40-devtools.md); desktop-bare builds without.
       - name: Clippy, the shell feature on
-        run: cargo clippy -p lockdown-desktop --all-targets --features shell -- -D warnings
+        run: cargo clippy -p lockdown-desktop --all-targets --features shell,dev-reset,demo-vault -- -D warnings
       - name: Shell unit tests
+        run: cargo test -p lockdown-desktop --features shell,dev-reset,demo-vault
+
+  # The desktop app without the developer tools (docs/plan/40-devtools.md
+  # §6), as a tagged release builds it: proof that the app doesn't depend
+  # on them. The front end is checked, tested and built with the define
+  # off, the shell with both Cargo features off, and neither the bundle nor
+  # the dependency tree may carry them.
+  desktop-bare:
+    name: desktop shell, no developer tools
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LOCKDOWN_DEVTOOLS: "off"
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install WebKitGTK and friends (Tauri Linux deps; dbus for the keychain)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libdbus-1-dev libxdo-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck, test and build the UI with the define off
+        run: pnpm typecheck && pnpm test && pnpm build
+      - name: The bundle carries none of the developer tools
+        run: ../../packaging/devtools/check.sh absent dist
+      - name: The shell doesn't depend on lockdown-devtools without the features
+        working-directory: .
+        run: |
+          if cargo tree -p lockdown-desktop --features shell -e normal,build --prefix none | grep -q '^lockdown-devtools '; then
+            echo "::error::lockdown-desktop pulls in lockdown-devtools with only the shell feature"; exit 1
+          fi
+      - name: Clippy, the shell feature only
+        run: cargo clippy -p lockdown-desktop --all-targets --features shell -- -D warnings
+      - name: Shell unit tests, the shell feature only
         run: cargo test -p lockdown-desktop --features shell
+      - name: A release's features and build.rs agree
+        run: |
+          if cargo check -p lockdown-desktop --features shell,dev-reset 2>/dev/null; then
+            echo "::error::build.rs let a dev-reset build through with LOCKDOWN_DEVTOOLS=off"; exit 1
+          fi
+          echo "build.rs refused dev-reset with LOCKDOWN_DEVTOOLS=off, as it must"
 
   # The design-review harness (design/capture/README.md): its typecheck,
   # which also checks the desktop's, the web vault's and the extension's
@@ -318,9 +375,9 @@ jobs:
       - name: Build the web UI
         run: pnpm build
       - name: Clippy, the shell feature on
-        run: cargo clippy -p lockdown-desktop --all-targets --features shell -- -D warnings
+        run: cargo clippy -p lockdown-desktop --all-targets --features shell,dev-reset,demo-vault -- -D warnings
       - name: Shell unit tests
-        run: cargo test -p lockdown-desktop --features shell
+        run: cargo test -p lockdown-desktop --features shell,dev-reset,demo-vault
 
   # Supply chain (docs/plan/24-release.md §4): every third-party crate in
   # Cargo.lock is covered by an audit imported from a well-known audit set
@@ -444,3 +501,56 @@ jobs:
         shell: pwsh
         run: |
           Get-ChildItem Cert:\LocalMachine\Root, Cert:\CurrentUser\My | Where-Object { $_.Subject -like "CN=Lockdown throwaway test signer*" } | Remove-Item
+
+  # The desktop UI in the engines it ships on (docs/plan/38-mac-fixes.md
+  # §2). The Mac app runs in WKWebView, which no other job opens: the
+  # review harness's build of the real desktop views goes to Playwright's
+  # WebKit, with Chromium beside it so the assertions are honest. Every
+  # icon must draw as one glyph, a page that prints alone must hide the
+  # app behind it, and the main screens are kept as screenshots.
+  #
+  # Twice: on Linux, where WebKit shapes text with HarfBuzz (as WebKitGTK
+  # does for the Linux app), and on macOS, where Playwright's WebKit is
+  # Apple's port and shapes with Core Text as WKWebView does. The first
+  # run showed the Linux engine drawing every icon right, so the Mac
+  # engine is the one that can show the Mac app's defect.
+  engines:
+    name: desktop UI · ${{ matrix.engines }} (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Pinned for the same reason as the extension and web jobs.
+          - os: ubuntu-24.04
+            engines: webkit,chromium,firefox
+          - os: macos-latest
+            engines: webkit,chromium
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: design/capture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: design/capture/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: design/capture/pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: The engines
+        run: pnpm exec playwright install --with-deps $(echo "${{ matrix.engines }}" | tr , ' ')
+      - name: Build the harness
+        run: pnpm build
+      - name: Icons, print and a smoke, in each engine
+        run: pnpm engine:check --engines ${{ matrix.engines }} --out "$RUNNER_TEMP/engine-check"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: engine-check-${{ matrix.os }}
+          path: ${{ runner.temp }}/engine-check
+          if-no-files-found: error

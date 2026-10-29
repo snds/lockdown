@@ -8,7 +8,7 @@
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build",
-    "features": ["shell"]
+    "features": ["shell", "dev-reset", "demo-vault"]
   },
   "app": {
     "withGlobalTauri": false,

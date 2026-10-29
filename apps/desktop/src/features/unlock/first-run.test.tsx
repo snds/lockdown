@@ -86,7 +86,7 @@ describe("the first run (D94)", () => {
     // Screen 3: recovery picks; Continue waits for the kit to be kept.
     expect(await screen.findByRole("heading", { name: /Keep the kit somewhere safe/ })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled()
-    await user.click(screen.getByRole("checkbox", { name: "I printed or wrote down the kit" }))
+    await user.click(screen.getByRole("checkbox", { name: "I saved, printed or wrote down the kit" }))
     await user.click(screen.getByRole("button", { name: "Continue" }))
 
     // The proof moment: three lines, once.

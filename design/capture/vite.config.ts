@@ -3,6 +3,7 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig, type Plugin } from "vite"
 
+import { iconCodepoints } from "../../apps/desktop/scripts/icon-codepoints.ts"
 import { readTemplates } from "./scripts/rust-templates.ts"
 
 const here = import.meta.dirname
@@ -34,10 +35,13 @@ function coreTemplates(): Plugin {
  */
 export default defineConfig({
   base: "./",
-  plugins: [coreTemplates(), react(), tailwindcss()],
+  // The icons' codepoints from the shipped font, as each app's own build (docs/plan/38-mac-fixes.md §2).
+  plugins: [coreTemplates(), react(), tailwindcss(), iconCodepoints({ root: here, dirs: [desktop, path.join(repo, "apps/web/src"), path.join(repo, "extension/src/popup")] })],
   define: {
     // The web vault's worker module is never loaded here; its type file reads this name.
     __LOCKDOWN_WASM_SHA384__: JSON.stringify(""),
+    // The desktop's developer tools: the review build draws them, as a development build does.
+    __LOCKDOWN_DEVTOOLS__: JSON.stringify(true),
   },
   resolve: {
     alias: [

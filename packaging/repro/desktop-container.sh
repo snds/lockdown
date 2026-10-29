@@ -41,7 +41,12 @@ echo "build-desktop: $(rustc --version), node $(node --version)"
 cd /src/apps/desktop
 pnpm install --frozen-lockfile
 node scripts/stage-host.mjs --release
-pnpm tauri build --ci --bundles deb,rpm --config src-tauri/tauri.bundle.conf.json
+# A tagged release builds without the developer tools (docs/plan/40-devtools.md).
+release_config=()
+if [ "${LOCKDOWN_DEVTOOLS:-on}" = off ]; then
+  release_config=(--config src-tauri/tauri.release.conf.json)
+fi
+pnpm tauri build --ci --bundles deb,rpm --config src-tauri/tauri.bundle.conf.json "${release_config[@]}"
 
 cd /src
 deb=$(ls target/release/bundle/deb/*.deb)

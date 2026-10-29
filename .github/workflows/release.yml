@@ -8,6 +8,12 @@
 # - `workflow_dispatch` and pull requests are dry runs: the same builds and
 #   packages, unsigned, with no attestation and no release. Pull requests
 #   run it so CI proves the release path works before anyone tags.
+# - The developer tools (docs/plan/40-devtools.md) are on in dry runs and
+#   off in a `v*` tag build: LOCKDOWN_DEVTOOLS=off and
+#   src-tauri/tauri.release.conf.json turn both Cargo features and the
+#   front end's define off, the desktop's build.rs refuses a mismatch, and
+#   packaging/devtools/check.sh fails the build if the shipped binaries or
+#   front end carry them (and, in a dry run, if they don't).
 # - Without the Apple secrets the macOS app is still sealed with an ad-hoc
 #   signature (D450), so macOS offers "Open Anyway" in Privacy & Security
 #   instead of calling the download damaged. It proves nothing about who
@@ -80,10 +86,13 @@ jobs:
     timeout-minutes: 75
     env:
       SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
+      LOCKDOWN_DEVTOOLS: ${{ needs.meta.outputs.real == 'true' && 'off' || 'on' }}
     steps:
       - uses: actions/checkout@v4
       - name: Build and bundle (deb, rpm), pinned and normalised
         run: packaging/repro/build-desktop.sh build
+      - name: The developer tools are out of a release, in a dry run
+        run: packaging/devtools/check.sh ${{ needs.meta.outputs.real == 'true' && 'absent' || 'present' }} build/stage/lockdown-desktop apps/desktop/dist
       - name: Collect
         run: |
           mkdir -p out stage
@@ -204,6 +213,7 @@ jobs:
       SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
       HAVE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_SIGNING_IDENTITY != '' }}
       HAVE_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+      LOCKDOWN_DEVTOOLS: ${{ needs.meta.outputs.real == 'true' && 'off' || 'on' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -264,7 +274,11 @@ jobs:
         run: node scripts/stage-host.mjs --universal --release
       - name: Build and bundle (app, dmg)
         working-directory: apps/desktop
-        run: pnpm tauri build --ci --target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.bundle.conf.json
+        run: pnpm tauri build --ci --target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.bundle.conf.json $([ "$LOCKDOWN_DEVTOOLS" = off ] && echo --config src-tauri/tauri.release.conf.json)
+      - name: The developer tools are out of a release, in a dry run
+        run: |
+          app="$(ls -d target/universal-apple-darwin/release/bundle/macos/*.app | head -n 1)"
+          packaging/devtools/check.sh ${{ needs.meta.outputs.real == 'true' && 'absent' || 'present' }} "$app/Contents/MacOS/lockdown-desktop" apps/desktop/dist
       - name: Check both architectures and the signature state
         run: |
           app="$(ls -d target/universal-apple-darwin/release/bundle/macos/*.app | head -n 1)"
@@ -314,6 +328,7 @@ jobs:
     env:
       SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
       HAVE_SIGNING: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+      LOCKDOWN_DEVTOOLS: ${{ needs.meta.outputs.real == 'true' && 'off' || 'on' }}
     defaults:
       run:
         shell: bash
@@ -355,7 +370,9 @@ jobs:
         run: node scripts/stage-host.mjs --release
       - name: Build and bundle (msi, nsis)
         working-directory: apps/desktop
-        run: pnpm tauri build --ci --bundles msi,nsis --config src-tauri/tauri.bundle.conf.json $SIGN_CONFIG
+        run: pnpm tauri build --ci --bundles msi,nsis --config src-tauri/tauri.bundle.conf.json $SIGN_CONFIG $([ "$LOCKDOWN_DEVTOOLS" = off ] && echo --config src-tauri/tauri.release.conf.json)
+      - name: The developer tools are out of a release, in a dry run
+        run: packaging/devtools/check.sh ${{ needs.meta.outputs.real == 'true' && 'absent' || 'present' }} target/release/lockdown-desktop.exe apps/desktop/dist
       - name: MSIX layout, packed unsigned
         shell: pwsh
         env:
@@ -412,6 +429,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:wasm
       - run: pnpm build
+      - name: The extension never carries the developer tools
+        run: ../packaging/devtools/check.sh absent dist
       - run: pnpm run package
       - name: Source archive for review
         run: |
@@ -447,6 +466,8 @@ jobs:
         run: |
           packaging/repro/build-web.sh
           cd apps/web && pnpm install --frozen-lockfile && pnpm build
+      - name: The web vault never carries the developer tools
+        run: packaging/devtools/check.sh absent apps/web/dist
       - name: Server and CLI binaries
         run: packaging/repro/build-server.sh out
       - name: Server image (OCI archive)

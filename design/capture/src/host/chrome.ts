@@ -3,6 +3,7 @@
 // routes the same messages to the app over native messaging). Answers come
 // from the same fixture as the desktop's, so the popup lists Sam's items.
 
+import { OPEN_HOW } from "../../../../extension/src/shared/protocol"
 import type {
   AliasOption,
   LinkState,
@@ -151,6 +152,10 @@ export function background(s: ExtScenario): (msg: Record<string, unknown>) => un
         return { confirm: "Fill the card ending 1111 into this page?" }
       case "pk_sheet_pick":
         return { confirm: "Sign in to pixelforge.example as sam_r?" }
+      case "open_app":
+        // A running app brings its window forward; with none, this stand-in
+        // can't start one, so the popup says how (docs/plan/37-cli-popup.md §2).
+        return s.link?.link === "ready" ? { opened: "shown" } : { error: OPEN_HOW }
       default:
         return {}
     }

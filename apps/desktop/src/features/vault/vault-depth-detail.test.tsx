@@ -7,6 +7,7 @@ import { SettingsProvider } from "@/app/settings"
 import { TemplatesProvider } from "@/app/templates"
 import { ClientProvider, type Client } from "@/core/client"
 import type { FieldView, ItemDetail } from "@/core/types"
+import { PaperClientProvider, type PaperClient } from "@/features/paper/paper-client"
 import { fakeClient } from "@/test/fake-client"
 import { TEMPLATES } from "@/test/templates-fixture"
 
@@ -26,15 +27,14 @@ const item = (kind: string, fields: FieldView[], over: Partial<ItemDetail> = {})
   ...over,
 })
 
-function mount(client: Client, locked = false, onChanged = vi.fn()) {
+function mount(client: Client, locked = false, onChanged = vi.fn(), paper?: PaperClient) {
+  const pane = <DetailPane id="i1" rows={[]} onEdit={() => {}} onTrashed={() => {}} onChanged={onChanged} onNotice={() => {}} />
   const tree = (l: boolean) => (
     <ClientProvider value={client}>
       <LockedProvider value={l}>
         <SettingsProvider>
           <TemplatesProvider>
-            <GateProvider>
-              <DetailPane id="i1" rows={[]} onEdit={() => {}} onTrashed={() => {}} onChanged={onChanged} onNotice={() => {}} />
-            </GateProvider>
+            <GateProvider>{paper ? <PaperClientProvider value={paper}>{pane}</PaperClientProvider> : pane}</GateProvider>
           </TemplatesProvider>
         </SettingsProvider>
       </LockedProvider>
@@ -113,6 +113,29 @@ describe("vault depth in the detail (docs/plan/21-vault-depth.md)", () => {
     expect(reveal.mock.calls[0]!.slice(0, 2)).toEqual(["i1", "wifi.passphrase"])
     await waitFor(() => expect(screen.queryByText("k7Hq3mWx")).toBeNull())
     print.mockRestore()
+  })
+
+  it("keeps the guest card and its words while a native print panel is up, then drops the words (docs/plan/38-mac-fixes.md)", async () => {
+    const reveal = vi.fn<Client["reveal"]>(() => Promise.resolve(new TextEncoder().encode("k7Hq3mWx")))
+    const print = vi.fn<PaperClient["print"]>(() => Promise.resolve("open" as const))
+    const browserPrint = vi.spyOn(window, "print").mockImplementation(() => {})
+    mount(fakeClient({ ...base, reveal, wifiQr: () => Promise.resolve(grid()), show: () => Promise.resolve(item("wi-fi", [plain("wifi.ssid", "Network name", "home-net"), hidden("wifi.passphrase", "password")])) }), false, vi.fn(), { print })
+    await userEvent.click(await screen.findByRole("button", { name: "Guest card" }))
+    await userEvent.click(await screen.findByRole("button", { name: "Print a card" }))
+    await waitFor(() => expect(print).toHaveBeenCalled())
+    expect(browserPrint).not.toHaveBeenCalled()
+    // The panel takes the window: the card stays, with the words for the paper.
+    window.dispatchEvent(new Event("blur"))
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(screen.getByText("k7Hq3mWx", { selector: "p" })).toBeInTheDocument()
+    // The person is back: the words go; the card itself stays until it hides.
+    window.dispatchEvent(new Event("focus"))
+    await waitFor(() => expect(screen.queryByText("k7Hq3mWx")).toBeNull())
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    // And blur hides it again, as before.
+    window.dispatchEvent(new Event("blur"))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    browserPrint.mockRestore()
   })
 
   it("logs a sign-in on someone else's screen and marks it signed out (D237)", async () => {

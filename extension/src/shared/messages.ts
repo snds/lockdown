@@ -58,6 +58,8 @@ export type ToBackground =
   | { t: "pk_sheet_handoff"; nonce: string }
   | { t: "pk_sheet_cancel"; nonce: string }
   | { t: "pk_sheet_retry"; nonce: string }
+  // from the popup: Open Lockdown (docs/plan/37-cli-popup.md §2)
+  | { t: "open_app" }
 
 export type ToContent =
   | { t: "measure"; nonce: string }

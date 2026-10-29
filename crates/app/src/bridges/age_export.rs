@@ -26,6 +26,7 @@ impl App {
     ) -> AppResult<ExportDone> {
         self.call(move |core| {
             core.clock.touch(Instant::now());
+            core.refuse_confined()?;
             // Refuse a bad key before asking for anything.
             for r in recipients.iter().filter(|r| !r.trim().is_empty()) {
                 lockdown_cxf::age_file::recipient(r).map_err(AppError::refused)?;

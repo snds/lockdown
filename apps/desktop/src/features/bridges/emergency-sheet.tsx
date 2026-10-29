@@ -13,6 +13,7 @@ import {
 
 import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
+import { usePrinting } from "@/features/paper/paper-client"
 
 import { useBridges, type EmergencySheet } from "./bridges-client"
 
@@ -20,12 +21,14 @@ import { useBridges, type EmergencySheet } from "./bridges-client"
  * The emergency sheet (docs/plan/23-bridges.md §10): one printable page of
  * what to do and where things are if this computer is lost, the password
  * forgotten or the server gone, with blanks to fill in by hand. It holds no
- * password, key or item; printing uses the system's own dialog.
+ * password, key or item; printing uses the system's own dialog, through
+ * the host (docs/plan/38-mac-fixes.md §3).
  */
 export function EmergencySheetButton({ onNotice }: { onNotice: (text: string) => void }) {
   const bridges = useBridges()
   const [sheet, setSheet] = useState<EmergencySheet | null>(null)
   const [busy, setBusy] = useState(false)
+  const { print, printing } = usePrinting()
   if (!bridges) return null
   const open = async () => {
     setBusy(true)
@@ -76,7 +79,7 @@ export function EmergencySheetButton({ onNotice }: { onNotice: (text: string) =>
                 <LabelledAction kind="cancel" onClick={() => setSheet(null)}>
                   Close
                 </LabelledAction>
-                <Button onClick={() => window.print()}>
+                <Button onClick={() => void print().catch((e) => onNotice(describeError(e)))} disabled={printing}>
                   <Icon name="print" data-icon="inline-start" />
                   Print
                 </Button>

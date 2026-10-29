@@ -41,9 +41,8 @@ use lockdown_sync::{
     pull_identity, push_identity,
 };
 use lockdown_vault::identity::{
-    self, APP, DeviceTrust, OpenVault, default_persona, device_keys, find_persona,
-    identity_signing_key, merge_records, open_or_create_identity, open_vault_trusting,
-    persona_vaults, record_set,
+    self, APP, OpenVault, default_persona, device_keys, find_persona, identity_signing_key,
+    merge_records, open_or_create_identity, persona_vaults, record_set,
 };
 use lockdown_vault::identity_set::{Revocation, VaultBoundary};
 use lockdown_vault::{
@@ -442,48 +441,16 @@ impl Session {
         // versions name another member's devices waits here and opens once
         // their pins are read from the sharing record (below) or met in the
         // next sync (`shared_sync`); any other refusal stops the unlock.
-        let mut all = Vec::new();
-        let mut waiting: Option<String> = None;
-        {
-            let mut own = synced.device_keys();
-            for (id, key) in device_keys(&identity) {
-                own.entry(id).or_insert(key);
-            }
-            for vault_id in
-                persona_vaults(&identity, persona_id, &store).map_err(|e| e.to_string())?
-            {
-                let trust = DeviceTrust {
-                    keys: own.clone(),
-                    revoked_after: synced.revoked_after(vault_id),
-                };
-                match open_vault_trusting(
-                    &identity,
-                    vault_id,
-                    &store,
-                    Box::new(keystore.clone()),
-                    memory.last_accepted_seq(vault_id),
-                    &trust,
-                ) {
-                    Ok(o) => all.push(o),
-                    Err(e) => {
-                        let known = |d: Id| own.contains_key(&d);
-                        let unmet = shared_sync::unknown_signers(
-                            &store,
-                            vault_id,
-                            identity.device_id(),
-                            &known,
-                        )?;
-                        if unmet.is_empty() {
-                            return Err(e.to_string());
-                        }
-                        waiting.get_or_insert(e.to_string());
-                    }
-                }
-            }
-        }
+        // The command line opens through the same calls (`vault_open`).
+        let crate::vault_open::PersonaVaults {
+            opened: mut all,
+            waiting,
+        } = crate::vault_open::open_own_vaults(
+            &identity, persona_id, &store, &keystore, &memory, &synced,
+        )?;
         if all.is_empty() {
-            if let Some(why) = waiting {
-                return Err(why);
+            if let Some(w) = waiting.into_iter().next() {
+                return Err(w.why);
             }
             if mode != Mode::Init {
                 return Err(format!(
@@ -492,26 +459,23 @@ impl Session {
                 ));
             }
             let last = |vault_id: Id| memory.last_accepted_seq(vault_id);
-            all.push(
-                identity::open_or_create_vault(
-                    &mut identity,
-                    persona_id,
-                    &mut store,
-                    Box::new(keystore.clone()),
-                    &last,
-                )
-                .map_err(|e| e.to_string())?,
-            );
-        }
-        // Each vault is held to the post-quantum signatures from the first
-        // head this device saw the server confirm with one (doc 28).
-        for o in &mut all {
-            let since = memory.pq_since(o.vault.context().vault_id);
-            o.vault
+            let mut created = identity::open_or_create_vault(
+                &mut identity,
+                persona_id,
+                &mut store,
+                Box::new(keystore.clone()),
+                &last,
+            )
+            .map_err(|e| e.to_string())?;
+            // Held to the post-quantum signatures from the first head this
+            // device saw the server confirm with one (doc 28).
+            let since = memory.pq_since(created.vault.context().vault_id);
+            created
+                .vault
                 .require_post_quantum_from(since)
                 .map_err(|e| e.to_string())?;
+            all.push(created);
         }
-        organize::order_vaults(&mut all);
         let opened = all.remove(0);
         let recency = crate::recency::Recency::open(
             crate::recency::Recency::path_in(&paths.data, persona_id),

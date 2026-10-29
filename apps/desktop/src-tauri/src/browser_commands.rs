@@ -53,6 +53,18 @@ pub fn start(handle: &AppHandle, core: App, data: std::path::PathBuf) {
     });
     let started = EndpointConfig::for_app(data).and_then(|cfg| Endpoint::start(core, sink, cfg));
     if let Ok(endpoint) = started {
+        // The popup's Open Lockdown brings the main window forward
+        // (docs/plan/37-cli-popup.md §2).
+        let window = handle.clone();
+        endpoint.on_show(Box::new(move || {
+            let main = window
+                .get_webview_window("main")
+                .ok_or("the app's window isn't open")?;
+            let _ = main.unminimize();
+            main.show().map_err(|e| e.to_string())?;
+            let _ = main.set_focus();
+            Ok(())
+        }));
         handle.manage(Arc::new(endpoint));
     }
 }

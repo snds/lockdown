@@ -8,6 +8,7 @@ import type { LockReason, Probe, Status } from "@/core/types"
 import { needsEmailApproval, needsSecurityKey } from "@/features/depth/depth-client"
 import { JoinWithDevice, SecondFactorWait } from "@/features/depth/join-device"
 
+import { useDemoEntry } from "./demo-entry"
 import { FirstRunCreate, Step } from "./first-run"
 
 interface UnlockScreenProps {
@@ -131,6 +132,7 @@ function AttachForm({ probe, reason, onOpened }: { probe: Probe; reason?: LockRe
 /** Screen 1 of the first run (D94): the tagline, once, and the three doors. */
 function FirstRun({ onOpened }: { onOpened: (s: Status) => void }) {
   const [creating, setCreating] = useState(false)
+  const demo = useDemoEntry()
   if (creating) {
     return (
       <Frame>
@@ -171,6 +173,14 @@ function FirstRun({ onOpened }: { onOpened: (s: Status) => void }) {
             <JoinForm mode="recover" onOpened={onOpened} />
           </TabsContent>
         </Tabs>
+        {/* Only in a build with the demo (docs/plan/40-devtools.md §3). */}
+        {demo && (
+          <p className="text-center text-sm text-muted-foreground">
+            <Button variant="link" size="inline" onClick={demo.explore} disabled={demo.busy}>
+              {demo.busy ? "Opening the demo…" : "Explore the demo"}
+            </Button>
+          </p>
+        )}
       </Step>
     </Frame>
   )

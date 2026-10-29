@@ -40,6 +40,7 @@ docker run --rm \
   -e SOURCE_DATE_EPOCH="$epoch" -e SNAPSHOT="$snapshot" \
   -e RUST="$rust" -e RUSTUP="$rustup" -e RUSTUP_SHA256="$rustup_sha256" \
   -e NODE="$node" -e NODE_SHA256="$node_sha256" \
+  -e LOCKDOWN_DEVTOOLS="${LOCKDOWN_DEVTOOLS:-on}" \
   "$image" bash /src/packaging/repro/desktop-container.sh
 # The container ran as root; hand the files back.
 docker run --rm -v "$out:/out" -v "$root:/src" "$image" \

@@ -6,6 +6,8 @@ import react from "@vitejs/plugin-react"
 import type { Plugin } from "vite"
 import { defineConfig } from "vitest/config"
 
+import { iconCodepoints } from "../desktop/scripts/icon-codepoints.ts"
+
 const here = import.meta.dirname
 const desktop = path.resolve(here, "../desktop/src")
 const wasm = path.resolve(here, "wasm/lockdown_web.wasm")
@@ -75,7 +77,8 @@ if (process.env.NODE_ENV === "production" && !existsSync(wasm)) {
 
 export default defineConfig({
   base: "/vault/",
-  plugins: [sonnerWithoutInlineStyle(), react(), tailwindcss(), subresourceIntegrity()],
+  // The icons' codepoints from the shipped font, for the desktop's views and the vault's own (docs/plan/38-mac-fixes.md §2).
+  plugins: [sonnerWithoutInlineStyle(), react(), tailwindcss(), subresourceIntegrity(), iconCodepoints({ root: here, dirs: [desktop, path.resolve(here, "src")] })],
   define: {
     __LOCKDOWN_WASM_SHA384__: JSON.stringify(wasmHash()),
   },

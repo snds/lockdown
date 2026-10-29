@@ -1,0 +1,59 @@
+diff --git a/dist/components/icon.d.ts b/dist/components/icon.d.ts
+index 401f882..df7372b 100644
+--- a/dist/components/icon.d.ts
++++ b/dist/components/icon.d.ts
+@@ -19,6 +19,13 @@ export interface IconProps extends Omit<SVGProps<SVGSVGElement>, "name" | "fill"
+ }
+ /** Semantic inks an icon can take on its own, outside a control that colors it. */
+ export type IconTone = "muted" | "destructive";
++/**
++ * Gives Icon the private-use codepoint of each icon the app uses, by name,
++ * so it draws the glyph by codepoint rather than by its ligature (which
++ * Apple's WebKit does not shape inside SVG text). A name left out is drawn
++ * as its ligature.
++ */
++export declare function setIconCodepoints(codepoints: Readonly<Record<string, number>>): void;
+ /**
+  * Material Symbols, rendered as the glyph inside an <svg>.
+  *
+diff --git a/dist/components/icon.js b/dist/components/icon.js
+index c9118e8..5ec0400 100644
+--- a/dist/components/icon.js
++++ b/dist/components/icon.js
+@@ -4,6 +4,19 @@ const TONES = {
+     muted: "text-muted-foreground",
+     destructive: "text-destructive",
+ };
++/**
++ * The private-use codepoint of each icon the app draws, by name. Apple's
++ * WebKit (Safari, WKWebView) does not shape ligatures inside SVG <text>, so
++ * an icon drawn by its name there comes out as blank letters; drawn by its
++ * codepoint it is one glyph in every engine. The app hands the map over
++ * once at start (`setIconCodepoints`, worked out from the shipped font at
++ * build time); a name without one is still drawn as its ligature.
++ */
++let CODEPOINTS = new Map();
++/** Gives Icon the codepoint of each icon the app uses, by name. */
++export function setIconCodepoints(codepoints) {
++    CODEPOINTS = new Map(Object.entries(codepoints));
++}
+ /**
+  * Material Symbols, rendered as the glyph inside an <svg>.
+  *
+@@ -23,6 +36,7 @@ export function Icon({ name, fill, weight, grade, opticalSize, label, tone, clas
+         ...(grade !== undefined && { "--c-icon-grad": grade }),
+         ...(opticalSize !== undefined && { "--c-icon-opsz": opticalSize }),
+     };
++    const codepoint = CODEPOINTS.get(name);
+     return (_jsx("svg", { "data-slot": "icon", viewBox: "0 0 24 24", 
+         // Presentation attributes lose to any CSS size class, so shadcn's
+         // size-* rules and caller classNames still win.
+@@ -31,6 +45,6 @@ export function Icon({ name, fill, weight, grade, opticalSize, label, tone, clas
+                 fontFeatureSettings: '"liga"',
+                 fontVariationSettings: "'FILL' var(--c-icon-fill), 'wght' var(--c-icon-wght), 'GRAD' var(--c-icon-grad), 'opsz' var(--c-icon-opsz)",
+                 transition: "--c-icon-fill var(--g-duration-base) var(--g-ease-standard), --c-icon-wght var(--g-duration-base) var(--g-ease-standard)",
+-            }, children: name }) }));
++            }, "data-icon-name": name, children: codepoint === undefined ? name : String.fromCodePoint(codepoint) }) }));
+ }
+ //# sourceMappingURL=icon.js.map
+\ No newline at end of file

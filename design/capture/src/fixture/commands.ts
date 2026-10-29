@@ -4,6 +4,7 @@
 // reviewer makes (trash, restore, organize, dismiss) change the world, so
 // the screens behave as the app does for the length of a page load.
 
+import { MARKER as DEVTOOLS_MARKER } from "@/devtools/marker"
 import type {
   ApprovalRoute,
   CodeAdvanced,
@@ -312,7 +313,7 @@ export function commands(world: World): Record<string, Handler> {
     open_clock_settings: () => false,
 
     // --- account and recovery --------------------------------------------------------
-    account_register: () => oncePage(["Your account is made on vault.rivera.example.", "Print the kit or write it down now: it is shown once."], KIT),
+    account_register: () => oncePage(["Your account is made on vault.rivera.example.", "Save, print or write down the kit now: it is shown once."], KIT),
     account_register_opted_out: () => oncePage(["Your account is made without a Secret Key."], KIT.replace(/^Secret Key:.*\n/m, "")),
     account_login: () => ["Signed in to vault.rivera.example as sam@rivera.example.", "Synced: 1,842 changes received."],
     recover: () => ["Recovered with the kit. This device is enrolled and its key is in the identity."],
@@ -877,5 +878,12 @@ export function commands(world: World): Record<string, Handler> {
     page_key_request: () => ({ pending_id: uid("pending", 2), challenge: [1, 2, 3], rp_id: "vault.rivera.example", rp_name: "Lockdown", user_id: [1], user_name: PERSON.login, exclude: [], timeout_ms: 120_000 }),
     page_key_finish: () => undefined,
     security_key_add_page: () => `${PERSON.server}/vault/#/security-key/${uid("pending", 3)}`,
+    // Paper (docs/plan/38-mac-fixes.md): the shell's print panel and the kit's save dialog are the OS's, never drawn here;
+    // the fake answers as the shell does once the person printed or picked a place.
+    print_page: () => undefined,
+    kit_save_pdf: () => true,
+    kit_pdf: () => bytes("%PDF-1.7"),
+    // The developer tools (docs/plan/40-devtools.md), as a development build has them: the demo closed.
+    "plugin:devtools|status": () => ({ marker: DEVTOOLS_MARKER, reset: true, demo: { open: false, items: 0 } }),
   }
 }

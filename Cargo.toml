@@ -26,6 +26,7 @@ members = [
     "crates/web",
     "crates/pipe",
     "crates/codesign",
+    "crates/devtools",
 ]
 # The pure-Rust crates: everything that builds on CI without a platform SDK.
 # `ffi` and `wasm` are built with the shells, which bring UniFFI and the wasm
@@ -55,6 +56,7 @@ default-members = [
     "crates/web",
     "crates/pipe",
     "crates/codesign",
+    "crates/devtools",
 ]
 
 [workspace.package]
@@ -92,6 +94,9 @@ lockdown-passkey = { path = "crates/passkey", version = "0.1.0" }
 lockdown-tls = { path = "crates/tls", version = "0.1.0" }
 lockdown-pipe = { path = "crates/pipe", version = "0.1.0" }
 lockdown-codesign = { path = "crates/codesign", version = "0.1.0" }
+# The developer reset and the demo: the desktop's `dev-reset` and
+# `demo-vault` features only, never a release (docs/plan/40-devtools.md).
+lockdown-devtools = { path = "crates/devtools", version = "0.1.0", default-features = false }
 
 # Cryptography: the same crates and versions the identity crate uses, so one
 # copy of each is linked (04-security.md §4–§5, 01-identity.md §10a).
@@ -131,6 +136,11 @@ qrcode = { version = "0.14", default-features = false }
 # (docs/plan/26-desktop-finish.md §3): the grid finder and decoder only,
 # no image crate (MIT OR Apache-2.0, AND ISC for its Reed-Solomon part).
 rqrr = { version = "0.11", default-features = false }
+# The recovery kit as a PDF (docs/plan/38-mac-fixes.md §4): typst's
+# step-by-step writer, pure Rust, no unsafe in its own code, four small
+# dependencies the lock file already holds (bitflags, itoa, memchr, ryu);
+# MIT OR Apache-2.0.
+pdf-writer = "0.15"
 
 # Encoding and data.
 serde = { version = "1.0", features = ["derive"] }

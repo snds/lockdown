@@ -2,7 +2,7 @@
 //! §4, the message table). Every request is `{"id", "op", …}`; every answer
 //! is `{"id", "ok": true, "result"}` or `{"id", "ok": false, "error":
 //! {"code", "message"}}`. Until the connection proves a pairing, only
-//! `status`, `pair_begin`, `pair_status` and `auth` are answered.
+//! `status`, `pair_begin`, `pair_status`, `auth` and `show` are answered.
 //!
 //! A value to fill leaves here once: serialised straight from the core's
 //! bytes into the answer frame, which the caller wipes after sending.
@@ -165,9 +165,21 @@ pub fn handle(shared: &Shared, conn: &mut Conn, frame: &[u8]) -> Zeroizing<Vec<u
         "pair_status" => args::<ClientRef>(frame)
             .map(|a| json!({ "state": shared.pairings().state(&a.client_id) })),
         "auth" => auth(shared, conn, frame),
+        // Open Lockdown from the popup (docs/plan/37-cli-popup.md §2): the
+        // window comes forward, paired or not; nothing else is answered.
+        "show" => shared
+            .show_window()
+            .map(|()| json!({ "shown": true }))
+            .map_err(|m| Refusal::new("unsupported", m)),
         _ if conn.client.is_none() => Err(Refusal::new(
             "not_paired",
             "pair this browser with Lockdown first",
+        )),
+        // A confined home (the developer demo, docs/plan/40-devtools.md §3)
+        // never answers a page: it reads as locked.
+        _ if confined(shared) => Err(Refusal::new(
+            "locked",
+            "Lockdown is showing its demo; leave the demo to fill from your vault",
         )),
         "matches" => args::<Matches>(frame).and_then(|a| {
             let m = shared.app.page_matches(&a.frame)?;
@@ -227,8 +239,13 @@ pub fn error_frame(id: &Value, r: &Refusal) -> Zeroizing<Vec<u8>> {
     )
 }
 
+/// Whether the app is in a confined home (`lockdown_app::App::rehome`).
+fn confined(shared: &Shared) -> bool {
+    shared.app.confinement().map_or(true, |c| c.is_some())
+}
+
 fn status(shared: &Shared, conn: &Conn) -> Value {
-    let locked = shared.app.lock_state().map(|s| s.locked).unwrap_or(true);
+    let locked = confined(shared) || shared.app.lock_state().map(|s| s.locked).unwrap_or(true);
     json!({
         "locked": locked,
         "paired": conn.client.is_some(),

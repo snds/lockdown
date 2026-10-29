@@ -106,6 +106,19 @@ test("nothing fills before the browser is paired", async () => {
   await page.close();
 });
 
+// docs/plan/37-cli-popup.md §2 (review R16): where the popup can't act it
+// offers Open Lockdown; with the app running, its window comes forward,
+// paired or not.
+test("an unpaired popup opens Lockdown, which brings the app's window forward", async () => {
+  const p = await popup();
+  await expect(p.getByRole("button", { name: "Pair with Lockdown" })).toBeVisible({ timeout: 30_000 });
+  const shown = desktop.next("shown");
+  await p.getByRole("button", { name: "Open Lockdown" }).click();
+  await shown;
+  await expect(p.getByRole("status")).toHaveText("Lockdown is open on this computer.");
+  await p.close();
+});
+
 test("pairing shows the same code in the browser and the app, and the app approves it", async () => {
   const p = await popup();
   await p.getByRole("button", { name: "Pair with Lockdown" }).click();
@@ -178,6 +191,49 @@ test("red team: a page that covers Lockdown's menu cannot click through it", asy
   await page.close();
 });
 
+// Review R17 (D159, D206): while a choice waits out its 400 ms it says it is
+// about to work, an underline that fills, at full colour; covered, it looks
+// disabled; armed, plainly enabled. Under reduced motion the underline
+// doesn't move.
+for (const motion of ["no-preference", "reduce"] as const) {
+  test(`a menu choice shows it is arming, then looks plainly enabled (motion: ${motion})`, async () => {
+    const page = await ctx.newPage();
+    await page.emulateMedia({ reducedMotion: motion });
+    await page.goto(at("localhost", "/ext/login.html?case=cover-menu-briefly"));
+    await page.focus("#user");
+    const menu = await lockdownFrame(page);
+    // Watched from inside the frame, every animation frame, until armed.
+    const seen = await menu.evaluate(
+      () =>
+        new Promise<{ covered: boolean; arming: string[]; armed: { opacity: string; arming: boolean } | null }>((resolve) => {
+          const out = { covered: false, arming: [] as string[], armed: null as { opacity: string; arming: boolean } | null }
+          const end = Date.now() + 8000
+          const look = () => {
+            const b = document.querySelector<HTMLButtonElement>("button.item")
+            if (b) {
+              const opacity = getComputedStyle(b).opacity
+              const after = getComputedStyle(b, "::after")
+              if (b.disabled && !b.dataset.arming && opacity === "0.6") out.covered = true
+              if (b.disabled && b.dataset.arming && out.covered) out.arming.push(`${opacity} ${after.animationName} ${after.content}`)
+              if (!b.disabled && out.arming.length > 0) {
+                out.armed = { opacity, arming: "arming" in b.dataset }
+                return resolve(out)
+              }
+            }
+            if (Date.now() > end) return resolve(out)
+            requestAnimationFrame(look)
+          }
+          look()
+        }),
+    );
+    expect(seen.covered).toBe(true);
+    expect(seen.arming.length).toBeGreaterThan(0);
+    expect(new Set(seen.arming)).toEqual(new Set([`1 ${motion === "reduce" ? "none" : "ld-arm"} ""`]));
+    expect(seen.armed).toEqual({ opacity: "1", arming: false });
+    await page.close();
+  });
+}
+
 test("red team: a lookalike page gets a hard stop, in the menu and the popup", async () => {
   const page = await ctx.newPage();
   await page.goto(at("paypal.com.evil.net", "/ext/login.html"));
@@ -221,6 +277,8 @@ test("a one-time code fills after the second action, single field and split boxe
   await expect(page.locator("#code")).toHaveValue("");
   await menu.getByRole("button", { name: "Fill code" }).click();
   const code = await desktop.ask(`code ${items.local}`, "code");
+  // The fill lands after the endpoint answers; wait for it rather than read at once.
+  await expect(page.locator("#code")).not.toHaveValue("");
   const filled = await page.locator("#code").inputValue();
   expect([code.code, code.next]).toContain(filled);
 
@@ -327,6 +385,58 @@ test("the popup's quick access forgives a typo and shows a code, never its set-u
   await results.getByRole("button", { name: "Show code for Shop code" }).click();
   await expect(p.getByLabel(/^Code \d \d \d \d \d \d$/)).toBeVisible();
   await expect(p.locator("body")).not.toContainText("JBSWY3DP");
+  // One action per row (review R16): while the code shows, that same place
+  // copies it, through the app.
+  await expect(results.getByRole("button", { name: "Show code for Shop code" })).toHaveCount(0);
+  const copied = desktop.next("copied");
+  await results.getByRole("button", { name: "Copy code" }).click();
+  expect((await copied).len).toBe(6);
+  await p.close();
+});
+
+// Review R16: every result is one row, the kind's glyph, the title, one line
+// under it and one action at the trailing edge, which never wraps under the
+// words however long they run; text is 13 px or more.
+test("every popup result has one row anatomy with its action trailing, at 13 px or more", async () => {
+  await desktop.ask(
+    "login http://long.test someone.with.a.long.address@example.com long-pass-6 A login whose title runs well past the width of the popup",
+    "login",
+  );
+  const p = await popup();
+  await p.getByRole("searchbox").fill("login whose title runs");
+  const results = p.getByRole("list", { name: "Results" });
+  const row = results.getByRole("listitem").filter({ hasText: "A login whose title runs" });
+  await expect(row).toHaveCount(1);
+  await expect(row.getByRole("button")).toHaveCount(1);
+  const geometry = await row.evaluate((el) => {
+    const box = (sel: string) => el.querySelector(sel)!.getBoundingClientRect();
+    const glyph = box('[data-slot="item-media"]');
+    const title = box('[data-slot="item-title"]');
+    const sub = box('[data-slot="item-description"]');
+    const action = box('[data-slot="item-actions"]');
+    const row = el.getBoundingClientRect();
+    return { glyph, title, sub, action, row };
+  });
+  // Glyph first, words, then the action at the trailing edge, beside the
+  // title and the subtitle rather than under them, inside the row.
+  expect(geometry.glyph.right).toBeLessThanOrEqual(geometry.title.left + 1);
+  expect(geometry.action.left).toBeGreaterThanOrEqual(geometry.title.right - 1);
+  expect(geometry.action.left).toBeGreaterThanOrEqual(geometry.sub.right - 1);
+  expect(geometry.action.top).toBeLessThan(geometry.sub.bottom);
+  expect(geometry.action.right).toBeLessThanOrEqual(geometry.row.right);
+  // The subtitle is one line, cut short rather than wrapped.
+  expect(geometry.sub.height).toBeLessThan(28);
+  // Every word the popup draws, but the badges, is 13 px or more (the
+  // screen-reader-only heading and the glyphs' ligatures are not drawn).
+  await p.getByRole("searchbox").fill("local");
+  await expect(results.getByRole("listitem").first()).toBeVisible();
+  const small = await p.evaluate(() =>
+    Array.from(document.querySelectorAll("main *"))
+      .filter((el) => !el.closest('[data-slot="badge"], [aria-hidden="true"], .sr-only') && Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.textContent!.trim()))
+      .map((el) => [el.textContent!.trim(), parseFloat(getComputedStyle(el).fontSize)] as const)
+      .filter(([, px]) => px < 13),
+  );
+  expect(small).toEqual([]);
   await p.close();
 });
 
@@ -385,6 +495,14 @@ test("a locked app says so instead of filling", async () => {
   await page.focus("#user");
   const menu = await lockdownFrame(page);
   await expect(menu.locator("body")).toContainText("locked");
+  // The popup can't search while locked; it opens Lockdown to unlock there.
+  const p = await popup();
+  await expect(p.getByText("Lockdown is locked. Unlock it in the app to fill and search.")).toBeVisible();
+  const shown = desktop.next("shown");
+  await p.getByRole("button", { name: "Open Lockdown" }).click();
+  await shown;
+  await expect(p.getByRole("status")).toHaveText("Lockdown is open on this computer. Unlock it there to fill and search.");
+  await p.close();
   await desktop.ask("unlock", "unlocked");
   await page.close();
 });

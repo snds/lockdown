@@ -2,6 +2,7 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 
 import { ClientProvider } from "@/core/client"
+import "@/app/icon-codepoints"
 
 import "sonner/dist/styles.css"
 import "./index.css"

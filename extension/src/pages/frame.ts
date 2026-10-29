@@ -87,12 +87,22 @@ function deliberate(e: MouseEvent | KeyboardEvent): boolean {
 }
 
 /** Buttons stay disabled until the frame has been on screen, uncovered, for
- *  a moment, and go disabled again whenever something covers it. */
+ *  a moment, and go disabled again whenever something covers it. While a
+ *  button waits out that moment it says it is about to work (design review
+ *  R17): `data-arming` draws an underline that fills over what is left of
+ *  the 400 ms (static under reduced motion, ui.css), and the button keeps
+ *  its full colours; covered, it looks disabled; armed, plainly enabled. */
 function arm() {
   const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>("button:not(.close)"))
   const update = () => {
-    const ready = visible !== false && Date.now() - shownAt >= SETTLE_MS
-    for (const b of buttons) if (b.dataset.busy !== "1") b.disabled = !ready
+    const waited = Date.now() - shownAt
+    const covered = visible === false
+    const ready = !covered && waited >= SETTLE_MS
+    for (const b of buttons) {
+      if (b.dataset.busy === "1") continue
+      b.disabled = !ready
+      cue(b, !ready && !covered, waited)
+    }
     return ready
   }
   if (!update()) {
@@ -101,6 +111,22 @@ function arm() {
       else update()
     }, 100)
   }
+}
+
+/** Starts, restarts or ends a button's arming cue. A cue starts part way
+ *  through when the wait began before the button was drawn, and starts
+ *  again from empty when the wait does (the frame was covered meanwhile). */
+function cue(b: HTMLButtonElement, arming: boolean, waited: number) {
+  if (!arming) {
+    delete b.dataset.arming
+    return
+  }
+  const since = String(shownAt)
+  if (b.dataset.arming === since) return
+  delete b.dataset.arming
+  void b.offsetWidth
+  b.style.setProperty("--ld-arm-at", `-${Math.max(0, Math.min(waited, SETTLE_MS))}ms`)
+  b.dataset.arming = since
 }
 
 async function pick(data: MenuData, itemId: string, what: PickWhat, field: string | null, confirmed: boolean) {

@@ -15,11 +15,12 @@ pnpm install --frozen-lockfile
 pnpm build                  # dist/: the harness, built once
 pnpm capture                # every state → /home/user/design-capture/2026-10-29/
 pnpm review:build           # dist/ checked and copied to /home/user/design-capture/review-build/
+pnpm engine:check           # the desktop screens in WebKit and Chromium: icons, print, a smoke (CI's `engines` job)
 pnpm dev                    # the same page with Vite's dev server, for working on states
 pnpm typecheck && pnpm lint # what CI runs (the `design-capture` job)
 ```
 
-Chromium comes from `PLAYWRIGHT_BROWSERS_PATH`; the capture never installs one. `pnpm capture` takes `--out <dir>`, `--only <id prefix>` (repeatable), `--widths 1280,390`, `--themes light`, `--jobs 3` and `--skip-axe`; with `--only`, the re-taken states' images replace their earlier ones in the manifest, `axe.json` and the log, and every other entry stays. `pnpm review:build` takes `--out <dir>` and fails if the build breaks the host's limits (16 MB, 255 files, absolute paths).
+Chromium comes from `PLAYWRIGHT_BROWSERS_PATH`; the capture never installs one. `pnpm engine:check --engines webkit,chromium --out <dir>` opens the main desktop screens in each engine named (the Mac app runs in WKWebView, so WebKit is the one that matters), fails when an icon doesn't draw as one glyph or a page that prints alone would print the app behind it, and writes `engine-check.json` and a PNG per screen and engine; WebKit is installed by CI on its runner, not here ([doc 38](../../docs/plan/38-mac-fixes.md)). `pnpm capture` takes `--out <dir>`, `--only <id prefix>` (repeatable), `--widths 1280,390`, `--themes light`, `--jobs 3` and `--skip-axe`; with `--only`, the re-taken states' images replace their earlier ones in the manifest, `axe.json` and the log, and every other entry stays. `pnpm review:build` takes `--out <dir>` and fails if the build breaks the host's limits (16 MB, 255 files, absolute paths).
 
 In the review build, `#/` is the list of every surface, screen and state; `#/<state id>` opens one (`#/desktop-vault-filled`), and every image id in the manifest opens too (`#/desktop-vault-filled--w390-dark` lands on that state, dark, at that width). The bar at the bottom goes back to the list, switches light and dark, and switches the width: Phone draws the state in the page; 900 and 1280 draw it in a frame that wide, scaled to fit, so the apps' own breakpoints see a desktop window.
 

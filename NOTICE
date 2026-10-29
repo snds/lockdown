@@ -23,3 +23,9 @@ snapshot of quirks/password-rules.json from Apple's password-manager-resources
 (https://github.com/apple/password-manager-resources), Copyright 2020-2026
 Apple Inc., under the MIT License; the full notice is in
 crates/app/data/password-rules.LICENSE.
+
+The recovery kit's PDF (crates/app/src/kit_pdf.rs) embeds JetBrains Mono
+Regular and Bold (crates/app/assets/fonts/), cut down to the Windows-1252
+characters, Copyright 2020 The JetBrains Mono Project Authors
+(https://github.com/JetBrains/JetBrainsMono), under the SIL Open Font License
+1.1; the licence is in crates/app/assets/fonts/OFL.txt.
