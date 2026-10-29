@@ -29,11 +29,14 @@
   "D482": {"verdict": "accepted", "note": "Everything Lockdown keeps on the device, found by the app's identifier and its own data folder; a guard refuses anything near the top of the disk or above the home folder."},
   "D483": {"verdict": "accepted", "note": "The shared identity is erased only when no other app is named in it, so a reset can't take Mailbird's or Synapse's keys with it."},
   "D487": {"verdict": "accepted", "note": "Every kind and the edge cases Sean asked for; password age isn't checked by Watchtower yet, so 'old passwords' waits on that."},
-  "D488": {"verdict": "accepted", "note": "Records Sean's Q5 call: the demo opens from first run with no account, a bar on every screen, and Leave the demo."}
+  "D488": {"verdict": "accepted", "note": "Records Sean's Q5 call: the demo opens from first run with no account, a bar on every screen, and Leave the demo."},
+  "D466": {"verdict": "accepted", "note": "The master password through --master-password-stdin, LOCKDOWN_MASTER_PASSWORD or a prompt. One follow-up: lockdown init without --name still makes a passwordless install for old scripts; that should become a refusal or a prompt, so a command-line-only install is sealed too."},
+  "D473": {"verdict": "accepted", "note": "The move copies everything and switches only once it's all there; a failed move leaves the vault as it was."},
+  "D475": {"verdict": "accepted", "note": "What Sean asked for: comfortable is roomier by default, compact by setting, all tokens."}
  },
  "areas": [
   {"id": "keys", "name": "Keys and encryption", "ids": "D30-D49,D379"},
-  {"id": "sign-in", "name": "Sign-in and recovery", "ids": "D50-D75,D245-D257,D400-D409"},
+  {"id": "sign-in", "name": "Sign-in and recovery", "ids": "D50-D75,D245-D257,D400-D409,D460-D479"},
   {"id": "sync", "name": "Sync and the public log", "ids": "D76-D89"},
   {"id": "vault", "name": "Vault and items", "ids": "D100-D123,D146-D155,D230-D244,D272,D305-D319"},
   {"id": "security", "name": "Security center", "ids": "D125-D134,D261,D270"},
