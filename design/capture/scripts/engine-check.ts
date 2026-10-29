@@ -53,6 +53,8 @@ interface IconMeasure {
   advance: number
   /** The text's box, in the same units. */
   box: { width: number; height: number }
+  /** Drawn by its name (the ligature) rather than by its codepoint. */
+  byName: boolean
 }
 
 interface StateReport {
@@ -85,12 +87,12 @@ async function measure(page: Page): Promise<{ fontLoaded: boolean; fontFaces: St
       if (!text) {
         const glyph = svg.querySelector<SVGGraphicsElement>("[data-glyph]") ?? svg
         const b = glyph.getBBox()
-        icons.push({ name: svg.getAttribute("data-icon-name") ?? "?", advance: b.width, box: { width: b.width, height: b.height } })
+        icons.push({ name: svg.getAttribute("data-icon-name") ?? "?", advance: b.width, box: { width: b.width, height: b.height }, byName: false })
         continue
       }
       const name = text.getAttribute("data-icon-name") ?? text.textContent ?? ""
       const box = text.getBBox()
-      icons.push({ name, advance: text.getComputedTextLength(), box: { width: box.width, height: box.height } })
+      icons.push({ name, advance: text.getComputedTextLength(), box: { width: box.width, height: box.height }, byName: text.textContent === name })
     }
     return { fontLoaded, fontFaces, icons }
   })
@@ -152,6 +154,9 @@ async function runEngine(name: string, site: string): Promise<{ engine: string; 
         const sample = wrong.slice(0, 4).map((i) => `${i.name} ${i.advance.toFixed(1)} wide`)
         failures.push(`${state}: ${wrong.length} of ${m.icons.length} icons are not one glyph (${sample.join("; ")})`)
       }
+      // Every icon by its codepoint: a name the build missed would draw as a ligature, which Apple's WebKit leaves blank.
+      const byName = [...new Set(m.icons.filter((i) => i.byName).map((i) => i.name))]
+      if (byName.length) failures.push(`${state}: ${byName.length} icons drawn by name, not codepoint (${byName.slice(0, 6).join(", ")})`)
       if (print && (print.rootHidden !== true || print.pageShown !== true)) {
         failures.push(`${state}: printing would not print the page alone (app hidden: ${print.rootHidden}, page shown: ${print.pageShown})`)
       }
