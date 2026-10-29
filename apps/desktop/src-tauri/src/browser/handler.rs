@@ -175,6 +175,12 @@ pub fn handle(shared: &Shared, conn: &mut Conn, frame: &[u8]) -> Zeroizing<Vec<u
             "not_paired",
             "pair this browser with Lockdown first",
         )),
+        // A confined home (the developer demo, docs/plan/40-devtools.md §3)
+        // never answers a page: it reads as locked.
+        _ if confined(shared) => Err(Refusal::new(
+            "locked",
+            "Lockdown is showing its demo; leave the demo to fill from your vault",
+        )),
         "matches" => args::<Matches>(frame).and_then(|a| {
             let m = shared.app.page_matches(&a.frame)?;
             Ok(json!(m))
@@ -233,8 +239,13 @@ pub fn error_frame(id: &Value, r: &Refusal) -> Zeroizing<Vec<u8>> {
     )
 }
 
+/// Whether the app is in a confined home (`lockdown_app::App::rehome`).
+fn confined(shared: &Shared) -> bool {
+    shared.app.confinement().map_or(true, |c| c.is_some())
+}
+
 fn status(shared: &Shared, conn: &Conn) -> Value {
-    let locked = shared.app.lock_state().map(|s| s.locked).unwrap_or(true);
+    let locked = confined(shared) || shared.app.lock_state().map(|s| s.locked).unwrap_or(true);
     json!({
         "locked": locked,
         "paired": conn.client.is_some(),

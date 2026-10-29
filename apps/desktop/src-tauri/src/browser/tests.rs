@@ -340,6 +340,28 @@ fn locked_is_said_plainly() {
 }
 
 #[test]
+fn a_confined_home_reads_as_locked_and_answers_no_page() {
+    let rig = rig();
+    let mut host = paired(&rig);
+    let elsewhere = tempfile::tempdir().unwrap();
+    let demo = Paths::resolve(Some(elsewhere.path().join("snds/identity")), None).unwrap();
+    let home = rig
+        .app
+        .rehome(demo, Some("the demo never goes online".into()))
+        .unwrap();
+    rig.app.open_or_create(true).unwrap();
+    assert_eq!(host.ok("status", json!({}))["locked"], true);
+    assert_eq!(
+        host.err("matches", json!({ "frame": "https://example.com" })),
+        "locked"
+    );
+    assert_eq!(host.err("wallet", json!({})), "locked");
+    rig.app.rehome(home, None).unwrap();
+    rig.app.unlock().unwrap();
+    assert_eq!(host.ok("status", json!({}))["locked"], false);
+}
+
+#[test]
 fn another_extension_or_an_untrusted_program_is_refused_at_once() {
     let rig = rig();
     let other = Caller {

@@ -22,6 +22,7 @@
 pub mod approval;
 pub mod bridges;
 pub mod browser;
+mod confine;
 pub mod depth;
 pub mod devices;
 pub mod hygiene;
@@ -207,6 +208,9 @@ struct Core {
     quick_fills: Vec<quick::PendingFill>,
     /// The scan flow's gate, last outcome and waiting activations (`scan`).
     scan: scan::ScanState,
+    /// Set in a confined home (`confine`): the sentence exports and
+    /// backups are refused with.
+    confined: Option<String>,
 }
 
 impl Core {
@@ -238,6 +242,7 @@ impl Core {
             bridges: bridges::BridgesState::default(),
             quick_fills: Vec::new(),
             scan: scan::ScanState::default(),
+            confined: None,
         }
     }
 
@@ -912,6 +917,7 @@ impl App {
         let format = format.to_string();
         self.call(move |core| {
             core.clock.touch(Instant::now());
+            core.refuse_confined()?;
             core.approve(ApprovalKind::Reveal, "export the vault", &gate)?;
             let bytes = core
                 .session()?

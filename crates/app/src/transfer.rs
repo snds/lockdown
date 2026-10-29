@@ -22,6 +22,9 @@ impl Core {
     /// the vault awake.
     pub(crate) fn backup_tick(&mut self) {
         let cfg = self.settings.backup.clone();
+        if self.confined.is_some() {
+            return;
+        }
         let Some(session) = self.session.as_mut() else {
             return;
         };
@@ -84,7 +87,13 @@ impl App {
     /// or the one `vault` names.
     pub fn export_preview(&self, format: &str, vault: Option<String>) -> AppResult<ExportPreview> {
         let format = format.to_string();
-        self.with_session(move |s| s.export_preview(&format, vault.as_deref()))
+        self.call(move |core| {
+            core.clock.touch(Instant::now());
+            core.refuse_confined()?;
+            core.session()?
+                .export_preview(&format, vault.as_deref())
+                .map_err(AppError::refused)
+        })
     }
 
     /// Writes every vault (or the one `vault` names) in `format` to `path` (the person chose it in the
@@ -105,6 +114,7 @@ impl App {
         let password = password.map(Zeroizing::new);
         self.call(move |core| {
             core.clock.touch(Instant::now());
+            core.refuse_confined()?;
             let sealed = password.as_ref().is_some_and(|p| !p.is_empty())
                 && matches!(format.as_str(), "lockdown" | "kdbx");
             if !sealed && !plain_confirmed {
@@ -174,6 +184,7 @@ impl App {
         let password = password.map(Zeroizing::new);
         self.call(move |core| {
             core.clock.touch(Instant::now());
+            core.refuse_confined()?;
             let dir = PathBuf::from(folder.trim());
             if !dir.is_absolute() || !dir.is_dir() {
                 return Err(AppError::refused(format!(
@@ -211,6 +222,7 @@ impl App {
     pub fn backup_now(&self) -> AppResult<BackupStatus> {
         self.call(|core| {
             core.clock.touch(Instant::now());
+            core.refuse_confined()?;
             let cfg = core.settings.backup.clone();
             let session = core.session()?;
             session.backup_run(&cfg).map_err(AppError::refused)?;

@@ -108,6 +108,39 @@ fn ensure_tls_provider() {
     lockdown_tls::install_default_provider();
 }
 
+static HOLD: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+
+/// Holds every request this process makes through [`HttpFetch`] (breach
+/// ranges, change-password pages, alias services) until called again with
+/// `None`; each fails with `reason`. The same switch as
+/// `lockdown_sync::hold_network`, for this crate's client
+/// (docs/plan/40-devtools.md §3).
+pub fn hold_network(reason: Option<String>) {
+    match HOLD.write() {
+        Ok(mut held) => *held = reason,
+        Err(poisoned) => *poisoned.into_inner() = reason,
+    }
+}
+
+/// Why requests are held, while they are.
+pub fn network_held() -> Option<String> {
+    match HOLD.read() {
+        Ok(held) => held.clone(),
+        Err(poisoned) => poisoned.into_inner().clone(),
+    }
+}
+
+#[cfg(feature = "http")]
+fn not_held(url: &str) -> Result<(), FetchError> {
+    match network_held() {
+        Some(why) => Err(FetchError::Network {
+            host: host_of(url),
+            why,
+        }),
+        None => Ok(()),
+    }
+}
+
 /// The real client.
 pub struct HttpFetch {
     #[cfg(feature = "http")]
@@ -204,6 +237,7 @@ impl HttpFetch {
 impl Fetch for HttpFetch {
     fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Fetched, FetchError> {
         allowed_address(url)?;
+        not_held(url)?;
         let mut req = self.client.get(url);
         for (name, value) in headers {
             req = req.header(*name, *value);
@@ -213,6 +247,7 @@ impl Fetch for HttpFetch {
 
     fn send(&self, request: &Request<'_>) -> Result<Fetched, FetchError> {
         allowed_address(request.url)?;
+        not_held(request.url)?;
         let method = reqwest::Method::from_bytes(request.method.as_bytes()).map_err(|_| {
             FetchError::BadAddress(format!("{} isn't an HTTP method", request.method))
         })?;
