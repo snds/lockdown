@@ -196,12 +196,14 @@ pub fn install_local_server(hook: LocalHook) -> bool {
     LOCAL_HOOK.set(hook).is_ok()
 }
 
-static LOCAL_CLOSE: std::sync::OnceLock<Box<dyn Fn(&std::path::Path) + Send + Sync>> =
-    std::sync::OnceLock::new();
+/// How a host closes the in-process server of one data directory.
+pub type LocalClose = Box<dyn Fn(&std::path::Path) + Send + Sync>;
+
+static LOCAL_CLOSE: std::sync::OnceLock<LocalClose> = std::sync::OnceLock::new();
 
 /// Installs how the in-process server of a data directory is closed (every
 /// file it holds let go), once per process, beside [`install_local_server`].
-pub fn install_local_server_close(close: Box<dyn Fn(&std::path::Path) + Send + Sync>) -> bool {
+pub fn install_local_server_close(close: LocalClose) -> bool {
     LOCAL_CLOSE.set(close).is_ok()
 }
 
