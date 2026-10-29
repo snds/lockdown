@@ -444,3 +444,42 @@ jobs:
         shell: pwsh
         run: |
           Get-ChildItem Cert:\LocalMachine\Root, Cert:\CurrentUser\My | Where-Object { $_.Subject -like "CN=Lockdown throwaway test signer*" } | Remove-Item
+
+  # The desktop UI in the engines it ships on (docs/plan/38-mac-fixes.md
+  # §2). The Mac app runs in WKWebView, which no other job opens: the
+  # review harness's build of the real desktop views goes to Playwright's
+  # WebKit, with Chromium beside it so the assertions are honest. Every
+  # icon must draw as one glyph, a page that prints alone must hide the
+  # app behind it, and the main screens are kept as screenshots.
+  engines:
+    name: desktop UI · webkit · chromium
+    # Pinned for the same reason as the extension and web jobs.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: design/capture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: design/capture/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: design/capture/pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: WebKit and Chromium
+        run: pnpm exec playwright install --with-deps webkit chromium
+      - name: Build the harness
+        run: pnpm build
+      - name: Icons, print and a smoke, in both engines
+        run: pnpm engine:check --engines webkit,chromium --out "$RUNNER_TEMP/engine-check"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: engine-check
+          path: ${{ runner.temp }}/engine-check
+          if-no-files-found: error

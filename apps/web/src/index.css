@@ -20,9 +20,3 @@
     overscroll-behavior: none;
   }
 }
-
-@media print {
-  body:has([data-print-page]) #root {
-    display: none;
-  }
-}
