@@ -3304,6 +3304,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "ecosystem-identity",
+ "lockdown-app",
  "lockdown-codes",
  "lockdown-crypto",
  "lockdown-matcher",

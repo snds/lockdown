@@ -236,75 +236,27 @@ impl Session {
 
     /// This identity's own devices: its records and the synced set.
     fn own_device_keys(&self) -> BTreeMap<Id, VerifyingKey> {
-        let mut keys = self.synced.device_keys();
-        for (id, key) in device_keys(&self.identity) {
-            keys.entry(id).or_insert(key);
-        }
-        keys
+        crate::vault_open::own_device_keys(&self.identity, &self.synced)
     }
 
     /// Every device this device knows the owner of: its own identity's
     /// (under this persona's account) and every pinned contact's.
     pub(super) fn device_table(&self) -> BTreeMap<Id, (Id, VerifyingKey)> {
-        let mut out = BTreeMap::new();
-        for c in self.sharing.contacts().values() {
-            for id in c.devices.keys() {
-                if let Some(key) = c.device_key(*id) {
-                    out.insert(*id, (c.account_id, key));
-                }
-            }
-        }
-        if let Some(me) = self.sharing.account_id() {
-            for (id, key) in self.own_device_keys() {
-                out.insert(id, (me, key));
-            }
-        }
-        out
+        crate::vault_open::device_table(&self.sharing, &self.own_device_keys())
     }
 
     fn device_keys_of(&self, account: Id) -> BTreeMap<Id, VerifyingKey> {
-        if Some(account) == self.sharing.account_id() {
-            return self.own_device_keys();
-        }
-        self.sharing
-            .contact(account)
-            .map(|c| {
-                c.devices
-                    .keys()
-                    .filter_map(|id| c.device_key(*id).map(|k| (*id, k)))
-                    .collect()
-            })
-            .unwrap_or_default()
+        crate::vault_open::device_keys_of(&self.sharing, &self.own_device_keys(), account)
     }
 
     fn replay(&self, vault_id: Id) -> Result<Option<Roster>, String> {
-        let Some(share) = self.sharing.vault(vault_id) else {
-            return Ok(None);
-        };
-        if share.events.is_empty() {
-            return Ok(None);
-        }
-        let events = share
-            .events
-            .iter()
-            .map(|b| MembershipEvent::from_bytes(b))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())?;
-        let table = self.device_table();
-        let lookup = |d: Id| table.get(&d).cloned();
-        Roster::replay(&events, &lookup)
-            .map(Some)
-            .map_err(|e| e.to_string())
+        crate::vault_open::roster(&self.sharing, &self.own_device_keys(), vault_id)
     }
 
     /// The keys of every device whose heads and versions a shared vault
     /// takes: the devices of every account that ever held `edit`.
     pub(super) fn writer_keys(&self, roster: &Roster) -> BTreeMap<Id, VerifyingKey> {
-        let mut out = BTreeMap::new();
-        for account in &roster.writers {
-            out.extend(self.device_keys_of(*account));
-        }
-        out
+        crate::vault_open::writer_keys(&self.sharing, &self.own_device_keys(), roster)
     }
 
     fn members_list(roster: &Roster) -> Vec<Member> {

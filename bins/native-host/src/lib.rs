@@ -18,8 +18,11 @@
 //!    frame (ready, or refused) to the browser, and then relays each
 //!    browser message to the desktop and each answer back, one at a time.
 //!
-//! It never parses a request beyond its `id`, never decrypts, keeps
-//! nothing, and writes no log: a fill's value passes through it once, in
+//! With no app to reach, it says so and answers one request: `launch`,
+//! which opens the desktop app ([`launch`]).
+//!
+//! It never parses a request beyond its `id` (and, with no app behind it,
+//! its `op`), never decrypts, keeps nothing, and writes no log: a fill's value passes through it once, in
 //! memory, on its way from the desktop to the extension.
 
 #![forbid(unsafe_code)]
@@ -33,6 +36,8 @@ use lockdown_native_messaging::framing::{read_message, write_message};
 use serde_json::json;
 
 pub use ecosystem_identity::handshake::ProcessIdentityVerifier;
+
+pub mod launch;
 
 /// How long one answer may take: a fill that waits on Touch ID or Windows
 /// Hello is the slowest case.
@@ -130,19 +135,37 @@ pub fn relay<R: Read, W: Write, C: PeerChannel>(
     }
 }
 
-/// Reads the endpoint file in `data`, or says Lockdown isn't running.
-fn endpoint<W: Write>(
+/// Reads the endpoint file in `data`, or says Lockdown isn't running (and
+/// answers a request to open it, [`no_app`]).
+fn endpoint<R: Read, W: Write>(
+    caller: &Caller,
     data: &std::path::Path,
+    input: &mut R,
     output: &mut W,
 ) -> Result<lockdown_native_messaging::endpoint::EndpointFile, String> {
-    lockdown_native_messaging::endpoint::EndpointFile::read(data).map_err(|_| {
-        say(
-            output,
-            "no_app",
-            "Lockdown isn't running on this computer; open it and unlock",
-        );
-        "no endpoint file".to_string()
-    })
+    match lockdown_native_messaging::endpoint::EndpointFile::read(data) {
+        Ok(file) => Ok(file),
+        Err(_) => Err(no_app(caller, data, input, output, "no endpoint file")),
+    }
+}
+
+/// Says Lockdown isn't running, then answers the one request the
+/// extension may make of a host with no app behind it: open the app
+/// (`launch`, docs/plan/37-cli-popup.md §2). Returns `why` as the error.
+fn no_app<R: Read, W: Write>(
+    caller: &Caller,
+    data: &std::path::Path,
+    input: &mut R,
+    output: &mut W,
+    why: &str,
+) -> String {
+    say(
+        output,
+        "no_app",
+        "Lockdown isn't running on this computer; open it and unlock",
+    );
+    launch::answer(caller, data, input, output);
+    why.to_string()
 }
 
 /// The desktop app the endpoint file names, by path and hash: the only
@@ -170,18 +193,11 @@ pub fn run<R: Read, W: Write>(
     use ecosystem_identity::handshake::PeerTransport;
     use ecosystem_identity::handshake::unix::UnixSocketTransport;
 
-    let endpoint = endpoint(data, output)?;
+    let endpoint = endpoint(&caller, data, input, output)?;
     let verifier = ProcessIdentityVerifier::new(vec![the_app(&endpoint)?]);
     let channel = match UnixSocketTransport::at(&endpoint.socket).connect(HELLO_TIMEOUT) {
         Ok(c) => c,
-        Err(_) => {
-            say(
-                output,
-                "no_app",
-                "Lockdown isn't running on this computer; open it and unlock",
-            );
-            return Err("nobody on the socket".into());
-        }
+        Err(_) => return Err(no_app(&caller, data, input, output, "nobody on the socket")),
     };
     relay(caller, &verifier, channel, input, output)
 }
@@ -201,19 +217,12 @@ pub fn run<R: Read, W: Write>(
     use ecosystem_identity::handshake::PeerTransport;
     use lockdown_codesign::{APP_IDENTIFIER, Both, SignatureVerifier, SocketTransport, own_policy};
 
-    let endpoint = endpoint(data, output)?;
+    let endpoint = endpoint(&caller, data, input, output)?;
     let process = ProcessIdentityVerifier::new(vec![the_app(&endpoint)?]);
     let policy = std::sync::Arc::new(own_policy(APP_IDENTIFIER));
     let channel = match SocketTransport::at(&endpoint.socket).connect(HELLO_TIMEOUT) {
         Ok(c) => c,
-        Err(_) => {
-            say(
-                output,
-                "no_app",
-                "Lockdown isn't running on this computer; open it and unlock",
-            );
-            return Err("nobody on the socket".into());
-        }
+        Err(_) => return Err(no_app(&caller, data, input, output, "nobody on the socket")),
     };
     let verifier = Both(process, SignatureVerifier::new(policy, channel.peer_code()));
     relay(caller, &verifier, channel, input, output)
@@ -232,7 +241,7 @@ pub fn run<R: Read, W: Write>(
     use ecosystem_identity::handshake::PeerTransport;
     use lockdown_pipe::{PipeTransport, PipeVerifier};
 
-    let endpoint = endpoint(data, output)?;
+    let endpoint = endpoint(&caller, data, input, output)?;
     let verifier = PipeVerifier::new(vec![the_app(&endpoint)?]);
     let name = endpoint.socket.to_string_lossy();
     if !name.starts_with(lockdown_pipe::PIPE_PREFIX) {
@@ -245,14 +254,7 @@ pub fn run<R: Read, W: Write>(
     }
     let channel = match PipeTransport::at(&name).connect(HELLO_TIMEOUT) {
         Ok(c) => c,
-        Err(_) => {
-            say(
-                output,
-                "no_app",
-                "Lockdown isn't running on this computer; open it and unlock",
-            );
-            return Err("nobody on the pipe".into());
-        }
+        Err(_) => return Err(no_app(&caller, data, input, output, "nobody on the pipe")),
     };
     // A signed host also checks the app's Authenticode signer
     // (`lockdown-codesign`); an unsigned development build checks path and
@@ -416,5 +418,20 @@ mod tests {
         let mut output = Vec::new();
         assert!(run(caller(), dir.path(), &mut [].as_slice(), &mut output).is_err());
         assert_eq!(outputs(&output)[0]["event"], "no_app");
+    }
+
+    #[test]
+    fn with_no_app_the_host_answers_one_request_to_open_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = browser_input(&[r#"{"id":9,"op":"launch"}"#, r#"{"id":10,"op":"status"}"#]);
+        let mut output = Vec::new();
+        assert!(run(caller(), dir.path(), &mut input.as_slice(), &mut output).is_err());
+        let out = outputs(&output);
+        assert_eq!(out[0]["event"], "no_app");
+        // No endpoint file and no app beside the test binary: it says how.
+        assert_eq!(out[1]["id"], 9);
+        assert_eq!(out[1]["error"]["code"], "not_launched");
+        assert_eq!(out[1]["error"]["message"], launch::HOW);
+        assert_eq!(out.len(), 2);
     }
 }

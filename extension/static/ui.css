@@ -41,6 +41,22 @@ button.primary { background: var(--ld-primary); color: var(--ld-primary-ink); }
 button.secondary { background: transparent; color: var(--ld-ink); border-color: var(--ld-control-line); }
 button.link { background: transparent; color: var(--ld-link); padding: 4px; min-height: 24px; text-decoration: underline; }
 button:disabled { opacity: 0.6; cursor: default; }
+/* Arming (design review R17; D159, D206): a control waiting out its 400 ms
+   keeps its full colours and draws an underline that fills, so it reads as
+   about to work rather than off; the click still counts only once armed.
+   Covered, it looks disabled (above); armed, plainly enabled. Under reduced
+   motion the underline is drawn whole, without moving. */
+button { position: relative; }
+button[data-arming]:disabled { opacity: 1; cursor: progress; }
+button[data-arming]::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: 3px; height: 2px;
+  border-radius: 1px; background: currentColor; transform-origin: left center;
+  animation: ld-arm 400ms linear var(--ld-arm-at, 0ms) both;
+}
+@keyframes ld-arm { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) {
+  button[data-arming]::after { animation: none; transform: none; opacity: 0.6; }
+}
 .head { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--ld-line); }
 .brand { font-size: inherit; font-weight: 600; margin: 0; }
 .host { color: var(--ld-ink-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

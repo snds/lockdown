@@ -4,7 +4,7 @@
 // challenge, or why there is no app to talk to. Then requests go out with
 // an id and answers come back with the same id, one at a time.
 
-import type { LinkState } from "../shared/protocol"
+import { OPEN_HOW, type LinkState, type OpenedApp } from "../shared/protocol"
 import * as pairkey from "./pairkey"
 
 export const HOST_NAME = "design.snds.lockdown"
@@ -14,6 +14,9 @@ const ANSWER_MS = 190_000
 // The host hashes the app's executable before it relays (process identity,
 // D155); a large development build takes seconds to hash.
 const READY_MS = 30_000
+
+/** How long opening the app may take before the popup says how instead. */
+const OPEN_MS = 20_000
 
 export class DesktopError extends Error {
   constructor(
@@ -211,6 +214,27 @@ export class Link {
     return { ...this.state }
   }
 
+  /** Open Lockdown (docs/plan/37-cli-popup.md §2): a running app brings
+   *  its window forward (`show`, answered before pairing); with no app, a
+   *  port of its own asks the native host to start it (`launch`), so the
+   *  link's own state isn't touched. */
+  async openApp(): Promise<OpenedApp> {
+    try {
+      await this.connect()
+    } catch {
+      // No app behind the host: launched below.
+    }
+    if (this.port && this.challenge) {
+      try {
+        await this.send("show")
+        return { opened: "shown" }
+      } catch {
+        return { error: OPEN_HOW }
+      }
+    }
+    return launchApp()
+  }
+
   /** Starts pairing: a fresh key, `pair_begin`, and a poll until the
    *  person answers in the app. Returns the state with the code to compare. */
   async pair(): Promise<LinkState> {
@@ -248,4 +272,42 @@ export class Link {
     }, 1000)
     return { ...this.state }
   }
+}
+
+/** Asks the native host to start the app: the host says `no_app`, then
+ *  answers one `launch`. An app that came up meanwhile says `ready` and is
+ *  asked to `show` instead. Anything else is answered with how to open it. */
+function launchApp(): Promise<OpenedApp> {
+  return new Promise<OpenedApp>((resolve) => {
+    let port: chrome.runtime.Port
+    let done = false
+    const finish = (r: OpenedApp) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      try {
+        port?.disconnect()
+      } catch {
+        // already gone
+      }
+      resolve(r)
+    }
+    const timer = setTimeout(() => finish({ error: OPEN_HOW }), OPEN_MS)
+    try {
+      port = chrome.runtime.connectNative(HOST_NAME)
+    } catch {
+      finish({ error: OPEN_HOW })
+      return
+    }
+    port.onMessage.addListener((msg: Record<string, unknown>) => {
+      if (msg.event === "no_app") return port.postMessage({ id: 1, op: "launch" })
+      if (msg.event === "ready") return port.postMessage({ id: 1, op: "show" })
+      if (typeof msg.event === "string") return finish({ error: OPEN_HOW })
+      if (msg.id !== 1) return
+      if (msg.ok !== true) return finish({ error: OPEN_HOW })
+      const result = msg.result as { launched?: boolean } | undefined
+      finish({ opened: result?.launched ? "launched" : "shown" })
+    })
+    port.onDisconnect.addListener(() => finish({ error: OPEN_HOW }))
+  })
 }

@@ -133,7 +133,18 @@ pub struct Shared {
     offers: Mutex<Offers>,
     /// Passkey requests waiting for the person's approval in the app.
     approvals: passkeys::Approvals,
+    /// The shell's way to bring the app's window forward (the popup's
+    /// Open Lockdown, docs/plan/37-cli-popup.md §2), and when it last did.
+    window: std::sync::OnceLock<ShowWindow>,
+    shown_at: Mutex<Option<Instant>>,
 }
+
+/// Brings the app's main window forward: shown, restored, focused.
+pub type ShowWindow = Box<dyn Fn() -> Result<(), String> + Send + Sync>;
+
+/// How often a browser may bring the window forward: a second press within
+/// this is answered without moving the window again.
+pub const SHOW_EVERY: Duration = Duration::from_secs(1);
 
 impl Shared {
     /// A shared state over `app`, with the pairings kept in `data`.
@@ -144,7 +155,26 @@ impl Shared {
             pairings: Mutex::new(Pairings::load(data)?),
             offers: Mutex::new(Offers::default()),
             approvals: passkeys::Approvals::default(),
+            window: std::sync::OnceLock::new(),
+            shown_at: Mutex::new(None),
         })
+    }
+
+    /// Brings the app's window forward for the extension's Open Lockdown,
+    /// at most once per [`SHOW_EVERY`]. Nothing secret moves: the person
+    /// unlocks or approves in the window as always.
+    pub fn show_window(&self) -> Result<(), String> {
+        let show = self
+            .window
+            .get()
+            .ok_or("this Lockdown has no window to bring forward")?;
+        let mut at = self.shown_at.lock().unwrap_or_else(|p| p.into_inner());
+        if at.is_some_and(|t| t.elapsed() < SHOW_EVERY) {
+            return Ok(());
+        }
+        show()?;
+        *at = Some(Instant::now());
+        Ok(())
     }
 
     /// The pairings, locked for one use.
@@ -566,6 +596,13 @@ impl Endpoint {
         _policy: Arc<Policy>,
     ) -> Result<Self, String> {
         Err("the browser extension can't reach the app on this system".into())
+    }
+
+    /// Gives the endpoint the shell's way to bring its window forward
+    /// (the extension's Open Lockdown); kept for the endpoint's life, the
+    /// first one given wins.
+    pub fn on_show(&self, show: ShowWindow) {
+        let _ = self.shared.window.set(show);
     }
 
     /// Requests waiting for the person.
