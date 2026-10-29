@@ -78,7 +78,9 @@ The `engines` job keeps a screenshot of each main screen per engine: first run, 
 
 - **Print layout.** Before this slice, a page that prints alone (`[data-print-page]`) printed as the dialog it is: fixed, centred by a translate, scrolled inside itself. On paper it came out shifted and cut off, in Chromium as much as WebKit. The print rule now lives in `app-extension.css`, which the desktop, the web vault and the harness all import (before, the harness had none of it). It sets the page static, unscrolled and untranslated, hides the overlay, the close button and the footer, and prints black on white.
 - **The build's CSS minifier** folds a plain `translate: none` into `transform`. Tailwind's centring is reset through `--tw-translate-x/y` instead, which is noted in the rule.
-- Apart from the icons, the WebKit screenshots on both runners matched Chromium's layout on every screen checked: no clipped text, no missing focus rings, no other blank glyphs. The Inter text face loads and shapes in both. The macOS screenshots after the fix are in the `engine-check-macos-latest` artifact of the PR's last run.
+- **A focus ring on the paper.** When the kit page opens, macOS WebKit focuses its first stop (the page-as-text block, `tabIndex=0`) and draws its focus ring, and the print emulation showed the ring on the printed page. The print rule now drops focus rings inside a page that prints alone. Chromium had put no visible ring there.
+- **Dates read slightly differently.** WebKit's `Intl` writes "Oct 17, 2026 at 4:20 PM" where Chromium writes "Oct 17, 2026, 4:20 PM". This is the engines' own formatting of the same `en-US` options. It is harmless and left as it is.
+- Apart from those and the icons, the WebKit screenshots on both runners (the first run, then the macOS run after the fix, artifact 12922071840) matched Chromium's layout on the screens checked: no clipped text and no other blank glyphs. The Inter text face loads and shapes in both.
 
 ## 3. Printing
 

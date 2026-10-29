@@ -189,5 +189,11 @@
     border: 0;
     background: #ffffff;
     color: #000000;
+  }  /* WebKit focuses the page's first stop (the text block) when it opens
+     and draws its ring; the ring is not part of the page. */
+  [data-print-page] :focus,
+  [data-print-page] :focus-visible {
+    outline: none;
+    box-shadow: none;
   }
 }
