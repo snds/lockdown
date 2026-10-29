@@ -35,6 +35,8 @@ import { LiveClientProvider } from "@/features/sessions/live-client"
 import { tauriLiveClient } from "@/app/tauri-live"
 import { tauriServerClient } from "@/app/tauri-server"
 import { ServerClientProvider } from "@/features/server/server-client"
+import { tauriPqStatusClient } from "@/app/tauri-pq-status"
+import { PqStatusClientProvider } from "@/features/security/pq-status-client"
 import { tauriDepthClient } from "@/app/tauri-depth"
 import { DepthClientProvider } from "@/features/depth/depth-client"
 import { RemindersPrompt } from "@/features/depth/reminders"
@@ -184,7 +186,7 @@ function Root() {
           />
         )}
         {nav.area === "codes" && <CodesView rows={rows ?? []} onChanged={reload} />}
-        {nav.area === "devices" && <DevicesView status={status} onChanged={refreshStatus} onNotice={notice} />}
+        {nav.area === "devices" && <DevicesView status={status} onChanged={refreshStatus} onNotice={notice} focus={nav.device} />}
         {nav.area === "recovery" && <RecoveryView status={status} onChanged={refreshStatus} onNotice={notice} />}
         {nav.area === "status" && <StatusView status={status} onStatus={setStatus} onNotice={notice} />}
         {nav.area === "settings" && <SettingsView status={status} lock={lock} onLock={setLock} onChanged={refreshStatus} onNotice={notice} />}
@@ -205,7 +207,7 @@ function Root() {
               setNav({ area: "vault", view: "all" })
               setSelected(id)
             }}
-            onDevices={() => setNav({ area: "devices", view: nav.view })}
+            onDevices={(device) => setNav({ area: "devices", view: nav.view, device })}
             onRecovery={() => setNav({ area: "recovery", view: nav.view })}
             onChanged={reload}
             onNotice={notice}
@@ -254,7 +256,9 @@ export default function App() {
                       <ScanClientProvider value={tauriScanClient}>
                         <HygieneClientProvider value={tauriHygieneClient}>
                           <ServerClientProvider value={tauriServerClient}>
-                            <Root />
+                            <PqStatusClientProvider value={tauriPqStatusClient}>
+                              <Root />
+                            </PqStatusClientProvider>
                           </ServerClientProvider>
                         </HygieneClientProvider>
                       </ScanClientProvider>

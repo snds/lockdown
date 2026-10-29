@@ -45,6 +45,8 @@ pub(super) fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult
         "server_restore_drill" => json(web.app().restore_drill()?),
         "kt_mirrors" => json(web.app().kt_mirrors()?),
         "kt_mirrors_set" => json(web.app().set_kt_mirrors(req(args, "urls")?)?),
+        // --- the Security screen's post-quantum line (docs/plan/30-pq-status-line.md)
+        "pq_status" => json(web.app().pq_status()?),
         other => unknown(other),
     }
 }

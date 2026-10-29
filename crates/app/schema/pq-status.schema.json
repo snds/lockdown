@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lockdown.snds.design/schema/pq-status.schema.json",
+  "title": "PqStatusView",
+  "description": "The Security screen's post-quantum status line, as the desktop's `pq_status` command and the web vault's `pq_status` call answer it (lockdown_app::pq_status::PqStatusView; docs/plan/30-pq-status-line.md). Fields are only added under D62. A device is named by its id and the name the Devices screen shows, nothing else.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["state", "reason", "headline", "explanation", "without_level_1", "without_level_2"],
+  "properties": {
+    "state": { "enum": ["on", "waiting", "unknown"] },
+    "reason": {
+      "description": "Why the state is unknown; null otherwise.",
+      "enum": [null, "no_account", "unreached", "silent", "not_published", "managed_elsewhere"]
+    },
+    "headline": { "type": "string" },
+    "explanation": { "type": "string" },
+    "without_level_1": {
+      "description": "Devices that don't read the account's post-quantum key yet. Empty unless waiting.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/PqDevice" }
+    },
+    "without_level_2": {
+      "description": "Devices that read the account's key but not post-quantum vault heads yet; never also in without_level_1. Empty unless waiting.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/PqDevice" }
+    }
+  },
+  "$defs": {
+    "PqDevice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    }
+  }
+}

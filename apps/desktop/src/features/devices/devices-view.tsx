@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import {
   Badge,
@@ -38,6 +38,8 @@ interface DevicesViewProps {
   status: Status
   onChanged: () => void
   onNotice: (text: string) => void
+  /** A device to bring into view (a link from the Security screen's post-quantum line). */
+  focus?: string
 }
 
 /**
@@ -45,7 +47,7 @@ interface DevicesViewProps {
  * Revoke behind a confirm and the Approve gate (D101, "revoke needs a
  * fresh check"). Enrolling a new device happens on that device.
  */
-export function DevicesView({ status, onChanged, onNotice }: DevicesViewProps) {
+export function DevicesView({ status, onChanged, onNotice, focus }: DevicesViewProps) {
   const client = useClient()
   const gate = useGate()
   const [devices, setDevices] = useState<DeviceInfo[] | null>(null)
@@ -53,10 +55,19 @@ export function DevicesView({ status, onChanged, onNotice }: DevicesViewProps) {
   const [revoking, setRevoking] = useState<DeviceInfo | null>(null)
   const [busy, setBusy] = useState(false)
 
+  const focused = useRef<HTMLDivElement | null>(null)
   const load = useCallback(() => client.deviceList().then(setDevices).catch((e) => setError(describeError(e))), [client])
   useEffect(() => {
     void load()
   }, [load])
+
+  // The device a link named: scrolled to and focused once the list is in.
+  useEffect(() => {
+    const row = focused.current
+    if (!row) return
+    row.scrollIntoView?.({ block: "center" })
+    row.focus()
+  }, [devices, focus])
 
   const revoke = async (id: string) => {
     setBusy(true)
@@ -104,7 +115,16 @@ export function DevicesView({ status, onChanged, onNotice }: DevicesViewProps) {
       )}
       <ItemGroup role="list" aria-label="Devices">
         {devices?.map((d) => (
-          <Item key={d.id} role="listitem" size="sm" variant="outline" data-row="">
+          <Item
+            key={d.id}
+            role="listitem"
+            size="sm"
+            variant={d.id === focus ? "muted" : "outline"}
+            data-row=""
+            ref={d.id === focus ? focused : undefined}
+            tabIndex={d.id === focus ? -1 : undefined}
+            aria-current={d.id === focus ? "true" : undefined}
+          >
             <ItemContent>
               <ItemTitle>
                 {d.name}

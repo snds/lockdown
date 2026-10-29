@@ -29,6 +29,7 @@ pub mod key_check;
 pub mod live;
 pub mod lock;
 pub mod passkeys;
+pub mod pq_status;
 pub mod protection;
 pub mod qr;
 pub mod quick;

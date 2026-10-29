@@ -71,6 +71,7 @@ pub mod items;
 pub(crate) mod mirrors;
 mod organize;
 pub(crate) mod passkeys;
+mod pq_status;
 pub(crate) mod quick;
 pub(crate) mod recovery;
 pub(crate) mod second_factor;
@@ -304,6 +305,10 @@ pub struct Session {
     phrase_checks: BTreeMap<Id, sharing::phrase::Pending>,
     /// The quick-access index, until what it was built from changes (`quick`).
     quick: Option<quick::Cache>,
+    /// Whether the account's server confirmed the identity's records since
+    /// this session opened; the last sync's record pull failing clears it
+    /// (`pq_status`: the status line says "can't check" until then).
+    identity_confirmed: bool,
 }
 
 impl Session {
@@ -374,6 +379,7 @@ impl Session {
         let mut transparency = TransparencyMemory::open(&paths.data.join(TRANSPARENCY_FILE))
             .map_err(|e| e.to_string())?;
         let mut sync = SyncConfig::load(&paths.sync_file())?;
+        let mut identity_confirmed = false;
 
         if let Some(cfg) = sync.as_mut()
             && mode == Mode::Init
@@ -388,6 +394,7 @@ impl Session {
                 &mut synced,
                 &mut memory,
             )?;
+            identity_confirmed = true;
             if persona_vaults(&identity, persona_id, &store)
                 .map_err(|e| e.to_string())?
                 .is_empty()
@@ -537,6 +544,7 @@ impl Session {
             link: None,
             phrase_checks: BTreeMap::new(),
             quick: None,
+            identity_confirmed,
         };
         session.load_sharing()?;
         session.remember()?;
@@ -1603,6 +1611,7 @@ impl Session {
         let Some(cfg) = self.sync.as_mut() else {
             return Err("no account on this device; register or log in first".into());
         };
+        self.identity_confirmed = false;
         let server = cfg.server.clone();
         let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
         let token = cfg.session_token()?.to_string();
@@ -1614,6 +1623,7 @@ impl Session {
             &mut self.synced,
             &mut self.memory,
         )?;
+        self.identity_confirmed = true;
         self.refresh_trust()?;
         let remembered = self.transparency.view(&server).cloned();
         let mut kt =

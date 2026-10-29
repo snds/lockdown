@@ -200,6 +200,10 @@ jobs:
         run: pnpm build
       - name: Build the server and the CLI
         run: cargo build -p lockdown-server -p lockdown-cli
+      # Its own build: an example turns on the test-only features of its
+      # crate's dev-dependencies, which must not reach the CLI above.
+      - name: Build the older-device tool (the post-quantum line's spec)
+        run: cargo build -p lockdown-vault --example older-device
       - name: End to end in Chromium
         run: pnpm e2e
       - uses: actions/upload-artifact@v4
