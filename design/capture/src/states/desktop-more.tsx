@@ -35,6 +35,9 @@ const PAUSED_REASON =
 const REVOKED = "This device was revoked from your account. Join it again from a device you still use."
 /** The core's words on a shared vault whose new members wait (crates/app/src/session/split_hold.rs). */
 const HELD = "New members wait until the server's log matches its mirrors again."
+/** The core's words once a head from someone unmet stopped the vault (crates/app/src/session/shared_sync.rs). */
+const HELD_AFTER =
+  "New members wait until the server's log matches its mirrors again. Changes made after a new member's or a new device's wait too, even from members you already have."
 /** Picks an option of a native select the way a person would, so React hears the change. */
 function choose(selector: string, value: string) {
   const el = document.querySelector<HTMLSelectElement>(selector)
@@ -319,6 +322,15 @@ export const DESKTOP_MORE: StateDef[] = [
     notes: "While the server's log doesn't match a mirror, a member added elsewhere waits unapplied; items from members already here keep syncing (doc 35 §2).",
     answers: () => ({ vault_sharing: (a) => ({ ...(as("vault_sharing")(a) as object), held: HELD }) }),
     steps: [...open, side("Sharing"), { click: /^Manage sharing/, nth: 1 }, DIALOG, { wait: HELD }],
+  }),
+  d({
+    id: "desktop-sharing-vault-held-after",
+    screen: "Manage sharing",
+    state: "Changes after a new member's wait (split view)",
+    brief_row: "Manage sharing",
+    notes: "A head signed by someone this device hasn't met stopped the vault during a split: heads chain hash to hash, so every later change waits behind it, members' already here included (doc 36 §3).",
+    answers: () => ({ vault_sharing: (a) => ({ ...(as("vault_sharing")(a) as object), held: HELD_AFTER }) }),
+    steps: [...open, side("Sharing"), { click: /^Manage sharing/, nth: 1 }, DIALOG, { wait: HELD_AFTER }],
   }),
   d({ id: "desktop-backup-late", screen: "Backup line", state: "Late", brief_row: "Backup line", notes: "The sidebar's last-backup line when a backup is overdue.", answers: () => ({ backup_status: () => ({ ...(as("backup_status")({}) as object), last_success_at: ago(4), next_due_at: ago(3) }) }), steps: open }),
 ]

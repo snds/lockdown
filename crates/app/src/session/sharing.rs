@@ -299,7 +299,7 @@ impl Session {
 
     /// The keys of every device whose heads and versions a shared vault
     /// takes: the devices of every account that ever held `edit`.
-    fn writer_keys(&self, roster: &Roster) -> BTreeMap<Id, VerifyingKey> {
+    pub(super) fn writer_keys(&self, roster: &Roster) -> BTreeMap<Id, VerifyingKey> {
         let mut out = BTreeMap::new();
         for account in &roster.writers {
             out.extend(self.device_keys_of(*account));
@@ -321,7 +321,7 @@ impl Session {
 
     /// Trusts a shared vault's writers' devices in the open copy and
     /// mirrors the roster into the members list its next head seals.
-    fn apply_roster(&mut self, vault_id: Id) -> Result<(), String> {
+    pub(super) fn apply_roster(&mut self, vault_id: Id) -> Result<(), String> {
         let Some(roster) = self.rosters.get(&vault_id).cloned() else {
             return Ok(());
         };
@@ -1202,7 +1202,7 @@ impl Session {
             listed.insert(own.vault_id);
             self.sharing.vault_mut(own.vault_id).owned = true;
             self.pull_membership(transport, token, sth, own.vault_id)?;
-            if self.held_vaults.contains(&own.vault_id) {
+            if self.held_vaults.contains_key(&own.vault_id) {
                 continue;
             }
             self.take_new_key(transport, token, own.vault_id, own.key_ref)?;
@@ -1218,7 +1218,7 @@ impl Session {
             self.pull_membership(transport, token, sth, vault_id)?;
             // Changes from someone this device hasn't met wait during a
             // split: the vault isn't joined yet and its key doesn't move.
-            if self.held_vaults.contains(&vault_id) {
+            if self.held_vaults.contains_key(&vault_id) {
                 continue;
             }
             let open = self.vaults().any(|v| v.context().vault_id == vault_id);
@@ -1274,7 +1274,7 @@ impl Session {
         // change after them (`split_hold`).
         let take = self.membership_take(&events);
         if take.count < events.len() {
-            self.held_vaults.insert(vault_id);
+            self.hold(vault_id, super::shared_sync::Hold::Members);
         }
         let mut accounts: BTreeSet<Id> = events[..take.count]
             .iter()
@@ -1301,7 +1301,7 @@ impl Session {
             .logins
             .extend(logins.into_iter().filter(|(a, _)| accounts.contains(a)));
         let Some(roster) = self.replay(vault_id)? else {
-            if self.held_vaults.contains(&vault_id) {
+            if self.held_vaults.contains_key(&vault_id) {
                 return Ok(());
             }
             return Err("the server listed a shared vault with no membership".into());
@@ -1530,7 +1530,11 @@ impl Session {
         for account in roster.writers.iter().copied().filter(|a| Some(*a) != me) {
             self.pin(transport, token, sth, Ok(account))?;
         }
-        self.apply_roster(vault_id)
+        // A vault of this persona not open yet takes the roster as it opens.
+        if self.vaults().any(|v| v.context().vault_id == vault_id) {
+            self.apply_roster(vault_id)?;
+        }
+        Ok(())
     }
 
     /// Takes a vault out of this session and the store.
@@ -1554,17 +1558,58 @@ impl Session {
         sth: &SignedTreeHead,
     ) -> Result<(), String> {
         let got = transport.received_items(token).map_err(|e| e.to_string())?;
+        // During a split, an item whose owner this device hasn't pinned, or
+        // that a pinned owner's device this device doesn't know signed,
+        // waits unapplied; outside one, owners are looked up, checked
+        // against the log and pinned as ever, and a pinned owner with a new
+        // device is looked up again and must continue the pin (`shared_sync`).
+        let signers: Vec<(Id, Vec<Id>)> = got
+            .items
+            .iter()
+            .map(|r| {
+                let mut devices: Vec<Id> = ShareEnvelope::from_bytes(&r.envelope)
+                    .map(|e| vec![e.by_device])
+                    .unwrap_or_default();
+                if let Ok(item) = Item::from_bytes(&r.item.item) {
+                    devices.extend(item.versions.iter().map(|v| v.edited_by));
+                }
+                (r.owner.account_id, devices)
+            })
+            .collect();
+        let me_account = self.sharing.account_id();
+        let table = self.device_table();
+        let take = super::shared_sync::received_take(
+            self.split_view(),
+            &signers,
+            &|a| Some(a) == me_account || self.sharing.contact(a).is_some(),
+            &|d| table.contains_key(&d),
+        );
+        self.held_items = take.take.iter().filter(|t| !**t).count();
         self.pin_all(
             transport,
             token,
             sth,
-            got.items.iter().map(|r| r.owner.account_id),
+            signers
+                .iter()
+                .zip(&take.take)
+                .filter(|(_, t)| **t)
+                .map(|((o, _), _)| *o),
         )?;
+        for account in &take.refresh {
+            self.pin(transport, token, sth, Ok(*account))?;
+        }
         let me = self.me()?;
         let kem = self.kem_secret()?;
         let table = self.device_table();
         let mut out = BTreeMap::new();
-        for r in &got.items {
+        for (r, taken) in got.items.iter().zip(&take.take) {
+            if !taken {
+                // What this device already had of it stays as it was.
+                if let Some(had) = self.sharing.received().get(&r.share_id) {
+                    out.insert(r.share_id, had.clone());
+                }
+                continue;
+            }
             let Ok(env) = ShareEnvelope::from_bytes(&r.envelope) else {
                 continue;
             };
