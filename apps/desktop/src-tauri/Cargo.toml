@@ -38,6 +38,12 @@ shell = [
     "dep:objc2-foundation",
     "dep:tauri-plugin-notification",
 ]
+# The developer tools (docs/plan/40-devtools.md), each self-contained in
+# crates/devtools and apps/desktop/src/devtools/: on in development builds,
+# CI and release dry runs (tauri.conf.json), off in a tagged release
+# (tauri.release.conf.json, checked by build.rs and the release workflow).
+dev-reset = ["shell", "dep:lockdown-devtools", "lockdown-devtools/reset", "lockdown-devtools/os-keystore", "lockdown-devtools/shell"]
+demo-vault = ["shell", "dep:lockdown-devtools", "lockdown-devtools/demo", "lockdown-devtools/shell"]
 
 [build-dependencies]
 tauri-build = { version = "2.7.2", optional = true , features = [] }
@@ -94,6 +100,8 @@ hmac.workspace = true
 sha2.workspace = true
 getrandom.workspace = true
 data-encoding.workspace = true
+
+lockdown-devtools = { workspace = true, optional = true }
 
 [target.'cfg(windows)'.dependencies]
 # The browser endpoint's named pipe on Windows (docs/plan/24-release.md §3).

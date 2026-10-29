@@ -3418,6 +3418,7 @@ dependencies = [
  "lockdown-app",
  "lockdown-codesign",
  "lockdown-crypto",
+ "lockdown-devtools",
  "lockdown-matcher",
  "lockdown-native-messaging",
  "lockdown-pipe",
@@ -3439,6 +3440,37 @@ dependencies = [
  "tauri-plugin-opener",
  "tempfile",
  "webkit2gtk",
+ "zeroize",
+]
+
+[[package]]
+name = "lockdown-devtools"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "data-encoding",
+ "dbus-secret-service",
+ "ecosystem-identity",
+ "ed25519-dalek",
+ "getrandom 0.3.4",
+ "keyring",
+ "lockdown-app",
+ "lockdown-crypto",
+ "lockdown-cxf",
+ "lockdown-native-messaging",
+ "lockdown-passkey",
+ "lockdown-server",
+ "lockdown-sync",
+ "lockdown-vault",
+ "security-framework 3.7.0",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tauri",
+ "tauri-plugin",
+ "tauri-plugin-dialog",
+ "tempfile",
+ "windows-sys 0.60.2",
  "zeroize",
 ]
 

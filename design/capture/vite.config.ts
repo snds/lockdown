@@ -40,6 +40,8 @@ export default defineConfig({
   define: {
     // The web vault's worker module is never loaded here; its type file reads this name.
     __LOCKDOWN_WASM_SHA384__: JSON.stringify(""),
+    // The desktop's developer tools: the review build draws them, as a development build does.
+    __LOCKDOWN_DEVTOOLS__: JSON.stringify(true),
   },
   resolve: {
     alias: [

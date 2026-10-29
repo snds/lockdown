@@ -86,7 +86,7 @@ mod shell {
     pub fn run() {
         // No core file of a process that holds keys (docs/plan/26-desktop-finish.md §7).
         App::harden_process();
-        tauri::Builder::default()
+        let builder = tauri::Builder::default()
             .plugin(tauri_plugin_opener::init())
             .plugin(tauri_plugin_clipboard_manager::init())
             .plugin(tauri_plugin_dialog::init())
@@ -102,7 +102,11 @@ mod shell {
                     _ => PermissionResponse::Deny,
                 }
             })
-            .plugin(tauri_plugin_notification::init())
+            .plugin(tauri_plugin_notification::init());
+        // The developer reset and the demo (docs/plan/40-devtools.md).
+        #[cfg(any(feature = "dev-reset", feature = "demo-vault"))]
+        let builder = builder.plugin(lockdown_devtools::shell::plugin());
+        builder
             .setup(|app| {
                 if cfg!(debug_assertions) {
                     // Nothing logged here ever names a value; the app's

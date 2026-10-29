@@ -1,12 +1,13 @@
 import { DESKTOP_STATES } from "../states/desktop"
 import { DESKTOP_MORE } from "../states/desktop-more"
+import { DEVTOOLS_STATES } from "../states/devtools"
 import { EXTENSION_STATES } from "../states/extension"
 import { SERVER_STATES } from "../states/server"
 import { WEB_STATES } from "../states/web"
 import type { Frame } from "./prefs"
 import type { Density, StateDef, StateMeta, Theme } from "./types"
 
-export const STATES: StateDef[] = [...DESKTOP_STATES, ...DESKTOP_MORE, ...WEB_STATES, ...EXTENSION_STATES, ...SERVER_STATES]
+export const STATES: StateDef[] = [...DESKTOP_STATES, ...DESKTOP_MORE, ...DEVTOOLS_STATES, ...WEB_STATES, ...EXTENSION_STATES, ...SERVER_STATES]
 
 const byId = new Map(STATES.map((s) => [s.id, s]))
 if (byId.size !== STATES.length) {

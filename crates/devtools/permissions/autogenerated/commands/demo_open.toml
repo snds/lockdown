@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-demo-open"
+description = "Enables the demo_open command without any pre-configured scope."
+commands.allow = ["demo_open"]
+
+[[permission]]
+identifier = "deny-demo-open"
+description = "Denies the demo_open command without any pre-configured scope."
+commands.deny = ["demo_open"]

@@ -4,6 +4,7 @@
 // reviewer makes (trash, restore, organize, dismiss) change the world, so
 // the screens behave as the app does for the length of a page load.
 
+import { MARKER as DEVTOOLS_MARKER } from "@/devtools/marker"
 import type {
   ApprovalRoute,
   CodeAdvanced,
@@ -882,5 +883,7 @@ export function commands(world: World): Record<string, Handler> {
     print_page: () => undefined,
     kit_save_pdf: () => true,
     kit_pdf: () => bytes("%PDF-1.7"),
+    // The developer tools (docs/plan/40-devtools.md), as a development build has them: the demo closed.
+    "plugin:devtools|status": () => ({ marker: DEVTOOLS_MARKER, reset: true, demo: { open: false, items: 0 } }),
   }
 }

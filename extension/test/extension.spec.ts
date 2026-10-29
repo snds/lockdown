@@ -277,6 +277,8 @@ test("a one-time code fills after the second action, single field and split boxe
   await expect(page.locator("#code")).toHaveValue("");
   await menu.getByRole("button", { name: "Fill code" }).click();
   const code = await desktop.ask(`code ${items.local}`, "code");
+  // The fill lands after the endpoint answers; wait for it rather than read at once.
+  await expect(page.locator("#code")).not.toHaveValue("");
   const filled = await page.locator("#code").inputValue();
   expect([code.code, code.next]).toContain(filled);
 

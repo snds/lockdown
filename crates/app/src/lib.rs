@@ -22,6 +22,7 @@
 pub mod approval;
 pub mod bridges;
 pub mod browser;
+mod confine;
 pub mod depth;
 pub mod devices;
 pub mod hygiene;
@@ -207,6 +208,9 @@ struct Core {
     quick_fills: Vec<quick::PendingFill>,
     /// The scan flow's gate, last outcome and waiting activations (`scan`).
     scan: scan::ScanState,
+    /// Set in a confined home (`confine`): the sentence exports and
+    /// backups are refused with.
+    confined: Option<String>,
 }
 
 impl Core {
@@ -238,6 +242,7 @@ impl Core {
             bridges: bridges::BridgesState::default(),
             quick_fills: Vec::new(),
             scan: scan::ScanState::default(),
+            confined: None,
         }
     }
 
@@ -565,6 +570,9 @@ type Job = Box<dyn FnOnce(&mut Core) + Send>;
 #[derive(Clone)]
 pub struct App {
     tx: Sender<Job>,
+    /// A copy of the core's confinement (`confine`), readable without a
+    /// round trip to the worker: the browser endpoint asks on every frame.
+    confined: std::sync::Arc<std::sync::RwLock<Option<String>>>,
 }
 
 /// The app in a build with no threads (the web vault, compiled for
@@ -641,7 +649,10 @@ impl App {
                 core.lock(LockReason::Requested);
             })
             .expect("the app's worker thread starts");
-        Self { tx }
+        Self {
+            tx,
+            confined: Default::default(),
+        }
     }
 
     /// Runs `f` on the worker and waits for its answer.
@@ -912,6 +923,7 @@ impl App {
         let format = format.to_string();
         self.call(move |core| {
             core.clock.touch(Instant::now());
+            core.refuse_confined()?;
             core.approve(ApprovalKind::Reveal, "export the vault", &gate)?;
             let bytes = core
                 .session()?

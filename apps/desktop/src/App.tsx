@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import { ThemeProvider } from "next-themes"
 
 import { Toaster, TooltipProvider } from "@unicron/ui"
@@ -7,7 +7,7 @@ import { toast } from "sonner"
 import { GateProvider } from "@/app/gate"
 import { useLockWatch } from "@/app/lock-watch"
 import { LockedProvider } from "@/app/locked"
-import { SettingsProvider } from "@/app/settings"
+import { SettingsProvider, useSettings } from "@/app/settings"
 import { TemplatesProvider, useTemplates } from "@/app/templates"
 import { AppShell, type Nav } from "@/app/shell"
 import { describeError, useClient } from "@/core/client"
@@ -53,6 +53,11 @@ import { QuickClientProvider } from "@/features/quick/quick-client"
 import { ScanClientProvider } from "@/features/scan/scan-client"
 import { PaperClientProvider } from "@/features/paper/paper-client"
 import { tauriPaperClient } from "@/app/tauri-paper"
+
+// The developer reset and the demo (docs/plan/40-devtools.md): one lazy
+// mount each, gone from a release bundle with the define.
+const ResetMount = __LOCKDOWN_DEVTOOLS__ ? lazy(() => import("@/devtools/reset-mount")) : null
+const DemoMount = __LOCKDOWN_DEVTOOLS__ ? lazy(() => import("@/devtools/demo-mount")) : null
 
 /**
  * Locked is the default state. `status` is set when the core opened the
@@ -172,6 +177,32 @@ function Root() {
     else if (n.kind === "sync_failed") toast.error(`A change from another device didn't sync: ${n.message}`)
   })
 
+  // The demo moved the app to its own home and back (docs/plan/40-devtools.md).
+  const { reload: reloadSettings } = useSettings()
+  const devtools = (
+    <Suspense fallback={null}>
+      {ResetMount && <ResetMount />}
+      {DemoMount && (
+        <DemoMount
+          onOpened={(s) => {
+            setNav({ area: "vault", view: "all" })
+            setSelected(null)
+            setStatus(s)
+            reloadSettings()
+            refreshUserTemplates()
+          }}
+          onClosed={() => {
+            setNav({ area: "vault", view: "all" })
+            setSelected(null)
+            setRows(null)
+            setStatus(null)
+            reloadSettings()
+          }}
+        />
+      )}
+    </Suspense>
+  )
+
   if (!status) {
     // Locked: the shell's shape stays, washed, with nothing readable in it;
     // the unlock screen sits over it (brief §4).
@@ -181,6 +212,7 @@ function Root() {
         <div className="absolute inset-0 overflow-y-auto">
           <UnlockScreen reason={lock?.reason ?? null} onOpened={setStatus} />
         </div>
+        {devtools}
       </div>
     )
   }
@@ -253,6 +285,7 @@ function Root() {
       <PairingDialog onNotice={notice} />
       <PasskeyApprovalDialog onNotice={notice} />
       <RemindersPrompt onNotice={notice} onChanged={refreshStatus} />
+      {devtools}
       </VaultsProvider>
     </LockedProvider>
   )

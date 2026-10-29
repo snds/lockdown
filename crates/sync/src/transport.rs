@@ -167,6 +167,34 @@ pub fn install_http_hook(hook: HttpHook) -> bool {
     HTTP_HOOK.set(hook).is_ok()
 }
 
+static HOLD: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+
+/// Holds every request this process makes through [`HttpTransport`],
+/// already made or not, until called again with `None`. `reason` is the
+/// plain sentence each held request fails with. A host uses it for a
+/// session that must stay off the network (docs/plan/40-devtools.md §3).
+pub fn hold_network(reason: Option<String>) {
+    match HOLD.write() {
+        Ok(mut held) => *held = reason,
+        Err(poisoned) => *poisoned.into_inner() = reason,
+    }
+}
+
+/// Why requests are held, while they are.
+pub fn network_held() -> Option<String> {
+    match HOLD.read() {
+        Ok(held) => held.clone(),
+        Err(poisoned) => poisoned.into_inner().clone(),
+    }
+}
+
+fn not_held() -> Result<()> {
+    match network_held() {
+        Some(reason) => Err(TransportError::Network(reason)),
+        None => Ok(()),
+    }
+}
+
 /// The HTTPS transport.
 pub struct HttpTransport {
     base: String,
@@ -341,6 +369,7 @@ impl HttpTransport {
         token: Option<&str>,
         body: Option<Vec<u8>>,
     ) -> Result<(u16, Vec<u8>)> {
+        not_held()?;
         let url = format!("{}{path}", self.base);
         if let Some(hook) = HTTP_HOOK.get() {
             let authorization = token.map(|t| format!("{BEARER}{t}"));
@@ -819,6 +848,7 @@ impl HttpTransport {
     /// error.
     #[cfg(feature = "http")]
     pub fn events(&self, token: &str) -> Result<EventStream> {
+        not_held()?;
         let tls = lockdown_tls::client_config(&self.trust)
             .map_err(|e| TransportError::Network(e.to_string()))?;
         let client = reqwest::blocking::Client::builder()
