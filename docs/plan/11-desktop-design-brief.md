@@ -362,6 +362,8 @@ Each was built locally in the app instead. They are requests for `snds/unicron`,
 | A plain-CSS token sheet | the extension's frames carry their own CSS | 16, 26 |
 | Icon size; IconButton pressed state | worked around in the app | 15, 23 |
 | Toaster that works under a strict CSP; DropdownMenuLabel outside a group | worked around in the web vault | 17 |
+| DialogAction that keeps its words below `sm` (ApprovalSheet and CrownJewelGate draw it too) | a local `LabelledActions` and a small stylesheet for the two unicron components | 31 (review R1) |
+| A `link` Button that looks like a link at rest | an underline in the view | 31 (review R20) |
 
 ### 11.2 Not built, or partly built
 
@@ -378,6 +380,8 @@ Each was built locally in the app instead. They are requests for `snds/unicron`,
 - **Decided on 2026-10-29, not built:** session renewal (D52), the passkey-upgrade notice (D210, D312), the new strength words (D230), pausing sharing on a split view (D328). D138 waits on Sean.
 
 ### 11.3 Copy that contradicts a decision
+
+_All five fixed by slice 30 (design fixes 1, #23, D384); kept here as the record._
 
 | Where | What it says | What it should follow |
 |---|---|---|
