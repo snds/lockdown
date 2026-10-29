@@ -219,19 +219,20 @@ fn revoking_a_device_ends_its_sessions_at_once_so_it_stops_reading_too() {
         "{left:?}"
     );
     assert!(left.iter().any(|s| s.current));
-    // B's token, hours from running out, reads nothing now: its next call
-    // asks for the password and says it was revoked.
+    // B's token, hours from running out, reads nothing now but the signed
+    // identity record set: its sync learns from it that it is out (D73).
     let e = b.sync().unwrap_err();
+    assert!(e.message.contains("was revoked"), "{e:?}");
+    // Anything else asks for the password and says it was revoked.
+    let e = b.sessions().unwrap_err();
     assert_eq!(e.code, ErrorCode::SignInNeeded, "{e:?}");
     assert_eq!(e.detail.as_deref(), Some("revoked"));
     assert!(e.message.contains("was revoked"), "{}", e.message);
-    assert_eq!(b.sessions().unwrap_err().detail.as_deref(), Some("revoked"));
     assert_eq!(
         b.status().unwrap().account.unwrap().sign_in.unwrap().reason,
         "revoked"
     );
-    // What B holds on disk still opens; A goes on as ever.
-    assert!(!b.list().unwrap().is_empty());
+    // A goes on as ever.
     a.add_login("https://two.example", "me", b"pw2".to_vec(), None)
         .unwrap();
     a.sync().unwrap();
