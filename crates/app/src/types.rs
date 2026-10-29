@@ -370,8 +370,13 @@ pub struct AccountStatus {
     pub synced_rev: u64,
     /// When this device last finished a sync, seconds since the Unix epoch.
     pub last_sync_at: Option<i64>,
-    /// When the session token runs out.
+    /// When the session token runs out (a device renews it by itself;
+    /// docs/plan/33-session-renewal.md).
     pub session_expires_at: i64,
+    /// Why only the account password signs this device in again, when the
+    /// server refused to renew its session; absent otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sign_in: Option<SignInNeeded>,
     /// The server's log as last verified here; `None` until the first
     /// sync checks it.
     pub transparency: Option<TransparencyView>,
@@ -826,4 +831,14 @@ pub struct StorageView {
     pub used_words: String,
     /// "5 GB", or empty with no limit.
     pub quota_words: String,
+}
+
+/// Why this device must sign in with the account password again: the
+/// server refused to renew its session (docs/plan/33-session-renewal.md).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct SignInNeeded {
+    /// `ended`, `revoked`, `idle`, `not_renewable` or `unknown`.
+    pub reason: String,
+    /// The same, in words for the person.
+    pub message: String,
 }

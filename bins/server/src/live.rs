@@ -195,6 +195,11 @@ fn session_stands(state: &AppState, session: &Session, now: i64) -> SessionNow {
     }
     match state.storage.sessions() {
         Some(store) => match store.session(&session.session_id) {
+            // Renewed by its own device: it reconnects with the new token,
+            // so this stream just closes (no "ended" words for it).
+            Ok(Some(row)) if row.ended_at.is_some() && row.renewed_to.is_some() => {
+                SessionNow::RanOut
+            }
             Ok(Some(row)) if row.ended_at.is_some() => SessionNow::Ended,
             _ => SessionNow::Stands,
         },
@@ -488,5 +493,47 @@ mod tests {
         drop(held);
         assert_eq!(n.open_streams(), 0);
         assert!(n.admit(a).is_some());
+    }
+
+    #[test]
+    fn a_renewed_session_closes_its_stream_quietly_and_an_ended_one_says_so() {
+        let state = AppState::in_memory(crate::Config::default()).unwrap();
+        let store = state.storage.sessions().unwrap();
+        let (account, device) = (Id::new(), Id::new());
+        let now = state.now();
+        let row = |n: u8| crate::sessions::SessionRow {
+            id: [n; 16],
+            account_id: account,
+            device_id: device,
+            created_at: now,
+            last_seen: now,
+            expires_at: now + 3600,
+            address: None,
+            client: None,
+            ended_at: None,
+            renewed_to: None,
+        };
+        let session = |n: u8| Session {
+            account_id: account,
+            device_id: device,
+            session_id: [n; 16],
+            expires_at: now + 3600,
+        };
+        store.open_session(&row(1)).unwrap();
+        store.open_session(&row(2)).unwrap();
+        assert!(matches!(
+            session_stands(&state, &session(1), now),
+            SessionNow::Stands
+        ));
+        assert!(store.renew_session(&[1; 16], &row(3), now, 0).unwrap());
+        assert!(matches!(
+            session_stands(&state, &session(1), now),
+            SessionNow::RanOut
+        ));
+        assert!(store.end_session(account, &[2; 16], now, 0).unwrap());
+        assert!(matches!(
+            session_stands(&state, &session(2), now),
+            SessionNow::Ended
+        ));
     }
 }

@@ -7,8 +7,9 @@
 //! server checks a token without a database lookup, so a stolen database
 //! cannot mint one (the key lives in the key file) and a token lists only
 //! which account and device it stands for, never a password or a key.
-//! Tokens are short-lived (the server's `session_ttl`); there is no
-//! refresh yet, a client logs in again. The one thing a signature can't
+//! Tokens are short-lived (the server's `session_ttl`); a device renews
+//! its own with its device key (`crate::renewal`, D375), and logs in again
+//! with the password only when that is refused. The one thing a signature can't
 //! say, that a session was ended from another device, is the sessions
 //! table's job (`crate::sessions`), keyed by the token's nonce.
 
@@ -112,6 +113,17 @@ impl TokenSigner {
 
     /// Checks a token at `now`.
     pub fn verify(&self, token: &str, now: i64) -> Result<TokenClaims, TokenError> {
+        let claims = self.verify_any_age(token)?;
+        if claims.exp <= now {
+            return Err(TokenError::Expired);
+        }
+        Ok(claims)
+    }
+
+    /// Checks that a token is one of ours, whatever its age: what a
+    /// renewal stands on (`crate::renewal`), which is for tokens that ran
+    /// out. Nothing else may take a token this way.
+    pub fn verify_any_age(&self, token: &str) -> Result<TokenClaims, TokenError> {
         let mut parts = token.split('.');
         let (Some(tag), Some(body), Some(sig), None) =
             (parts.next(), parts.next(), parts.next(), parts.next())
@@ -133,9 +145,6 @@ impl TokenSigner {
         let claims: TokenClaims = cbor::from_slice(&body).map_err(|_| TokenError::Invalid)?;
         if claims.v != 1 {
             return Err(TokenError::Invalid);
-        }
-        if claims.exp <= now {
-            return Err(TokenError::Expired);
         }
         Ok(claims)
     }
@@ -174,5 +183,9 @@ mod tests {
         // Two tokens in the same second differ.
         let (again, _) = signer.issue(account, device, 1_000, 60).unwrap();
         assert_ne!(again, token);
+        // A renewal reads a token that ran out, and still only one of ours.
+        assert_eq!(signer.verify_any_age(&token).unwrap().account_id, account);
+        assert_eq!(other.verify_any_age(&token), Err(TokenError::Invalid));
+        assert_eq!(signer.verify_any_age("lk1.abc"), Err(TokenError::Invalid));
     }
 }

@@ -408,7 +408,7 @@ fn start_waiting(
 
 impl crate::session::Session {
     /// The account's transport and session token.
-    pub(crate) fn account_transport(&self) -> Result<(HttpTransport, String), String> {
+    pub(crate) fn account_transport(&mut self) -> Result<(HttpTransport, String), String> {
         let (transport, token, _) = self.account_online()?;
         Ok((transport, token))
     }

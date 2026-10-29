@@ -127,17 +127,14 @@ impl Session {
         })
     }
 
-    fn online(&self) -> Result<(HttpTransport, String, String), String> {
+    fn online(&mut self) -> Result<(HttpTransport, String, String), String> {
         let cfg = self
             .sync
             .as_ref()
             .ok_or("sharing needs an account on a server; register or log in first")?;
-        let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
-        Ok((
-            transport,
-            cfg.session_token()?.to_string(),
-            cfg.server.clone(),
-        ))
+        let server = cfg.server.clone();
+        let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
+        Ok((transport, self.token()?, server))
     }
 
     /// The server's tree head, verified as continuing the one this device
@@ -1663,7 +1660,7 @@ impl Session {
     }
 
     /// The items this persona shared on their own.
-    pub fn sent_shares(&self) -> Result<Vec<SentShareView>, String> {
+    pub fn sent_shares(&mut self) -> Result<Vec<SentShareView>, String> {
         let (transport, token, _) = self.online()?;
         let sent = transport.sent_items(&token).map_err(|e| e.to_string())?;
         Ok(sent
@@ -1871,7 +1868,7 @@ impl Session {
     }
 
     /// The links this persona made.
-    pub fn sends(&self) -> Result<Vec<SendView>, String> {
+    pub fn sends(&mut self) -> Result<Vec<SendView>, String> {
         let (transport, token, _) = self.online()?;
         Ok(transport
             .sends(&token)
@@ -1890,7 +1887,7 @@ impl Session {
     }
 
     /// Deletes a link: it stops opening at once.
-    pub fn delete_send(&self, send_id: &str) -> Result<(), String> {
+    pub fn delete_send(&mut self, send_id: &str) -> Result<(), String> {
         let (transport, token, _) = self.online()?;
         transport
             .delete_send(&token, parse_id(send_id)?)
@@ -2061,7 +2058,7 @@ impl Session {
     }
 
     /// The requests this persona made.
-    pub fn requests(&self) -> Result<Vec<RequestView>, String> {
+    pub fn requests(&mut self) -> Result<Vec<RequestView>, String> {
         let (transport, token, _) = self.online()?;
         Ok(transport
             .requests(&token)
@@ -2100,7 +2097,7 @@ impl Session {
     }
 
     /// Deletes a request (and its answer, on the server).
-    pub fn delete_request(&self, request_id: &str) -> Result<(), String> {
+    pub fn delete_request(&mut self, request_id: &str) -> Result<(), String> {
         let (transport, token, _) = self.online()?;
         transport
             .delete_request(&token, parse_id(request_id)?)

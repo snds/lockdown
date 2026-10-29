@@ -77,6 +77,42 @@ describe("the Status screen", () => {
     expect(screen.getByText(/^3 entries, checked /)).toBeInTheDocument()
   })
 
+  it("asks for the password, saying why, when the server won't renew the session (docs/plan/33)", async () => {
+    const words =
+      "This device's session was ended from one of your devices or by whoever runs the server, so it can't renew itself. Log in again with your account password."
+    const sync = vi.fn(() => Promise.reject({ code: "sign_in_needed", message: words, detail: "ended" }))
+    render(
+      <ClientProvider value={fakeClient({ sync })}>
+        <StatusView status={status} onStatus={() => {}} onNotice={() => {}} />
+      </ClientProvider>,
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Sync now" }))
+    const dialog = await screen.findByRole("dialog")
+    expect(dialog).toHaveTextContent("Log in")
+    expect(dialog).toHaveTextContent("was ended from one of your devices")
+    expect(screen.queryByText(/^Sync refused/)).not.toBeInTheDocument()
+  })
+
+  it("keeps the reason on screen while the account needs a sign-in", async () => {
+    const needs: Status = {
+      ...status,
+      account: {
+        ...status.account!,
+        sign_in: { reason: "idle", message: "This device went unused for longer than the server allows (30 days unless whoever runs it changed that), so its session can't be renewed. Log in again with your account password." },
+      },
+    }
+    render(
+      <ClientProvider value={fakeClient({})}>
+        <StatusView status={needs} onStatus={() => {}} onNotice={() => {}} />
+      </ClientProvider>,
+    )
+    expect(screen.getByRole("alert")).toHaveTextContent("went unused for longer than the server allows")
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Log in again" }))
+    expect(await screen.findByRole("dialog")).toHaveTextContent("went unused")
+  })
+
   it("says the log is not checked yet before the first sync", () => {
     const unchecked: Status = { ...status, account: { ...status.account!, transparency: null } }
     render(

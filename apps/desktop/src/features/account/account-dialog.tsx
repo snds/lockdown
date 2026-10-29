@@ -21,12 +21,14 @@ import type { OncePage } from "@/core/types"
 
 interface AccountDialogProps {
   kind: "register" | "login" | null
+  /** Why a sign-in is needed, in the core's words (a session the server wouldn't renew). */
+  reason?: string | null
   onClose: () => void
   onDone: (lines: string[], page: OncePage | null) => void
 }
 
 /** Register an account on a server, or log in to one. The typed password goes out once and the form resets. */
-export function AccountDialog({ kind, onClose, onDone }: AccountDialogProps) {
+export function AccountDialog({ kind, reason, onClose, onDone }: AccountDialogProps) {
   const client = useClient()
   const { settings } = useSettings()
   const [busy, setBusy] = useState(false)
@@ -64,7 +66,7 @@ export function AccountDialog({ kind, onClose, onDone }: AccountDialogProps) {
             <DialogDescription>
               {kind === "register"
                 ? "An account syncs this vault between your devices. If no recovery kit exists yet, one is made now and shown once."
-                : "A fresh session on this device. Give the Secret Key too to finish protecting an older account."}
+                : (reason ?? "A fresh session on this device. Give the Secret Key too to finish protecting an older account.")}
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>

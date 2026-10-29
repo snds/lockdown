@@ -163,7 +163,7 @@ impl Session {
         };
         let cfg = self.sync.as_ref().ok_or("no account on this device")?;
         let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
-        let token = cfg.session_token()?.to_string();
+        let token = self.token()?;
         // The new password file, under the stronger stretching.
         let (client, request) = RegistrationClient::start(password).map_err(|e| e.to_string())?;
         let reply = transport

@@ -34,6 +34,8 @@
 //! | `POST /v1/account/sessions/{id}/end` | | empty | yes |
 //! | `POST /v1/account/sessions/end-others` | | [`SessionsEnded`] | yes |
 //! | `GET /v1/events` | | `text/event-stream` of [`LiveEvent`] (JSON) | yes |
+//! | `POST /v1/account/session/challenge` | | [`RenewChallenge`] | the old token, of any age |
+//! | `POST /v1/account/session/renew` | [`RenewFinish`] | [`LoginFinishReply`] | the old token, of any age |
 //!
 //! Device approval, security keys, password stretching and phrase checks
 //! are in [`crate::account_security`] (docs/plan/22-security-depth.md).
@@ -62,7 +64,9 @@
 //! [`ErrorCode`] a client can act on: `gap`, `fork` and `older_seq` for a
 //! head or an identity manifest; `stale` for an item; `revoked_device`
 //! for anything signed by a device the identity revoked; `token_expired`
-//! to log in again.
+//! to renew the session with the device key (or, where renewal is refused
+//! with `session_ended`, `session_idle`, `revoked_device` or
+//! `renewal_off`, to log in again).
 
 use lockdown_vault::{Hash32, Id};
 use serde::{Deserialize, Serialize};
@@ -142,6 +146,16 @@ pub enum ErrorCode {
     /// Blob: the vault's owner has no room left for attachments on this
     /// server (D234).
     QuotaExceeded,
+    /// Renewal: the session was ended (from a device, or by the operator);
+    /// only the password signs this device in again
+    /// (docs/plan/33-session-renewal.md).
+    SessionEnded,
+    /// Renewal: the session went unused for longer than the server's idle
+    /// limit; only the password signs this device in again.
+    SessionIdle,
+    /// Renewal: this server doesn't renew sessions (`--session-idle-limit
+    /// 0`); a session that ran out needs the password.
+    RenewalOff,
 }
 
 /// `GET /v1/account/storage`: how much of this account's attachment room
@@ -636,4 +650,40 @@ mod tests {
         };
         assert_eq!(decode::<ErrorBody>(&encode(&err).unwrap()).unwrap(), err);
     }
+}
+
+// --- session renewal (docs/plan/33-session-renewal.md) -----------------------
+
+/// The renewal messages' format version.
+pub const RENEW_V: u16 = 1;
+
+/// `POST /v1/account/session/challenge`: what the device signs, with
+/// `lockdown_crypto::auth::session_renew_message`, to renew the session
+/// its bearer token names. Answered once, within two minutes.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct RenewChallenge {
+    /// The format version, [`RENEW_V`].
+    pub v: u16,
+    /// The challenge's one-time id.
+    pub challenge_id: Id,
+    /// 32 random bytes.
+    #[serde(with = "serde_bytes")]
+    pub challenge: [u8; 32],
+    /// When the server stops taking an answer (seconds since the Unix
+    /// epoch, the server's clock).
+    pub expires_at: i64,
+}
+
+/// `POST /v1/account/session/renew`: the device's signature over the
+/// challenge; the answer is a [`LoginFinishReply`] with the new token.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct RenewFinish {
+    /// The format version, [`RENEW_V`].
+    pub v: u16,
+    /// From [`RenewChallenge`].
+    pub challenge_id: Id,
+    /// Ed25519 by the device key over
+    /// `lockdown_crypto::auth::session_renew_message`.
+    #[serde(with = "serde_bytes")]
+    pub signature: Vec<u8>,
 }

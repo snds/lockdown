@@ -249,6 +249,11 @@ export function isAppError(e: unknown): e is AppError {
   return typeof e === "object" && e !== null && "code" in e && "message" in e
 }
 
+/** Whether only the account password helps now: the server wouldn't renew this device's session. */
+export function isSignInNeeded(e: unknown): e is AppError {
+  return isAppError(e) && e.code === "sign_in_needed"
+}
+
 /** The words to show for any failure. */
 export function describeError(e: unknown): string {
   if (isAppError(e)) return e.message

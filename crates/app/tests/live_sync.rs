@@ -104,7 +104,10 @@ fn a_change_on_one_device_shows_on_the_other_without_a_sync_and_sessions_end() {
     assert_eq!(a.end_other_sessions().unwrap(), 1);
     next(&rx, |n| *n == LiveNotice::SessionEnded);
     let err = b.sync().unwrap_err();
-    assert!(err.message.contains("log in again"), "{}", err.message);
+    assert!(err.message.contains("Log in again"), "{}", err.message);
+    // It says why: the session was ended, so it can't renew itself.
+    assert_eq!(err.code, lockdown_app::ErrorCode::SignInNeeded);
+    assert_eq!(err.detail.as_deref(), Some("ended"));
     assert_eq!(a.sessions().unwrap().len(), 1);
     // A's own session still works.
     a.sync().unwrap();

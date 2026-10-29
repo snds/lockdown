@@ -21,6 +21,9 @@
 //! - [`mirror`] — log mirrors: the mirror's own check that a server's log
 //!   keeps continuing, and a client's comparison of its head with a mirror's
 //!
+//! - [`renew`] — a signed-in device renewing its own session with its
+//!   device key (docs/plan/33-session-renewal.md)
+//!
 //! - [`account_security`] — device approval's relay, phrase checks, raised
 //!   password stretching, security keys as a second factor
 //! - [`sharing`] — the sharing half of the protocol: the directory and its
@@ -34,6 +37,7 @@ pub mod engine;
 pub mod identity;
 pub mod kt;
 pub mod mirror;
+pub mod renew;
 pub mod sharing;
 pub mod transport;
 pub mod wire;

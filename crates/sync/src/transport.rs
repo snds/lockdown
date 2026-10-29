@@ -170,6 +170,10 @@ pub fn install_http_hook(hook: HttpHook) -> bool {
 /// The HTTPS transport.
 pub struct HttpTransport {
     base: String,
+    /// Whether a call carrying a session token was answered 401: the token
+    /// was refused, so the caller may renew it and try once more
+    /// (docs/plan/33-session-renewal.md).
+    turned_away: std::sync::atomic::AtomicBool,
     #[cfg(feature = "http")]
     client: reqwest::blocking::Client,
     #[cfg(feature = "http")]
@@ -245,6 +249,7 @@ impl HttpTransport {
             }
             Ok(Self {
                 base: base.trim_end_matches('/').to_string(),
+                turned_away: std::sync::atomic::AtomicBool::new(false),
             })
         }
     }
@@ -274,6 +279,7 @@ impl HttpTransport {
             .map_err(|e| TransportError::Network(e.to_string()))?;
         Ok(Self {
             base: base.trim_end_matches('/').to_string(),
+            turned_away: std::sync::atomic::AtomicBool::new(false),
             client,
             trust: trust.clone(),
         })
@@ -284,6 +290,20 @@ impl HttpTransport {
         &self.base
     }
 
+    /// Whether any call through this transport that carried a session
+    /// token was answered 401 (the token refused, run out or ended).
+    pub fn session_refused(&self) -> bool {
+        self.turned_away.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn note(&self, token: Option<&str>, answer: Result<(u16, Vec<u8>)>) -> Result<(u16, Vec<u8>)> {
+        if token.is_some() && matches!(answer, Ok((401, _))) {
+            self.turned_away
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        answer
+    }
+
     fn send(
         &self,
         method: Method,
@@ -291,7 +311,10 @@ impl HttpTransport {
         token: Option<&str>,
         body: Option<Vec<u8>>,
     ) -> Result<(u16, Vec<u8>)> {
-        self.exchange(method, path, CONTENT_TYPE, token, body)
+        self.note(
+            token,
+            self.exchange(method, path, CONTENT_TYPE, token, body),
+        )
     }
 
     /// Like `send`, with an `application/octet-stream` body: blobs.
@@ -302,7 +325,10 @@ impl HttpTransport {
         token: Option<&str>,
         body: Option<Vec<u8>>,
     ) -> Result<(u16, Vec<u8>)> {
-        self.exchange(method, path, "application/octet-stream", token, body)
+        self.note(
+            token,
+            self.exchange(method, path, "application/octet-stream", token, body),
+        )
     }
 
     /// One round trip: through the host's hook when one is installed,

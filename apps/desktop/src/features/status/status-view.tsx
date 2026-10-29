@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react"
 import { Badge, Button, Icon, Spinner } from "@unicron/ui"
 
 import { PaneHeader } from "@/components/master-detail"
-import { describeError, useClient } from "@/core/client"
+import { describeError, isSignInNeeded, useClient } from "@/core/client"
 import { decodeAndWipe } from "@/core/secret-bytes"
 import type { OncePage as OncePageData, Status, TransparencyView } from "@/core/types"
 import { AccountDialog } from "@/features/account/account-dialog"
@@ -31,6 +31,8 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dialog, setDialog] = useState<"register" | "login" | null>(null)
+  /** Why the server wouldn't renew this device's session, when a sync just said so. */
+  const [signIn, setSignIn] = useState<string | null>(null)
   const [once, setOnce] = useState<ShownPage | null>(null)
   /** The core's words when the last sync stopped at the server's log; cleared by a sync that passed. */
   const [syncRefusal, setSyncRefusal] = useState<string | null>(null)
@@ -59,7 +61,11 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
         setSyncRefusal(null)
         return outcome.lines
       } catch (e) {
-        setSyncRefusal(describeError(e))
+        if (isSignInNeeded(e)) {
+          // Only the password helps: ask for it, saying why.
+          setSignIn(e.message)
+          setDialog("login")
+        } else setSyncRefusal(describeError(e))
         return
       }
     })
@@ -145,8 +151,20 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
                 Sync refused: {syncRefusal}
               </p>
             )}
+            {account.sign_in && (
+              <p role="alert" className="text-sm text-attention-text">
+                {account.sign_in.message}
+              </p>
+            )}
             <div className="pt-1">
-              <Button size="sm" variant="ghost-muted" onClick={() => setDialog("login")}>
+              <Button
+                size="sm"
+                variant={account.sign_in ? "outline" : "ghost-muted"}
+                onClick={() => {
+                  setSignIn(account.sign_in?.message ?? null)
+                  setDialog("login")
+                }}
+              >
                 Log in again
               </Button>
             </div>
@@ -168,9 +186,14 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
 
       <AccountDialog
         kind={dialog}
-        onClose={() => setDialog(null)}
+        reason={dialog === "login" ? signIn : null}
+        onClose={() => {
+          setDialog(null)
+          setSignIn(null)
+        }}
         onDone={(lines, page) => {
           setDialog(null)
+          setSignIn(null)
           if (page && page.page.length) showOnce(page)
           void run("account", async () => lines)
         }}

@@ -104,12 +104,7 @@ impl App {
     pub fn kt_mirrors(&self) -> AppResult<MirrorsView> {
         let configured = self.settings()?.kt_mirrors;
         let checks = self.call(|core| {
-            let server = core
-                .session
-                .as_ref()
-                .and_then(|s| s.account_session())
-                .and_then(Result::ok)
-                .map(|(server, _)| server);
+            let server = core.session.as_ref().and_then(|s| s.account_server());
             Ok(server
                 .map(|s| crate::session::mirrors::last(&core.paths.data, &s))
                 .unwrap_or_default())

@@ -145,8 +145,8 @@ impl Session {
             .as_ref()
             .ok_or("adding a device this way needs the account on this device; log in first")?;
         let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
-        let token = cfg.session_token()?.to_string();
         let server = cfg.server.clone();
+        let token = self.token()?;
         if let Some(old) = self.link.take() {
             let _ = transport.link_close(&token, old.link_id);
         }
@@ -191,7 +191,7 @@ impl Session {
         }
         let cfg = self.sync.as_ref().ok_or("no account on this device")?;
         let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
-        let token = cfg.session_token()?.to_string();
+        let token = self.token()?;
         let frames = transport
             .link_poll(link.link_id, LinkSide::Opener(&token), link.read)
             .map_err(|e| e.to_string())?;
@@ -236,7 +236,7 @@ impl Session {
         let offer = link.offer.take().ok_or("this link already finished")?;
         let cfg = self.sync.as_ref().ok_or("no account on this device")?;
         let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
-        let token = cfg.session_token()?.to_string();
+        let token = self.token()?;
         let sk = self.secret_key_state();
         let granted = offer
             .grant(&mut self.identity, self.keystore.as_ref(), &sk)
@@ -297,10 +297,11 @@ impl Session {
         let Some(mut link) = self.link.take() else {
             return Ok(());
         };
-        if let Some(cfg) = self.sync.as_ref()
-            && let Ok(transport) = HttpTransport::new(&cfg.server)
-            && let Ok(token) = cfg.session_token()
+        if let Some(server) = self.sync.as_ref().map(|c| c.server.clone())
+            && let Ok(transport) = HttpTransport::new(&server)
+            && let Ok(token) = self.token()
         {
+            let token = token.as_str();
             if link.state == "compare"
                 && let Some(offer) = link.offer.as_ref()
                 && let Ok(frame) = offer.decline()
@@ -577,6 +578,7 @@ pub fn finish_joined(
         expires_at: session.expires_at,
         vaults: BTreeMap::new(),
         last_sync_at: None,
+        sign_in: None,
     };
     cfg.save(&paths.sync_file())?;
     Ok(lines)
@@ -597,17 +599,14 @@ pub enum SignIn<'a> {
 
 impl Session {
     /// The account's transport, session token and server.
-    pub(crate) fn account_online(&self) -> Result<(HttpTransport, String, String), String> {
+    pub(crate) fn account_online(&mut self) -> Result<(HttpTransport, String, String), String> {
         let cfg = self
             .sync
             .as_ref()
             .ok_or("this needs the account on this device; register or log in first")?;
-        let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
-        Ok((
-            transport,
-            cfg.session_token()?.to_string(),
-            cfg.server.clone(),
-        ))
+        let server = cfg.server.clone();
+        let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
+        Ok((transport, self.token()?, server))
     }
 
     /// Makes the account with its slot opened by the password alone (the
@@ -668,6 +667,7 @@ impl Session {
             expires_at: session.expires_at,
             vaults: BTreeMap::new(),
             last_sync_at: None,
+            sign_in: None,
         };
         cfg.save(&self.paths.sync_file())?;
         self.sync = Some(cfg);

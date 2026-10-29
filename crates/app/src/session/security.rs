@@ -196,11 +196,8 @@ impl Session {
     }
 
     /// The server and a live session token, when there is an account.
-    pub(crate) fn account_session(&self) -> Option<Result<(String, String), String>> {
-        let cfg = self.sync.as_ref()?;
-        Some(
-            cfg.session_token()
-                .map(|t| (cfg.server.clone(), t.to_string())),
-        )
+    pub(crate) fn account_session(&mut self) -> Option<Result<(String, String), String>> {
+        let server = self.sync.as_ref()?.server.clone();
+        Some(self.token().map(|t| (server, t)))
     }
 }
