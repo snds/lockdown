@@ -1,6 +1,6 @@
 # Lockdown design brief: desktop, web vault and extension
 
-_Status: v1.0, 2026-10-29. Brought up to date with build slices 13–29 at Sean's request: the screens added since v0.5 (§3.3–§3.6), the rules builders added (§6), the copy that decisions fixed (§10), and the gaps they recorded (§11). Questions 1–6 and 8 were decided by Sean on 2026-10-17; question 7 stands under D38. v0.5 (2026-10-17) covered the first 19 screens. Companion to `10-desktop-shell.md` (the Tauri shell as built). This page is the design contract for the desktop app, and for the web vault and the extension popup, which share its views; the six security components it depends on are specified in `snds/unicron` under `docs/specs/security/`. The design review of the built screens is in progress and will be `docs/design/2026-10-29-review.md` (§12)._
+_Status: v1.0, 2026-10-29. Brought up to date with build slices 13–29 at Sean's request: the screens added since v0.5 (§3.3–§3.6), the rules builders added (§6), the copy that decisions fixed (§10), and the gaps they recorded (§11). Questions 1–6 and 8 were decided by Sean on 2026-10-17; question 7 stands under D38. v0.5 (2026-10-17) covered the first 19 screens. Companion to `10-desktop-shell.md` (the Tauri shell as built). This page is the design contract for the desktop app, and for the web vault and the extension popup, which share its views; the six security components it depends on are specified in `snds/unicron` under `docs/specs/security/`. The design review of the built screens is `docs/design/2026-10-29-review.md` (§12)._
 
 ## For future agent
 
@@ -389,4 +389,4 @@ Each was built locally in the app instead. They are requests for `snds/unicron`,
 
 ## 12. Design review
 
-The built screens are being captured on desktop, web vault and extension, in light and dark, at 1280, 900 and 390 px, with an axe scan of each state, by a capture harness being added in `design/capture/`. The review against this brief, with a ranked list of fixes, is in progress and will be `docs/design/2026-10-29-review.md`. Fixes it accepts become rows in the status page's "Claude can build next" list.
+The built screens were captured on desktop, web vault and extension, in light and dark, at 1280, 900 and 390 px, with an axe scan of each state, by the capture harness in `design/capture/`. The review against this brief, with a ranked list of fixes, is [`docs/design/2026-10-29-review.md`](../design/2026-10-29-review.md): seven defects to fix now (R1–R7), eight structural changes for Sean to decide (R8–R15), and polish. Its unicron requests (dialog actions that keep their labels, a plain-CSS token sheet, `CodeDisplayList` semantics) join §11.1. Fixes it accepts become rows in the status page's "Claude can build next" list.
