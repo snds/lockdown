@@ -1,6 +1,6 @@
 # 39: First run for people, a local account, and finding a server
 
-_Slice: `slice/first-run`. Status: **§1 is the plan, for Sean's review before anything is built** (2026-10-29). Answers Sean's notes after his first run of the macOS app: the first run talked about a sync server nobody had helped him set up; it should make a local account with a name and a master password, find servers on its own and let the person correct the pick, run as its own server until a real one exists, set expectations plainly, and feel roomy. Builds to the coordinator's eight calls under D375 (restated in §1.0) and to D11, D38, D62, D92, D94, D95, D101, D122. Proposed decisions D460–D479 are at the end. Sections 2 onward (what was built, how to run it, gaps, audit notes) are written in phase 2._
+_Slice: `slice/first-run`. Status: **§1 is the plan, approved by Sean on 2026-10-29 with every recommendation taken (§1.15); phase 2 builds it.** Answers Sean's notes after his first run of the macOS app: the first run talked about a sync server nobody had helped him set up; it should make a local account with a name and a master password, find servers on its own and let the person correct the pick, run as its own server until a real one exists, set expectations plainly, and feel roomy. Builds to the coordinator's eight calls under D375 (restated in §1.0) and to D11, D38, D62, D92, D94, D95, D101, D122. Proposed decisions D460–D479 are at the end. Sections 2 onward (what was built, how to run it, gaps, audit notes) are written in phase 2._
 
 ## For future agent
 
@@ -510,9 +510,20 @@ Both are built by another slice as removable code (`crates/devtools` and a front
 8. Everything in the unicron request (§1.12).
 9. Save as PDF, if the mac-fixes slice hasn't merged when phase 2 starts (§1.2).
 
-### 1.15 Open questions for Sean
+### 1.15 Open questions for Sean, and his answers
 
-Only the ones that change what a person sees or does (D38).
+Only the ones that change what a person sees or does (D38). **Sean answered on 2026-10-29: "Go ahead." Every recommendation is taken**, and the answers below are what phase 2 builds.
+
+| # | Answer (Sean, 2026-10-29) |
+|---|---|
+| Q1 | Skip Touch ID unlock on the ad-hoc build. Settings → Lock says "Touch ID unlock needs the signed Lockdown app." |
+| Q2 | The migration is required on next open, with no "Not now". |
+| Q3 | Refuse a master password under "fair". |
+| Q4 | The kit test moves to the first unlock a day or more later. |
+| Q5 | The demo opens from Welcome. In Sean's words: "once we have a stable demo experience, we can look at making my own or importing from a 3rd party. I just want a demo experience to help drive improvements, new features, and QA." Doc 40 builds the demo mode; Welcome reads its `onExploreDemo` / `demoAvailable` provider (§1.13). |
+| Q6 | `--announce` is on by default on a network address and off on loopback. |
+
+The questions as asked, with the recommendations that were taken:
 
 | # | Question | Recommendation | Tradeoff |
 |---|---|---|---|
@@ -529,21 +540,21 @@ Only the ones that change what a person sees or does (D38).
 |---|---|---|---|
 | D460 | The local account's server is `lockdown_server::app` in process: no socket, `Config::local()`, stored under `<data>/local-server/`, reached through `lockdown-sync`'s local hook at the reserved base `lockdown-local://this-device`, installed by the desktop and the CLI; one request at a time across processes by a file lock. | The app runs a private copy of the Lockdown server inside itself, so your account is a real account from day one. | Under D38; audit item |
 | D461 | The master password opens the vault through a local password slot (Argon2id at or above the desktop floor) that seals the device's three secrets in `device-key.sealed.cbor`; a Lockdown keystore implements the crate's `DeviceKeystore`. Amends D11 (local open, for Lockdown's own unlock), D83 and D87; the crate is asked to adopt it. | Your master password now locks the key file on disk, so copying the folder isn't enough to open your vault. | Under D38; audit item |
-| D462 | Quick unlock: a per-launch secret in memory plus a biometry-bound OS item; password after a restart, after 14 days, after a fingerprint change, after five failures; offered once after setup, only where the OS can bind the key. Makes D252's reminder redundant on the desktop. | Touch ID unlocks most of the time; the password is still asked at start and every two weeks. | **Flagged** (14 days; Q1) |
+| D462 | Quick unlock: a per-launch secret in memory plus a biometry-bound OS item; password after a restart, after 14 days, after a fingerprint change, after five failures; offered once after setup, only where the OS can bind the key. Makes D252's reminder redundant on the desktop. | Touch ID unlocks most of the time; the password is still asked at start and every two weeks. | Sean (2026-10-29), as recommended |
 | D463 | The name: a 1–64 character label, the local login, never an email, never sent anywhere; renaming changes the label only. | Your name is just what the lock screen shows. | **Flagged** |
-| D464 | The master password must read at least "fair" (zxcvbn 3), typed twice, with the name as a guessable word. | Lockdown won't take a weak master password. | **Flagged** (Q3) |
-| D465 | The migration of existing installs: required on next open; the kit's Secret Key or a new kit; server accounts confirm their password once online; the plain key file is removed only after the sealed one reopens. | Older installs choose a master password once; nothing in the vault changes. | **Flagged** (Q2); audit item |
+| D464 | The master password must read at least "fair" (zxcvbn 3), typed twice, with the name as a guessable word. | Lockdown won't take a weak master password. | Sean (2026-10-29), as recommended |
+| D465 | The migration of existing installs: required on next open; the kit's Secret Key or a new kit; server accounts confirm their password once online; the plain key file is removed only after the sealed one reopens. | Older installs choose a master password once; nothing in the vault changes. | Sean (2026-10-29), as recommended; audit item |
 | D466 | The CLI unlocks with the master password from stdin, the variable or a terminal prompt (amends D47); `init --name`; `password set`; `password reset --kit-stdin`. | The command line asks for the same master password. | **Flagged** (the prompt) |
 | D467 | A forgotten password: the kit opens the identity, a device-key session and the authenticated re-registration set the new password, the account slot and the local slot are sealed again; needs the network when the account is on a server. | Your recovery kit lets you choose a new master password. | Under D38; audit item |
 | D468 | Discovery: five sources in a fixed order, background only, domain lookups only after an email-shaped login is typed on the join path, deterministic ranking. | Lockdown looks for your server so you don't have to type it, and asks before using it. | **Flagged** (what it looks at) |
 | D469 | Discovery treats every answer as hostile: caps, timeouts, no redirects, https except loopback, 16 per source, printable short names; Vaultwarden recognised by `/api/config` and pointed at Import. | A fake answer can't do more than show up in a list. | Under D38; audit item |
 | D470 | The confirm shows the address, the source and the server key's six groups of five digits; the confirmed key is pinned before the first request; a changed key is refused in words. | You see which server you're connecting to, and Lockdown holds it to that. | Under D38; audit item; the words **flagged** |
-| D471 | `lockdown-server --announce`: a DNS-SD advertisement of `_lockdown._tcp`, on by default on a network address, off on loopback. | Your home server can be found by your devices on the same network. | **Flagged** (Q6) |
+| D471 | `lockdown-server --announce`: a DNS-SD advertisement of `_lockdown._tcp`, on by default on a network address, off on loopback. | Your home server can be found by your devices on the same network. | Sean (2026-10-29), as recommended |
 | D472 | A managed policy file (macOS and Linux paths, root-owned, not writable by others) names a server, may pin its key, may lock the choice. | An organization can preset its server. | Under D38 |
 | D473 | Move to your own server: confirm, the same login and password registered there with the kept Secret Key, the identity's records and every vault pushed from its first head, heads compared, then the switch; the local server's folder deleted after. | Moving copies everything to your server, and only switches once it's all there. | **Flagged** (the flow); audit item |
-| D474 | The first-run flow and its words (§1.9): Welcome, name and password, kit, Touch ID, bring your passwords, the proof moment; join, migration and unlock screens; the kit page for local accounts. | First run is six short screens with plain expectations. | **Flagged** (the words; Q4) |
+| D474 | The first-run flow and its words (§1.9): Welcome, name and password, kit, Touch ID, bring your passwords, the proof moment; join, migration and unlock screens; the kit page for local accounts. | First run is six short screens with plain expectations. | Sean (2026-10-29), as recommended |
 | D475 | Density: Comfortable roomier (48 px rows and the knobs of §1.12), Compact about today's Comfortable; the welcome layout fixed at either density; all tokens; the unicron density-mode request. | The app is roomier by default; Compact keeps it tight. | **Flagged** |
 | D476 | Server words appear only for a server account, a found server, or the server paths; local-mode lines on Status, Devices and Sharing. | You won't hear about servers until one matters. | **Flagged** |
 | D477 | "Account password" becomes "master password" in every user-facing string. | One name for the one password. | **Flagged** |
 | D478 | `onboarding.cbor`: the first run's stage, the name, and whether it created the identity root; an interrupted first run resumes at the kit with a new kit; the reset removes the identity root only when first run made it and no other app is enrolled. | Quitting halfway through setup is safe, and a developer reset leaves nothing behind. | Under D38 |
-| D479 | The demo opens from Welcome in builds with `demo-vault`, with no account, a persistent bar and Leave the demo; never mixed into a real vault. | You can look around before you set anything up. | **Flagged** (Q5) |
+| D479 | The demo opens from Welcome in builds with `demo-vault`, with no account, a persistent bar and Leave the demo; never mixed into a real vault. | You can look around before you set anything up. | Sean (2026-10-29), as recommended |
