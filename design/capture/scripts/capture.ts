@@ -8,7 +8,7 @@
 // script). The browser's clock is pinned, so countdowns and "edited 3 days
 // ago" read the same in every run.
 
-import { mkdirSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { parseArgs } from "node:util"
 
@@ -197,15 +197,28 @@ async function main() {
     while (next < jobs.length) await shoot(jobs[next++]!)
   }
   await Promise.all(Array.from({ length: Number(args.jobs) }, worker))
-  // The manifest in the states' order, whatever order the pages finished in.
-  const order = new Map(jobs.map((j, i) => [imageId(j.s.id, j.width, j.theme, j.density), i]))
-  manifest.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
 
   await browser.close()
   await site.close()
-  writeFileSync(path.join(OUT, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n")
-  if (!args["skip-axe"]) writeFileSync(path.join(OUT, "axe.json"), JSON.stringify(axe, null, 2) + "\n")
-  writeFileSync(path.join(OUT, "capture-log.json"), JSON.stringify(log, null, 2) + "\n")
+  // The manifest in the states' order, whatever order the pages finished in.
+  // `--only` re-takes some states: their entries replace the earlier run's, the rest stay.
+  const read = <T,>(name: string, empty: T): T => (args.only?.length && existsSync(path.join(OUT, name)) ? (JSON.parse(readFileSync(path.join(OUT, name), "utf8")) as T) : empty)
+  // A re-taken state's earlier images all go, even at a width it no longer has.
+  const retaken = new Set(wanted.map((st) => st.id))
+  const earlier = read<Shot[]>("manifest.json", [])
+  for (const m of earlier) if (retaken.has(m.id.split("--")[0]!) && !manifest.some((x) => x.id === m.id)) rmSync(path.join(OUT, m.file), { force: true })
+  const allShots = [...earlier.filter((m) => !retaken.has(m.id.split("--")[0]!)), ...manifest]
+  const keep = new Set(allShots.map((m) => m.id))
+  const prune = <T,>(o: Record<string, T>) => Object.fromEntries(Object.entries(o).filter(([k]) => keep.has(k)))
+  const rank = new Map(states.map((st, i) => [st.id, i]))
+  const key = (m: Shot) => [rank.get(m.id.split("--")[0]!) ?? 0, m.width === "natural" ? 0 : -m.width, m.theme === "light" ? 0 : 1, m.density === "compact" ? 1 : 0]
+  allShots.sort((a, b) => {
+    const [x, y] = [key(a), key(b)]
+    return x.findIndex((v, i) => v !== y[i]) < 0 ? 0 : x[x.findIndex((v, i) => v !== y[i])]! - y[x.findIndex((v, i) => v !== y[i])]!
+  })
+  writeFileSync(path.join(OUT, "manifest.json"), JSON.stringify(allShots, null, 2) + "\n")
+  if (!args["skip-axe"]) writeFileSync(path.join(OUT, "axe.json"), JSON.stringify(prune({ ...read<Record<string, unknown>>("axe.json", {}), ...axe }), null, 2) + "\n")
+  writeFileSync(path.join(OUT, "capture-log.json"), JSON.stringify(prune({ ...read<Record<string, unknown>>("capture-log.json", {}), ...log }), null, 2) + "\n")
   console.log(`${manifest.length} images in ${OUT}`)
 }
 

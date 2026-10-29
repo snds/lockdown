@@ -19,7 +19,7 @@ pnpm dev                    # the same page with Vite's dev server, for working 
 pnpm typecheck && pnpm lint # what CI runs (the `design-capture` job)
 ```
 
-Chromium comes from `PLAYWRIGHT_BROWSERS_PATH`; the capture never installs one. `pnpm capture` takes `--out <dir>`, `--only <id prefix>` (repeatable), `--widths 1280,390`, `--themes light`, `--jobs 3` and `--skip-axe`. `pnpm review:build` takes `--out <dir>` and fails if the build breaks the host's limits (16 MB, 255 files, absolute paths).
+Chromium comes from `PLAYWRIGHT_BROWSERS_PATH`; the capture never installs one. `pnpm capture` takes `--out <dir>`, `--only <id prefix>` (repeatable), `--widths 1280,390`, `--themes light`, `--jobs 3` and `--skip-axe`; with `--only`, the re-taken states' images replace their earlier ones in the manifest, `axe.json` and the log, and every other entry stays. `pnpm review:build` takes `--out <dir>` and fails if the build breaks the host's limits (16 MB, 255 files, absolute paths).
 
 In the review build, `#/` is the list of every surface, screen and state; `#/<state id>` opens one (`#/desktop-vault-filled`), and every image id in the manifest opens too (`#/desktop-vault-filled--w390-dark` lands on that state, dark, at that width). The bar at the bottom goes back to the list, switches light and dark, and switches the width: Phone draws the state in the page; 900 and 1280 draw it in a frame that wide, scaled to fit, so the apps' own breakpoints see a desktop window.
 

@@ -11,6 +11,8 @@ import type { World } from "../fixture/world"
 import { status } from "../fixture/story"
 
 const app = () => <App />
+/** The vaults, folders and tags trees are hidden below the `md` breakpoint, so these states have no phone width. */
+const WIDE = [1280, 900]
 const DIALOG: Step = { see: '[role="dialog"], [role="alertdialog"]' }
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 const starts = (s: string) => new RegExp(`^${esc(s)}(\\s|$)`)
@@ -166,8 +168,8 @@ export const DESKTOP_STATES: StateDef[] = [
   d({ id: "desktop-view-archived", screen: "Smart views", state: "Archived", brief_row: null, notes: "Archived items, out of the list and search.", steps: [...open, side("Archived")] }),
   d({ id: "desktop-view-deleted", screen: "Smart views", state: "Deleted", brief_row: "Item detail", notes: "The trash: readable through the grace period.", steps: [...open, side("Deleted")] }),
   d({ id: "desktop-view-deleted-empty", screen: "Smart views", state: "Deleted, empty", brief_row: "Item detail", notes: "The trash is empty.", setup: only((i) => i.state !== "trashed"), steps: [...open, side("Deleted")] }),
-  d({ id: "desktop-scope-vault-family", screen: "Vaults and folders", state: "Family vault", brief_row: "Vault", notes: "The list narrowed to the shared Family vault.", steps: [...open, side("Family")] }),
-  d({ id: "desktop-scope-folder-finance", screen: "Vaults and folders", state: "Finance folder", brief_row: "Vault", notes: "The list narrowed to a folder.", steps: [...open, side("Finance")] }),
+  d({ id: "desktop-scope-vault-family", widths: WIDE, screen: "Vaults and folders", state: "Family vault", brief_row: "Vault", notes: "The list narrowed to the shared Family vault.", steps: [...open, side("Family")] }),
+  d({ id: "desktop-scope-folder-finance", widths: WIDE, screen: "Vaults and folders", state: "Finance folder", brief_row: "Vault", notes: "The list narrowed to a folder.", steps: [...open, side("Finance")] }),
 
   // --- item detail ---------------------------------------------------------------------------
   d({ id: "desktop-item-login-full", screen: "Item detail", state: "Login: password, passkey and code", brief_row: "Item detail", notes: "One account, every way in: the methods block first, then the websites.", steps: [...open, ...item("Northwind Mail")] }),

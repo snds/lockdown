@@ -22,6 +22,8 @@ const starts = (s: string) => new RegExp(`^${esc(s)}(\\s|$)`)
 const side = (label: string): Step => ({ click: starts(label), within: 'nav[aria-label="Sidebar"]' })
 const open: Step[] = [{ click: "Unlock" }, { wait: /^All items/ }]
 const item = (title: string): Step[] => [{ click: starts(title), within: "main" }, { wait: title, role: "heading" }]
+/** The vaults, folders and tags trees are hidden below the `md` breakpoint, so these states have no phone width. */
+const WIDE = [1280, 900]
 const settings: Step[] = [...open, side("Settings"), { wait: "Density" }]
 
 type DesktopDef = Omit<StateDef, "surface" | "widths" | "mount"> & Partial<Pick<StateDef, "widths" | "mount">>
@@ -63,9 +65,9 @@ export const DESKTOP_MORE: StateDef[] = [
   }),
 
   // --- organization ---------------------------------------------------------------------
-  d({ id: "desktop-nav-vault-menu", screen: "Vaults and tags trees", state: "Vault menu", brief_row: "Vaults and tags trees", notes: "A vault's menu: new folder, rename.", steps: [...open, { click: "Personal options" }, MENU] }),
-  d({ id: "desktop-nav-new-vault", screen: "Vaults and tags trees", state: "New vault", brief_row: "Vaults and tags trees", notes: "Naming a new vault.", steps: [...open, { click: "New vault" }, DIALOG] }),
-  d({ id: "desktop-nav-tag", screen: "Vaults and tags trees", state: "Narrowed to a tag", brief_row: "Vaults and tags trees", notes: "The list narrowed to #travel.", steps: [...open, side("travel")] }),
+  d({ id: "desktop-nav-vault-menu", widths: WIDE, screen: "Vaults and tags trees", state: "Vault menu", brief_row: "Vaults and tags trees", notes: "A vault's menu: new folder, rename.", steps: [...open, { click: "Personal options" }, MENU] }),
+  d({ id: "desktop-nav-new-vault", widths: WIDE, screen: "Vaults and tags trees", state: "New vault", brief_row: "Vaults and tags trees", notes: "Naming a new vault.", steps: [...open, { click: "New vault" }, DIALOG] }),
+  d({ id: "desktop-nav-tag", widths: WIDE, screen: "Vaults and tags trees", state: "Narrowed to a tag", brief_row: "Vaults and tags trees", notes: "The list narrowed to #travel.", steps: [...open, side("travel")] }),
   d({ id: "desktop-item-more-menu", screen: "Where it is, item menu", state: "Item menu", brief_row: "Where it is, item menu", notes: "History, archive, move, crown-jewel on or off.", steps: [...open, ...item("Bluefin Bank"), { click: "More for this item" }, MENU] }),
   d({ id: "desktop-item-history", screen: "Version history", state: "Versions", brief_row: "Version history", notes: "Every version, which device, which fields; hidden values stay hidden.", steps: [...open, ...item("Northwind Mail"), { click: "More for this item" }, { click: "History", role: "menuitem" }, DIALOG] }),
   d({ id: "desktop-item-jewel-on", screen: "Where it is, item menu", state: "Keep as a crown jewel?", brief_row: "Where it is, item menu", notes: "Moving an item into the crown-jewel class.", steps: [...open, ...item("Bluefin Bank"), { click: "More for this item" }, { click: "Keep as a crown jewel", role: "menuitem" }, DIALOG] }),
@@ -109,7 +111,7 @@ export const DESKTOP_MORE: StateDef[] = [
   }),
 
   // --- codes ---------------------------------------------------------------------------------
-  d({ id: "desktop-codes-scan-paste", screen: "Sign in a TV or console", state: "Paste: refused", brief_row: "Sign in a TV or console", notes: "A pasted code is never approved: only one scanned from a screen in front of you.", steps: [...open, side("Codes"), { click: "Sign in a TV" }, DIALOG, { click: "Paste", role: "tab" }, { fill: "The code's address", value: "https://watch.meadowlark.example/activate?code=WDJB-MJHT" }, { key: "Enter" }, { pause: 600 }] }),
+  d({ id: "desktop-codes-scan-paste", screen: "Sign in a TV or console", state: "Paste: refused", brief_row: "Sign in a TV or console", notes: "A pasted code is never approved: only one scanned from a screen in front of you.", steps: [...open, side("Codes"), { click: "Sign in a TV" }, DIALOG, { click: "Paste", role: "tab" }, { fill: "The code's address", value: "https://watch.meadowlark.example/activate?code=WDJB-MJHT" }, { click: "Check it" }, { pause: 600 }] }),
   d({ id: "desktop-codes-search", screen: "Codes view", state: "Search", brief_row: "Codes view", notes: "Searching issuers and accounts.", steps: [...open, side("Codes"), { fill: "Search codes", value: "cobalt" }] }),
 
   // --- security ----------------------------------------------------------------------------------
