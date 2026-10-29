@@ -66,7 +66,7 @@ function watch(page: Page) {
 async function signIn(page: Page, secretKey: string, login = LOGIN) {
   const form = page.getByRole("form", { name: "Sign in" })
   await form.getByLabel("Login name").fill(login)
-  await form.getByLabel("Account password").fill(PASSWORD)
+  await form.getByLabel("Master password").fill(PASSWORD)
   await form.getByLabel("Secret Key").fill(secretKey)
   await form.getByRole("button", { name: "Sign in" }).click()
 }
@@ -91,7 +91,7 @@ test("sign in as a new device, find, create, edit, find, lock, unlock and sign o
   // The password alone doesn't open a new device.
   const form = page.getByRole("form", { name: "Sign in" })
   await form.getByLabel("Login name").fill(LOGIN)
-  await form.getByLabel("Account password").fill(PASSWORD)
+  await form.getByLabel("Master password").fill(PASSWORD)
   await form.getByLabel("Secret Key").fill("A1-NOT-THE-KEY")
   await form.getByRole("button", { name: "Sign in" }).click()
   await expect(form.getByRole("alert")).toBeVisible({ timeout: 90_000 })
@@ -134,10 +134,10 @@ test("sign in as a new device, find, create, edit, find, lock, unlock and sign o
   await sidebar(page).getByRole("button", { name: "Lock" }).click()
   const unlock = page.getByRole("form", { name: "Unlock" })
   await expect(unlock).toBeVisible()
-  await unlock.getByLabel("Account password").fill("not the password at all")
+  await unlock.getByLabel("Master password").fill("not the password at all")
   await unlock.getByRole("button", { name: "Unlock" }).click()
   await expect(page.getByRole("alert")).toContainText("didn't match")
-  await unlock.getByLabel("Account password").fill(PASSWORD)
+  await unlock.getByLabel("Master password").fill(PASSWORD)
   await unlock.getByRole("button", { name: "Unlock" }).click()
   await expect(page.getByRole("button", { name: /Example mail \(work\)/ }).first()).toBeVisible({ timeout: 60_000 })
 

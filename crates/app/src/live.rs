@@ -158,11 +158,11 @@ pub fn notices_for(alerts: &[lockdown_sync::wire::AccountAlert]) -> Vec<LiveNoti
                 ),
                 AlertKind::SecurityKeyAdded => (
                     "Security key added".to_string(),
-                    format!("{name} was added to your Lockdown account's sign-in. If it wasn't you, end the sessions you don't know in Devices and change your account password."),
+                    format!("{name} was added to your Lockdown account's sign-in. If it wasn't you, end the sessions you don't know in Devices and change your master password."),
                 ),
                 AlertKind::SecurityKeyRemoved => (
                     "Security key removed".to_string(),
-                    format!("{name} was removed from your Lockdown account's sign-in. If it wasn't you, end the sessions you don't know in Devices and change your account password."),
+                    format!("{name} was removed from your Lockdown account's sign-in. If it wasn't you, end the sessions you don't know in Devices and change your master password."),
                 ),
                 AlertKind::EmailBreach | AlertKind::Other => return None,
             };

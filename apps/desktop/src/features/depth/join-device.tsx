@@ -122,7 +122,7 @@ export function JoinWithDevice({ server, onOpened, scan }: { server?: string; on
             <Input id="joined-login" name="login" required autoComplete="username" />
           </Field>
           <Field>
-            <FieldLabel htmlFor="joined-password">Account password</FieldLabel>
+            <FieldLabel htmlFor="joined-password">Master password</FieldLabel>
             <Input id="joined-password" name="password" type="password" required autoComplete="current-password" />
           </Field>
         </FieldGroup>
@@ -303,7 +303,7 @@ export function OptOutRegister({ open, server, onClose, onRegistered }: { open: 
               <Input id="optout-login" name="login" required autoComplete="username" />
             </Field>
             <Field>
-              <FieldLabel htmlFor="optout-password">Account password</FieldLabel>
+              <FieldLabel htmlFor="optout-password">Master password</FieldLabel>
               <Input id="optout-password" name="password" type="password" required autoComplete="new-password" />
             </Field>
             <Field orientation="horizontal">

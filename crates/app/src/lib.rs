@@ -141,7 +141,7 @@ impl AppError {
         let (detail, message) = match route {
             Route::Password => (
                 "password",
-                format!("your account password is needed to {reason}"),
+                format!("your master password is needed to {reason}"),
             ),
             Route::Window => ("window", format!("confirm in this window to {reason}")),
             Route::Platform => ("platform", format!("confirm to {reason}")),

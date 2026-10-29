@@ -299,7 +299,7 @@ export const PLAYBOOKS: Playbook[] = [
     steps: [
       "If it was you (a new computer or phone), dismiss this.",
       "If it wasn't you, go to Devices and revoke that device now.",
-      "Then change your Lockdown account password and make a new recovery kit.",
+      "Then change your Lockdown master password and make a new recovery kit.",
       "Look at Devices again: only your own devices should be listed.",
     ],
   },

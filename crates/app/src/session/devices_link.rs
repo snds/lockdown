@@ -95,7 +95,7 @@ impl Session {
                 link.asked.as_ref().map(|a| a.1.as_str()).unwrap_or("the new device"),
                 link.asked.as_ref().map(|a| a.0.as_str()).unwrap_or("")
             ),
-            "approved" => "Approved. The new device finishes by signing in with your account password.".into(),
+            "approved" => "Approved. The new device finishes by signing in with your master password.".into(),
             "declined" => "Declined. Nothing was changed.".into(),
             _ => "This link closed. Make a new code to try again.".into(),
         };
@@ -418,9 +418,9 @@ impl Joining {
             "waiting" => "Waiting for the other device…".to_string(),
             "compare" => "Check that the other device shows the same six digits, then approve there.".into(),
             "approved" => match self.secret_key_state {
-                Some("sent") => "Approved. Your Secret Key came with it. Sign in with your account password to finish.".into(),
-                Some("opted-out") => "Approved. Your account has no Secret Key. Sign in with your account password to finish.".into(),
-                _ => "Approved. Sign in with your account password to finish; the Secret Key from your kit is asked for only if it's ever needed.".into(),
+                Some("sent") => "Approved. Your Secret Key came with it. Sign in with your master password to finish.".into(),
+                Some("opted-out") => "Approved. Your account has no Secret Key. Sign in with your master password to finish.".into(),
+                _ => "Approved. Sign in with your master password to finish; the Secret Key from your kit is asked for only if it's ever needed.".into(),
             },
             _ => "Done.".into(),
         };

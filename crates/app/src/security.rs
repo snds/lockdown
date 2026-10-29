@@ -752,7 +752,7 @@ fn assemble(inp: &Inputs<'_>) -> SecurityReport {
                         .map(|n| format!("\u{201c}{n}\u{201d}"))
                         .unwrap_or_else(|| "A security key".into());
                     f.detail = format!(
-                        "{name} was {} your Lockdown account's sign-in. If that wasn't you, someone is signed in: end the sessions you don't know in Devices and change your account password.",
+                        "{name} was {} your Lockdown account's sign-in. If that wasn't you, someone is signed in: end the sessions you don't know in Devices and change your master password.",
                         if added { "added to" } else { "removed from" }
                     );
                     f

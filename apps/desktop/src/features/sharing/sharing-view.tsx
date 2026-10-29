@@ -69,7 +69,7 @@ export function SharingView({ rows, onOpenItem, onChanged, onNotice }: SharingVi
   const titleOf = (id: string) => rows.find((r) => r.id === id)?.title ?? "An item"
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-4 md:p-6">
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-(--c-section-gap) p-(--c-page-gutter-narrow) md:p-(--c-page-gutter)">
       <PaneHeader title="Sharing">
         <Button size="sm" variant="outline" onClick={changed} disabled={loading}>
           {loading ? <Spinner data-icon="inline-start" /> : <Icon name="refresh" data-icon="inline-start" />}
@@ -180,6 +180,19 @@ export function SharingView({ rows, onOpenItem, onChanged, onNotice }: SharingVi
           />
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * Sharing for a vault kept on this computer only (docs/plan/39-first-run.md
+ * §1.8): one sentence, no server words until a server is set up.
+ */
+export function SharingLocalOnly() {
+  return (
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-(--c-section-gap) p-(--c-page-gutter-narrow) md:p-(--c-page-gutter)">
+      <PaneHeader title="Sharing" />
+      <p className="text-sm text-muted-foreground">Sharing with people needs a server you and they can reach. You can set one up in Settings → Server.</p>
     </div>
   )
 }

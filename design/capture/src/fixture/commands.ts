@@ -115,7 +115,7 @@ const ROUTES: Record<string, ApprovalRoute> = {
   reveal: { route: "password", method: "password" },
 }
 
-/** A crown jewel's reveal, export or class change asks for the account password (D101). */
+/** A crown jewel's reveal, export or class change asks for the master password (D101). */
 function needPassword(gate: GateInput | undefined, what: string) {
   if (!gate?.password) fail("approval_needed", what, "password")
   if (gate.password.trim().toLowerCase() === "wrong") fail("refused", "The password didn't match.")
@@ -611,7 +611,7 @@ export function commands(world: World): Record<string, Handler> {
     link_decline: () => undefined,
     secret_key_status: () => ({ state: "kept", words: "This device keeps the Secret Key in the system keychain." }),
     join_start: (a) => ({ state: "compare", sas: "418 902", server: str(a, "server") || PERSON.server, secret_key: "sent", words: "Check the other device shows the same six digits." }),
-    join_poll: () => ({ state: "approved", sas: "418 902", server: PERSON.server, secret_key: "sent", words: "Approved on the other device. Enter your account password to finish." }),
+    join_poll: () => ({ state: "approved", sas: "418 902", server: PERSON.server, secret_key: "sent", words: "Approved on the other device. Enter your master password to finish." }),
     join_finish: () => status(world),
     join_cancel: () => undefined,
     second_factor_open: () => undefined,
@@ -860,7 +860,7 @@ export function commands(world: World): Record<string, Handler> {
     web_sign_in_answer: () => status(world),
     web_sign_in_continue: () => null,
     web_join_start: () => ({ state: "compare", sas: "418 902", server: PERSON.server, secret_key: "sent", words: "Check the other device shows the same six digits." }),
-    web_join_poll: () => ({ state: "approved", sas: "418 902", server: PERSON.server, secret_key: "sent", words: "Approved on the other device. Enter your account password to finish." }),
+    web_join_poll: () => ({ state: "approved", sas: "418 902", server: PERSON.server, secret_key: "sent", words: "Approved on the other device. Enter your master password to finish." }),
     web_join_finish: () => status(world),
     web_join_cancel: () => undefined,
     reveal_to_use: (a) => {

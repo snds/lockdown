@@ -56,7 +56,7 @@ export interface PasskeyClient {
   /** Undoes a site's Signal: the passkey is offered again. */
   restore(itemId: string, credentialId: string): Promise<number>
   pending(): Promise<PasskeyApproval[]>
-  /** An approval goes through the `Approve` gate (the account password here). */
+  /** An approval goes through the `Approve` gate (the master password here). */
   answer(requestId: string, approve: boolean, gate?: GateInput): Promise<void>
   /** The automatic upgrades made since the last call, each once. */
   upgrades(): Promise<PasskeyUpgrade[]>

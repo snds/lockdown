@@ -178,7 +178,7 @@ function SignInForm({ session, server, onSignedIn, credentials }: Pick<SignInScr
           <Input id="sign-in-login" name="login" required autoComplete="username" />
         </Field>
         <Field>
-          <FieldLabel htmlFor="sign-in-password">Account password</FieldLabel>
+          <FieldLabel htmlFor="sign-in-password">Master password</FieldLabel>
           <Input id="sign-in-password" name="password" type="password" required autoComplete="current-password" />
         </Field>
         <Field>

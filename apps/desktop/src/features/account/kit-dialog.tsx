@@ -65,7 +65,7 @@ export function KitDialog({ kind, hasAccount, onClose, onDone }: KitDialogProps)
             <DialogTitle>{kind === "kit-create" ? "Recovery kit" : "Recovery drill"}</DialogTitle>
             <DialogDescription>
               {kind === "kit-create"
-                ? "Makes the page and shows it once. With an account, the account password is needed: its slot takes the new Secret Key."
+                ? "Makes the page and shows it once. With an account, the master password is needed: its slot takes the new Secret Key."
                 : "Type the kit back in to prove it opens this identity. Nothing changes unless the drill is recorded."}
             </DialogDescription>
           </DialogHeader>
@@ -84,7 +84,7 @@ export function KitDialog({ kind, hasAccount, onClose, onDone }: KitDialogProps)
             )}
             {hasAccount && (
               <Field>
-                <FieldLabel htmlFor="kit-password">Account password</FieldLabel>
+                <FieldLabel htmlFor="kit-password">Master password</FieldLabel>
                 <Input id="kit-password" name="password" type="password" required={kind === "kit-create"} autoComplete="current-password" />
                 {kind === "kit-verify" && <FieldDescription>Optional: also checks the Secret Key against the account slot.</FieldDescription>}
               </Field>

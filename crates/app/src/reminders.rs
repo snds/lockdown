@@ -223,7 +223,7 @@ impl App {
                 .map_err(AppError::refused)?
             {
                 return Err(AppError::refused(
-                    "that isn't your account password; try again",
+                    "that isn't your master password; try again",
                 ));
             }
             note_password(&core.paths);

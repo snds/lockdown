@@ -17,7 +17,7 @@ interface ExportOptInProps {
  * A crown jewel's "Include in exports and backups" (D121). Off by default:
  * a crown jewel stays out of every bulk export and backup until the person
  * turns this on for that one item, which asks first (the `Reveal` gate, the
- * account password where one exists). Turning it off asks nothing. The
+ * master password where one exists). Turning it off asks nothing. The
  * choice is a setting on the item, so it syncs to every device.
  */
 export function ExportOptIn({ item, onChanged, onNotice }: ExportOptInProps) {

@@ -221,7 +221,7 @@ export const DESKTOP_STATES: StateDef[] = [
     screen: "Item detail",
     state: "Crown jewel: password asked",
     brief_row: "Item detail",
-    notes: "Revealing a crown jewel's field asks for the full account password (D98, D101).",
+    notes: "Revealing a crown jewel's field asks for the full master password (D98, D101).",
     setup: (w) => {
       w.settings = { ...w.settings, reveal: "toggle" }
     },

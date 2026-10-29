@@ -138,7 +138,7 @@ function Sessions({ live, onNotice }: SessionsSectionProps & { live: LiveClient 
           <DialogHeader>
             <DialogTitle>{ending?.kind === "one" ? `End the session on ${deviceLabel(ending.session)}?` : "End every other session?"}</DialogTitle>
             <DialogDescription>
-              The server stops taking that session at once. The device stays enrolled and keeps what it has; it needs the account password to sign in
+              The server stops taking that session at once. The device stays enrolled and keeps what it has; it needs the master password to sign in
               again. If you don't know the device, revoke it too.
             </DialogDescription>
           </DialogHeader>

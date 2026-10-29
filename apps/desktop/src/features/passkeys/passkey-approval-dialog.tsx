@@ -13,7 +13,7 @@ const POLL_MS = 1500
 
 /**
  * A site that requires Lockdown to check it's you, on a computer whose
- * `Approve` gate is the account password (docs/plan/19-passkeys.md §5):
+ * `Approve` gate is the master password (docs/plan/19-passkeys.md §5):
  * the browser waits while this dialog asks, here in the app and never in
  * the page. Approving runs the gate; declining, or two minutes with no
  * answer, tells the site no.

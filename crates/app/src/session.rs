@@ -1394,7 +1394,7 @@ impl Session {
             Some(cfg) => {
                 let Some(password) = password else {
                     return Err(
-                        "this device has an account, so the new Secret Key must go into its slot: give the account password"
+                        "this device has an account, so the new Secret Key must go into its slot: give the master password"
                             .into(),
                     );
                 };
@@ -1533,7 +1533,7 @@ impl Session {
                 lines.push("Secret Key: opens the account slot with the password".into());
             }
             _ => lines.push(
-                "Secret Key: well formed (give the account password too to check it against the account slot)"
+                "Secret Key: well formed (give the master password too to check it against the account slot)"
                     .into(),
             ),
         }

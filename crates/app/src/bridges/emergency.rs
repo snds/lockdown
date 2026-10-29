@@ -53,7 +53,7 @@ impl App {
             Some(a) => {
                 account.push(format!("Your Lockdown account is {} on the server {}.", a.login, a.server));
                 account.push(
-                    "To open it on a new device you need your account password and your recovery kit (the Secret Key and recovery code). Neither is on this page.".into(),
+                    "To open it on a new device you need your master password and your recovery kit (the Secret Key and recovery code). Neither is on this page.".into(),
                 );
             }
             None => account.push(
@@ -153,9 +153,9 @@ impl App {
         sections.push(SheetSection {
             heading: "What to do".into(),
             lines: vec![
-                "Lost this computer: from another device remove it in Devices, end its session, then change your account password.".into(),
-                "Forgot your account password: use Recover on a device with your recovery kit.".into(),
-                "Lost every device: install Lockdown, choose Recover, and type your account password and your recovery kit.".into(),
+                "Lost this computer: from another device remove it in Devices, end its session, then change your master password.".into(),
+                "Forgot your master password: use Recover on a device with your recovery kit.".into(),
+                "Lost every device: install Lockdown, choose Recover, and type your master password and your recovery kit.".into(),
                 "The server is gone: on any computer, open your newest backup in Lockdown's Import with its backup password.".into(),
                 "Someone may have your password or kit: open Security and follow \"My Lockdown account or recovery kit may be exposed\".".into(),
             ],
