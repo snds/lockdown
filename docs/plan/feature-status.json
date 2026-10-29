@@ -1175,15 +1175,17 @@
    "name": "Family plan",
    "target": "parity",
    "review": false,
-   "status": "partial",
+   "status": "done",
    "surfaces": [
     "core",
     "desktop",
     "server"
    ],
-   "left": "Plan and billing logic, which waits on the pricing decision; the household vault and organizer are built.",
+   "left": "No paid plan in v1 (D376): the household vault and organizer are the v1 family plan. Billing comes with a hosted service.",
    "evidence": [
-    "crates/vault/src/manifest.rs:44 (no member can be added yet)"
+    "crates/app/src/session/sharing.rs:1146 (a household vault of kind Family)",
+    "docs/plan/18-sharing.md",
+    "D194, D376"
    ],
    "confidence": "high",
    "deferred": null

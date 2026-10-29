@@ -6,7 +6,7 @@ _Generated from `feature-status.json` (as of `979a714`) by `render-feature-statu
 
 | | Done | Partial | Not started | Not code yet |
 |---|---|---|---|---|
-| **All 122 v1 features** | **82** | **16** | **14** | **10** |
+| **All 122 v1 features** | **83** | **15** | **14** | **10** |
 | [Vault & item types](#vault--item-types) | 12 | 0 | 0 | 0 |
 | [Organization & search](#organization--search) | 7 | 0 | 0 | 0 |
 | [Autofill (browser)](#autofill-browser) | 8 | 1 | 0 | 0 |
@@ -15,7 +15,7 @@ _Generated from `feature-status.json` (as of `979a714`) by `render-feature-statu
 | [Two-factor & authenticator](#two-factor--authenticator) | 4 | 0 | 0 | 0 |
 | [Vendor login bridges](#vendor-login-bridges) | 6 | 1 | 0 | 0 |
 | [Sharing & collaboration](#sharing--collaboration) | 6 | 0 | 0 | 0 |
-| [Family & emergency/recovery](#family--emergencyrecovery) | 4 | 1 | 0 | 0 |
+| [Family & emergency/recovery](#family--emergencyrecovery) | 5 | 0 | 0 | 0 |
 | [Security monitoring & phishing defense](#security-monitoring--phishing-defense) | 8 | 0 | 0 | 0 |
 | [Privacy](#privacy) | 1 | 1 | 0 | 0 |
 | [Import/export & portability](#importexport--portability) | 5 | 1 | 2 | 0 |
@@ -115,11 +115,11 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 
 ## Family & emergency/recovery
 
+- [x] **Family plan**: Done · core, desktop, server. No paid plan in v1 (D376): the household vault and organizer are the v1 family plan. Billing comes with a hosted service.
 - [x] **Emergency access**: Done · core, desktop, server. Reminders to the owner during the wait by email or OS notification.
 - [x] **Recovery kit**: Done · core, desktop. The web vault (it can't run the kit test).
 - [x] **Recovery drill**: Done · core, desktop. The web vault.
 - [x] **Password reminder for biometric users**: Done · core, desktop. Nothing for desktop; never shown in the web vault by design.
-- [ ] **Family plan**: Partial · core, desktop, server. Plan and billing logic, which waits on the pricing decision; the household vault and organizer are built.
 
 ## Security monitoring & phishing defense
 
