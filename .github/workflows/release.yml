@@ -8,6 +8,10 @@
 # - `workflow_dispatch` and pull requests are dry runs: the same builds and
 #   packages, unsigned, with no attestation and no release. Pull requests
 #   run it so CI proves the release path works before anyone tags.
+# - Without the Apple secrets the macOS app is still sealed with an ad-hoc
+#   signature (D450), so macOS offers "Open Anyway" in Privacy & Security
+#   instead of calling the download damaged. It proves nothing about who
+#   built it; only the Developer ID does that.
 #
 # Secrets a real run uses when present (none is required; each step that
 # needs one is skipped without it):
@@ -188,9 +192,9 @@ jobs:
           path: lockdown-*.flatpak
           if-no-files-found: error
 
-  # Apple silicon and Intel in one universal app and dmg. Unsigned unless
-  # the signing secrets exist; notarised only when the notarisation
-  # secrets exist too.
+  # Apple silicon and Intel in one universal app and dmg. Signed with the
+  # Developer ID when the signing secrets exist, ad-hoc otherwise (D450);
+  # notarised only when the notarisation secrets exist too.
   macos:
     name: macos · universal
     needs: meta
@@ -237,6 +241,14 @@ jobs:
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           rm "$RUNNER_TEMP/cert.p12"
           echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+      # The linker's own ad-hoc signature covers the executables but not the
+      # bundle (no sealed resources, Info.plist not bound), and Gatekeeper
+      # calls such a download damaged with no way past it but Terminal.
+      # Tauri's ad-hoc identity "-" seals the whole bundle, the browser host
+      # included, before the dmg is made.
+      - name: Ad-hoc identity (without the secrets)
+        if: env.HAVE_SIGNING != 'true'
+        run: echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
       - name: Notarisation account (only with the secrets)
         if: env.HAVE_SIGNING == 'true' && env.HAVE_NOTARY == 'true'
         env:
@@ -261,10 +273,19 @@ jobs:
             echo "$bin: $archs"
             case "$archs" in *x86_64*arm64*|*arm64*x86_64*) ;; *) echo "::error::$bin is not universal"; exit 1 ;; esac
           done
-          codesign -dv "$app" 2>&1 || true
-          if [ "$HAVE_SIGNING" = true ]; then
-            codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1
+          codesign --verify --deep --strict --verbose=2 "$app"
+          if [ "$HAVE_SIGNING" != true ]; then
+            info="$(codesign -dv "$app" 2>&1)"
+            case "$info" in *"Signature=adhoc"*) ;; *) echo "::error::expected an ad-hoc signature"; exit 1 ;; esac
+            case "$info" in *"Sealed Resources=none"*|*"Info.plist=not bound"*) echo "::error::the bundle is not sealed"; exit 1 ;; esac
           fi
+          # The app inside the dmg is the one people install: check it too.
+          dmg="$(ls target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -n 1)"
+          mnt="$(mktemp -d)"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg"
+          codesign --verify --deep --strict --verbose=2 "$mnt/Lockdown.app"
+          hdiutil detach "$mnt"
           if [ "$HAVE_SIGNING" = true ] && [ "$HAVE_NOTARY" = true ]; then
             xcrun stapler validate "$app"
             spctl -a -vvv -t exec "$app"
