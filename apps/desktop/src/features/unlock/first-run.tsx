@@ -144,7 +144,9 @@ function Welcome({ frc, onCreate, onJoin }: { frc: FirstRunClient; onCreate: () 
       ? `Your organization set a server: ${hostOf(found.address)}`
       : found.sources[0]?.kind === "network"
         ? `We found a Lockdown server on your network: ${hostOf(found.address)}`
-        : `We found a Lockdown server on this computer: ${hostOf(found.address)}`
+        : found.sources[0]?.kind === "settings"
+          ? `Your settings name a Lockdown server: ${hostOf(found.address)}`
+          : `We found a Lockdown server on this computer: ${hostOf(found.address)}`
     : null
   return (
     <WelcomeColumn>
@@ -272,7 +274,6 @@ export function KitScreen({ page, name, step, onContinue }: { page: ShownPage | 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [printCopy, setPrintCopy] = useState(false)
   const text = page?.text ?? null
   const values = useMemo(() => (text ? kitValues(text) : { secretKey: null, recoveryCode: null }), [text])
   useCaptureProtect(shown && text !== null)
@@ -305,17 +306,10 @@ export function KitScreen({ page, name, step, onContinue }: { page: ShownPage | 
       setSaving(false)
     }
   }
-  const printKit = async () => {
-    // The page prints alone from a copy outside the app (the print rule
-    // keeps the app off the paper while a `data-print-page` is up).
-    setPrintCopy(true)
-    await new Promise<void>((r) => requestAnimationFrame(() => r()))
-    try {
-      await print()
-    } finally {
-      setPrintCopy(false)
-    }
-  }
+  // The page prints alone from a copy outside the app, there while the kit
+  // screen is: the print rule keeps the app off the paper while a
+  // `data-print-page` is up, so the browser's own Print prints the kit too.
+  const printKit = () => void print()
   return (
     <WelcomeColumn>
       <WelcomeScreen
@@ -362,7 +356,7 @@ export function KitScreen({ page, name, step, onContinue }: { page: ShownPage | 
             {saving ? "Saving…" : "Save as PDF"}
           </Button>
         )}
-        <Button size="lg" variant="outline" onClick={() => void printKit()} disabled={printing || !text}>
+        <Button size="lg" variant="outline" onClick={printKit} disabled={printing || !text}>
           Print
         </Button>
         <div className="flex items-center gap-2 py-2">
@@ -373,8 +367,7 @@ export function KitScreen({ page, name, step, onContinue }: { page: ShownPage | 
           Continue
         </Button>
       </WelcomeActions>
-      {printCopy &&
-        text &&
+      {text &&
         createPortal(
           <div data-print-page="" className="hidden print:block">
             <pre className="font-mono text-sm leading-relaxed whitespace-pre-wrap">{text}</pre>

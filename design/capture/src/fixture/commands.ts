@@ -78,6 +78,68 @@ Keep this page somewhere safe, away from your devices. With your account
 password, it opens your vault on a new device. Lockdown has never seen
 this Secret Key and cannot make it again.`
 
+/** The master password the fixture's vault opens with. */
+export const MASTER_PASSWORD = "Tidal-Vesper-Orbit-48"
+
+/** A local account's kit page, as the core writes it (doc 39 §1.2). */
+export const LOCAL_KIT = `LOCKDOWN RECOVERY KIT
+=====================
+Keep this page somewhere safe, away from this computer. It is the only way
+back into your vault if you forget your master password.
+
+Secret Key:     A3-K7QF2M-9XWD4R-HT6PLC-8ZB3NV-Q5EY7J
+Recovery code:  RC4F-9K2M-XQ7H-TDPL-8B3Z-NW5V-6YEA-J2KD
+
+Profile:        0190e6a0-5a3e-7c1d-9b2f-4e8a6c0d1f23
+Made:           2026-10-29 on ${PERSON.device}
+
+To use this kit, open Lockdown on this computer and choose
+"Forgot your password? Use your recovery kit".
+Lockdown never asks for this page in an email, a message or a web form.
+`
+
+/** What discovery finds around Sam: the account's server, and one on the network. */
+const CANDIDATES = [
+  {
+    address: PERSON.server,
+    sources: [{ kind: "settings" }],
+    state: "ready",
+    reason: null,
+    fingerprint: "48211 90314 22587 61040 77302 15599",
+    version: "0.1.0",
+    policy_key: false,
+    locked: false,
+    in_use: true,
+  },
+  {
+    address: "https://nas.rivera.example:8443",
+    sources: [{ kind: "network" }],
+    state: "ready",
+    reason: null,
+    fingerprint: "30918 44720 18263 90557 61124 08376",
+    version: "0.1.0",
+    policy_key: false,
+    locked: false,
+    in_use: false,
+  },
+  {
+    address: "http://studio-nas.local:8787",
+    sources: [{ kind: "network" }],
+    state: "needs_https",
+    reason: "Lockdown only talks to a server on another computer over https.",
+    fingerprint: null,
+    version: null,
+    policy_key: false,
+    locked: false,
+    in_use: false,
+  },
+]
+
+function typedCandidate(address: string) {
+  const base = address.startsWith("http") ? address.replace(/\/$/, "") : `https://${address.replace(/\/$/, "")}`
+  return { ...CANDIDATES[1]!, address: base, sources: [{ kind: "typed" }] }
+}
+
 /** A QR-looking grid (not a real code): the width, then one byte per module. */
 function qrGrid(seed: number, width = 29): Uint8Array {
   const out = new Uint8Array(1 + width * width)
@@ -196,6 +258,10 @@ export function commands(world: World): Record<string, Handler> {
       device_key_present: world.device.deviceKey,
       account_present: world.device.identity,
       device_name: PERSON.device,
+      master_password: world.device.deviceKey && world.device.masterPassword !== false,
+      local_account: world.device.local === true,
+      name: world.device.deviceKey ? (world.device.local ? "Sam Rivera" : PERSON.login) : null,
+      stage: world.device.stage ?? (world.device.deviceKey ? "done" : null),
     }),
     open_vault: () => {
       world.lock = { ...world.lock, locked: false, reason: null }
@@ -313,6 +379,38 @@ export function commands(world: World): Record<string, Handler> {
     open_clock_settings: () => false,
 
     // --- account and recovery --------------------------------------------------------
+    // --- the first run, the master password, discovery (doc 39) -------------------------
+    first_run_create: (a) => {
+      if (str(a, "password").length < 12) return fail("refused", "This password protects everything else, so it needs to be at least fair. Add another word or two.")
+      world.device = { identity: true, deviceKey: true, masterPassword: true, local: true, stage: "account_made" }
+      world.lock = { ...world.lock, locked: false, reason: null }
+      return oncePage(["Your vault is ready, and only your master password opens it."], LOCAL_KIT)
+    },
+    unlock_with_password: (a) => {
+      if (str(a, "password") !== MASTER_PASSWORD) return fail("refused", "That isn't the master password for this vault.")
+      world.lock = { ...world.lock, locked: false, reason: null, idle_secs: 0 }
+      return status(world)
+    },
+    set_master_password: () => {
+      world.device = { ...world.device, masterPassword: true }
+      return oncePage(["Your master password now locks this vault."], "")
+    },
+    password_reset_with_kit: (a) => {
+      if (!str(a, "secretKey").startsWith("A3-")) return fail("refused", "That kit doesn't open this vault. Check each character against the page.")
+      world.lock = { ...world.lock, locked: false, reason: null, idle_secs: 0 }
+      return status(world)
+    },
+    onboarding_stage: (a) => {
+      world.device = { ...world.device, stage: str(a, "stage") }
+    },
+    set_name: (a) => str(a, "name").trim(),
+    check_master_password: () => undefined,
+    quick_unlock_status: () => ({ kind: "touch_id", available: false, why: "Touch ID unlock needs the signed Lockdown app." }),
+    discovery_candidates: (a) => (a.network ? CANDIDATES : CANDIDATES.slice(0, 1)),
+    discovery_check: (a) => typedCandidate(str(a, "address")),
+    discovery_domain: () => [],
+    discovery_confirm: (a) => typedCandidate(str(a, "address")),
+    discovery_forget: () => undefined,
     account_register: () => oncePage(["Your account is made on vault.rivera.example.", "Save, print or write down the kit now: it is shown once."], KIT),
     account_register_opted_out: () => oncePage(["Your account is made without a Secret Key."], KIT.replace(/^Secret Key:.*\n/m, "")),
     account_login: () => ["Signed in to vault.rivera.example as sam@rivera.example.", "Synced: 1,842 changes received."],

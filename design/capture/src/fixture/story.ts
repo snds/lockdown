@@ -111,8 +111,9 @@ export function status(world: World): Status {
     devices_revoked: DEVICES.filter((d) => d.revoked_at).length,
     identity_seq: 37,
     account: {
-      server: PERSON.server,
-      login: PERSON.login,
+      local: world.device.local === true,
+      server: world.device.local ? "lockdown-local://this-device" : PERSON.server,
+      login: world.device.local ? "Sam Rivera" : PERSON.login,
       synced_seq: 1842,
       synced_rev: 911,
       last_sync_at: ago(0.004),
