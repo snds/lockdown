@@ -9,7 +9,7 @@ import { LockedProvider } from "@/app/locked"
 import { SettingsProvider } from "@/app/settings"
 import { AppShell, type Nav, type ShellScreen } from "@/app/shell"
 import { TemplatesProvider, useTemplates } from "@/app/templates"
-import { describeError, useClient } from "@/core/client"
+import { describeError, isSignInNeeded, useClient } from "@/core/client"
 import type { ItemSummary, LockReason, LockState, PersonaInfo, Status, VaultView as VaultEntry } from "@/core/types"
 import { CodesView } from "@/features/codes/codes-view"
 import { DevicesView } from "@/features/devices/devices-view"
@@ -157,7 +157,14 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
         warnOnSplit(outcome.lines)
         list()
       })
-      .catch((e) => toast.error(`Not synced: ${describeError(e)}`, { id: "sync" }))
+      .catch((e) => {
+        // The server wouldn't renew this tab's session: the words say why,
+        // and the tab locks so unlocking signs in again with the password.
+        if (isSignInNeeded(e)) {
+          toast.error(e.message, { id: "sync" })
+          void client.lock().catch(() => undefined)
+        } else toast.error(`Not synced: ${describeError(e)}`, { id: "sync" })
+      })
       .finally(() => {
         syncing.current = false
       })

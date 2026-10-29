@@ -322,6 +322,13 @@ fn check_session(
             .and_then(|v| v.to_str().ok()),
     );
     match store.session(&claims.nonce)? {
+        // Renewed by its own device (`renewal`): that device holds the
+        // newer token; this one is done, without the words of an ending.
+        Some(row) if row.ended_at.is_some() && row.renewed_to.is_some() => Err(ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            ErrorCode::Unauthenticated,
+            "this session was renewed; the device holds a newer one",
+        )),
         Some(row) if row.ended_at.is_some() => Err(ApiError::new(
             StatusCode::UNAUTHORIZED,
             ErrorCode::Unauthenticated,
@@ -346,6 +353,7 @@ fn check_session(
                 address,
                 client,
                 ended_at: None,
+                renewed_to: None,
             })?;
             Ok(())
         }
@@ -786,8 +794,9 @@ pub(crate) fn issue_session(
             address: (peer.0 != "local").then(|| peer.0.clone()),
             client: crate::sessions::client_label(user_agent.as_deref()),
             ended_at: None,
+            renewed_to: None,
         })?;
-        let _ = store.prune_sessions(state.now());
+        let _ = store.prune_sessions(state.now(), crate::renewal::idle_secs(state));
         state.live.notify(crate::live::Change::account(
             account.account_id,
             lockdown_sync::wire::LiveKind::Sessions,
@@ -1620,7 +1629,11 @@ pub async fn list_sessions(
     State(state): State<Arc<AppState>>,
     session: Session,
 ) -> ApiResult<Cbor<lockdown_sync::wire::SessionList>> {
-    let rows = session_store(&state)?.live_sessions(session.account_id, state.now())?;
+    let rows = session_store(&state)?.live_sessions(
+        session.account_id,
+        state.now(),
+        crate::renewal::idle_secs(&state),
+    )?;
     Ok(Cbor(lockdown_sync::wire::SessionList {
         sessions: rows.iter().map(|r| r.info(&session.session_id)).collect(),
     }))
@@ -1650,7 +1663,12 @@ pub async fn end_session(
 ) -> ApiResult<StatusCode> {
     let id = crate::sessions::parse_session_id(&id)
         .ok_or_else(|| ApiError::bad_request("a session id is 32 hex digits"))?;
-    if session_store(&state)?.end_session(session.account_id, &id, state.now())? {
+    if session_store(&state)?.end_session(
+        session.account_id,
+        &id,
+        state.now(),
+        crate::renewal::idle_secs(&state),
+    )? {
         announce_ended(&state, session.account_id, &[id]);
         Ok(StatusCode::NO_CONTENT)
     } else {
@@ -1668,6 +1686,7 @@ pub async fn end_other_sessions(
         session.account_id,
         &session.session_id,
         state.now(),
+        crate::renewal::idle_secs(&state),
     )?;
     announce_ended(&state, session.account_id, &ended);
     Ok(Cbor(lockdown_sync::wire::SessionsEnded {

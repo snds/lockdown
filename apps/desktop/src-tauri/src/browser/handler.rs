@@ -56,7 +56,9 @@ impl From<AppError> for Refusal {
                 "this item is protected; open Lockdown to use it there",
             ),
             ErrorCode::Stopped => Self::new("closed", e.message),
-            ErrorCode::Refused => Self::new("refused", e.message),
+            // A session the server wouldn't renew is a refusal here, in the
+            // core's words; the extension's codes stay as they are (D62).
+            ErrorCode::Refused | ErrorCode::SignInNeeded => Self::new("refused", e.message),
         }
     }
 }

@@ -52,7 +52,8 @@ Every flag has an environment variable, so a container needs no command line. `l
 | `--trusted-proxy` | `LOCKDOWN_TRUSTED_PROXIES` (comma-separated) | none | Proxies (IPs or CIDR blocks) whose `X-Forwarded-For` is believed. |
 | `--blob-dir` | `LOCKDOWN_BLOB_DIR` | none (in the database) | Keep attachment files here instead of inside the database. |
 | `--signups` | `LOCKDOWN_SIGNUPS` | `open` (image: `closed`) | Whether new accounts may register. |
-| `--session-ttl` | `LOCKDOWN_SESSION_TTL` | 28800 (8 h) | How long a sign-in lasts before the device asks for the password again. |
+| `--session-ttl` | `LOCKDOWN_SESSION_TTL` | 28800 (8 h) | How long a session token lasts. A device renews its own with its device key before it runs out, so this is not how often anyone types the password (docs/plan/33-session-renewal.md). |
+| `--session-idle-limit` | `LOCKDOWN_SESSION_IDLE_LIMIT` | 2592000 (30 days) | How long a device may go unused and still renew its session; past it, the device asks for the password. `0` turns renewal off: every device asks for the password whenever its token runs out. |
 | `--max-blob` | `LOCKDOWN_MAX_BLOB` | 64 MiB | The largest attachment taken. |
 | `--address-burst` | `LOCKDOWN_ADDRESS_BURST` | 30 | Sign-in steps one client address may take in a burst before the brake slows it to one every 2 s. Raise it when many people share one address. |
 | `--login-burst` | `LOCKDOWN_LOGIN_BURST` | 10 | Sign-in steps one login name may take in a burst before the brake slows it to one every 6 s. |

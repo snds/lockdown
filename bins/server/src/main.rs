@@ -357,6 +357,11 @@ struct ServeArgs {
     /// How long a session token lives, in seconds.
     #[arg(long, env = "LOCKDOWN_SESSION_TTL", default_value_t = 8 * 60 * 60)]
     session_ttl: u64,
+    /// How long a session may go unused and still be renewed by its
+    /// device's key, in seconds (30 days); 0 turns renewal off, so a
+    /// device asks for the password whenever its session runs out.
+    #[arg(long, env = "LOCKDOWN_SESSION_IDLE_LIMIT", default_value_t = lockdown_server::renewal::DEFAULT_IDLE_LIMIT.as_secs())]
+    session_idle_limit: u64,
     /// Whether new accounts may register.
     #[arg(long, env = "LOCKDOWN_SIGNUPS", value_enum, default_value_t = Signups::Open)]
     signups: Signups,
@@ -605,6 +610,7 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
         .collect::<Result<Vec<_>, _>>()?;
     let config = Config {
         session_ttl: Duration::from_secs(cli.session_ttl),
+        session_idle: Duration::from_secs(cli.session_idle_limit),
         signups_open: cli.signups == Signups::Open,
         max_blob_bytes: cli.max_blob,
         blob_grace: Duration::from_secs(cli.blob_grace),

@@ -180,7 +180,7 @@ impl App {
     /// The server and token when the vault is open and the account has a
     /// session; not activity.
     fn live_target(&self) -> Option<Result<(String, String), String>> {
-        self.call(|core| Ok(core.session.as_ref().and_then(|s| s.account_session())))
+        self.call(|core| Ok(core.session.as_mut().and_then(|s| s.account_session())))
             .ok()
             .flatten()
     }
@@ -218,7 +218,7 @@ impl App {
     /// activity. For a host that holds the channel itself (the web vault's
     /// worker, docs/plan/27-web-server-finish.md §2), never for a page.
     pub fn live_account(&self) -> Option<(String, String)> {
-        self.call(|core| Ok(core.session.as_ref().and_then(|s| s.account_session())))
+        self.call(|core| Ok(core.session.as_mut().and_then(|s| s.account_session())))
             .ok()
             .flatten()
             .and_then(Result::ok)
@@ -246,11 +246,7 @@ impl App {
 
     /// The account's live sessions, oldest first, with device names.
     pub fn sessions(&self) -> AppResult<Vec<SessionView>> {
-        let (server, token) = self.account_now()?;
-        let list = lockdown_sync::HttpTransport::new(&server)
-            .map_err(account_error)?
-            .sessions(&token)
-            .map_err(account_error)?;
+        let list = self.account_call(|t, token| t.sessions(token))?;
         let devices = self.with_session(|s| Ok(s.device_list()))?;
         Ok(list
             .sessions
@@ -277,22 +273,37 @@ impl App {
     /// Ends one session on the server; its token stops working at once.
     /// Ending this device's own session signs it out.
     pub fn end_session(&self, id: &str) -> AppResult<()> {
-        let (server, token) = self.account_now()?;
-        lockdown_sync::HttpTransport::new(&server)
-            .map_err(account_error)?
-            .end_session(&token, id)
-            .map_err(account_error)?;
-        Ok(())
+        self.account_call(|t, token| t.end_session(token, id))
     }
 
     /// Ends every session of the account but this device's; how many.
     pub fn end_other_sessions(&self) -> AppResult<u64> {
-        let (server, token) = self.account_now()?;
-        Ok(lockdown_sync::HttpTransport::new(&server)
-            .map_err(account_error)?
-            .end_other_sessions(&token)
-            .map_err(account_error)?
+        Ok(self
+            .account_call(|t, token| t.end_other_sessions(token))?
             .ended)
+    }
+
+    /// One call to the account's server with this device's session, which
+    /// is renewed first when due; a token the server refuses anyway is
+    /// renewed (or a newer one taken) and the call made once more
+    /// (docs/plan/33-session-renewal.md).
+    fn account_call<T>(
+        &self,
+        call: impl Fn(&lockdown_sync::HttpTransport, &str) -> Result<T, lockdown_sync::TransportError>,
+    ) -> AppResult<T> {
+        let (server, token) = self.account_now()?;
+        let transport = lockdown_sync::HttpTransport::new(&server).map_err(account_error)?;
+        match call(&transport, &token) {
+            Err(_) if transport.session_refused() => {
+                let token = self.call(|core| {
+                    core.session()?
+                        .token_after_refusal()
+                        .map_err(AppError::refused)
+                })?;
+                call(&transport, &token).map_err(account_error)
+            }
+            done => done.map_err(account_error),
+        }
     }
 
     fn account_now(&self) -> AppResult<(String, String)> {
@@ -385,7 +396,25 @@ fn channel_side(
             Ok(s) => s,
             Err(e) => {
                 if let lockdown_sync::TransportError::Refused { status: 401, .. } = e {
-                    ended = Some(token);
+                    // Refused: renew it (or take a newer one) and open again
+                    // after the pause; only a session the server won't renew
+                    // stops the channel, and the shell hears why.
+                    match app.call(|core| {
+                        core.session()?
+                            .token_after_refusal()
+                            .map_err(AppError::refused)
+                    }) {
+                        Ok(fresh) if fresh != token => {}
+                        Err(e) if e.code == crate::ErrorCode::SignInNeeded => {
+                            sink(if e.detail.as_deref() == Some("ended") {
+                                LiveNotice::SessionEnded
+                            } else {
+                                LiveNotice::SyncFailed { message: e.message }
+                            });
+                            ended = Some(token);
+                        }
+                        _ => ended = Some(token),
+                    }
                 }
                 wait(&stop, &wake, pause);
                 pause = (pause * 2).min(Duration::from_secs(60));

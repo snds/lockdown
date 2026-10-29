@@ -83,6 +83,11 @@ pub enum ErrorCode {
     /// names what the shell must ask for (`password` or `window`); the
     /// shell asks, then calls again with a [`GateInput`].
     ApprovalNeeded,
+    /// The server refused to renew this device's session
+    /// (docs/plan/33-session-renewal.md): only the account password signs
+    /// it in again. `detail` says why (`ended`, `revoked`, `idle`,
+    /// `not_renewable`, `unknown`) and `message` says it in words.
+    SignInNeeded,
 }
 
 /// An error a shell shows as is.
@@ -91,7 +96,7 @@ pub struct AppError {
     pub code: ErrorCode,
     pub message: String,
     /// A machine-readable hint beside the words; today only
-    /// [`ErrorCode::ApprovalNeeded`] sets it.
+    /// [`ErrorCode::ApprovalNeeded`] and [`ErrorCode::SignInNeeded`] set it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
 }
@@ -105,11 +110,21 @@ impl AppError {
         }
     }
 
-    /// The core refused; `message` is shown as is.
+    /// The core refused; `message` is shown as is. Words that say only
+    /// the password helps now (a session the server wouldn't renew) come
+    /// back as [`ErrorCode::SignInNeeded`] with the reason.
     pub fn refused(message: impl Into<String>) -> Self {
+        let message = message.into();
+        if let Some(reason) = lockdown_sync::renew::SignInReason::in_text(&message) {
+            return Self {
+                code: ErrorCode::SignInNeeded,
+                message,
+                detail: Some(reason.as_str().into()),
+            };
+        }
         Self {
             code: ErrorCode::Refused,
-            message: message.into(),
+            message,
             detail: None,
         }
     }
@@ -141,18 +156,15 @@ impl std::error::Error for AppError {}
 
 impl From<String> for AppError {
     fn from(message: String) -> Self {
-        let code = if message.starts_with("nothing is set up")
-            || message.starts_with("no ecosystem identity")
+        if message.starts_with("nothing is set up") || message.starts_with("no ecosystem identity")
         {
-            ErrorCode::NotSetUp
-        } else {
-            ErrorCode::Refused
-        };
-        Self {
-            code,
-            message,
-            detail: None,
+            return Self {
+                code: ErrorCode::NotSetUp,
+                message,
+                detail: None,
+            };
         }
+        Self::refused(message)
     }
 }
 

@@ -543,6 +543,20 @@ pub fn device_pop_message(login: &str, login_id: &Id) -> Vec<u8> {
     m
 }
 
+/// The bytes a device signs to renew its session with its device key
+/// (docs/plan/33-session-renewal.md): a label of their own (so the
+/// signature can't stand for a login proof, a vault head or an item, all of
+/// which are canonical CBOR or another label), the server's one-time
+/// challenge id and challenge, and the BLAKE3 hash of the token being
+/// renewed, which binds the signature to that one session.
+pub fn session_renew_message(challenge_id: &Id, challenge: &[u8; 32], token: &str) -> Vec<u8> {
+    let mut m = b"lockdown/session-renew/v1\0".to_vec();
+    m.extend_from_slice(challenge_id.as_bytes());
+    m.extend_from_slice(challenge);
+    m.extend_from_slice(crate::hash::hash(token.as_bytes()).as_bytes());
+    m
+}
+
 /// Signs with the device key: the device keystore on a phone, a key in
 /// memory on a desktop.
 pub type SignFn = Box<dyn Fn(&[u8]) -> Result<[u8; 64]>>;
@@ -1086,5 +1100,28 @@ mod tests {
         let a = stub.register(&id, "correct horse battery").unwrap();
         let b = stub.login(&id, "correct horse battery").unwrap();
         assert_eq!(a.expose(), b.expose());
+    }
+
+    #[test]
+    fn the_renewal_message_has_its_own_context_and_binds_every_input() {
+        let (id, challenge) = (Id::new(), [9u8; 32]);
+        let m = session_renew_message(&id, &challenge, "lk1.a.b");
+        assert!(m.starts_with(b"lockdown/session-renew/v1\0"));
+        assert_eq!(m.len(), 26 + 16 + 32 + 32);
+        // Never a login proof's bytes, whatever the inputs.
+        assert!(!m.starts_with(b"lockdown/device-pop/v1"));
+        assert_ne!(m, session_renew_message(&Id::new(), &challenge, "lk1.a.b"));
+        assert_ne!(m, session_renew_message(&id, &[8u8; 32], "lk1.a.b"));
+        assert_ne!(m, session_renew_message(&id, &challenge, "lk1.a.c"));
+        assert_eq!(m, session_renew_message(&id, &challenge, "lk1.a.b"));
+        // A signature over it verifies only for those bytes.
+        let key = SigningKey::generate().unwrap();
+        let sig = key.sign(&m);
+        assert!(key.verifying_key().verify(&m, &sig, "renewal").is_ok());
+        assert!(
+            key.verifying_key()
+                .verify(&device_pop_message("lk1.a.b", &id), &sig, "renewal")
+                .is_err()
+        );
     }
 }

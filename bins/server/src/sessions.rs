@@ -15,7 +15,11 @@
 //! client's own name for itself (`lockdown/0.1.0 (macos)`). The server saw
 //! all of that on every request already; it now keeps the latest of each.
 //! Rows are dropped a week after their token ran out (an ended session's
-//! row is kept at least that long, so its token can never come back).
+//! row is kept at least that long, so its token can never come back); a
+//! session never ended stays while its device may still renew it
+//! (`crate::renewal`): until the idle limit and that week have passed
+//! since its last use. Such a session still stands: it is listed, and
+//! ending it (or "all other sessions") stops its renewal.
 //!
 //! The table lives in the server's database beside the rest
 //! ([`create_tables`] runs with the main schema). It is additive (`IF NOT
@@ -53,6 +57,9 @@ pub struct SessionRow {
     pub client: Option<String>,
     /// When it was ended, if it was.
     pub ended_at: Option<i64>,
+    /// The session a renewal replaced it with (`crate::renewal`): it was
+    /// ended by its own device's renewal, not from elsewhere.
+    pub renewed_to: Option<[u8; 16]>,
 }
 
 impl SessionRow {
@@ -99,21 +106,40 @@ pub trait SessionStore: Send + Sync {
         address: Option<&str>,
         client: Option<&str>,
     ) -> Result<()>;
-    /// The account's sessions that have neither ended nor run out at
-    /// `now`, oldest first.
-    fn live_sessions(&self, account_id: Id, now: i64) -> Result<Vec<SessionRow>>;
-    /// Ends one of the account's sessions; `false` when the account has no
-    /// such live session.
-    fn end_session(&self, account_id: Id, id: &[u8; 16], now: i64) -> Result<bool>;
-    /// Ends every live session of the account but `keep`; the ids ended.
+    /// The account's sessions that stand at `now`, oldest first: not
+    /// ended, and either not run out or still renewable by their device
+    /// (used within `idle_secs`, the server's idle limit; `crate::renewal`).
+    fn live_sessions(&self, account_id: Id, now: i64, idle_secs: i64) -> Result<Vec<SessionRow>>;
+    /// Ends one of the account's standing sessions; `false` when the
+    /// account has no such session.
+    fn end_session(&self, account_id: Id, id: &[u8; 16], now: i64, idle_secs: i64) -> Result<bool>;
+    /// Ends every standing session of the account but `keep`; the ids ended.
     fn end_other_sessions(
         &self,
         account_id: Id,
         keep: &[u8; 16],
         now: i64,
+        idle_secs: i64,
     ) -> Result<Vec<[u8; 16]>>;
-    /// Drops rows whose token ran out [`KEEP_AFTER_END_SECS`] ago or more.
-    fn prune_sessions(&self, now: i64) -> Result<usize>;
+    /// Drops rows whose token ran out [`KEEP_AFTER_END_SECS`] ago or more,
+    /// but keeps a session that was never ended while its device may still
+    /// renew it: until `idle_secs` (the server's idle limit) and the week
+    /// have passed since its last use.
+    fn prune_sessions(&self, now: i64, idle_secs: i64) -> Result<usize>;
+    /// Renews `old` into `new` (`crate::renewal`), atomically: `old` must
+    /// stand (not ended), or have been renewed less than `retry_secs` ago
+    /// into a successor that still stands (an answer that never arrived;
+    /// that successor is ended). `old` ends pointing at `new`, `new` is
+    /// opened, and the device's other sessions that ran out end (it holds
+    /// this one; those were left behind). `false` when `old` doesn't
+    /// qualify; nothing changes then.
+    fn renew_session(
+        &self,
+        old: &[u8; 16],
+        new: &SessionRow,
+        now: i64,
+        retry_secs: i64,
+    ) -> Result<bool>;
 }
 
 /// The sessions table, beside the main schema.
@@ -131,7 +157,13 @@ pub(crate) fn create_tables(conn: &Conn<'_>) -> std::result::Result<(), DbError>
              ended_at   INTEGER
          );
          CREATE INDEX IF NOT EXISTS sessions_by_account ON sessions (account_id, created_at);",
-    )
+    )?;
+    // The session a renewal replaced a row with, added in place
+    // (docs/plan/33-session-renewal.md).
+    if !conn.columns("sessions")?.iter().any(|c| c == "renewed_to") {
+        conn.execute_batch("ALTER TABLE sessions ADD COLUMN renewed_to BLOB")?;
+    }
+    Ok(())
 }
 
 type Columns = (
@@ -144,9 +176,24 @@ type Columns = (
     Option<String>,
     Option<String>,
     Option<i64>,
+    Option<Vec<u8>>,
 );
 
-const COLUMNS: &str = "session_id, account_id, device_id, created_at, last_seen, expires_at, address, client, ended_at";
+/// A session that stands at `?2` (now): not ended, and either its token
+/// still runs or its device may renew it (last used after `?3`).
+const STANDING: &str = "ended_at IS NULL AND (expires_at > ?2 OR last_seen > ?3)";
+
+/// The last use after which a run-out session may still be renewed; with
+/// renewal off (`idle_secs` zero), none may.
+fn renewable_since(now: i64, idle_secs: i64) -> i64 {
+    if idle_secs <= 0 {
+        i64::MAX
+    } else {
+        now.saturating_sub(idle_secs)
+    }
+}
+
+const COLUMNS: &str = "session_id, account_id, device_id, created_at, last_seen, expires_at, address, client, ended_at, renewed_to";
 
 fn read_row(r: &Row) -> DbResult<Columns> {
     Ok((
@@ -159,6 +206,7 @@ fn read_row(r: &Row) -> DbResult<Columns> {
         r.get(6)?,
         r.get(7)?,
         r.get(8)?,
+        r.get(9)?,
     ))
 }
 
@@ -174,13 +222,18 @@ fn row_from(c: Columns) -> Result<SessionRow> {
         address: c.6,
         client: c.7,
         ended_at: c.8,
+        renewed_to: c
+            .9
+            .map(<[u8; 16]>::try_from)
+            .transpose()
+            .map_err(|_| bad("successor"))?,
     })
 }
 
 impl SessionStore for SqlStorage {
     fn open_session(&self, row: &SessionRow) -> Result<()> {
         self.conn().execute(
-            "INSERT INTO sessions (session_id, account_id, device_id, created_at, last_seen, expires_at, address, client, ended_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) ON CONFLICT DO NOTHING",
+            "INSERT INTO sessions (session_id, account_id, device_id, created_at, last_seen, expires_at, address, client, ended_at, renewed_to) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) ON CONFLICT DO NOTHING",
             params![
                 &row.id[..],
                 row.account_id.to_string(),
@@ -190,7 +243,8 @@ impl SessionStore for SqlStorage {
                 row.expires_at,
                 row.address,
                 row.client,
-                row.ended_at
+                row.ended_at,
+                row.renewed_to.map(|id| id.to_vec())
             ],
         )?;
         Ok(())
@@ -219,13 +273,13 @@ impl SessionStore for SqlStorage {
         Ok(())
     }
 
-    fn live_sessions(&self, account_id: Id, now: i64) -> Result<Vec<SessionRow>> {
+    fn live_sessions(&self, account_id: Id, now: i64, idle_secs: i64) -> Result<Vec<SessionRow>> {
         self.conn()
             .query_map(
                 &format!(
-                    "SELECT {COLUMNS} FROM sessions WHERE account_id = ?1 AND ended_at IS NULL AND expires_at > ?2 ORDER BY created_at, session_id"
+                    "SELECT {COLUMNS} FROM sessions WHERE account_id = ?1 AND {STANDING} ORDER BY created_at, session_id"
                 ),
-                params![account_id.to_string(), now],
+                params![account_id.to_string(), now, renewable_since(now, idle_secs)],
                 read_row,
             )?
             .into_iter()
@@ -233,10 +287,17 @@ impl SessionStore for SqlStorage {
             .collect()
     }
 
-    fn end_session(&self, account_id: Id, id: &[u8; 16], now: i64) -> Result<bool> {
+    fn end_session(&self, account_id: Id, id: &[u8; 16], now: i64, idle_secs: i64) -> Result<bool> {
         let n = self.conn().execute(
-            "UPDATE sessions SET ended_at = ?3 WHERE session_id = ?1 AND account_id = ?2 AND ended_at IS NULL AND expires_at > ?3",
-            params![&id[..], account_id.to_string(), now],
+            &format!(
+                "UPDATE sessions SET ended_at = ?2 WHERE session_id = ?4 AND account_id = ?1 AND {STANDING}"
+            ),
+            params![
+                account_id.to_string(),
+                now,
+                renewable_since(now, idle_secs),
+                &id[..]
+            ],
         )?;
         Ok(n > 0)
     }
@@ -246,12 +307,16 @@ impl SessionStore for SqlStorage {
         account_id: Id,
         keep: &[u8; 16],
         now: i64,
+        idle_secs: i64,
     ) -> Result<Vec<[u8; 16]>> {
+        let since = renewable_since(now, idle_secs);
         let tx = self.begin()?;
         let ended = tx
             .query_map(
-                "SELECT session_id FROM sessions WHERE account_id = ?1 AND session_id != ?2 AND ended_at IS NULL AND expires_at > ?3 ORDER BY created_at, session_id",
-                params![account_id.to_string(), &keep[..], now],
+                &format!(
+                    "SELECT session_id FROM sessions WHERE account_id = ?1 AND {STANDING} AND session_id != ?4 ORDER BY created_at, session_id"
+                ),
+                params![account_id.to_string(), now, since, &keep[..]],
                 |r| r.get::<Vec<u8>>(0),
             )?
             .into_iter()
@@ -261,22 +326,87 @@ impl SessionStore for SqlStorage {
             })
             .collect::<Result<Vec<_>>>()?;
         tx.execute(
-            "UPDATE sessions SET ended_at = ?3 WHERE account_id = ?1 AND session_id != ?2 AND ended_at IS NULL AND expires_at > ?3",
-            params![account_id.to_string(), &keep[..], now],
+            &format!(
+                "UPDATE sessions SET ended_at = ?2 WHERE account_id = ?1 AND {STANDING} AND session_id != ?4"
+            ),
+            params![account_id.to_string(), now, since, &keep[..]],
         )?;
         tx.commit()?;
         Ok(ended)
     }
 
-    fn prune_sessions(&self, now: i64) -> Result<usize> {
+    fn prune_sessions(&self, now: i64, idle_secs: i64) -> Result<usize> {
         let cutoff = now.saturating_sub(KEEP_AFTER_END_SECS);
+        let unused = cutoff.saturating_sub(idle_secs.max(0));
         Ok(self.conn().execute(
             // An ended session's row stays until its token has run out
             // as well: without the row, the token would be taken for
-            // one from before this table and start a new row.
-            "DELETE FROM sessions WHERE expires_at < ?1",
-            params![cutoff],
+            // one from before this table and start a new row. One never
+            // ended stays while its device may renew it.
+            "DELETE FROM sessions WHERE expires_at < ?1 AND (ended_at IS NOT NULL OR last_seen < ?2)",
+            params![cutoff, unused],
         )?)
+    }
+
+    fn renew_session(
+        &self,
+        old: &[u8; 16],
+        new: &SessionRow,
+        now: i64,
+        retry_secs: i64,
+    ) -> Result<bool> {
+        let tx = self.begin()?;
+        let found: Option<(Option<i64>, Option<Vec<u8>>)> = tx.query_opt(
+            "SELECT ended_at, renewed_to FROM sessions WHERE session_id = ?1",
+            params![&old[..]],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        match found {
+            Some((None, _)) => {}
+            // Renewed lately, and the answer may never have reached the
+            // device: its successor goes, if nothing else ended it.
+            Some((Some(at), Some(next))) if now.saturating_sub(at) <= retry_secs => {
+                let n = tx.execute(
+                    "UPDATE sessions SET ended_at = ?2, renewed_to = ?3 WHERE session_id = ?1 AND ended_at IS NULL",
+                    params![&next[..], now, &new.id[..]],
+                )?;
+                if n == 0 {
+                    return Ok(false);
+                }
+            }
+            _ => return Ok(false),
+        }
+        tx.execute(
+            "UPDATE sessions SET ended_at = COALESCE(ended_at, ?2), renewed_to = ?3 WHERE session_id = ?1",
+            params![&old[..], now, &new.id[..]],
+        )?;
+        // The device's other sessions that ran out were left behind (a
+        // sign-in since, a tab unlocked again): it holds this one, so they
+        // end rather than stand renewable in the list for the idle limit.
+        tx.execute(
+            "UPDATE sessions SET ended_at = ?3 WHERE account_id = ?1 AND device_id = ?2 AND ended_at IS NULL AND expires_at <= ?3 AND session_id != ?4",
+            params![
+                new.account_id.to_string(),
+                new.device_id.to_string(),
+                now,
+                &old[..]
+            ],
+        )?;
+        tx.execute(
+            "INSERT INTO sessions (session_id, account_id, device_id, created_at, last_seen, expires_at, address, client, ended_at, renewed_to) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, NULL)",
+            params![
+                &new.id[..],
+                new.account_id.to_string(),
+                new.device_id.to_string(),
+                new.created_at,
+                new.last_seen,
+                new.expires_at,
+                new.address,
+                new.client
+            ],
+        )?;
+        tx.commit()?;
+        Ok(true)
     }
 }
 
@@ -307,6 +437,7 @@ mod tests {
             address: Some("10.0.0.1".into()),
             client: Some("lockdown/0.1.0 (linux)".into()),
             ended_at: None,
+            renewed_to: None,
         }
     }
 
@@ -322,7 +453,7 @@ mod tests {
         let mut again = row(a, 1, 999, 99_999);
         again.client = Some("other".into());
         store.open_session(&again).unwrap();
-        let live = store.live_sessions(a, 500).unwrap();
+        let live = store.live_sessions(a, 500, 0).unwrap();
         assert_eq!(
             live.iter().map(|r| r.id[0]).collect::<Vec<_>>(),
             vec![1, 2],
@@ -340,32 +471,151 @@ mod tests {
         );
 
         // Another account can't end this one's sessions.
-        assert!(!store.end_session(b, &[1; 16], 700).unwrap());
-        assert!(store.end_session(a, &[1; 16], 700).unwrap());
-        assert!(!store.end_session(a, &[1; 16], 701).unwrap(), "only once");
+        assert!(!store.end_session(b, &[1; 16], 700, 0).unwrap());
+        assert!(store.end_session(a, &[1; 16], 700, 0).unwrap());
+        assert!(
+            !store.end_session(a, &[1; 16], 701, 0).unwrap(),
+            "only once"
+        );
         assert_eq!(
             store.session(&[1; 16]).unwrap().unwrap().ended_at,
             Some(700)
         );
 
         store.open_session(&row(a, 5, 800, 10_000)).unwrap();
-        let ended = store.end_other_sessions(a, &[5; 16], 900).unwrap();
+        let ended = store.end_other_sessions(a, &[5; 16], 900, 0).unwrap();
         assert_eq!(ended, vec![[2; 16]]);
         assert_eq!(
             store
-                .live_sessions(a, 900)
+                .live_sessions(a, 900, 0)
                 .unwrap()
                 .iter()
                 .map(|r| r.id[0])
                 .collect::<Vec<_>>(),
             vec![5]
         );
-        assert_eq!(store.live_sessions(b, 900).unwrap().len(), 1);
+        assert_eq!(store.live_sessions(b, 900, 0).unwrap().len(), 1);
+        // With renewal on, a run-out session its device may still renew
+        // stands: listed, and ended by "end all other sessions".
+        assert_eq!(
+            store
+                .live_sessions(a, 900, 10_000)
+                .unwrap()
+                .iter()
+                .map(|r| r.id[0])
+                .collect::<Vec<_>>(),
+            vec![3, 5]
+        );
+        assert_eq!(
+            store.end_other_sessions(a, &[5; 16], 900, 10_000).unwrap(),
+            vec![[3; 16]]
+        );
 
         // A week after they stopped, ended and run-out rows go.
-        assert_eq!(store.prune_sessions(10_000).unwrap(), 0);
-        let pruned = store.prune_sessions(10_001 + KEEP_AFTER_END_SECS).unwrap();
+        assert_eq!(store.prune_sessions(10_000, 0).unwrap(), 0);
+        let pruned = store
+            .prune_sessions(10_001 + KEEP_AFTER_END_SECS, 0)
+            .unwrap();
         assert_eq!(pruned, 5);
+    }
+
+    #[test]
+    fn a_session_that_may_still_renew_outlives_its_token() {
+        let store = SqlStorage::open_scratch().unwrap();
+        let a = Id::new();
+        let idle = 30 * 86_400;
+        store.open_session(&row(a, 1, 100, 1_000)).unwrap();
+        store.open_session(&row(a, 2, 100, 1_000)).unwrap();
+        assert!(store.end_session(a, &[2; 16], 500, 0).unwrap());
+        // A week after the token ran out the ended row goes; the other
+        // stays until the idle limit and the week have passed since its use.
+        let week_on = 1_001 + KEEP_AFTER_END_SECS;
+        assert_eq!(store.prune_sessions(week_on, idle).unwrap(), 1);
+        assert!(store.session(&[1; 16]).unwrap().is_some());
+        assert_eq!(
+            store
+                .prune_sessions(101 + idle + KEEP_AFTER_END_SECS, idle)
+                .unwrap(),
+            1
+        );
+        assert!(store.session(&[1; 16]).unwrap().is_none());
+    }
+
+    #[test]
+    fn renewal_rotates_once_and_a_lost_answer_may_retry_briefly() {
+        let store = SqlStorage::open_scratch().unwrap();
+        let a = Id::new();
+        let mut first = row(a, 1, 100, 1_000);
+        first.last_seen = 900;
+        store.open_session(&first).unwrap();
+        let mut second = row(a, 2, 100, 5_000);
+        second.device_id = first.device_id;
+        assert!(store.renew_session(&[1; 16], &second, 1_200, 120).unwrap());
+        let old = store.session(&[1; 16]).unwrap().unwrap();
+        assert_eq!((old.ended_at, old.renewed_to), (Some(1_200), Some([2; 16])));
+        let new = store.session(&[2; 16]).unwrap().unwrap();
+        assert_eq!((new.created_at, new.ended_at), (100, None));
+        assert_eq!(
+            store
+                .live_sessions(a, 1_300, 0)
+                .unwrap()
+                .iter()
+                .map(|r| r.id[0])
+                .collect::<Vec<_>>(),
+            vec![2],
+            "the renewed session left the list"
+        );
+        // The same old session again, soon: its unused successor goes.
+        let third = SessionRow {
+            id: [3; 16],
+            ..second.clone()
+        };
+        assert!(store.renew_session(&[1; 16], &third, 1_250, 120).unwrap());
+        let gone = store.session(&[2; 16]).unwrap().unwrap();
+        assert_eq!(
+            (gone.ended_at, gone.renewed_to),
+            (Some(1_250), Some([3; 16]))
+        );
+        // Too late for that, or after the successor was ended elsewhere: no.
+        let fourth = SessionRow {
+            id: [4; 16],
+            ..second.clone()
+        };
+        assert!(!store.renew_session(&[1; 16], &fourth, 1_400, 120).unwrap());
+        assert!(store.end_session(a, &[3; 16], 1_260, 0).unwrap());
+        assert!(!store.renew_session(&[1; 16], &fourth, 1_270, 120).unwrap());
+        assert!(!store.renew_session(&[3; 16], &fourth, 1_270, 120).unwrap());
+        assert!(store.session(&[4; 16]).unwrap().is_none());
+        // An unknown session renews nothing.
+        assert!(!store.renew_session(&[9; 16], &fourth, 1_270, 120).unwrap());
+    }
+
+    #[test]
+    fn a_renewal_ends_the_sessions_its_device_left_behind() {
+        let store = SqlStorage::open_scratch().unwrap();
+        let a = Id::new();
+        let held = row(a, 1, 100, 1_000);
+        let device = held.device_id;
+        let same = |n: u8, expires: i64| SessionRow {
+            id: [n; 16],
+            expires_at: expires,
+            ..held.clone()
+        };
+        store.open_session(&held).unwrap();
+        // Left behind by a later sign-in: one ran out, one still runs.
+        store.open_session(&same(2, 900)).unwrap();
+        store.open_session(&same(3, 5_000)).unwrap();
+        // Another device's, run out too: not this device's to end.
+        store.open_session(&row(a, 4, 100, 900)).unwrap();
+        assert!(
+            store
+                .renew_session(&[1; 16], &same(5, 9_000), 1_100, 120)
+                .unwrap()
+        );
+        assert!(store.session(&[2; 16]).unwrap().unwrap().ended_at.is_some());
+        assert!(store.session(&[3; 16]).unwrap().unwrap().ended_at.is_none());
+        assert!(store.session(&[4; 16]).unwrap().unwrap().ended_at.is_none());
+        assert_eq!(store.session(&[5; 16]).unwrap().unwrap().device_id, device);
     }
 
     #[test]

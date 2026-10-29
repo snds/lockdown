@@ -3,13 +3,23 @@
 
 import type { MirrorCheck } from "@/features/server/server-client"
 
-export type ErrorCode = "locked" | "not_set_up" | "refused" | "stopped" | "approval_needed"
+export type ErrorCode = "locked" | "not_set_up" | "refused" | "stopped" | "approval_needed" | "sign_in_needed"
 
 export interface AppError {
   code: ErrorCode
   message: string
-  /** With `approval_needed`: what to ask for, `password` or `window`. */
+  /**
+   * With `approval_needed`: what to ask for, `password` or `window`. With
+   * `sign_in_needed`: why the server wouldn't renew the session (`ended`,
+   * `revoked`, `idle`, `not_renewable`, `unknown`; docs/plan/33-session-renewal.md).
+   */
   detail?: string
+}
+
+/** Why only the account password signs this device in again (docs/plan/33-session-renewal.md). */
+export interface SignInNeeded {
+  reason: "ended" | "revoked" | "idle" | "not_renewable" | "unknown"
+  message: string
 }
 
 export interface Probe {
@@ -233,6 +243,8 @@ export interface AccountStatus {
   last_sync_at: number | null
   session_expires_at: number
   transparency: TransparencyView | null
+  /** Set when the server refused to renew this device's session; the words say why. */
+  sign_in?: SignInNeeded
 }
 
 export interface Status {

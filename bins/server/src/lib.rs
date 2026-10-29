@@ -65,6 +65,7 @@ pub mod mirror;
 pub mod pages;
 pub mod ratelimit;
 pub mod relay;
+pub mod renewal;
 pub mod s3;
 pub mod second_factor;
 pub mod sessions;
@@ -160,6 +161,10 @@ pub fn discovery(signups: bool, log_key: &lockdown_crypto::VerifyingKey) -> Disc
 pub struct Config {
     /// How long a session token lives.
     pub session_ttl: Duration,
+    /// How long a session may go unused and still be renewed by its
+    /// device's key (`renewal`); zero turns renewal off, so a token that
+    /// runs out needs the password, as before D375.
+    pub session_idle: Duration,
     /// Whether new accounts may register.
     pub signups_open: bool,
     /// Login attempts allowed at once per client address, then per second.
@@ -193,6 +198,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             session_ttl: Duration::from_secs(8 * 60 * 60),
+            session_idle: renewal::DEFAULT_IDLE_LIMIT,
             signups_open: true,
             per_address: (30, 0.5),
             per_login: (10, 1.0 / 6.0),
@@ -257,6 +263,9 @@ pub struct AppState {
     /// Log mirrors: the one this server runs, and the ones it names
     /// (`mirror`).
     pub mirrors: mirror::MirrorState,
+    /// Session renewal's challenges between their two round trips
+    /// (`renewal`).
+    pub renewals: renewal::Challenges,
 }
 
 impl std::fmt::Debug for AppState {
@@ -286,6 +295,7 @@ impl AppState {
             mail: None,
             admin: admin::AdminState::default(),
             mirrors: mirror::MirrorState::default(),
+            renewals: renewal::Challenges::default(),
         }
     }
 
@@ -494,6 +504,9 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/v1/kt/mirror", get(mirror::head))
         .route("/v1/kt/mirrors", get(mirror::named))
         .route("/v1/server/restore-drill", get(drills::restore_drill))
+        // docs/plan/33-session-renewal.md: a device renews its own session.
+        .route("/v1/account/session/challenge", post(renewal::challenge))
+        .route("/v1/account/session/renew", post(renewal::renew))
         .merge(admin::routes())
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),

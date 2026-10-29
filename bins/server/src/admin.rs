@@ -1051,8 +1051,13 @@ pub async fn account(
         );
     };
     let devices = store.account_devices(account_id).unwrap_or_default();
-    let sessions =
-        crate::sessions::SessionStore::live_sessions(store, account_id, now).unwrap_or_default();
+    let sessions = crate::sessions::SessionStore::live_sessions(
+        store,
+        account_id,
+        now,
+        crate::renewal::idle_secs(&state),
+    )
+    .unwrap_or_default();
     let mut out = format!(
         "<p><a href=\"/admin/accounts\">All accounts</a></p><div class=\"card\"><p>Login: <b>{}</b></p><p class=\"muted\">Account id <span class=\"mono\">{account_id}</span></p></div>",
         esc(&acc.login)
@@ -1117,8 +1122,14 @@ pub async fn end_sessions(
         return unavailable();
     };
     let now = state.now();
-    let ended = crate::sessions::SessionStore::end_other_sessions(store, account_id, &[0; 16], now)
-        .unwrap_or_default();
+    let ended = crate::sessions::SessionStore::end_other_sessions(
+        store,
+        account_id,
+        &[0; 16],
+        now,
+        crate::renewal::idle_secs(&state),
+    )
+    .unwrap_or_default();
     for id in &ended {
         state.live.notify(crate::live::Change {
             account_id,

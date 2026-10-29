@@ -47,6 +47,8 @@ use lockdown_vault::transparency::{CHECKPOINT_V, Checkpoint};
 use lockdown_vault::{FieldKind, FieldValue, Hash32, Id, ItemState, PlainField, Vault};
 use serde::{Deserialize, Serialize};
 
+mod renewal;
+
 const KEYSTORE_FILE: &str = "device-key.cbor";
 const STORE_FILE: &str = "vault.sqlite";
 const MEMORY_FILE: &str = "remembered.cbor";
@@ -163,16 +165,6 @@ impl SyncConfig {
     fn save(&self, path: &Path) -> Result<(), String> {
         let bytes = lockdown_crypto::cbor::to_canonical(self).map_err(|e| e.to_string())?;
         write_private(path, &bytes).map_err(|e| format!("couldn't write {}: {e}", path.display()))
-    }
-
-    fn session_token(&self) -> Result<&str, String> {
-        if self.expires_at <= lockdown_vault::Timestamp::now().0 {
-            return Err(
-                "the session with the server has run out; run `lockdown account login` again"
-                    .into(),
-            );
-        }
-        Ok(&self.token)
     }
 }
 
@@ -305,15 +297,30 @@ impl App {
             && matches!(mode, Mode::Sync | Mode::Init)
         {
             let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
-            let token = cfg.session_token()?.to_string();
-            sync_identity_records(
+            let path = paths.sync_file();
+            let mut token = renewal::fresh_token(cfg, keystore.as_ref(), &path, false)?;
+            let mut pulled = sync_identity_records(
                 &transport,
                 &token,
                 &mut identity,
                 keystore.as_ref(),
                 &mut synced,
                 &mut memory,
-            )?;
+            );
+            // Refused anyway (another clock, a session ended): renewed, or
+            // a newer token taken, and tried once more.
+            if pulled.is_err() && transport.session_refused() {
+                token = renewal::fresh_token(cfg, keystore.as_ref(), &path, true)?;
+                pulled = sync_identity_records(
+                    &transport,
+                    &token,
+                    &mut identity,
+                    keystore.as_ref(),
+                    &mut synced,
+                    &mut memory,
+                );
+            }
+            pulled?;
             if persona_vaults(&identity, persona_id, &store)
                 .map_err(|e| e.to_string())?
                 .is_empty()
@@ -636,7 +643,7 @@ impl App {
                     ));
                 };
                 let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
-                let token = cfg.session_token()?.to_string();
+                let token = self.token()?;
                 let bytes = transport
                     .get_blob(&token, self.vault().context().vault_id, att.blob)
                     .map_err(|e| e.to_string())?
@@ -1229,9 +1236,9 @@ impl App {
             self.memory
                 .remember_identity(self.identity.head())
                 .map_err(|e| e.to_string())?;
-            if let Some(cfg) = &self.sync {
-                let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
-                let token = cfg.session_token()?.to_string();
+            if let Some(server) = self.sync.as_ref().map(|c| c.server.clone()) {
+                let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
+                let token = self.token()?;
                 sync_identity_records(
                     &transport,
                     &token,
@@ -1497,7 +1504,7 @@ impl App {
             return Err("revoking a device needs the account on this device; run `lockdown account login` first".into());
         };
         let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
-        let token = cfg.session_token()?.to_string();
+        let token = self.token()?;
         // Be current first, so the device to revoke is known here.
         sync_identity_records(
             &transport,
@@ -1605,16 +1612,32 @@ impl App {
             return Err("no account on this device; run `lockdown account register` or `lockdown account login` first".into());
         };
         let server = cfg.server.clone();
+        let token = self.token()?;
         let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
-        let token = cfg.session_token()?.to_string();
-        let remembered = self.transparency.view(&server).cloned();
+        match self.sync_with(&transport, &server, &token) {
+            Err(_) if transport.session_refused() => {
+                let token = self.token_after_refusal()?;
+                let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
+                self.sync_with(&transport, &server, &token)
+            }
+            done => done,
+        }
+    }
+
+    fn sync_with(
+        &mut self,
+        transport: &HttpTransport,
+        server: &str,
+        token: &str,
+    ) -> Result<Vec<String>, String> {
+        let remembered = self.transparency.view(server).cloned();
         let mut kt =
-            KtSession::begin(&transport, &token, remembered.as_ref()).map_err(|e| e.to_string())?;
+            KtSession::begin(transport, token, remembered.as_ref()).map_err(|e| e.to_string())?;
         kt.audit(&self.expectations()).map_err(|e| e.to_string())?;
         let label = device_name();
         let syncer = Syncer {
-            transport: &transport,
-            token: &token,
+            transport,
+            token,
             device_label: &label,
         };
         let vault_id = self.opened.vault.context().vault_id;
@@ -1680,13 +1703,12 @@ impl App {
         // under a fresh tree head that must continue the one just verified.
         let mut view = kt.view.clone();
         drop(kt);
-        let mut kt =
-            KtSession::begin(&transport, &token, Some(&view)).map_err(|e| e.to_string())?;
+        let mut kt = KtSession::begin(transport, token, Some(&view)).map_err(|e| e.to_string())?;
         kt.audit(&self.expectations()).map_err(|e| e.to_string())?;
         view = kt.view.clone();
         drop(kt);
         self.transparency
-            .remember(&server, view.clone())
+            .remember(server, view.clone())
             .map_err(|e| e.to_string())?;
         let mut lines = sync_lines(&report);
         lines.push(format!(
@@ -1711,7 +1733,7 @@ impl App {
             None => Reported::NoAccount,
             Some(cfg) => {
                 let server = cfg.server.clone();
-                let pulled = cfg.session_token().map(str::to_string).and_then(|token| {
+                let pulled = self.token().and_then(|token| {
                     let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
                     sync_identity_records(
                         &transport,
@@ -1765,7 +1787,7 @@ impl App {
         };
         let server = cfg.server.clone();
         let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
-        let token = cfg.session_token()?.to_string();
+        let token = self.token()?;
         sync_identity_records(
             &transport,
             &token,
@@ -1844,7 +1866,7 @@ impl App {
         };
         let server = cfg.server.clone();
         let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
-        let token = cfg.session_token()?.to_string();
+        let token = self.token()?;
         let remembered = self.transparency.view(&server).cloned();
         let kt =
             KtSession::begin(&transport, &token, remembered.as_ref()).map_err(|e| e.to_string())?;
@@ -1915,7 +1937,7 @@ impl App {
             ));
         }
         let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
-        let token = cfg.session_token()?.to_string();
+        let token = self.token()?;
         let remembered = self.transparency.view(&server).cloned();
         let kt =
             KtSession::begin(&transport, &token, remembered.as_ref()).map_err(|e| e.to_string())?;
@@ -2464,20 +2486,26 @@ mod tests {
         let back = SyncConfig::load(&path).unwrap().unwrap();
         assert_eq!(back.login, cfg.login);
         assert_eq!(back.vaults, cfg.vaults);
-        assert!(back.session_token().is_ok());
+        // A token far from running out is used as it is, with no call.
+        let keystore = FileKeystore::open_or_create(&dir.path().join("k.cbor")).unwrap();
+        assert_eq!(
+            renewal::fresh_token(&mut back.clone(), &keystore, &path, false).unwrap(),
+            "lk1.a.b"
+        );
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
             assert_eq!(mode, 0o600);
         }
-        let expired = SyncConfig {
+        // No token at all: only a sign-in helps, and the words say how.
+        let mut gone = SyncConfig {
+            token: String::new(),
             expires_at: 1,
             ..cfg
         };
         assert!(
-            expired
-                .session_token()
+            renewal::fresh_token(&mut gone, &keystore, &dir.path().join("other.cbor"), false)
                 .unwrap_err()
                 .contains("account login")
         );

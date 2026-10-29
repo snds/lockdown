@@ -74,6 +74,7 @@ pub(crate) mod passkeys;
 mod pq_status;
 pub(crate) mod quick;
 pub(crate) mod recovery;
+pub(crate) mod renewal;
 pub(crate) mod second_factor;
 pub(crate) mod secret_key;
 pub(crate) mod security;
@@ -213,6 +214,11 @@ pub struct SyncConfig {
     /// the CLI ignores and drops it).
     #[serde(default)]
     pub last_sync_at: Option<i64>,
+    /// Why only the password signs this device in again, when the server
+    /// refused to renew its session (`renewal`; a `SignInReason` word).
+    /// Cleared by the next sign-in or renewal; the CLI drops it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sign_in: Option<String>,
 }
 
 impl SyncConfig {
@@ -252,13 +258,6 @@ impl SyncConfig {
         }
         let bytes = lockdown_crypto::cbor::to_canonical(&on_disk).map_err(|e| e.to_string())?;
         write_private(path, &bytes).map_err(|e| format!("couldn't write {}: {e}", path.display()))
-    }
-
-    fn session_token(&self) -> Result<&str, String> {
-        if self.token.is_empty() || self.expires_at <= lockdown_vault::Timestamp::now().0 {
-            return Err("the session with the server has run out; log in again".into());
-        }
-        Ok(&self.token)
     }
 }
 
@@ -385,7 +384,12 @@ impl Session {
             && mode == Mode::Init
         {
             let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
-            let token = cfg.session_token()?.to_string();
+            let token = renewal::fresh_token(
+                cfg,
+                keystore.as_ref(),
+                &paths.sync_file(),
+                renewal::Need::WhenDue,
+            )?;
             sync_identity_records(
                 &transport,
                 &token,
@@ -926,6 +930,11 @@ impl Session {
         {
             cfg.token = String::new();
             cfg.expires_at = 0;
+            cfg.sign_in = Some(
+                lockdown_sync::renew::SignInReason::Ended
+                    .as_str()
+                    .to_string(),
+            );
             cfg.save(&path)?;
         }
         Ok(())
@@ -1040,6 +1049,10 @@ impl Session {
                 synced_rev: state.synced_rev,
                 last_sync_at: cfg.last_sync_at,
                 session_expires_at: cfg.expires_at,
+                sign_in: self.sign_in_needed().map(|r| crate::types::SignInNeeded {
+                    reason: r.as_str().to_string(),
+                    message: r.message().to_string(),
+                }),
                 transparency: self.transparency.view(&cfg.server).map(|v| {
                     let mut t = transparency_view(v);
                     t.mirrors = mirrors::last(&self.paths.data, &cfg.server);
@@ -1140,6 +1153,7 @@ impl Session {
             expires_at: session.expires_at,
             vaults: BTreeMap::new(),
             last_sync_at: None,
+            sign_in: None,
         };
         cfg.save(&self.paths.sync_file())?;
         self.sync = Some(cfg);
@@ -1239,6 +1253,7 @@ impl Session {
             expires_at: session.expires_at,
             vaults,
             last_sync_at,
+            sign_in: None,
         };
         cfg.save(&self.paths.sync_file())?;
         self.sync = Some(cfg);
@@ -1268,6 +1283,7 @@ impl Session {
         }
         cfg.token = session.token;
         cfg.expires_at = session.expires_at;
+        cfg.sign_in = None;
         cfg.save(&self.paths.sync_file())
     }
 
@@ -1460,9 +1476,9 @@ impl Session {
             // The date of this drill and, with the code in hand, the kit's
             // stretching raised to what this device can afford (`recovery`).
             lines.extend(self.after_drill(&kit)?);
-            if let Some(cfg) = &self.sync {
-                let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
-                let token = cfg.session_token()?.to_string();
+            if let Some(server) = self.sync.as_ref().map(|c| c.server.clone()) {
+                let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
+                let token = self.token()?;
                 sync_identity_records(
                     &transport,
                     &token,
@@ -1504,7 +1520,7 @@ impl Session {
             return Err("revoking a device needs the account on this device; log in first".into());
         };
         let transport = HttpTransport::new(&cfg.server).map_err(|e| e.to_string())?;
-        let token = cfg.session_token()?.to_string();
+        let token = self.token()?;
         sync_identity_records(
             &transport,
             &token,
@@ -1607,16 +1623,38 @@ impl Session {
     /// head's citation checked against it, then the account's entries once
     /// more for what the sync added. A failed proof or a split view stops
     /// everything before a byte is written, with the audit's own words.
+    ///
+    /// The session is renewed first when it has run out or is about to
+    /// (`renewal`); a token the server refuses anyway is renewed and the
+    /// sync tried once more.
     pub fn sync(&mut self) -> Result<SyncOutcome, String> {
-        let Some(cfg) = self.sync.as_mut() else {
+        let Some(cfg) = self.sync.as_ref() else {
             return Err("no account on this device; register or log in first".into());
         };
-        self.identity_confirmed = false;
         let server = cfg.server.clone();
+        self.identity_confirmed = false;
+        let token = self.token()?;
         let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
-        let token = cfg.session_token()?.to_string();
+        match self.sync_with(&transport, &server, &token) {
+            Err(_) if transport.session_refused() => {
+                let token = self.token_after_refusal()?;
+                let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
+                self.sync_with(&transport, &server, &token)
+            }
+            done => done,
+        }
+    }
+
+    fn sync_with(
+        &mut self,
+        transport: &HttpTransport,
+        server: &str,
+        token: &str,
+    ) -> Result<SyncOutcome, String> {
+        let (server, token) = (server.to_string(), token.to_string());
+        self.identity_confirmed = false;
         sync_identity_records(
-            &transport,
+            transport,
             &token,
             &mut self.identity,
             self.keystore.as_ref(),
@@ -1627,7 +1665,7 @@ impl Session {
         self.refresh_trust()?;
         let remembered = self.transparency.view(&server).cloned();
         let mut kt =
-            KtSession::begin(&transport, &token, remembered.as_ref()).map_err(|e| e.to_string())?;
+            KtSession::begin(transport, &token, remembered.as_ref()).map_err(|e| e.to_string())?;
         kt.audit(&self.expectations()).map_err(|e| e.to_string())?;
         let cfg = self
             .sync
@@ -1636,22 +1674,15 @@ impl Session {
         let label = device_name();
         // Vaults another device of this persona made since: pulled under
         // the same log, then opened like the rest.
-        let pulled = pull_new_vaults(
-            &transport,
-            &token,
-            &self.identity,
-            &mut self.store,
-            cfg,
-            &kt,
-        )?;
+        let pulled = pull_new_vaults(transport, &token, &self.identity, &mut self.store, cfg, &kt)?;
         if pulled > 0 {
             self.open_new_vaults()?;
         }
         // Sharing in step first: vaults shared with this persona, new key
         // generations, items shared on their own (docs/plan/18-sharing.md).
-        self.sync_sharing(&transport, &token, kt.sth())?;
+        self.sync_sharing(transport, &token, kt.sth())?;
         let syncer = Syncer {
-            transport: &transport,
+            transport,
             token: &token,
             device_label: &label,
         };
@@ -1740,8 +1771,7 @@ impl Session {
         // under a fresh tree head that must continue the one just verified.
         let mut view = kt.view.clone();
         drop(kt);
-        let mut kt =
-            KtSession::begin(&transport, &token, Some(&view)).map_err(|e| e.to_string())?;
+        let mut kt = KtSession::begin(transport, &token, Some(&view)).map_err(|e| e.to_string())?;
         kt.audit(&self.expectations()).map_err(|e| e.to_string())?;
         view = kt.view.clone();
         // The log mirrors, against the head just verified (a warning in
@@ -1749,7 +1779,7 @@ impl Session {
         let configured = crate::settings::Settings::load(&self.paths.settings_file())
             .map(|s| s.kt_mirrors)
             .unwrap_or_default();
-        let checks = mirrors::check(&self.paths.data, &server, &kt, &transport, &configured);
+        let checks = mirrors::check(&self.paths.data, &server, &kt, transport, &configured);
         drop(kt);
         self.transparency
             .remember(&server, view.clone())
@@ -1774,10 +1804,27 @@ impl Session {
             return Err("no account on this device; register or log in first".into());
         };
         let server = cfg.server.clone();
+        let token = self.token()?;
         let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
-        let token = cfg.session_token()?.to_string();
+        match self.audit_with(&transport, &server, &token) {
+            Err(_) if transport.session_refused() => {
+                let token = self.token_after_refusal()?;
+                let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
+                self.audit_with(&transport, &server, &token)
+            }
+            done => done,
+        }
+    }
+
+    fn audit_with(
+        &mut self,
+        transport: &HttpTransport,
+        server: &str,
+        token: &str,
+    ) -> Result<Vec<String>, String> {
+        let (server, token) = (server.to_string(), token.to_string());
         sync_identity_records(
-            &transport,
+            transport,
             &token,
             &mut self.identity,
             self.keystore.as_ref(),
@@ -1786,7 +1833,7 @@ impl Session {
         )?;
         let remembered = self.transparency.view(&server).cloned();
         let mut kt =
-            KtSession::begin(&transport, &token, remembered.as_ref()).map_err(|e| e.to_string())?;
+            KtSession::begin(transport, &token, remembered.as_ref()).map_err(|e| e.to_string())?;
         // From the start, so the whole account history is checked.
         kt.view.audited = 0;
         kt.view.identity_logged = None;
@@ -1953,6 +2000,7 @@ fn enrol_signed_in(
         expires_at: session.expires_at,
         vaults: BTreeMap::new(),
         last_sync_at: None,
+        sign_in: None,
     };
     cfg.save(&paths.sync_file())?;
     Ok(vec![format!(
@@ -2039,6 +2087,7 @@ pub(crate) fn recover_signed_in(
         expires_at: session.expires_at,
         vaults: BTreeMap::new(),
         last_sync_at: None,
+        sign_in: None,
     };
     cfg.save(&paths.sync_file())?;
     Ok(vec![format!(

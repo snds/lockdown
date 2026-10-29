@@ -394,3 +394,56 @@ impl BackupKeyText {
             .to_string()
     }
 }
+
+/// Signs in to the binary at `url` and returns the token and the device key.
+fn signed_in(url: &str) -> (String, [u8; 32]) {
+    let seed = SigningKey::generate().unwrap().inner().to_bytes();
+    let binding = DeviceBinding {
+        device_id: Id::new(),
+        device_pub: SigningKey::from_bytes(seed).verifying_key().to_bytes(),
+        sign: Box::new(move |m| Ok(SigningKey::from_bytes(seed).sign(m))),
+    };
+    let mut auth =
+        OpaqueAccountAuth::new(HttpTransport::new(url).unwrap(), "me@example.com", binding);
+    auth.register_account(&Id::new(), "correct horse battery staple")
+        .unwrap();
+    let (_, session) = auth.sign_in("correct horse battery staple").unwrap();
+    (session.token, seed)
+}
+
+#[test]
+fn a_short_session_ttl_runs_out_and_the_device_key_renews_it_unless_renewal_is_off() {
+    use lockdown_sync::renew::{RenewError, SignInReason, renew};
+    let dir = tempfile::tempdir().unwrap();
+    let s = start(
+        &["--listen", "127.0.0.1:0", "--session-ttl", "2"],
+        &dir.path().join("a"),
+    );
+    let (token, seed) = signed_in(&s.url);
+    std::thread::sleep(Duration::from_millis(3_100));
+    let t = HttpTransport::new(&s.url).unwrap();
+    assert!(t.list_vaults(&token).is_err(), "the token ran out");
+    let sign = move |m: &[u8]| Ok(SigningKey::from_bytes(seed).sign(m));
+    let renewed = renew(&t, &token, &sign).unwrap();
+    assert!(t.list_vaults(&renewed.token).is_ok());
+
+    // `--session-idle-limit 0`: renewal is off, and the words say so.
+    let off = start(
+        &[
+            "--listen",
+            "127.0.0.1:0",
+            "--session-ttl",
+            "2",
+            "--session-idle-limit",
+            "0",
+        ],
+        &dir.path().join("b"),
+    );
+    let (token, seed) = signed_in(&off.url);
+    std::thread::sleep(Duration::from_millis(2_100));
+    let sign = move |m: &[u8]| Ok(SigningKey::from_bytes(seed).sign(m));
+    assert_eq!(
+        renew(&HttpTransport::new(&off.url).unwrap(), &token, &sign),
+        Err(RenewError::SignIn(SignInReason::NotRenewable))
+    );
+}
