@@ -33,6 +33,7 @@
 //! The offline queue is not built yet.
 
 pub mod account_security;
+pub mod dnssd;
 pub mod engine;
 pub mod identity;
 pub mod kt;

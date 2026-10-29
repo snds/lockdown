@@ -17,6 +17,7 @@
 //! - [`token`] — the `lk1` session token
 //! - [`ratelimit`] — the brake on the login endpoints
 //! - [`api`] — the handlers; the wire types are `lockdown_sync::wire`
+//! - [`announce`] — the server's multicast DNS answer on the local network
 //! - [`alerts`] — account alerts: a new device's sign-in, an email breach
 //! - [`breach_monitor`] — the email breach job over an injectable feed
 //! - [`breach_range`] — an operator's own breach feed, by k-anonymity
@@ -49,6 +50,7 @@
 pub mod admin;
 pub mod admin_passkeys;
 pub mod alerts;
+pub mod announce;
 pub mod api;
 pub mod backup;
 pub mod breach_monitor;

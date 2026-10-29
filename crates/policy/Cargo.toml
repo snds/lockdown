@@ -10,3 +10,8 @@ repository.workspace = true
 [dependencies]
 serde.workspace = true
 thiserror.workspace = true
+# The managed policy file (managed.rs).
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

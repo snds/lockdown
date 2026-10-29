@@ -15,6 +15,8 @@
 //! 4. Any `StepUp` rule (fresh biometric, full password).
 //! 5. Otherwise `Allow`.
 
+pub mod managed;
+
 use serde::{Deserialize, Serialize};
 
 /// What is being asked.
