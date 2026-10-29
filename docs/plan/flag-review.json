@@ -36,7 +36,7 @@
   {"id": "pq", "name": "Post-quantum", "ids": "D335-D349,D365-D374"},
   {"id": "release", "name": "Release and packaging", "ids": "D90-D99,D275-D289,D350-D356,D358-D364"},
   {"id": "plans", "name": "Plans and pricing", "ids": "D375-D378"},
-  {"id": "small-calls", "name": "Follow-ups to the review", "ids": "D410-D419"},
+  {"id": "small-calls", "name": "Follow-ups to the review", "ids": "D410-D429"},
   {"id": "design", "name": "Design and accessibility", "ids": "D380-D398"}
  ]
 }
