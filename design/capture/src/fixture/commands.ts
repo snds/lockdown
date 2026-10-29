@@ -312,7 +312,7 @@ export function commands(world: World): Record<string, Handler> {
     open_clock_settings: () => false,
 
     // --- account and recovery --------------------------------------------------------
-    account_register: () => oncePage(["Your account is made on vault.rivera.example.", "Print the kit or write it down now: it is shown once."], KIT),
+    account_register: () => oncePage(["Your account is made on vault.rivera.example.", "Save, print or write down the kit now: it is shown once."], KIT),
     account_register_opted_out: () => oncePage(["Your account is made without a Secret Key."], KIT.replace(/^Secret Key:.*\n/m, "")),
     account_login: () => ["Signed in to vault.rivera.example as sam@rivera.example.", "Synced: 1,842 changes received."],
     recover: () => ["Recovered with the kit. This device is enrolled and its key is in the identity."],
