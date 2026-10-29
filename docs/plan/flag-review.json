@@ -21,7 +21,7 @@
   "D346": {"verdict": "accepted", "note": "Being built now (slice/pq-status-line)."}
  },
  "areas": [
-  {"id": "keys", "name": "Keys and encryption", "ids": "D30-D49"},
+  {"id": "keys", "name": "Keys and encryption", "ids": "D30-D49,D379"},
   {"id": "sign-in", "name": "Sign-in and recovery", "ids": "D50-D75,D245-D257"},
   {"id": "sync", "name": "Sync and the public log", "ids": "D76-D89"},
   {"id": "vault", "name": "Vault and items", "ids": "D100-D123,D146-D155,D230-D244,D272,D305-D319"},

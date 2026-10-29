@@ -20,6 +20,14 @@ ignore = [
     # keyring and Tauri move to zbus 6.
     { id = "RUSTSEC-2026-0370", reason = "zvariant: merged into zbus 6; Linux-only D-Bus path via keyring/Tauri, no vulnerability" },
     { id = "RUSTSEC-2026-0371", reason = "zbus_names: merged into zbus 6; same path" },
+    # crypto-bigint 0.5 has timing variability in operations meant to be
+    # constant-time. It reaches the tree only as elliptic-curve 0.13's integer
+    # type, under opaque-ke 4 and voprf. Lockdown's OPAQUE suite is
+    # Ristretto255 (curve25519-dalek), so no crypto-bigint arithmetic runs on a
+    # secret; no p256 or other elliptic-curve backend is in the lock file.
+    # Drop this when opaque-ke ships on elliptic-curve 0.14 (4.1 is pre-release
+    # today). D379, audit item.
+    { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5 via elliptic-curve 0.13 traits only; OPAQUE runs on Ristretto255 (dalek), no crypto-bigint arithmetic on secrets" },
     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive: merged into zbus 6; same path" },
 ]
 
