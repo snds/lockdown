@@ -32,6 +32,7 @@
 //! - [`device_link`] — approving a new device from an enrolled one, through the server's relay
 //! - [`handover`] — the record changes a device approval needs, and Lockdown's profile fields
 //! - [`pq`] — every new wrap to another key is post-quantum hybrid
+//! - [`pq_status`] — where the post-quantum signature rollout stands, for the Security screen
 //! - [`compose`] — a shell's add or edit checked against the template, with an explicit keep for secrets
 //! - [`manifest`] — the signed, hash-chained manifest head and chain check
 //! - [`organization`] — folders, tags and favourites; the vault's name and folder tree in a hidden item
@@ -63,6 +64,7 @@ pub mod manifest;
 pub mod organization;
 pub mod phrase_check;
 pub mod pq;
+pub mod pq_status;
 pub mod search;
 pub mod send;
 pub mod sharing;

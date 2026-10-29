@@ -15,6 +15,8 @@ export interface Nav {
   view: ListView
   /** A vault, folder or tag the list is narrowed to (features/organization). */
   scope?: Scope
+  /** A device the Devices screen brings into view (the Security screen's post-quantum line). */
+  device?: string
 }
 
 interface AppShellProps {
