@@ -3305,6 +3305,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "ecosystem-identity",
+ "libc",
  "lockdown-app",
  "lockdown-codes",
  "lockdown-crypto",
@@ -3317,6 +3318,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "tempfile",
+ "zeroize",
 ]
 
 [[package]]

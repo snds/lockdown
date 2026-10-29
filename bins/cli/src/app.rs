@@ -26,8 +26,9 @@ use ecosystem_identity::keys::Irk;
 use ecosystem_identity::keystore::DeviceKeystore;
 use ecosystem_identity::records::{KeyEnvelope, KeyRef, KeyRefKind, Purpose, RecoveryState};
 use ecosystem_identity::{
-    AccountAuth, AccountCredentials, ExportKey, FileKeystore, Identity, RecoveryKit, default_root,
+    AccountAuth, AccountCredentials, ExportKey, Identity, RecoveryKit, default_root,
 };
+use lockdown_app::local_unlock::{self, DeviceKeys};
 use lockdown_app::sharing::SharingState;
 use lockdown_app::vault_open::{self, PersonaVaults, Waiting};
 use lockdown_crypto::auth::{DeviceBinding, OpaqueAccountAuth};
@@ -50,7 +51,6 @@ use serde::{Deserialize, Serialize};
 
 mod renewal;
 
-const KEYSTORE_FILE: &str = "device-key.cbor";
 const STORE_FILE: &str = "vault.sqlite";
 const MEMORY_FILE: &str = "remembered.cbor";
 const IDENTITY_SYNC_FILE: &str = "identity-sync.cbor";
@@ -185,7 +185,7 @@ enum Mode {
 /// the account, and the one vault in use.
 pub struct App {
     paths: Paths,
-    keystore: Rc<FileKeystore>,
+    keystore: Rc<DeviceKeys>,
     identity: Identity,
     store: SqliteStore,
     memory: HeadMemory,
@@ -220,15 +220,29 @@ impl App {
     }
 
     fn open(paths: Paths, persona: Option<&str>, mode: Mode) -> Result<Self, String> {
-        let keystore_path = paths.data.join(KEYSTORE_FILE);
-        if mode != Mode::Init && !keystore_path.exists() && !paths.root.join("FORMAT").exists() {
+        let file = local_unlock::key_file(&paths.data);
+        if mode != Mode::Init
+            && file == local_unlock::KeyFile::None
+            && !paths.root.join("FORMAT").exists()
+        {
             return Err(format!(
                 "nothing is set up at {} yet; run `lockdown init` first",
                 paths.root.display()
             ));
         }
-        let keystore =
-            Rc::new(FileKeystore::open_or_create(&keystore_path).map_err(|e| e.to_string())?);
+        // The master password opens the device's keys (docs/plan/39-first-run.md
+        // §1.5); an install without one yet opens as before, and says so.
+        let keystore = Rc::new(match file {
+            local_unlock::KeyFile::Sealed => DeviceKeys::open_with_password(
+                &paths.data,
+                &crate::master::master_password(&paths.data)?,
+            )?,
+            local_unlock::KeyFile::Plain => {
+                crate::master::no_master_password_notice();
+                DeviceKeys::open_plain(&paths.data)?
+            }
+            local_unlock::KeyFile::None => DeviceKeys::open_or_create_plain(&paths.data)?,
+        });
         let mut memory =
             HeadMemory::open(&paths.data.join(MEMORY_FILE)).map_err(|e| e.to_string())?;
         let remembered = memory.identity();
@@ -1275,10 +1289,7 @@ impl App {
         recovery_code: &str,
     ) -> Result<Vec<String>, String> {
         Self::check_root_empty(&paths)?;
-        let keystore = Rc::new(
-            FileKeystore::open_or_create(&paths.data.join(KEYSTORE_FILE))
-                .map_err(|e| e.to_string())?,
-        );
+        let keystore = Rc::new(DeviceKeys::open_or_create_plain(&paths.data)?);
         let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
         let mut auth = OpaqueAccountAuth::new(transport, login, binding_of(&keystore));
         let (_export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
@@ -1384,10 +1395,7 @@ impl App {
         secret_key: Option<&str>,
     ) -> Result<Vec<String>, String> {
         Self::check_root_empty(&paths)?;
-        let keystore = Rc::new(
-            FileKeystore::open_or_create(&paths.data.join(KEYSTORE_FILE))
-                .map_err(|e| e.to_string())?,
-        );
+        let keystore = Rc::new(DeviceKeys::open_or_create_plain(&paths.data)?);
         let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
         let mut auth = OpaqueAccountAuth::new(transport, login, binding_of(&keystore));
         let (export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
@@ -2350,7 +2358,7 @@ fn open_with_pinned_writers(
     persona_id: Id,
     paths: &Paths,
     store: &SqliteStore,
-    keystore: &Rc<FileKeystore>,
+    keystore: &Rc<DeviceKeys>,
     memory: &HeadMemory,
     synced: &SyncedIdentity,
     first: &OpenVault,
@@ -2386,7 +2394,7 @@ fn open_with_pinned_writers(
 }
 
 /// This device's binding for the OPAQUE client, from its keystore.
-fn binding_of(keystore: &Rc<FileKeystore>) -> DeviceBinding {
+fn binding_of(keystore: &Rc<DeviceKeys>) -> DeviceBinding {
     let signing = keystore.clone();
     DeviceBinding {
         device_id: keystore.device_id(),
@@ -2566,7 +2574,7 @@ mod tests {
         assert_eq!(back.login, cfg.login);
         assert_eq!(back.vaults, cfg.vaults);
         // A token far from running out is used as it is, with no call.
-        let keystore = FileKeystore::open_or_create(&dir.path().join("k.cbor")).unwrap();
+        let keystore = DeviceKeys::open_or_create_plain(&dir.path().join("k")).unwrap();
         assert_eq!(
             renewal::fresh_token(&mut back.clone(), &keystore, &path, false).unwrap(),
             "lk1.a.b"

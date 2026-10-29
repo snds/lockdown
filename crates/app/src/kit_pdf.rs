@@ -3,13 +3,18 @@
 //! The kit's page is made once (`render_kit` in `session.rs`), shown once,
 //! and never kept. A person who wants it as a file asks while the page is
 //! still in front of them: the shell hands back the page it was shown, and
-//! this module lays it out as one A4 page the way the dialog prints it: the
+//! this module lays it out as one page the way the dialog prints it: the
 //! title, the notes, the Secret Key and the recovery code in large type in
 //! groups of four (the characters a person types, without the dashes), the
 //! account lines and the date, the page's own advice, and where to keep the
 //! file. The bytes are the same on the desktop (written by the shell to the
 //! place the person picked) and in the web vault (handed to the page as a
 //! download).
+//!
+//! **The paper** is US Letter where the computer's region uses it (the
+//! United States, Canada, Mexico, the Philippines and the other Letter
+//! regions of CLDR's paper-size data) and A4 everywhere else ([`Paper`];
+//! D459 as changed under D375). The region comes from the OS locale.
 //!
 //! **The bytes are secret.** Everything that holds the kit is wiped when
 //! it drops: the page's text, the encoded strings, the content stream and
@@ -63,11 +68,86 @@ static BOLD: &[u8] = include_bytes!("../assets/fonts/JetBrainsMono-Bold-WinAnsi.
 const ADVANCE: f32 = 0.6;
 const UNITS: f32 = 1000.0;
 
-/// A4, in points.
-const PAGE_W: f32 = 595.28;
-const PAGE_H: f32 = 841.89;
 const MARGIN: f32 = 56.0;
-const WIDTH: f32 = PAGE_W - 2.0 * MARGIN;
+
+/// The regions that print on US Letter (CLDR's `paperSize` data: every
+/// other region uses A4).
+const LETTER_REGIONS: [&str; 14] = [
+    "BZ", "CA", "CL", "CO", "CR", "GT", "MX", "NI", "PA", "PH", "PR", "SV", "US", "VE",
+];
+
+/// The paper the kit is laid out on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Paper {
+    /// 210 × 297 mm.
+    A4,
+    /// 8.5 × 11 in.
+    Letter,
+}
+
+impl Paper {
+    /// Width and height in points.
+    pub fn size(self) -> (f32, f32) {
+        match self {
+            Self::A4 => (595.28, 841.89),
+            Self::Letter => (612.0, 792.0),
+        }
+    }
+
+    /// The paper a region prints on, from its two-letter code.
+    pub fn for_region(region: &str) -> Self {
+        let region = region.trim().to_ascii_uppercase();
+        if LETTER_REGIONS.contains(&region.as_str()) {
+            Self::Letter
+        } else {
+            Self::A4
+        }
+    }
+
+    /// The paper of a locale tag (`en_US.UTF-8`, `en-US`, `fr_CA@euro`,
+    /// `zh-Hant-TW`): its region subtag, or A4 when it names none.
+    pub fn for_locale(tag: &str) -> Self {
+        let tag = tag.split(['.', '@']).next().unwrap_or_default();
+        tag.split(['_', '-'])
+            .skip(1)
+            .find(|part| part.len() == 2 && part.chars().all(|c| c.is_ascii_alphabetic()))
+            .map_or(Self::A4, Self::for_region)
+    }
+
+    /// The paper of this computer's region (the OS locale).
+    pub fn for_system() -> Self {
+        system_locale().map_or(Self::A4, |tag| Self::for_locale(&tag))
+    }
+}
+
+/// The OS locale's tag, where this build can read it: the paper setting
+/// or the language variables first (`LC_ALL`, `LC_PAPER`, `LANG`), then on
+/// a Mac the system's own locale (`AppleLocale`), which an app started
+/// from the Dock sees no variable for.
+fn system_locale() -> Option<String> {
+    for var in ["LC_ALL", "LC_PAPER", "LANG"] {
+        if let Ok(v) = std::env::var(var)
+            && !v.is_empty()
+            && v != "C"
+            && v != "POSIX"
+            && !v.starts_with("C.")
+        {
+            return Some(v);
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let out = std::process::Command::new("/usr/bin/defaults")
+            .args(["read", "-g", "AppleLocale"])
+            .output()
+            .ok()?;
+        let tag = String::from_utf8(out.stdout).ok()?.trim().to_string();
+        if out.status.success() && !tag.is_empty() {
+            return Some(tag);
+        }
+    }
+    None
+}
 
 /// The large type: the size, the extra room between characters, and the
 /// gap between groups of four.
@@ -184,18 +264,25 @@ pub fn check(page: &str) -> Result<(), String> {
 /// The kit page as a one-page PDF. `notes` are the lines the dialog shows
 /// above the page (what changed when the kit was made).
 pub fn render(notes: &[String], page: &str) -> Result<Zeroizing<Vec<u8>>, String> {
+    render_on(Paper::for_system(), notes, page)
+}
+
+/// [`render`] on the paper given.
+pub fn render_on(paper: Paper, notes: &[String], page: &str) -> Result<Zeroizing<Vec<u8>>, String> {
     if notes.len() > MAX_NOTES || notes.iter().any(|n| n.len() > MAX_NOTE) {
         return Err("those notes don't belong on a recovery kit".into());
     }
     let kit = KitPage::parse(page)?;
-    let content = layout(notes, &kit);
-    Ok(assemble(&content))
+    let content = layout(paper, notes, &kit);
+    Ok(assemble(paper, &content))
 }
 
 /// A run of text on the page: which face, how big, and where its baseline starts.
 struct Sheet {
     content: Content,
     y: f32,
+    /// The page's width.
+    w: f32,
 }
 
 const REG: Name<'static> = Name(b"F1");
@@ -216,7 +303,7 @@ impl Sheet {
     /// A paragraph, wrapped to the page, `size` points, one line every `lead`.
     fn paragraph(&mut self, font: Name<'_>, size: f32, gray: f32, text: &str) {
         let lead = size * 1.45;
-        let cols = (WIDTH / (size * ADVANCE)).floor() as usize;
+        let cols = ((self.w - 2.0 * MARGIN) / (size * ADVANCE)).floor() as usize;
         for line in wrap(text, cols) {
             self.y -= lead;
             self.text(font, size, MARGIN, gray, &line);
@@ -228,7 +315,7 @@ impl Sheet {
             .set_stroke_gray(0.7)
             .set_line_width(0.75)
             .move_to(MARGIN, self.y)
-            .line_to(PAGE_W - MARGIN, self.y)
+            .line_to(self.w - MARGIN, self.y)
             .stroke();
     }
 
@@ -238,7 +325,7 @@ impl Sheet {
         self.text(BLD, 12.0, MARGIN, 0.0, text);
         if let Some(right) = right {
             let w = right.chars().count() as f32 * 9.0 * ADVANCE;
-            self.text(REG, 9.0, PAGE_W - MARGIN - w, 0.35, right);
+            self.text(REG, 9.0, self.w - MARGIN - w, 0.35, right);
         }
         self.y -= 8.0;
         self.rule();
@@ -268,11 +355,17 @@ impl Sheet {
     }
 }
 
-fn layout(notes: &[String], kit: &KitPage<'_>) -> Zeroizing<Vec<u8>> {
+fn layout(paper: Paper, notes: &[String], kit: &KitPage<'_>) -> Zeroizing<Vec<u8>> {
+    Zeroizing::new(lay_out(paper, notes, kit).content.finish().into_vec())
+}
+
+fn lay_out(paper: Paper, notes: &[String], kit: &KitPage<'_>) -> Sheet {
+    let (w, h) = paper.size();
     let mut sheet = Sheet {
         // The page's content is a few kilobytes; room for all of it at once.
         content: Content::with_capacity(32 * 1024),
-        y: PAGE_H - MARGIN,
+        y: h - MARGIN,
+        w,
     };
     let made = kit.value("Made").unwrap_or_default();
     let date = made.split_whitespace().next().unwrap_or_default();
@@ -319,12 +412,12 @@ fn layout(notes: &[String], kit: &KitPage<'_>) -> Zeroizing<Vec<u8>> {
     sheet.heading("Where to keep this file", None);
     sheet.y -= 4.0;
     sheet.paragraph(REG, 10.0, 0.0, KEEP_WORDS);
-
-    Zeroizing::new(sheet.content.finish().into_vec())
+    sheet
 }
 
 /// The file around the content: one page, the two embedded faces.
-fn assemble(content: &[u8]) -> Zeroizing<Vec<u8>> {
+fn assemble(paper: Paper, content: &[u8]) -> Zeroizing<Vec<u8>> {
+    let (page_w, page_h) = paper.size();
     let catalog = Ref::new(1);
     let pages = Ref::new(2);
     let page = Ref::new(3);
@@ -353,7 +446,7 @@ fn assemble(content: &[u8]) -> Zeroizing<Vec<u8>> {
     pdf.pages(pages).kids([page]).count(1);
     {
         let mut p = pdf.page(page);
-        p.media_box(Rect::new(0.0, 0.0, PAGE_W, PAGE_H))
+        p.media_box(Rect::new(0.0, 0.0, page_w, page_h))
             .parent(pages)
             .contents(contents);
         let mut resources = p.resources();
@@ -730,6 +823,69 @@ Lockdown never asks for this page in an email, a message or a web form.
             PAGE,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn letter_regions_get_letter_and_the_rest_a4() {
+        for tag in [
+            "en_US.UTF-8",
+            "en-US",
+            "fr_CA@euro",
+            "es-MX",
+            "en_PH",
+            "es-CL",
+            "es_PR.UTF-8",
+        ] {
+            assert_eq!(Paper::for_locale(tag), Paper::Letter, "{tag}");
+        }
+        for tag in [
+            "en_GB.UTF-8",
+            "de-DE",
+            "fr_FR@euro",
+            "ja_JP",
+            "en",
+            "",
+            "zh-Hant-TW",
+            "en-AU",
+        ] {
+            assert_eq!(Paper::for_locale(tag), Paper::A4, "{tag}");
+        }
+        assert_eq!(Paper::for_locale("zh-Hans-US"), Paper::Letter);
+        assert_eq!(Paper::for_region("us"), Paper::Letter);
+    }
+
+    fn media_box(pdf: &[u8]) -> String {
+        let raw = String::from_utf8_lossy(pdf);
+        let at = raw.find("/MediaBox [").unwrap();
+        raw[at..at + raw[at..].find(']').unwrap() + 1].to_string()
+    }
+
+    #[test]
+    fn a_letter_kit_is_one_letter_page_and_everything_fits() {
+        let pdf = render_on(Paper::Letter, &["a note".into()], PAGE).unwrap();
+        assert_eq!(media_box(&pdf), "/MediaBox [0 0 612 792]");
+        let parsed = parse(&pdf).unwrap();
+        assert!(parsed.shown.iter().any(|s| s == "Lockdown recovery kit"));
+        let kit = KitPage::parse(PAGE).unwrap();
+        // The most notes a kit is made with today: three lines.
+        let notes = vec![
+            "the account's slot now needs this Secret Key beside the password; other devices learn it at their next sync".to_string();
+            3
+        ];
+        assert!(lay_out(Paper::Letter, &notes, &kit).y >= MARGIN);
+    }
+
+    #[test]
+    fn an_a4_kit_is_one_a4_page_and_everything_fits() {
+        let pdf = render_on(Paper::A4, &["a note".into()], PAGE).unwrap();
+        assert_eq!(media_box(&pdf), "/MediaBox [0 0 595.28 841.89]");
+        let kit = KitPage::parse(PAGE).unwrap();
+        // The most notes a kit is made with today: three lines.
+        let notes = vec![
+            "the account's slot now needs this Secret Key beside the password; other devices learn it at their next sync".to_string();
+            3
+        ];
+        assert!(lay_out(Paper::A4, &notes, &kit).y >= MARGIN);
     }
 
     #[test]

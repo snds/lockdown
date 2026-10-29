@@ -153,7 +153,13 @@ impl App {
         self.call(|core| {
             let file = path(&core.paths);
             let mut kept = load(&file);
-            let asks = core.depth.unlock_asks_password;
+            // A vault sealed under a master password asks for it at every
+            // unlock, so the reminder has nothing to add (D252 under doc 39).
+            let asks = core.depth.unlock_asks_password
+                || crate::local_unlock::key_file(&core.paths.data)
+                    == crate::local_unlock::KeyFile::Sealed;
+            let kit_test_waits =
+                !crate::onboarding::Onboarding::load(&core.paths.data).kit_test_due(now());
             let session = core.session()?;
             let has_account = session.has_account();
             let (state, last_drill, drill_due) = session.recovery_state();
@@ -194,9 +200,12 @@ impl App {
                     last_drilled_at: last_drill,
                     next_at: drill_next,
                     due: drill_due && !snoozed(kept.drill_snoozed_until),
+                    // The kit test waits a day after the first run made the
+                    // kit: put it away and come back (Q4).
                     kit_test_pending: state != RecoveryState::None
                         && last_drill.is_none()
-                        && kept.kit_test_skipped_at.is_none(),
+                        && kept.kit_test_skipped_at.is_none()
+                        && !kit_test_waits,
                 },
             })
         })

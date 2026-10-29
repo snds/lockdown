@@ -26,14 +26,22 @@
 //! from standard input (`--password-stdin`, `--secret-key-stdin`,
 //! `--kit-stdin`, one per line in that order) or from `LOCKDOWN_PASSWORD`,
 //! `LOCKDOWN_SECRET_KEY` and `LOCKDOWN_RECOVERY_CODE`.
+//!
+//! A vault made with a master password (`init --name`, or the app's first
+//! run) opens only with it: `--master-password-stdin`,
+//! `LOCKDOWN_MASTER_PASSWORD`, or a prompt at a terminal (`master`).
+//! `password set` gives an older install one; `password reset` chooses a
+//! new one with the recovery kit (docs/plan/39-first-run.md §1.5).
 
 mod app;
+mod master;
 
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
+use zeroize::Zeroizing;
 
 use crate::app::{App, Paths};
 
@@ -52,6 +60,11 @@ struct Cli {
     /// The persona to use, by id or label, when the identity has several.
     #[arg(long, global = true, value_name = "ID|LABEL")]
     persona: Option<String>,
+    /// Read the master password from the first line of standard input
+    /// (before any line the command itself reads). Without it,
+    /// LOCKDOWN_MASTER_PASSWORD, or a prompt at a terminal.
+    #[arg(long, global = true)]
+    master_password_stdin: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -59,8 +72,10 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Command {
     /// Open the ecosystem identity at the root (or create it) and the
-    /// persona's vault (or create it). Safe to run again.
-    Init,
+    /// persona's vault (or create it). Safe to run again. With --name, a
+    /// new vault gets a master password and a recovery kit, as the app's
+    /// first run makes.
+    Init(InitArgs),
     /// Add an item to the vault.
     Add {
         #[command(subcommand)]
@@ -166,6 +181,64 @@ enum Command {
     /// which devices hold them back. Brings the identity's records in step
     /// with the server first when there is an account.
     Security,
+    /// The master password: give an older install one, or choose a new
+    /// one with the recovery kit.
+    Password {
+        #[command(subcommand)]
+        what: PasswordWhat,
+    },
+}
+
+#[derive(Args, Debug)]
+struct InitArgs {
+    /// The name your vault shows when it's locked (not an email; it stays
+    /// on this computer). Makes the vault with a master password.
+    #[arg(long, value_name = "NAME")]
+    name: Option<String>,
+    /// Read the new master password from stdin (else LOCKDOWN_PASSWORD,
+    /// or asked twice at a terminal).
+    #[arg(long)]
+    password_stdin: bool,
+    /// Save the recovery kit to this file instead of printing it.
+    #[arg(long, value_name = "FILE")]
+    save: Option<PathBuf>,
+}
+
+#[derive(Subcommand, Debug)]
+enum PasswordWhat {
+    /// Give an install made without a master password one. Its kit's
+    /// Secret Key and recovery code come from stdin (--kit-stdin, or
+    /// LOCKDOWN_SECRET_KEY and LOCKDOWN_RECOVERY_CODE), or --new-kit
+    /// makes a new kit (the old page stops working).
+    Set {
+        /// The name your vault shows when it's locked.
+        #[arg(long, value_name = "NAME")]
+        name: Option<String>,
+        /// Read the new master password from stdin, first.
+        #[arg(long)]
+        password_stdin: bool,
+        /// Read the kit's Secret Key and recovery code from stdin, after
+        /// the password.
+        #[arg(long)]
+        kit_stdin: bool,
+        /// Make a new kit instead of typing the old one.
+        #[arg(long, conflicts_with = "kit_stdin")]
+        new_kit: bool,
+        /// Save a new kit to this file instead of printing it.
+        #[arg(long, value_name = "FILE")]
+        save: Option<PathBuf>,
+    },
+    /// Forgot the master password: the recovery kit opens the vault and a
+    /// new master password replaces the old one.
+    Reset {
+        /// Read the kit's Secret Key and recovery code from stdin, one per
+        /// line (else LOCKDOWN_SECRET_KEY and LOCKDOWN_RECOVERY_CODE).
+        #[arg(long)]
+        kit_stdin: bool,
+        /// Read the new master password from stdin, after the kit.
+        #[arg(long)]
+        password_stdin: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -341,7 +414,10 @@ impl Secrets {
     /// Reads standard input when any `*_stdin` flag asks for it.
     fn read(any_stdin: bool) -> Result<Self, String> {
         let mut text = String::new();
-        if any_stdin {
+        if let Some(rest) = master::take_rest() {
+            // The master password came first on stdin; these are the rest.
+            text.push_str(&rest);
+        } else if any_stdin {
             std::io::stdin()
                 .read_to_string(&mut text)
                 .map_err(|e| format!("couldn't read from stdin: {e}"))?;
@@ -461,6 +537,13 @@ fn deliver_kit(text: String, save: Option<&PathBuf>) -> Result<Vec<String>, Stri
 }
 
 fn run(cli: Cli) -> Result<Vec<String>, String> {
+    // The local account's server runs inside this process, over the data
+    // directory's files (docs/plan/39-first-run.md §1.1).
+    lockdown_server::local::install();
+    if let Ok(paths) = Paths::resolve(cli.root.clone(), cli.data.clone()) {
+        lockdown_sync::set_default_local_home(Some(paths.data));
+    }
+    master::read_stdin(cli.master_password_stdin)?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -469,7 +552,29 @@ fn run(cli: Cli) -> Result<Vec<String>, String> {
     match cli.command {
         Command::Code { uri } => code_lines(&uri, now),
         Command::Match { saved, current } => match_line(&saved, &current).map(|l| vec![l]),
-        Command::Init => {
+        Command::Init(args) if args.name.is_some() => {
+            let paths = Paths::resolve(cli.root, cli.data)?;
+            kit_target_free(args.save.as_ref())?;
+            let name = args.name.unwrap_or_default();
+            let mut secrets = Secrets::read(args.password_stdin)?;
+            let typed = secrets.password_if_given(args.password_stdin)?;
+            let password = master::new_password(typed.map(Zeroizing::new))?;
+            let core = core_app(&paths);
+            let made = core
+                .first_run_create(&name, &password)
+                .map_err(|e| e.message)?;
+            core.onboarding_stage("done").map_err(|e| e.message)?;
+            let mut lines = vec![format!(
+                "vault created for {name}; it opens only with your master password"
+            )];
+            if let Some(kit) = made.kit {
+                let text = String::from_utf8_lossy(kit.expose()).into_owned();
+                lines.push(String::new());
+                lines.extend(deliver_kit(text, args.save.as_ref())?);
+            }
+            Ok(lines)
+        }
+        Command::Init(_) => {
             let app = App::init(Paths::resolve(cli.root, cli.data)?, persona)?;
             let mut lines = vec![format!(
                 "identity {}, vault {}",
@@ -685,6 +790,84 @@ fn run(cli: Cli) -> Result<Vec<String>, String> {
         }
         Command::Security => {
             App::open_existing(Paths::resolve(cli.root, cli.data)?, persona)?.security_lines()
+        }
+        Command::Password { what } => {
+            let paths = Paths::resolve(cli.root, cli.data)?;
+            password_command(&paths, what)
+        }
+    }
+}
+
+/// The app's own core over `paths`, for the flows the command line runs
+/// through it (the master password's).
+fn core_app(paths: &Paths) -> lockdown_app::App {
+    let paths = lockdown_app::Paths {
+        root: paths.root.clone(),
+        data: paths.data.clone(),
+    };
+    lockdown_app::App::start(paths, None, lockdown_app::LockPolicy::default())
+}
+
+fn password_command(paths: &Paths, what: PasswordWhat) -> Result<Vec<String>, String> {
+    match what {
+        PasswordWhat::Set {
+            name,
+            password_stdin,
+            kit_stdin,
+            new_kit,
+            save,
+        } => {
+            kit_target_free(save.as_ref())?;
+            let mut secrets = Secrets::read(password_stdin || kit_stdin)?;
+            let typed = secrets.password_if_given(password_stdin)?;
+            let (secret_key, recovery_code) = if new_kit {
+                (None, None)
+            } else if kit_stdin
+                || std::env::var_os("LOCKDOWN_SECRET_KEY").is_some_and(|v| !v.is_empty())
+            {
+                (
+                    Some(secrets.secret_key(kit_stdin)?),
+                    Some(secrets.recovery_code(kit_stdin)?),
+                )
+            } else {
+                (None, None)
+            };
+            let password = master::new_password(typed.map(Zeroizing::new))?;
+            let core = core_app(paths);
+            core.unlock().map_err(|e| e.message)?;
+            let done = core
+                .set_master_password(lockdown_app::MasterPasswordInput {
+                    name,
+                    password: password.to_string(),
+                    secret_key,
+                    recovery_code,
+                    new_kit,
+                })
+                .map_err(|e| e.message)?;
+            core.onboarding_stage("done").map_err(|e| e.message)?;
+            let mut lines = done.lines;
+            if let Some(kit) = done.kit {
+                let text = String::from_utf8_lossy(kit.expose()).into_owned();
+                lines.push(String::new());
+                lines.extend(deliver_kit(text, save.as_ref())?);
+            }
+            Ok(lines)
+        }
+        PasswordWhat::Reset {
+            kit_stdin,
+            password_stdin,
+        } => {
+            let mut secrets = Secrets::read(kit_stdin || password_stdin)?;
+            let secret_key = Zeroizing::new(secrets.secret_key(kit_stdin)?);
+            let recovery_code = Zeroizing::new(secrets.recovery_code(kit_stdin)?);
+            let typed = secrets.password_if_given(password_stdin)?;
+            let password = master::new_password(typed.map(Zeroizing::new))?;
+            core_app(paths)
+                .password_reset_with_kit(&secret_key, &recovery_code, &password)
+                .map_err(|e| e.message)?;
+            Ok(vec![
+                "your new master password is set; the old one no longer opens this vault".into(),
+            ])
         }
     }
 }

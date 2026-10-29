@@ -21,7 +21,7 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use ecosystem_identity::FileKeystore;
+use crate::local_unlock::DeviceKeys;
 use lockdown_crypto::auth::OpaqueAccountAuth;
 use lockdown_store::{HeadMemory, SyncedIdentity};
 use lockdown_sync::HttpTransport;
@@ -33,7 +33,7 @@ use serde::Serialize;
 use serde_bytes::ByteBuf;
 
 use super::{
-    IDENTITY_SYNC_FILE, KEYSTORE_FILE, MEMORY_FILE, Paths, SYNC_V, Session, SyncConfig, binding_of,
+    IDENTITY_SYNC_FILE, MEMORY_FILE, Paths, SYNC_V, Session, SyncConfig, binding_of,
     check_root_empty, device_name, secret_key, sync_identity_records,
 };
 
@@ -339,7 +339,7 @@ pub struct JoinView {
 pub struct Joining {
     paths: Paths,
     server: String,
-    keystore: Rc<FileKeystore>,
+    keystore: Rc<DeviceKeys>,
     link_id: Id,
     key: Vec<u8>,
     join: Join,
@@ -379,10 +379,7 @@ impl Joining {
             }
             None => server.trim().trim_end_matches('/').to_string(),
         };
-        let keystore = Rc::new(
-            FileKeystore::open_or_create(&paths.data.join(KEYSTORE_FILE))
-                .map_err(|e| e.to_string())?,
-        );
+        let keystore = Rc::new(DeviceKeys::open_or_create_plain(&paths.data)?);
         let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
         let joined = transport
             .link_join(invite.code.as_str())
@@ -508,9 +505,7 @@ pub fn finish_joined(
     sign_in: SignIn<'_>,
     secret_key: Option<[u8; 16]>,
 ) -> Result<Vec<String>, String> {
-    let keystore = Rc::new(
-        FileKeystore::open_or_create(&paths.data.join(KEYSTORE_FILE)).map_err(|e| e.to_string())?,
-    );
+    let keystore = Rc::new(DeviceKeys::open_or_create_plain(&paths.data)?);
     let mut memory = HeadMemory::open(&paths.data.join(MEMORY_FILE)).map_err(|e| e.to_string())?;
     let mut identity =
         lockdown_vault::identity::open_identity(&paths.root, keystore.as_ref(), memory.identity())

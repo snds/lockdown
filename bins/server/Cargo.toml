@@ -61,9 +61,11 @@ sha2.workspace = true
 # range, as Pwned Passwords' k-anonymity does.
 sha1.workspace = true
 url.workspace = true
+# The in-process local server (local.rs) drives the router as a tower
+# service, with no socket.
+tower.workspace = true
 
 [dev-dependencies]
-tower.workspace = true
 http-body-util.workspace = true
 tempfile.workspace = true
 ciborium.workspace = true

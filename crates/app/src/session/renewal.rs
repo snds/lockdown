@@ -13,7 +13,7 @@
 
 use std::path::Path;
 
-use ecosystem_identity::FileKeystore;
+use crate::local_unlock::DeviceKeys;
 use ecosystem_identity::keystore::DeviceKeystore;
 use lockdown_sync::HttpTransport;
 use lockdown_sync::renew::{RenewError, SignInReason, renew, renewal_due};
@@ -54,7 +54,7 @@ fn adopt_newer(cfg: &mut SyncConfig, path: &Path) {
 /// [`SignInReason`] when only the password helps.
 pub(crate) fn fresh_token(
     cfg: &mut SyncConfig,
-    keystore: &FileKeystore,
+    keystore: &DeviceKeys,
     path: &Path,
     need: Need,
 ) -> Result<String, String> {

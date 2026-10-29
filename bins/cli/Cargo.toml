@@ -24,13 +24,18 @@ lockdown-app.workspace = true
 ecosystem-identity.workspace = true
 clap.workspace = true
 serde.workspace = true
+zeroize.workspace = true
+# The local account's server, run inside the command (docs/plan/39-first-run.md §1.1).
+lockdown-server.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+# The master-password prompt turns the terminal's echo off (`master`).
+libc = "0.2"
 
 [dev-dependencies]
 tempfile.workspace = true
 # The forked-log test rewrites a server's log file between two clients.
 rusqlite.workspace = true
-# The server, in process, so the sync tests spin it on a random port.
-lockdown-server.workspace = true
 # Test speed only: the identity crate's lowered Argon2id floor, so the
 # binary the end-to-end test drives creates an identity in milliseconds,
 # and the same floor for the OPAQUE stretching step.

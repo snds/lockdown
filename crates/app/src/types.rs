@@ -23,6 +23,16 @@ pub struct Probe {
     pub account_present: bool,
     /// The device name this app enrols under (D74).
     pub device_name: String,
+    /// Whether the device's keys are sealed under a master password, so
+    /// unlocking needs it (docs/plan/39-first-run.md §1.3).
+    pub master_password: bool,
+    /// Whether the account is the local one the app keeps itself (§1.1),
+    /// so no server words belong on screen.
+    pub local_account: bool,
+    /// The name the lock screen shows (§1.2), when one was chosen.
+    pub name: Option<String>,
+    /// How far an unfinished first run got (`onboarding`), or `None`.
+    pub stage: Option<String>,
 }
 
 /// Locked or open, and why it locked last.
@@ -380,6 +390,9 @@ pub struct AccountStatus {
     /// The server's log as last verified here; `None` until the first
     /// sync checks it.
     pub transparency: Option<TransparencyView>,
+    /// Whether this is the local account the app keeps itself
+    /// (docs/plan/39-first-run.md §1.1): no server words on screen.
+    pub local: bool,
 }
 
 /// `status`.

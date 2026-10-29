@@ -27,7 +27,8 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use ecosystem_identity::{FileKeystore, Identity};
+use crate::local_unlock::DeviceKeys;
+use ecosystem_identity::Identity;
 use lockdown_crypto::VerifyingKey;
 use lockdown_store::{HeadMemory, SyncedIdentity};
 use lockdown_vault::identity::{
@@ -112,7 +113,7 @@ pub fn open_one(
     identity: &Identity,
     vault_id: Id,
     store: &dyn Store,
-    keystore: &Rc<FileKeystore>,
+    keystore: &Rc<DeviceKeys>,
     memory: &HeadMemory,
     trust: &DeviceTrust,
     members: &BTreeMap<Id, VerifyingKey>,
@@ -153,7 +154,7 @@ pub fn open_own_vaults(
     identity: &Identity,
     persona_id: Id,
     store: &dyn Store,
-    keystore: &Rc<FileKeystore>,
+    keystore: &Rc<DeviceKeys>,
     memory: &HeadMemory,
     synced: &SyncedIdentity,
 ) -> Result<PersonaVaults, String> {

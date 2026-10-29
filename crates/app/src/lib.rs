@@ -25,11 +25,14 @@ pub mod browser;
 mod confine;
 pub mod depth;
 pub mod devices;
+pub mod first_run;
 pub mod hygiene;
 pub mod key_check;
 pub mod kit_pdf;
 pub mod live;
+pub mod local_unlock;
 pub mod lock;
+pub mod onboarding;
 pub mod passkeys;
 pub mod pq_status;
 pub mod protection;
@@ -56,6 +59,7 @@ use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::{Instant, SystemTime};
 
 pub use approval::{Approval, ApprovalKind, Approver, GateInput, PasswordApprover, Route};
+pub use first_run::{MasterPasswordInput, check_master_password};
 pub use hygiene::MemoryReport;
 pub use lock::{LockPolicy, LockReason};
 pub use lockdown_crypto::generator::Recipe;
@@ -226,6 +230,9 @@ impl Core {
             (_, Ok(settings)) => (settings, policy),
             (_, Err(_)) => (Settings::default(), policy),
         };
+        // Requests to the local account's server from this thread reach
+        // the one for these paths (docs/plan/39-first-run.md §1.1).
+        lockdown_sync::set_local_home(Some(paths.data.clone()));
         Self {
             paths,
             persona,

@@ -198,6 +198,11 @@ impl Session {
     /// The server and a live session token, when there is an account.
     pub(crate) fn account_session(&mut self) -> Option<Result<(String, String), String>> {
         let server = self.sync.as_ref()?.server.clone();
+        // The local account's server is the app itself: it has no live
+        // channel, no mail and no clock to compare (docs/plan/39-first-run.md §1.1).
+        if lockdown_sync::is_local(&server) {
+            return None;
+        }
         Some(self.token().map(|t| (server, t)))
     }
 }

@@ -28,7 +28,7 @@ use ecosystem_identity::keys::Irk;
 use ecosystem_identity::keystore::DeviceKeystore;
 use ecosystem_identity::records::{KeyEnvelope, KeyRef, KeyRefKind, Purpose, RecoveryState};
 use ecosystem_identity::{
-    AccountAuth, AccountCredentials, ExportKey, FileKeystore, Identity, RecoveryKit, default_root,
+    AccountAuth, AccountCredentials, ExportKey, Identity, RecoveryKit, default_root,
 };
 use lockdown_crypto::auth::{DeviceBinding, OpaqueAccountAuth};
 use lockdown_store::{
@@ -51,6 +51,7 @@ use lockdown_vault::{
 use serde::{Deserialize, Serialize};
 
 use crate::Revealed;
+use crate::local_unlock::{self, DeviceKeys};
 use crate::secrets;
 use crate::types::{
     AccountStatus, DeviceInfo, FieldView, ItemDetail, ItemSummary, KitCreated, PersonaInfo, Probe,
@@ -67,6 +68,7 @@ mod duplicates;
 pub(crate) mod exposure;
 mod history;
 pub mod items;
+pub(crate) mod local_account;
 pub(crate) mod mirrors;
 mod organize;
 pub(crate) mod passkeys;
@@ -83,7 +85,6 @@ pub(crate) mod split_hold;
 pub(crate) mod split_pause;
 pub(crate) mod transfer;
 
-const KEYSTORE_FILE: &str = "device-key.cbor";
 const STORE_FILE: &str = "vault.sqlite";
 const MEMORY_FILE: &str = "remembered.cbor";
 const IDENTITY_SYNC_FILE: &str = "identity-sync.cbor";
@@ -149,7 +150,14 @@ impl Paths {
             root: self.root.display().to_string(),
             data: self.data.display().to_string(),
             identity_present,
-            device_key_present: self.data.join(KEYSTORE_FILE).exists(),
+            device_key_present: local_unlock::key_file(&self.data) != local_unlock::KeyFile::None,
+            master_password: local_unlock::key_file(&self.data) == local_unlock::KeyFile::Sealed,
+            local_account: SyncConfig::load_plain(&self.sync_file())
+                .is_some_and(|c| lockdown_sync::is_local(&c.server)),
+            name: crate::onboarding::Onboarding::load(&self.data).name,
+            stage: crate::onboarding::Onboarding::load(&self.data)
+                .stage
+                .map(|s| s.as_str().to_string()),
             account_present: self.sync_file().exists(),
             device_name: device_name(),
         })
@@ -249,6 +257,13 @@ impl SyncConfig {
         }
     }
 
+    /// The file as written, without reaching for the session token: what a
+    /// probe needs to know (the server and the login), and nothing secret.
+    fn load_plain(path: &Path) -> Option<Self> {
+        let bytes = std::fs::read(path).ok()?;
+        lockdown_crypto::cbor::from_slice(&bytes).ok()
+    }
+
     fn save(&self, path: &Path) -> Result<(), String> {
         let mut on_disk = self.clone();
         if let Some(store) = secrets::store() {
@@ -277,7 +292,7 @@ pub enum Mode {
 /// Dropping it drops every key.
 pub struct Session {
     paths: Paths,
-    keystore: Rc<FileKeystore>,
+    keystore: Rc<DeviceKeys>,
     identity: Identity,
     store: DeviceStore,
     memory: HeadMemory,
@@ -329,12 +344,31 @@ impl Session {
     /// first, as a sync does; `Open` touches the network not at all, so
     /// unlock works offline.
     pub fn open(paths: Paths, persona: Option<&str>, mode: Mode) -> Result<Self, String> {
-        let keystore_path = paths.data.join(KEYSTORE_FILE);
-        if mode != Mode::Init && !keystore_path.exists() && !paths.root.join("FORMAT").exists() {
+        Self::open_with(paths, persona, mode, None)
+    }
+
+    /// [`Session::open`] with the device's keys already open (by the
+    /// master password, or fresh for a first run, D461). Without them the
+    /// plain key file is read, or made on a first run; a vault whose keys
+    /// are sealed is refused with [`local_unlock::PASSWORD_NEEDED`].
+    pub fn open_with(
+        paths: Paths,
+        persona: Option<&str>,
+        mode: Mode,
+        keys: Option<DeviceKeys>,
+    ) -> Result<Self, String> {
+        let file = local_unlock::key_file(&paths.data);
+        if mode != Mode::Init
+            && keys.is_none()
+            && file == local_unlock::KeyFile::None
+            && !paths.root.join("FORMAT").exists()
+        {
             return Err(format!("nothing is set up at {} yet", paths.root.display()));
         }
-        let keystore =
-            Rc::new(FileKeystore::open_or_create(&keystore_path).map_err(|e| e.to_string())?);
+        let keystore = Rc::new(match keys {
+            Some(keys) => keys,
+            None => DeviceKeys::open_or_create_plain(&paths.data)?,
+        });
         let mut memory =
             HeadMemory::open(&paths.data.join(MEMORY_FILE)).map_err(|e| e.to_string())?;
         let remembered = memory.identity();
@@ -927,6 +961,11 @@ impl Session {
     /// happened). `Ok(false)` is a wrong password; `Err` is a server that
     /// couldn't be reached or refused for another reason.
     pub fn check_password(&self, password: &str) -> Result<bool, String> {
+        // The local account's password is the master password: checked
+        // against this computer's own slot, no server round (§1.3).
+        if self.is_local_account() && self.keys_sealed() {
+            return self.check_local_password(password);
+        }
         let cfg = self.sync.as_ref().ok_or_else(|| {
             "no account on this device, so there is no password to check".to_string()
         })?;
@@ -1025,6 +1064,7 @@ impl Session {
         let account = self.sync.as_ref().map(|cfg| {
             let state = cfg.vaults.get(&vault_id).copied().unwrap_or_default();
             AccountStatus {
+                local: lockdown_sync::is_local(&cfg.server),
                 server: cfg.server.clone(),
                 login: cfg.login.clone(),
                 synced_seq: state.synced_seq,
@@ -1082,11 +1122,29 @@ impl Session {
         password: &str,
         secret_key: Option<&str>,
     ) -> Result<Registered, String> {
+        let profile_id = self.identity.profile().profile_id;
+        let given = match secret_key.filter(|s| !s.trim().is_empty()) {
+            Some(text) => Some(secret_key_bytes(profile_id, text)?),
+            None => None,
+        };
+        self.account_register_with(server, login, password, given)
+            .map(|(registered, _)| registered)
+    }
+
+    /// [`Session::account_register`] with the Secret Key as bytes, handing
+    /// back the kit when one was made here (the local account seals the
+    /// device's keys to it too, `local_unlock`).
+    pub(crate) fn account_register_with(
+        &mut self,
+        server: &str,
+        login: &str,
+        password: &str,
+        secret_key: Option<[u8; 16]>,
+    ) -> Result<(Registered, Option<RecoveryKit>), String> {
         let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
         let mut auth = OpaqueAccountAuth::new(transport, login, self.device_binding());
-        let profile_id = self.identity.profile().profile_id;
-        let (sk, kit_text) = if self.identity.profile().recovery == RecoveryState::None {
-            if secret_key.is_some_and(|s| !s.trim().is_empty()) {
+        let (sk, kit_text, made) = if self.identity.profile().recovery == RecoveryState::None {
+            if secret_key.is_some() {
                 return Err(
                     "this identity has no recovery kit yet, so there is no Secret Key to give; leave it out and the kit is made here"
                         .into(),
@@ -1099,16 +1157,17 @@ impl Session {
             self.memory
                 .remember_identity(self.identity.head())
                 .map_err(|e| e.to_string())?;
-            let text = render_kit(&kit, Some((login, server)), &device_name());
-            (*kit.secret_key().expose(), Some(text))
+            let account = (!lockdown_sync::is_local(server)).then_some((login, server));
+            let text = render_kit(&kit, account, &device_name());
+            (*kit.secret_key().expose(), Some(text), Some(kit))
         } else {
-            let Some(text) = secret_key.filter(|s| !s.trim().is_empty()) else {
+            let Some(sk) = secret_key else {
                 return Err(
                     "this identity already has a recovery kit; give its Secret Key so the account is protected by it"
                         .into(),
                 );
             };
-            (secret_key_bytes(profile_id, text)?, None)
+            (sk, None, None)
         };
         self.identity
             .enable_account_unlock(&mut auth, password, Some(&sk))
@@ -1147,10 +1206,13 @@ impl Session {
             );
         }
         lines.push("session kept; sync now to push the vault".into());
-        Ok(Registered {
-            lines,
-            kit: kit_text.map(|t| Revealed::from_text(&t)),
-        })
+        Ok((
+            Registered {
+                lines,
+                kit: kit_text.map(|t| Revealed::from_text(&t)),
+            },
+            made,
+        ))
     }
 
     /// Logs in on a device that already holds the identity: a fresh
@@ -1303,6 +1365,18 @@ impl Session {
         replace: bool,
         password: Option<&str>,
     ) -> Result<KitCreated, String> {
+        self.kit_create_with(replace, password)
+            .map(|(made, _)| made)
+    }
+
+    /// [`Session::kit_create`], handing back the kit too. When this
+    /// device's keys are sealed under a master password, their kit slot is
+    /// written again for the new kit (the old page stops opening it).
+    pub(crate) fn kit_create_with(
+        &mut self,
+        replace: bool,
+        password: Option<&str>,
+    ) -> Result<(KitCreated, RecoveryKit), String> {
         if self.identity.profile().recovery != RecoveryState::None && !replace {
             return Err(
                 "this identity already has a recovery kit; verify it, or replace it (the old page stops working)"
@@ -1361,15 +1435,24 @@ impl Session {
                     .into(),
             );
         }
+        if local_unlock::key_file(&self.paths.data) == local_unlock::KeyFile::Sealed {
+            self.keystore.reseal_kit(&self.paths.data, &kit)?;
+        }
         let text = render_kit(
             &kit,
-            login.as_ref().map(|(l, s)| (l.as_str(), s.as_str())),
+            login
+                .as_ref()
+                .filter(|(_, s)| !lockdown_sync::is_local(s))
+                .map(|(l, s)| (l.as_str(), s.as_str())),
             &device_name(),
         );
-        Ok(KitCreated {
-            kit: Revealed::from_text(&text),
-            notes,
-        })
+        Ok((
+            KitCreated {
+                kit: Revealed::from_text(&text),
+                notes,
+            },
+            kit,
+        ))
     }
 
     /// Types the kit back in and checks it opens this identity, changing
@@ -1930,12 +2013,10 @@ pub fn enrol_from_sign_in(
     secret_key: Option<&str>,
 ) -> Result<Vec<String>, String> {
     check_root_empty(paths)?;
-    let keystore_path = paths.data.join(KEYSTORE_FILE);
-    if !keystore_path.exists() {
+    if local_unlock::key_file(&paths.data) != local_unlock::KeyFile::Plain {
         return Err("the sign-in was made without this device's key; sign in again".into());
     }
-    let keystore =
-        Rc::new(FileKeystore::open_or_create(&keystore_path).map_err(|e| e.to_string())?);
+    let keystore = Rc::new(DeviceKeys::open_plain(&paths.data)?);
     let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
     enrol_signed_in(
         paths, &transport, &keystore, login, export_key, session, secret_key,
@@ -1945,7 +2026,7 @@ pub fn enrol_from_sign_in(
 fn enrol_signed_in(
     paths: &Paths,
     transport: &HttpTransport,
-    keystore: &Rc<FileKeystore>,
+    keystore: &Rc<DeviceKeys>,
     login: &str,
     export_key: ExportKey,
     session: lockdown_crypto::auth::Session,
@@ -2044,7 +2125,7 @@ fn enrol_signed_in(
 pub(crate) fn recover_signed_in(
     paths: &Paths,
     transport: &HttpTransport,
-    keystore: &Rc<FileKeystore>,
+    keystore: &Rc<DeviceKeys>,
     login: &str,
     export_key: ExportKey,
     session: lockdown_crypto::auth::Session,
@@ -2346,7 +2427,7 @@ fn pull_new_vaults(
 }
 
 /// This device's binding for the OPAQUE client, from its keystore.
-fn binding_of(keystore: &Rc<FileKeystore>) -> DeviceBinding {
+fn binding_of(keystore: &Rc<DeviceKeys>) -> DeviceBinding {
     let signing = keystore.clone();
     DeviceBinding {
         device_id: keystore.device_id(),
@@ -2359,8 +2440,33 @@ fn binding_of(keystore: &Rc<FileKeystore>) -> DeviceBinding {
 
 /// The printable recovery kit (D69). Shown once; Lockdown keeps no copy.
 fn render_kit(kit: &RecoveryKit, account: Option<(&str, &str)>, device: &str) -> String {
-    let (login, server) = account.unwrap_or(("(none yet)", "(none yet)"));
     let today = lockdown_sync::engine::civil_date(lockdown_vault::Timestamp::now().0);
+    if account.is_none() {
+        // A local account (docs/plan/39-first-run.md §1.2): no server line,
+        // no command to recover elsewhere; the kit is used here.
+        return format!(
+            "\
+LOCKDOWN RECOVERY KIT
+=====================
+Keep this page somewhere safe, away from this computer. It is the only way
+back into your vault if you forget your master password.
+
+Secret Key:     {sk}
+Recovery code:  {code}
+
+Profile:        {profile}
+Made:           {today} on {device}
+
+To use this kit, open Lockdown on this computer and choose
+\"Forgot your password? Use your recovery kit\".
+Lockdown never asks for this page in an email, a message or a web form.
+",
+            sk = kit.secret_key_text(),
+            code = kit.recovery_code_text(),
+            profile = kit.profile_id(),
+        );
+    }
+    let (login, server) = account.unwrap_or(("(none yet)", "(none yet)"));
     format!(
         "\
 LOCKDOWN RECOVERY KIT
