@@ -66,6 +66,7 @@ pub mod pages;
 pub mod ratelimit;
 pub mod relay;
 pub mod renewal;
+pub mod revoked_sign_in;
 pub mod s3;
 pub mod second_factor;
 pub mod sessions;

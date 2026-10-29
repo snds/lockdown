@@ -66,7 +66,9 @@
 //! for anything signed by a device the identity revoked; `token_expired`
 //! to renew the session with the device key (or, where renewal is refused
 //! with `session_ended`, `session_idle`, `revoked_device` or
-//! `renewal_off`, to log in again).
+//! `renewal_off`, to log in again); `revoked_sign_in` for a sign-in or a
+//! renewal by a device the identity revoked, which only joining again as a
+//! new device helps.
 
 use lockdown_vault::{Hash32, Id};
 use serde::{Deserialize, Serialize};
@@ -156,6 +158,10 @@ pub enum ErrorCode {
     /// Renewal: this server doesn't renew sessions (`--session-idle-limit
     /// 0`); a session that ran out needs the password.
     RenewalOff,
+    /// Sign-in or renewal: the identity revoked this device, so the
+    /// password doesn't bring it back; it joins again as a new device
+    /// (docs/plan/35-revoke-split.md §1).
+    RevokedSignIn,
 }
 
 /// `GET /v1/account/storage`: how much of this account's attachment room

@@ -711,6 +711,10 @@ pub async fn login_finish(
             "the device didn't prove it holds its key",
         )
     })?;
+    // A device the identity revoked doesn't sign back in: not with the
+    // password, and it isn't asked for a key or an email it could never use
+    // (docs/plan/35-revoke-split.md §1).
+    crate::revoked_sign_in::refuse_revoked(&state, account.account_id, body.device.device_id)?;
     // An account with security keys wants one from a device it has never
     // seen (docs/plan/22-security-depth.md §4); a known device's key is the
     // second factor there.
@@ -758,6 +762,9 @@ pub(crate) fn issue_session(
     peer: &Peer,
     user_agent: Option<String>,
 ) -> ApiResult<LoginFinishReply> {
+    // Every sign-in ends here, a second factor's included: a device revoked
+    // while it waited gets no session (docs/plan/35-revoke-split.md §1).
+    crate::revoked_sign_in::refuse_revoked(state, account.account_id, device_id)?;
     // A device the account has never seen, while it already has another:
     // the other devices hear about it (account alerts).
     let new_device = state

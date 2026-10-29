@@ -12,6 +12,13 @@
 //! naming an emergency contact and opening emergency access after its
 //! wait. A mirror that can't be reached doesn't lift it. Once the person's
 //! mirror agrees again, each of those steps goes through.
+//!
+//! A shared vault's sync meets nobody new during a split either
+//! (docs/plan/35-revoke-split.md §2): a member added meanwhile waits
+//! unapplied with a sentence on the vault, items from members already
+//! pinned keep arriving, heads signed by the new member or by a known
+//! member's new device stop only that vault, and everything that waited
+//! applies once the split clears.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -280,4 +287,172 @@ fn a_split_view_pauses_each_new_share_and_the_vault_keeps_syncing() {
         Some("released")
     );
     assert!(bob.list().unwrap().iter().any(|r| r.id == mail));
+}
+
+fn secret_key_of(page: &[u8]) -> String {
+    std::str::from_utf8(page)
+        .unwrap()
+        .lines()
+        .find_map(|l| l.strip_prefix("Secret Key:"))
+        .map(|v| v.trim().to_string())
+        .expect("the kit page names the Secret Key")
+}
+
+#[test]
+fn during_a_split_new_members_wait_and_known_members_items_still_sync() {
+    const HELD: &str = "New members wait until the server's log matches its mirrors again.";
+    let dir = tempfile::tempdir().unwrap();
+    let srv = server();
+    let url = srv.running.url();
+    // Alice keeps her kit: a second device of hers joins with it later.
+    let alice = App::start(
+        Paths::resolve(Some(dir.path().join("alice/snds/identity")), None).unwrap(),
+        None,
+        LockPolicy::default(),
+    );
+    alice.open_or_create(true).unwrap();
+    let registered = alice
+        .account_register(&url, "alice@example.com", PASSWORD, None)
+        .unwrap();
+    let secret_key = secret_key_of(registered.kit.as_ref().unwrap().expose());
+    alice.sync().unwrap();
+    let bob = person(dir.path(), "bob", &srv);
+    let carol = person(dir.path(), "carol", &srv);
+
+    // Alice shares Family with Bob, who may edit it.
+    let family = alice.create_vault("Family").unwrap();
+    let first = alice
+        .add_item_in(&family, "note", Some("Door code"), false, Vec::new())
+        .unwrap();
+    alice.lookup_contact("bob@example.com").unwrap();
+    alice
+        .share_vault(&family, "bob@example.com", "edit", pw())
+        .unwrap();
+    alice.sync().unwrap();
+    bob.sync().unwrap();
+    assert!(bob.list().unwrap().iter().any(|r| r.id == first));
+
+    // Bob's view of the server's log splits from a mirror; Alice's doesn't.
+    let (honest, honest_running) = mirror_server(&dir.path().join("honest"), &url);
+    honest
+        .poll_once(lockdown_vault::Timestamp::now().0)
+        .unwrap();
+    let split = split_mirror(&dir.path().join("honest"), &dir.path().join("split"), &url);
+    bob.set_kt_mirrors(vec![split.url()]).unwrap();
+    let outcome = bob.sync().unwrap();
+    assert!(
+        outcome.lines.iter().any(|l| l.contains("Split view")),
+        "{:?}",
+        outcome.lines
+    );
+
+    // Meanwhile Alice adds Carol, and writes another item.
+    alice.lookup_contact("carol@example.com").unwrap();
+    alice
+        .share_vault(&family, "carol@example.com", "edit", pw())
+        .unwrap();
+    let second = alice
+        .add_item_in(&family, "note", Some("Alarm code"), false, Vec::new())
+        .unwrap();
+    alice.sync().unwrap();
+
+    // Bob's sync holds Carol back, says so on the vault, and still takes
+    // Alice's item.
+    let outcome = bob.sync().unwrap();
+    assert!(
+        outcome.lines.iter().any(|l| l.contains(HELD)),
+        "{:?}",
+        outcome.lines
+    );
+    assert!(bob.list().unwrap().iter().any(|r| r.id == second));
+    let view = bob.vault_sharing(&family).unwrap();
+    assert_eq!(view.held.as_deref(), Some(HELD));
+    assert!(
+        view.members.iter().all(|m| m.login != "carol@example.com"),
+        "{:?}",
+        view.members
+    );
+    assert!(
+        bob.sharing_overview()
+            .unwrap()
+            .contacts
+            .iter()
+            .all(|c| c.login != "carol@example.com"),
+        "Carol isn't pinned during the split"
+    );
+    // Alice, whose view isn't split, sees Carol in it.
+    assert!(
+        alice
+            .vault_sharing(&family)
+            .unwrap()
+            .members
+            .iter()
+            .any(|m| m.login == "carol@example.com")
+    );
+    assert!(alice.vault_sharing(&family).unwrap().held.is_none());
+
+    // A new device of Alice's writes, and Carol joins and writes. Bob's copy
+    // of Family waits at their heads; the rest of his account keeps syncing.
+    let alice2 = App::start(
+        Paths::resolve(Some(dir.path().join("alice2/snds/identity")), None).unwrap(),
+        None,
+        LockPolicy::default(),
+    );
+    alice2
+        .account_login(&url, "alice@example.com", PASSWORD, Some(&secret_key))
+        .unwrap();
+    alice2.open_or_create(true).unwrap();
+    alice2.sync().unwrap();
+    let alices = alice2
+        .add_item_in(&family, "note", Some("From the tablet"), false, Vec::new())
+        .unwrap();
+    alice2.sync().unwrap();
+    carol.sync().unwrap();
+    let carols = carol
+        .add_item_in(&family, "note", Some("Carol's note"), false, Vec::new())
+        .unwrap();
+    carol.sync().unwrap();
+    let own = bob
+        .add_login("https://bob.example", "bob", b"pw".to_vec(), None)
+        .unwrap();
+    let outcome = bob.sync().unwrap();
+    assert!(
+        outcome.lines.iter().any(|l| l.contains(HELD)),
+        "{:?}",
+        outcome.lines
+    );
+    let rows = bob.list().unwrap();
+    assert!(rows.iter().any(|r| r.id == own));
+    assert!(!rows.iter().any(|r| r.id == carols || r.id == alices));
+    assert_eq!(
+        bob.vault_sharing(&family).unwrap().held.as_deref(),
+        Some(HELD)
+    );
+
+    // The split clears: Carol is looked up through the log and added,
+    // Alice's new device is checked to continue her pin, and Family syncs.
+    bob.set_kt_mirrors(vec![honest_running.url()]).unwrap();
+    let outcome = bob.sync().unwrap();
+    assert!(
+        !outcome.lines.iter().any(|l| l.contains(HELD)),
+        "{:?}",
+        outcome.lines
+    );
+    let view = bob.vault_sharing(&family).unwrap();
+    assert!(view.held.is_none());
+    assert!(
+        view.members.iter().any(|m| m.login == "carol@example.com"),
+        "{:?}",
+        view.members
+    );
+    let rows = bob.list().unwrap();
+    assert!(rows.iter().any(|r| r.id == carols));
+    assert!(rows.iter().any(|r| r.id == alices));
+    // Nothing waits any more.
+    let again = bob.sync().unwrap();
+    assert!(
+        !again.lines.iter().any(|l| l.contains(HELD)),
+        "{:?}",
+        again.lines
+    );
 }

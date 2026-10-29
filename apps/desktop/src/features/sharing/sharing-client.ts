@@ -45,6 +45,8 @@ export interface VaultSharingView {
   history: HistoryLine[]
   /** Why it can't be shared yet (a crown jewel inside). */
   blocked: string | null
+  /** While the server's log is split: new members and members' new devices wait (docs/plan/35-revoke-split.md §2). */
+  held?: string | null
 }
 
 export interface SentShareView {

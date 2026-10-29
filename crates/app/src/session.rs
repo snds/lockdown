@@ -20,7 +20,7 @@
 //! per app, and they are the same app), and the two share one memory of
 //! the server's key-transparency log.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -79,6 +79,7 @@ pub(crate) mod second_factor;
 pub(crate) mod secret_key;
 pub(crate) mod security;
 pub(crate) mod sharing;
+pub(crate) mod split_hold;
 pub(crate) mod split_pause;
 pub(crate) mod transfer;
 
@@ -295,6 +296,10 @@ pub struct Session {
     sharing: crate::sharing::SharingState,
     /// Each shared vault's membership as its signed chain says.
     rosters: BTreeMap<Id, lockdown_vault::sharing::Roster>,
+    /// Shared vaults with changes from people this device hasn't met,
+    /// waiting while the server's log is split (`split_hold`); every sync
+    /// works it out again.
+    held_vaults: BTreeSet<Id>,
     /// Items others shared on their own, held in memory only, read only.
     received: Vec<Vault>,
     /// The share link or answer opened last, until the next or the lock.
@@ -544,6 +549,7 @@ impl Session {
             recency,
             sharing: sharing_state,
             rosters: BTreeMap::new(),
+            held_vaults: BTreeSet::new(),
             received: Vec::new(),
             opened_send: None,
             link: None,
@@ -941,7 +947,8 @@ impl Session {
                     matches!(
                         e,
                         lockdown_sync::TransportError::Refused {
-                            code: lockdown_sync::wire::ErrorCode::RevokedDevice,
+                            code: lockdown_sync::wire::ErrorCode::RevokedDevice
+                                | lockdown_sync::wire::ErrorCode::RevokedSignIn,
                             ..
                         }
                     )
@@ -1654,14 +1661,22 @@ impl Session {
         self.identity_confirmed = false;
         let token = self.token()?;
         let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
-        match self.sync_with(&transport, &server, &token) {
+        let outcome = match self.sync_with(&transport, &server, &token) {
             Err(_) if transport.session_refused() => {
                 let token = self.token_after_refusal()?;
                 let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
                 self.sync_with(&transport, &server, &token)
             }
             done => done,
+        }?;
+        // The sync that saw the split clear takes what waited for it at
+        // once (`split_hold`; docs/plan/35-revoke-split.md §2).
+        if !self.held_vaults.is_empty() && !self.split_view() {
+            let token = self.token()?;
+            let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
+            return self.sync_with(&transport, &server, &token);
         }
+        Ok(outcome)
     }
 
     fn sync_with(
@@ -1707,43 +1722,76 @@ impl Session {
         };
         let mut report = SyncReport::default();
         for idx in 0..=self.more.len() {
-            let cfg = self
-                .sync
-                .as_mut()
-                .ok_or("no account on this device; register or log in first")?;
+            let mut refreshed = false;
+            let one = loop {
+                let cfg = self
+                    .sync
+                    .as_mut()
+                    .ok_or("no account on this device; register or log in first")?;
+                let open = if idx == 0 {
+                    &mut self.opened
+                } else {
+                    &mut self.more[idx - 1]
+                };
+                let vault_id = open.vault.context().vault_id;
+                let record = open
+                    .vault
+                    .record(&open.keys.app_data_key)
+                    .and_then(|r| r.to_bytes())
+                    .map_err(|e| e.to_string())?;
+                let state = cfg.vaults.entry(vault_id).or_default();
+                let outcome = lockdown_sync::sync_vault_with(
+                    &syncer,
+                    &mut open.vault,
+                    &record,
+                    state,
+                    &mut self.store,
+                    Some(&kt),
+                );
+                // Whatever happened on the wire, what is in memory is saved and
+                // remembered, so a half-finished round is picked up next time.
+                open.save(&mut self.store).map_err(|e| e.to_string())?;
+                match outcome {
+                    Ok(one) => break Some(one),
+                    Err(e) => {
+                        // A shared vault stopped at a head signed by a device
+                        // it doesn't trust: someone this device hasn't met, or
+                        // a member's new device. During a split that vault
+                        // waits and the others go on; otherwise the writers
+                        // are looked up again and it syncs once more
+                        // (`split_hold`; docs/plan/35-revoke-split.md §2).
+                        if self.rosters.contains_key(&vault_id)
+                            && self
+                                .unmet_head_signer(transport, &token, vault_id)
+                                .unwrap_or(false)
+                        {
+                            if self.split_view() {
+                                self.held_vaults.insert(vault_id);
+                                break None;
+                            }
+                            if !refreshed {
+                                refreshed = true;
+                                self.refresh_writers(transport, &token, kt.sth(), vault_id)?;
+                                continue;
+                            }
+                        }
+                        let _ = self.remember();
+                        if let Some(cfg) = &self.sync {
+                            cfg.save(&self.paths.sync_file())?;
+                        }
+                        return Err(e.to_string());
+                    }
+                }
+            };
+            let Some(one) = one else {
+                continue;
+            };
             let open = if idx == 0 {
                 &mut self.opened
             } else {
                 &mut self.more[idx - 1]
             };
             let vault_id = open.vault.context().vault_id;
-            let record = open
-                .vault
-                .record(&open.keys.app_data_key)
-                .and_then(|r| r.to_bytes())
-                .map_err(|e| e.to_string())?;
-            let state = cfg.vaults.entry(vault_id).or_default();
-            let outcome = lockdown_sync::sync_vault_with(
-                &syncer,
-                &mut open.vault,
-                &record,
-                state,
-                &mut self.store,
-                Some(&kt),
-            );
-            // Whatever happened on the wire, what is in memory is saved and
-            // remembered, so a half-finished round is picked up next time.
-            open.save(&mut self.store).map_err(|e| e.to_string())?;
-            let one = match outcome {
-                Ok(one) => one,
-                Err(e) => {
-                    let _ = self.remember();
-                    if let Some(cfg) = &self.sync {
-                        cfg.save(&self.paths.sync_file())?;
-                    }
-                    return Err(e.to_string());
-                }
-            };
             let head = open.vault.head().map_err(|e| e.to_string())?;
             let remembered = RememberedHead {
                 seq: head.seq,
@@ -1809,6 +1857,9 @@ impl Session {
         }
         let mut outcome = sync_outcome(&report, &view);
         outcome.lines.extend(mirrors::lines(&checks));
+        if !self.held_vaults.is_empty() {
+            outcome.lines.push(split_hold::HELD_LINE.into());
+        }
         outcome.transparency.mirrors = checks;
         Ok(outcome)
     }

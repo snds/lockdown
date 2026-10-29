@@ -113,6 +113,24 @@ describe("the Status screen", () => {
     expect(await screen.findByRole("dialog")).toHaveTextContent("went unused")
   })
 
+  it("says a revoked device joins again, and offers no password prompt (docs/plan/35)", async () => {
+    const words = "This device was revoked from your account. Join it again from a device you still use."
+    const revoked: Status = { ...status, account: { ...status.account!, sign_in: { reason: "revoked", message: words } } }
+    const sync = vi.fn(() => Promise.reject({ code: "sign_in_needed", message: words, detail: "revoked" }))
+    render(
+      <ClientProvider value={fakeClient({ sync, status: () => Promise.resolve(revoked) })}>
+        <StatusView status={revoked} onStatus={() => {}} onNotice={() => {}} />
+      </ClientProvider>,
+    )
+    expect(screen.getByRole("alert")).toHaveTextContent(words)
+    expect(screen.queryByRole("button", { name: "Log in again" })).not.toBeInTheDocument()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Sync now" }))
+    await waitFor(() => expect(sync).toHaveBeenCalled())
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Sync refused/)).not.toBeInTheDocument()
+  })
+
   it("says the log is not checked yet before the first sync", () => {
     const unchecked: Status = { ...status, account: { ...status.account!, transparency: null } }
     render(

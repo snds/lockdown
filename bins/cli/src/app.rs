@@ -977,7 +977,18 @@ impl App {
     ) -> Result<Vec<String>, String> {
         let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
         let mut auth = OpaqueAccountAuth::new(transport, login, self.device_binding());
-        let (export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
+        let (export_key, session) = auth.sign_in(password).map_err(|e| {
+            // A device the identity revoked can't sign back in; say how it
+            // comes back (docs/plan/35-revoke-split.md §1).
+            let words = e.to_string();
+            if lockdown_sync::renew::SignInReason::in_text(&words)
+                == Some(lockdown_sync::renew::SignInReason::Revoked)
+            {
+                format!("{words}{}", renewal::HOW_REVOKED)
+            } else {
+                words
+            }
+        })?;
         if session.profile_id != self.identity.profile().profile_id {
             return Err(format!(
                 "the account '{login}' belongs to another profile ({}), not the identity at {}",

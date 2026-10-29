@@ -231,13 +231,9 @@ fn standing(state: &AppState, claims: &TokenClaims) -> ApiResult<(SessionRow, Ve
     }
     // A revoked device hears that first: revoking it also ended its
     // sessions (`api::put_identity`), and "revoked" is what it must say.
-    let revoked = || {
-        refuse(
-            StatusCode::FORBIDDEN,
-            ErrorCode::RevokedDevice,
-            "this device was revoked from the identity; its session can't be renewed",
-        )
-    };
+    // Its own code and words, as for a sign-in by a revoked device
+    // (docs/plan/35-revoke-split.md §1).
+    let revoked = crate::revoked_sign_in::refusal;
     if state
         .storage
         .revoked_after(claims.account_id, claims.device_id, claims.device_id)?
@@ -293,7 +289,7 @@ fn standing(state: &AppState, claims: &TokenClaims) -> ApiResult<(SessionRow, Ve
 /// The device's key and whether it is marked revoked, from the account's
 /// newest identity record set as verified under its pinned Identity
 /// Signing Key; `None` while the records don't list the device yet.
-fn listed_device(
+pub(crate) fn listed_device(
     state: &AppState,
     account_id: Id,
     device_id: Id,

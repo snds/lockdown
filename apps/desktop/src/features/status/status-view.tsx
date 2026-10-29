@@ -61,11 +61,12 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
         setSyncRefusal(null)
         return outcome.lines
       } catch (e) {
-        if (isSignInNeeded(e)) {
+        if (isSignInNeeded(e) && e.detail !== "revoked") {
           // Only the password helps: ask for it, saying why.
           setSignIn(e.message)
           setDialog("login")
-        } else setSyncRefusal(describeError(e))
+        } else if (!isSignInNeeded(e)) setSyncRefusal(describeError(e))
+        // A revoked device: the password doesn't help either; Status says so below (docs/plan/35-revoke-split.md §1).
         return
       }
     })
@@ -156,18 +157,20 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
                 {account.sign_in.message}
               </p>
             )}
-            <div className="pt-1">
-              <Button
-                size="sm"
-                variant={account.sign_in ? "outline" : "ghost-muted"}
-                onClick={() => {
-                  setSignIn(account.sign_in?.message ?? null)
-                  setDialog("login")
-                }}
-              >
-                Log in again
-              </Button>
-            </div>
+            {account.sign_in?.reason !== "revoked" && (
+              <div className="pt-1">
+                <Button
+                  size="sm"
+                  variant={account.sign_in ? "outline" : "ghost-muted"}
+                  onClick={() => {
+                    setSignIn(account.sign_in?.message ?? null)
+                    setDialog("login")
+                  }}
+                >
+                  Log in again
+                </Button>
+              </div>
+            )}
           </>
         ) : (
           <p className="text-sm text-muted-foreground">No account on this device. Register one on a server (yours or ours) to sync, or log in to one you have.</p>

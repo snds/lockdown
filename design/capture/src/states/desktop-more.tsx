@@ -31,6 +31,10 @@ const SHARING_PAUSED =
   "Sharing is paused: this server's public log doesn't match a mirror, and a server showing two histories could swap someone's keys. Until it clears, Lockdown won't look anyone up or check their keys with a phrase, share a vault or an item, make share or request links, name an emergency contact or open emergency access. Your vault still opens and syncs."
 const PAUSED_REASON =
   "is paused: this server's public log doesn't match a mirror, and a server showing two histories could swap someone's keys. Your vault still opens and syncs; this works again once the split clears."
+/** The core's words for a revoked device (crates/sync/src/renew.rs, `SignInReason::Revoked`). */
+const REVOKED = "This device was revoked from your account. Join it again from a device you still use."
+/** The core's words on a shared vault whose new members wait (crates/app/src/session/split_hold.rs). */
+const HELD = "New members wait until the server's log matches its mirrors again."
 /** Picks an option of a native select the way a person would, so React hears the change. */
 function choose(selector: string, value: string) {
   const el = document.querySelector<HTMLSelectElement>(selector)
@@ -289,6 +293,32 @@ export const DESKTOP_MORE: StateDef[] = [
       request_create: () => fail("refused", `Making a request link ${PAUSED_REASON}`),
     }),
     steps: [...open, side("Sharing"), { click: /^Ask someone for a secret/ }, DIALOG, { fill: "What you're asking for (they see this)", value: "The Wi-Fi password" }, { click: "Make the link" }, { wait: /^Making a request link is paused/ }],
+  }),
+  // --- a revoked device, and new members during a split (docs/plan/35-revoke-split.md) ------------------------------------
+  d({
+    id: "desktop-status-revoked",
+    screen: "Status",
+    state: "This device was revoked",
+    brief_row: "Status",
+    notes: "Another device revoked this one: the password doesn't bring it back, so Status offers no Log in again; it joins again as a new device (doc 35 §1).",
+    answers: (w) => {
+      const revoked = () => {
+        const s = status(w)
+        s.account!.sign_in = { reason: "revoked", message: REVOKED }
+        return s
+      }
+      return { status: revoked, unlock: revoked }
+    },
+    steps: [...open, side("Status"), { wait: REVOKED }],
+  }),
+  d({
+    id: "desktop-sharing-vault-held",
+    screen: "Manage sharing",
+    state: "New members wait (split view)",
+    brief_row: "Manage sharing",
+    notes: "While the server's log doesn't match a mirror, a member added elsewhere waits unapplied; items from members already here keep syncing (doc 35 §2).",
+    answers: () => ({ vault_sharing: (a) => ({ ...(as("vault_sharing")(a) as object), held: HELD }) }),
+    steps: [...open, side("Sharing"), { click: /^Manage sharing/, nth: 1 }, DIALOG, { wait: HELD }],
   }),
   d({ id: "desktop-backup-late", screen: "Backup line", state: "Late", brief_row: "Backup line", notes: "The sidebar's last-backup line when a backup is overdue.", answers: () => ({ backup_status: () => ({ ...(as("backup_status")({}) as object), last_success_at: ago(4), next_due_at: ago(3) }) }), steps: open }),
 ]

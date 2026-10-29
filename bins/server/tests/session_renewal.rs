@@ -599,7 +599,7 @@ async fn a_revoked_device_and_a_key_the_identity_doesnt_list_cant_renew() {
     h.at(START + 2 * TTL + 2);
     assert_eq!(
         h.renew(&token_b, &b.key()).await.unwrap_err(),
-        (StatusCode::FORBIDDEN, ErrorCode::RevokedDevice)
+        (StatusCode::FORBIDDEN, ErrorCode::RevokedSignIn)
     );
     // A, in good standing, renews as ever.
     assert!(h.renew(&token_a, &a.key()).await.is_ok());
@@ -698,7 +698,7 @@ async fn a_revocation_ends_every_session_of_that_device_at_once() {
     // Renewing one says why, in the code the client turns into words.
     assert_eq!(
         h.renew(&token_b2, &b.key()).await.unwrap_err(),
-        (StatusCode::FORBIDDEN, ErrorCode::RevokedDevice)
+        (StatusCode::FORBIDDEN, ErrorCode::RevokedSignIn)
     );
     // A's list shows A and C only; C reads as ever.
     let left = h.sessions(&token_a).await.sessions;

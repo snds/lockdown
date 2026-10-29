@@ -395,7 +395,13 @@ impl HttpTransport {
             Ok(body) => TransportError::Refused {
                 status,
                 code: body.code,
-                message: body.message,
+                // A revoked device's sign-in is told in this client's own
+                // words, not the server's (docs/plan/35-revoke-split.md §1).
+                message: if body.code == ErrorCode::RevokedSignIn {
+                    crate::renew::SignInReason::Revoked.message().to_string()
+                } else {
+                    body.message
+                },
                 head: wire::decode::<HeadRefused>(bytes).ok(),
             },
             Err(_) => TransportError::Refused {
@@ -454,6 +460,14 @@ fn auth_error(e: TransportError) -> lockdown_crypto::Error {
             code: ErrorCode::LoginFailed,
             ..
         } => lockdown_crypto::Error::LoginFailed,
+        // A device the identity revoked: the words are this client's own,
+        // whatever the server wrote (docs/plan/35-revoke-split.md §1).
+        TransportError::Refused {
+            code: ErrorCode::RevokedSignIn,
+            ..
+        } => lockdown_crypto::Error::Invalid(
+            crate::renew::SignInReason::Revoked.message().to_string(),
+        ),
         other => lockdown_crypto::Error::Invalid(other.to_string()),
     }
 }

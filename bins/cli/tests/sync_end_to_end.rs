@@ -2,8 +2,10 @@
 //! port: register (the recovery kit is made) → sync → a second device
 //! recovers with the kit on an empty root and gets the vault → sync →
 //! conflicting edits → sync → the conflict copy shows in `list` → the
-//! first device revokes the second → the second can neither write nor
-//! open, while its history before the revocation still stands.
+//! first device revokes the second → the second can't sign back in with
+//! the password, can neither write nor open, while its history before the
+//! revocation still stands → the same machine set up afresh comes back as
+//! a new device (docs/plan/35-revoke-split.md §1).
 
 use std::io::Write;
 use std::path::Path;
@@ -397,6 +399,29 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
         "{out}"
     );
 
+    // B can't sign back in with the password: the words say it was
+    // revoked and how it comes back.
+    let (ok, _, err) = b.run(
+        &[
+            "account",
+            "login",
+            "--server",
+            &url,
+            "--login",
+            "me@example.com",
+            "--password-stdin",
+        ],
+        Some(PASSWORD),
+    );
+    assert!(!ok);
+    assert!(
+        err.contains(
+            "This device was revoked from your account. Join it again from a device you still use."
+        ),
+        "{err}"
+    );
+    assert!(err.contains("as a new device"), "{err}");
+
     // B edits and syncs: the server refuses, B learns it is out, and B's
     // local copy no longer opens. A's copy still holds everything B
     // signed before, verified.
@@ -420,4 +445,29 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
     assert_eq!(out.lines().count(), 2, "{out}");
     let out = a.ok(&["show", &id, "--reveal"], None);
     assert!(out.contains("password: laptop secret"), "{out}");
+
+    // The phone, set up afresh, comes back as a new device: a new device
+    // id isn't revoked. The laptop then lists three, one revoked.
+    let again = device(dir.path(), "phone-again");
+    let out = again.ok(
+        &[
+            "recover",
+            "--server",
+            &url,
+            "--login",
+            "me@example.com",
+            "--password-stdin",
+            "--kit-stdin",
+        ],
+        Some(&format!("{PASSWORD}{secret_key}\n{recovery_code}\n")),
+    );
+    assert!(out.contains("recovered: this device"), "{out}");
+    let out = again.ok(&["list"], None);
+    assert!(out.contains(&id), "{out}");
+    a.ok(&["sync"], None);
+    let out = a.ok(&["status"], None);
+    assert!(
+        out.contains("devices        3 in the identity (1 revoked)"),
+        "{out}"
+    );
 }
