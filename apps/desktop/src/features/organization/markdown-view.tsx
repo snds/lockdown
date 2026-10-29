@@ -76,7 +76,8 @@ function block(b: Block, key: number, open: (href: string) => void): ReactNode {
       return <hr key={key} className="border-border" />
     case "code":
       return (
-        <pre key={key} className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs">
+        // A long line scrolls sideways, so the block takes focus for the keyboard (review R18).
+        <pre key={key} tabIndex={0} className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs">
           <code>{b.text}</code>
         </pre>
       )

@@ -62,7 +62,8 @@ function close() {
 
 function header(host: string): HTMLElement {
   const h = el("div", "head")
-  h.append(el("span", "brand", "Lockdown"), el("span", "host", host))
+  // The frame's one page heading (design review R18), drawn as the brand it was.
+  h.append(el("h1", "brand", "Lockdown"), el("span", "host", host))
   const x = el("button", "close", "×")
   x.setAttribute("aria-label", "Close")
   x.addEventListener("click", close)
@@ -152,6 +153,27 @@ function row(title: string, sub: string, onPick: (e: MouseEvent) => void, badge?
   return b
 }
 
+/**
+ * A scrolling list of choices: the rows are list items of a `role="list"`
+ * (design review R7: a list's children must be its items), and anything
+ * after them, such as "Use another device", sits below the list in the same
+ * scroller, not inside it.
+ */
+function choices(label: string, rows: HTMLElement[], after: HTMLElement[] = []): HTMLElement {
+  const scroller = el("div", "list")
+  const list = el("div")
+  list.setAttribute("role", "list")
+  list.setAttribute("aria-label", label)
+  for (const r of rows) {
+    const li = el("div")
+    li.setAttribute("role", "listitem")
+    li.append(r)
+    list.append(li)
+  }
+  scroller.append(list, ...after)
+  return scroller
+}
+
 function renderMenu(data: MenuData) {
   if (data.link.link !== "ready") return message(data.host, data.link.message || "Lockdown isn't reachable.")
   if (!data.link.paired) return renderPairOffer(data)
@@ -204,17 +226,15 @@ function renderMenu(data: MenuData) {
   // sign-up form, a new site): the menu gets out of the way.
   if (list.length === 0) return close()
   root.replaceChildren(header(data.host))
-  const ul = el("div", "list")
-  ul.setAttribute("role", "list")
-  ul.append(...list)
+  const after: HTMLElement[] = []
   if ((data.passkeys ?? []).length > 0) {
     const other = el("button", "link", "Use a passkey from another device")
     other.addEventListener("click", (e) => {
       if (deliberate(e)) void send({ t: "menu_passkey_other" })
     })
-    ul.append(other)
+    after.push(other)
   }
-  root.append(ul)
+  root.append(choices(`Lockdown's choices for ${data.host}`, list, after))
   size(true)
   arm()
 }
@@ -411,17 +431,12 @@ function renderSheet(d: SheetData) {
     return
   }
   const lead = el("p", "msg", `Sign in to ${d.rp_id} with a passkey`)
-  const ul = el("div", "list")
-  ul.setAttribute("role", "list")
-  for (const o of d.options) {
-    ul.append(
-      row(o.title, o.user_name || o.user_display_name, (e) => {
-        if (deliberate(e)) void sheetPick(d, o, false)
-      }, "passkey"),
-    )
-  }
-  ul.append(anotherDevice())
-  root.append(lead, ul)
+  const rows = d.options.map((o) =>
+    row(o.title, o.user_name || o.user_display_name, (e) => {
+      if (deliberate(e)) void sheetPick(d, o, false)
+    }, "passkey"),
+  )
+  root.append(lead, choices(`Passkeys for ${d.rp_id}`, rows, [anotherDevice()]))
   size(true)
   arm()
 }

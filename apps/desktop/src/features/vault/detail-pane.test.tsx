@@ -8,6 +8,7 @@ import { ClientProvider, type Client } from "@/core/client"
 import type { FieldView, Finding, ItemDetail, SecurityReport } from "@/core/types"
 import { DepthClientProvider, type ExposureView } from "@/features/depth/depth-client"
 import { fakeClient } from "@/test/fake-client"
+import { malformedLists } from "@/test/a11y"
 import { fakeDepth } from "@/test/fake-depth"
 import { TEMPLATES } from "@/test/templates-fixture"
 
@@ -68,6 +69,40 @@ describe("detail layouts from the templates (D110)", () => {
   it("names the item when it can't be opened", async () => {
     mount(fakeClient({ templates: () => Promise.resolve(TEMPLATES), show: () => Promise.reject({ code: "refused", message: "the field 'pw' was tampered with" }) }))
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't open this item (i1): the field 'pw' was tampered with")
+  })
+})
+
+describe("detail blocks are lists of items (design review R7)", () => {
+  const login = item("login", [
+    plain("user", "username", "sam"),
+    hidden("pw", "password", "password"),
+    { ...plain("url", "website", "https://mail.example.test", "url"), match_rule: "base_domain" },
+    plain("notes", "notes", "Recovery mailbox", "text"),
+  ])
+  const card = item("card", [hidden("card.number", "number"), plain("card.holder", "holder", "A. Person"), plain("custom.0", "Bank phone", "+1 555 0100", "phone")])
+  const wifi = item("wi-fi", [plain("wifi.ssid", "Network name", "home-net"), hidden("wifi.passphrase", "password")])
+
+  it("a login's sign-in methods and websites: each child a list item", async () => {
+    const { container } = mount(shows(login))
+    const methods = await screen.findByRole("region", { name: "Sign-in methods" })
+    const items = within(within(methods).getByRole("list")).getAllByRole("listitem")
+    expect(items.length).toBeGreaterThanOrEqual(2)
+    expect(items[0]).toHaveTextContent("sam")
+    const sites = screen.getByRole("region", { name: "Websites" })
+    expect(within(within(sites).getByRole("list")).getAllByRole("listitem")).toHaveLength(1)
+    expect(malformedLists(container)).toEqual([])
+  })
+
+  it("a card and a Wi-Fi network: no block holds anything but list items", async () => {
+    for (const [detail, block] of [
+      [card, "Card"],
+      [wifi, "Network"],
+    ] as const) {
+      const { container, unmount } = mount(shows(detail))
+      await screen.findByRole("region", { name: block })
+      expect(malformedLists(container)).toEqual([])
+      unmount()
+    }
   })
 })
 

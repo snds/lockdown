@@ -60,5 +60,8 @@ export default defineConfig({
     // Fonts and images as files, never data: URLs.
     assetsInlineLimit: 0,
     modulePreload: { polyfill: false },
+    // Two pages: the review page, and the extension's in-page frame on its
+    // own, so the frame loads none of the apps' styles (src/frame-main.ts).
+    rollupOptions: { input: { index: path.join(here, "index.html"), frame: path.join(here, "frame.html") } },
   },
 })

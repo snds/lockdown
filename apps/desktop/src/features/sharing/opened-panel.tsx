@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Button, Icon, Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@unicron/ui"
 import { SecretField, type SecretFieldReferenceHost } from "@unicron/ui/security/secret-field"
 
+import { ListItems } from "@/components/list-items"
 import { useLocked } from "@/app/locked"
 import { useSettings } from "@/app/settings"
 import { describeError, isAppError, useClient } from "@/core/client"
@@ -63,25 +64,27 @@ export function OpenedPanel({ opened, onNotice }: OpenedPanelProps) {
     <section aria-label={`Opened: ${opened.title || "shared with you"}`} className="flex flex-col gap-2 rounded-xl border p-3">
       <h3 className="text-sm font-semibold">{opened.title || "Shared with you"}</h3>
       <ItemGroup>
-        {opened.values.map((v, index) =>
-          v.secret ? <OpenedSecret key={index} index={index} label={v.label} /> : <OpenedPlain key={index} index={index} label={v.label} />,
-        )}
-        {opened.file && (
-          <Item variant="outline" size="sm">
-            <ItemContent>
-              <ItemDescription>A file</ItemDescription>
-              <ItemTitle>
-                {opened.file.name} · {Math.max(1, Math.round(opened.file.size / 1024))} KB
-              </ItemTitle>
-            </ItemContent>
-            <ItemActions>
-              <Button variant="outline" size="sm" onClick={() => void saveFile()}>
-                <Icon name="download" data-icon="inline-start" />
-                Save
-              </Button>
-            </ItemActions>
-          </Item>
-        )}
+        <ListItems>
+          {opened.values.map((v, index) =>
+            v.secret ? <OpenedSecret key={index} index={index} label={v.label} /> : <OpenedPlain key={index} index={index} label={v.label} />,
+          )}
+          {opened.file && (
+            <Item variant="outline" size="sm">
+              <ItemContent>
+                <ItemDescription>A file</ItemDescription>
+                <ItemTitle>
+                  {opened.file.name} · {Math.max(1, Math.round(opened.file.size / 1024))} KB
+                </ItemTitle>
+              </ItemContent>
+              <ItemActions>
+                <Button variant="outline" size="sm" onClick={() => void saveFile()}>
+                  <Icon name="download" data-icon="inline-start" />
+                  Save
+                </Button>
+              </ItemActions>
+            </Item>
+          )}
+        </ListItems>
       </ItemGroup>
       {!opened.file && (
         <div>

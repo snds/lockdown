@@ -36,4 +36,12 @@ describe("the kit page through LargeTypeView's print variant", () => {
     // The page as written is still there to print.
     expect(dialog.textContent).toContain("A1-7GH2K-M9PQR-ST3VW-XY4Z5-6789AB")
   })
+
+  it("the page as text takes keyboard focus, since it scrolls sideways on a phone (design review R18)", async () => {
+    render(<OncePage page={{ title: "Your recovery kit", lines: [], text: PAGE }} onClose={() => {}} />)
+    const text = await screen.findByRole("region", { name: "The page as text" })
+    expect(text.tagName).toBe("PRE")
+    expect(text).toHaveAttribute("tabindex", "0")
+    expect(text).toHaveTextContent("LOCKDOWN RECOVERY KIT")
+  })
 })

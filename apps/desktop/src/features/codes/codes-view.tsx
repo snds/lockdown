@@ -96,10 +96,16 @@ export function CodesView({ rows, onChanged }: CodesViewProps) {
             </EmptyHeader>
           </Empty>
         )}
-        <CodeDisplayList role="list" aria-label="One-time codes">
-          {shown.map((c) => (
-            <ItemCodeDisplay key={codeKey(c)} code={c} now={now} expiresAt={expiresAt[codeKey(c)] ?? null} density="list" />
-          ))}
+        {/* unicron's CodeDisplayList puts its live region beside the codes, so the
+            list is Lockdown's own, inside it, with one item per code (review R7). */}
+        <CodeDisplayList>
+          <ul role="list" aria-label="One-time codes" className="flex flex-col">
+            {shown.map((c) => (
+              <li key={codeKey(c)}>
+                <ItemCodeDisplay code={c} now={now} expiresAt={expiresAt[codeKey(c)] ?? null} density="list" />
+              </li>
+            ))}
+          </ul>
         </CodeDisplayList>
       </div>
       <AddCodeDialog

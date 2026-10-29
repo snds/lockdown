@@ -199,7 +199,7 @@ export function FilesPanel({ itemId, files, editable, onChanged, onNotice }: Fil
       ) : (
         <ItemGroup>
           {files.map((f) => (
-            <Item key={f.id} size="sm">
+            <Item key={f.id} role="listitem" size="sm">
               <ItemMedia variant="icon">
                 <Icon name="description" />
               </ItemMedia>

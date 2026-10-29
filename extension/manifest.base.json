@@ -33,7 +33,7 @@
       "description": "Fill the best login for this page (press again for the next one)"
     }
   },
-  "web_accessible_resources": [{ "resources": ["frame.html", "frame.js", "ui.css"], "matches": ["http://*/*", "https://*/*"] }],
+  "web_accessible_resources": [{ "resources": ["frame.html", "frame.js", "tokens.css", "ui.css"], "matches": ["http://*/*", "https://*/*"] }],
   "content_security_policy": { "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'" },
   "chromium": {
     "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsV4SkIpEyh5bICssTxTe4M2bqPTa3ysWLd4jAkfxofreXRSlgl2xeFpg/U09o0XsAPsQH+OYL8l3lrEPq4Kvjojwp3zR9b/Q0j1BpUxnkSEW9goxTkAlwJFrQJh1ybkYBlQlz/R+E0v5o1+swFg1dvtVERraZDtzIQmZFwkGtaonUwd6fOV9nxKTlitq4Ny0Pa3OMgnzASId7BCEWyu3bylnVaBMZIUFgWZ5qNwQYbcKioooEqkTmO2J7bzfM6VRU1QS5EvZWLwDCG7TKGeVVCGYXDCxDvVlcgEqNc1XE3eT32eRUigyrO6gNFtDhNikviP74a7zR8wL0kCH1pKVuwIDAQAB",

@@ -1,6 +1,7 @@
 // The review build: the harness as static files a page host can serve
-// (one index.html, relative assets/, hash routing, no server, no network),
-// copied outside the repo and checked against the host's limits.
+// (index.html, the in-page frames' frame.html, relative assets/, hash
+// routing, no server, no network), copied outside the repo and checked
+// against the host's limits.
 //
 //   pnpm review:build [--out <dir>]
 

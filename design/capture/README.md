@@ -5,7 +5,7 @@ The desktop app, the web vault and the browser extension, drawn by their own com
 It makes two things, both written outside the repo:
 
 - **The capture**: a PNG of every state at 1280, 900 and 390 px wide (the popup and the in-page frames at their natural size), light and dark, the vault list in compact density too; `manifest.json` (one entry per image), `axe.json` (axe-core's violations per image) and `capture-log.json` (step failures, console errors, commands the fixture had no answer for).
-- **The review build**: the same page as static files (one `index.html` and `assets/`, relative paths, hash routing, no network, no service worker, no wasm) that a page host can serve, so the screens can be tapped through on a phone. Every state stays live: items open, menus and dialogs work, against the same fake core.
+- **The review build**: the same page as static files (`index.html`, the in-page frames' own `frame.html`, and `assets/`, relative paths, hash routing, no network, no service worker, no wasm) that a page host can serve, so the screens can be tapped through on a phone. Every state stays live: items open, menus and dialogs work, against the same fake core.
 
 ## Run it
 
@@ -31,7 +31,9 @@ Nothing in the apps changes. The harness imports their components from their sou
 |---|---|---|
 | Desktop | `apps/desktop/src/App.tsx` and everything under it, the `tauri*Client` adapters included | `@tauri-apps/api/core` (`invoke`) and `@tauri-apps/api/event` (`listen`), aliased in `vite.config.ts` to `src/host/tauri-*.ts` |
 | Web vault | `apps/web/src/app/web-app.tsx`, its sign-in, unlock, key and link pages, and its real `webClient` / `webSession` / depth, live and server clients | the worker `Link` (`src/host/web-link.ts`) |
-| Extension | `extension/src/popup/popup.tsx` and `extension/src/pages/frame.ts` (the in-page menu, save prompt and passkey sheet) on `static/ui.css` | `chrome.runtime.sendMessage` (`src/host/chrome.ts`), answering as `background/index.ts` would |
+| Extension | `extension/src/popup/popup.tsx` and `extension/src/pages/frame.ts` (the in-page menu, save prompt and passkey sheet) on `static/tokens.css` and `static/ui.css` | `chrome.runtime.sendMessage` (`src/host/chrome.ts`), answering as `background/index.ts` would |
+
+The in-page frames load their own page, `frame.html` (entry `src/frame-main.ts`), as the extension's frames load theirs: the test page's iframe opens it, and it gets the extension's two sheets and nothing of the apps' styles. (From one shared entry the bundler preloaded the apps' sheet into the frame as well, whose `--muted` and `--accent` are surfaces, so the 2026-10-29 review saw the frames' secondary text near invisible; doc 32 §2.) The plain test page around a frame is a page with its own `h1` and `main`, so axe's page rules judge the frame and not the stand-in.
 
 All three reach one fake core (`src/host/core.ts`): a table from command name to answer, built over one fixture world (`src/fixture/`). A command with no answer refuses in the app's own error shape and is recorded in `capture-log.json`. The item templates are the core's own, read from `crates/vault/src/template.rs` at build time (`scripts/rust-templates.ts`), so the editor and every detail are drawn from the same table the core uses.
 

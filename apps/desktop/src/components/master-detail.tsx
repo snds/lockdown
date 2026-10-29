@@ -5,6 +5,13 @@ import { Button, Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle, I
 interface MasterDetailProps {
   /** Header for the list pane: title, search, actions. */
   header: ReactNode
+  /**
+   * The screen's title, the one the list pane's header shows as its `h1`. At
+   * phone width an open detail hides the list pane, header and all, so the
+   * detail's bar carries the same title as a heading only a screen reader
+   * reads: every width has one `h1` (design review R18).
+   */
+  title: string
   list: ReactNode
   detail: ReactNode | null
   onBack: () => void
@@ -17,7 +24,7 @@ interface MasterDetailProps {
  * brief restyles it). Phone width: one pane at a time; selecting pushes
  * the detail and Back pops it. Wider: both panes side by side.
  */
-export function MasterDetail({ header, list, detail, onBack, emptyIcon, emptyLabel }: MasterDetailProps) {
+export function MasterDetail({ header, title, list, detail, onBack, emptyIcon, emptyLabel }: MasterDetailProps) {
   const hasDetail = detail !== null
   return (
     <div className="flex min-h-0 flex-1">
@@ -37,6 +44,7 @@ export function MasterDetail({ header, list, detail, onBack, emptyIcon, emptyLab
               <Button variant="ghost" size="icon" onClick={onBack} aria-label="Back">
                 <Icon name="arrow_back" />
               </Button>
+              <h1 className="sr-only">{title}</h1>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">{detail}</div>
           </>

@@ -134,4 +134,30 @@ describe("the crown-jewel treatment on this host (D98, D101)", () => {
     expect(await screen.findByText("To use it, show it in full or export it, you type your account password, every time.")).toBeInTheDocument()
     expect(screen.queryByText(/your account password confirms/)).not.toBeInTheDocument()
   })
+
+  it("while the gate asks, Show large type in the field's row is disabled, as the field's own buttons are (design review R4)", async () => {
+    const { client } = crownJewelClient()
+    render(
+      <ClientProvider value={client}>
+        <GateProvider>
+          <ItemCrownJewel title="Ledger">
+            <ItemField itemId="i1" field={field} largeType="Recovery phrase · Ledger" onNotice={() => {}} />
+          </ItemCrownJewel>
+        </GateProvider>
+      </ClientProvider>,
+    )
+    const user = userEvent.setup()
+    const large = () => screen.getByRole("button", { name: "Show large type", hidden: true })
+    expect(large()).toBeEnabled()
+    await user.click(await screen.findByRole("button", { name: "Show Recovery phrase" }))
+    await screen.findByRole("dialog")
+    // unicron dims the whole row while the field's reveal and copy are off; the
+    // action Lockdown put in it is off too, so nothing dimmed is pressable.
+    await waitFor(() => expect(screen.getByRole("button", { name: /Recovery phrase/, hidden: true, pressed: false })).toBeDisabled())
+    expect(large()).toBeDisabled()
+    // The gate arms its buttons after a moment, Cancel too.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled())
+    await user.click(screen.getByRole("button", { name: "Cancel" }))
+    await waitFor(() => expect(large()).toBeEnabled())
+  })
 })

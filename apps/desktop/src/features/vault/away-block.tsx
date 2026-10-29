@@ -145,7 +145,7 @@ export function AwayBlock({ itemId, title, away, canEdit, onChanged }: AwayBlock
       {away.length > 0 && (
         <ItemGroup>
           {away.map((a) => (
-            <Item key={a.at} size="sm">
+            <Item key={a.at} role="listitem" size="sm">
               <ItemContent>
                 <ItemTitle>
                   {a.place}
