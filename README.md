@@ -14,7 +14,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**423 decisions, thirty-five build slices, no release yet (2026-10-29).** Of the 122 features committed to v1, 83 are done, 15 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
+**431 decisions, thirty-six build slices, no release yet (2026-10-29).** Of the 122 features committed to v1, 83 are done, 15 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
 
 | Slice | What it delivered |
 |---|---|
@@ -54,6 +54,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 | **33 · Four small calls** ✅ | A quiet passkey upgrade is told afterwards (a toast and a line on the item); one strength rule at 50 and 75 bits, so the default passphrase reads strong; while the server's public log disagrees with a mirror, the core refuses new look-ups, shares, links and emergency steps and says why; revoking a device ends its sessions at once. [Doc 34](docs/plan/34-small-calls.md), D410–D417. |
 | **34 · Revoked devices stay out; nobody new during a split** ✅ | A device the identity revokes is refused at sign-in, at a second factor's poll and at renewal, and comes back only as a new device; while the server's public log disagrees with a mirror, a shared vault's new members and unknown devices wait unapplied and apply once the split clears. [Doc 35](docs/plan/35-revoke-split.md), D420–D427. |
 | **35 · Shared vaults in step on every device** ✅ | Fixes a bug where an owner's device couldn't open, or even unlock, once a member had written to its shared vault: vaults open trusting the writers pinned through the log, and a vault with an unvouched signer waits instead of failing. Items shared on their own meet nobody new during a split; a held head still stops its vault, and the words say so. [Doc 36](docs/plan/36-shared-sync.md), D430–D435. |
+| **36 · The command line opens shared vaults; popup polish** ✅ | The CLI opens a persona's vaults through the app's own code (`vault_open`), so a shared vault a member wrote to no longer breaks its unlock, and it picks the person's own vault in the app's order. The extension popup has one row anatomy, 13 px text, an **Open Lockdown** button where it can't act, and a visible cue while an in-page action arms (review R16, R17). [Doc 37](docs/plan/37-cli-popup.md), D440–D447. |
 | **Next** | Browser extension (fill, save, passkeys), mobile apps, sharing and family, breach monitoring, packaged and signed releases |
 
 | Real (with tests) | Skeleton (types, traits, one real rule each) |

@@ -19,7 +19,10 @@
   "D312": {"verdict": "changed", "note": "Same notice as D210 after an upgrade that follows a password you typed yourself. Built by slice 33 (#26, D410)."},
   "D328": {"verdict": "changed", "note": "A split view stays a warning for the vault, which keeps reading and syncing, but it pauses new contact look-ups, new shares and emergency-access grants through that server until the split clears. A server showing two histories is the moment it could swap someone's keys. Built by slice 33 (#26, D413)."},
   "D346": {"verdict": "accepted", "note": "Built by slice 29 (#21): the line on Security in the desktop app, the web vault and the CLI."},
-  "D371": {"verdict": "accepted", "note": "The link to the device is kept. The proposed \"Revoke it on Devices\" hint is left out: a device that is waiting usually just needs updating, and a nudge to revoke could cost someone a device they still use."}
+  "D371": {"verdict": "accepted", "note": "The link to the device is kept. The proposed \"Revoke it on Devices\" hint is left out: a device that is waiting usually just needs updating, and a nudge to revoke could cost someone a device they still use."},
+  "D442": {"verdict": "accepted", "note": "The status lines as built; the plural forms read naturally."},
+  "D443": {"verdict": "accepted", "note": "Show then Copy keeps a code off the screen until asked, matching the app."},
+  "D444": {"verdict": "accepted", "note": "Bringing the window forward reveals nothing; the app still asks for its own unlock."}
  },
  "areas": [
   {"id": "keys", "name": "Keys and encryption", "ids": "D30-D49,D379"},
@@ -34,9 +37,9 @@
   {"id": "server", "name": "Self-host server", "ids": "D215-D229,D290-D304,D322-D330,D332"},
   {"id": "bridges", "name": "Vendor bridges", "ids": "D258-D260,D262,D263,D271"},
   {"id": "pq", "name": "Post-quantum", "ids": "D335-D349,D365-D374"},
-  {"id": "release", "name": "Release and packaging", "ids": "D90-D99,D275-D289,D350-D356,D358-D364"},
+  {"id": "release", "name": "Release and packaging", "ids": "D90-D99,D275-D289,D350-D356,D358-D364,D450"},
   {"id": "plans", "name": "Plans and pricing", "ids": "D375-D378"},
-  {"id": "small-calls", "name": "Follow-ups to the review", "ids": "D410-D429"},
+  {"id": "small-calls", "name": "Follow-ups to the review", "ids": "D410-D429,D440-D449"},
   {"id": "design", "name": "Design and accessibility", "ids": "D380-D398"}
  ]
 }
