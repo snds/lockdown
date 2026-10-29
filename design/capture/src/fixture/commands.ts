@@ -821,6 +821,16 @@ export function commands(world: World): Record<string, Handler> {
     emergency_step: () => emergencyList(),
     emergency_open: () => emergencyList(),
 
+    // --- the quantum-safe status line (docs/plan/30-pq-status-line.md) -------------------------
+    pq_status: () => ({
+      state: "waiting",
+      reason: null,
+      headline: "Quantum-safe signatures: waiting for Studio desktop",
+      explanation: "This device needs the latest Lockdown. Once it's updated and opened, the stronger signatures switch on by themselves.",
+      without_level_1: [{ id: uid("device", 4), name: "Studio desktop" }],
+      without_level_2: [],
+    }),
+
     // --- the web vault's own (crates/web/src/commands) ---------------------------------------------
     web_state: () => ({ ...world.web, server: world.web.signed_in ? PERSON.server : null }),
     web_sign_in: () => {

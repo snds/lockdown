@@ -107,6 +107,7 @@ export const WEB_STATES: StateDef[] = [
   w({ id: "web-devices", screen: "Devices", state: "Devices and sessions", brief_row: "Signed in", notes: "Devices and where the account is signed in.", steps: [...unlock, side("Devices")] }),
   w({ id: "web-links", screen: "Links", state: "Links and requests", brief_row: "Links", notes: "Make text and request links; list; open answers.", steps: [...unlock, side("Links")] }),
   w({ id: "web-people", screen: "People", state: "Contacts", brief_row: "People", notes: "Contacts and your code, as on the desktop.", steps: [...unlock, side("People")] }),
+  w({ id: "web-security", screen: "Security", state: "Quantum-safe line", brief_row: "Security", notes: "The web vault's Security screen: the quantum-safe line; password checks stay in the desktop app.", steps: [...unlock, side("Security")] }),
   w({ id: "web-settings", screen: "Settings", state: "Tab settings", brief_row: "Settings", notes: "Lock timers, clipboard, density, reveal, This server, the trust note; Sign out of this tab.", steps: [...unlock, side("Settings")] }),
 
   // --- pages with no account --------------------------------------------------------
