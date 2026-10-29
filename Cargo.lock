@@ -3256,6 +3256,7 @@ dependencies = [
  "lockdown-cxf",
  "lockdown-matcher",
  "lockdown-passkey",
+ "lockdown-policy",
  "lockdown-security",
  "lockdown-server",
  "lockdown-store",

@@ -25,6 +25,7 @@ pub mod browser;
 mod confine;
 pub mod depth;
 pub mod devices;
+pub mod discovery;
 pub mod first_run;
 pub mod hygiene;
 pub mod key_check;

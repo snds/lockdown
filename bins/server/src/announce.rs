@@ -84,39 +84,46 @@ fn socket() -> std::io::Result<UdpSocket> {
     Ok(s)
 }
 
-/// Starts answering on a thread of its own. Returns why it couldn't.
+/// Starts answering on port 5353 on a thread of its own. Returns why it
+/// couldn't.
 pub fn start(port: u16, scheme: &'static str, host: String, addr: Ipv4Addr) -> Result<(), String> {
     let socket = socket().map_err(|e| format!("couldn't listen for multicast DNS: {e}"))?;
+    let instance = format!("Lockdown on {host}");
+    // Say so once at start, as responders do.
+    if let Ok(msg) = dnssd::announcement(0, false, &instance, &host, port, addr, scheme) {
+        let _ = socket.send_to(&msg, (dnssd::MDNS_GROUP, dnssd::MDNS_PORT));
+    }
+    serve(socket, port, scheme, host, addr)
+}
+
+/// Answers questions arriving on `socket` on a thread of its own: the
+/// multicast socket [`start`] opens, or, in a test, a loopback one.
+pub fn serve(
+    socket: UdpSocket,
+    port: u16,
+    scheme: &'static str,
+    host: String,
+    addr: Ipv4Addr,
+) -> Result<(), String> {
     let instance = format!("Lockdown on {host}");
     std::thread::Builder::new()
         .name("lockdown-announce".into())
         .spawn(move || {
             let mut buf = vec![0u8; dnssd::MAX_MESSAGE];
-            // Say so once at start, as responders do.
-            if let Ok(msg) = dnssd::announcement(0, false, &instance, &host, port, addr, scheme) {
-                let _ = socket.send_to(&msg, (dnssd::MDNS_GROUP, dnssd::MDNS_PORT));
-            }
             loop {
                 let Ok((n, from)) = socket.recv_from(&mut buf) else {
                     continue;
                 };
-                let Some(msg) = dnssd::parse(&buf[..n]) else {
-                    continue;
-                };
-                if !dnssd::asks_for_lockdown(&msg) {
-                    continue;
-                }
-                let legacy = from.port() != dnssd::MDNS_PORT;
-                let id = if legacy { msg.id } else { 0 };
-                let Ok(answer) =
-                    dnssd::announcement(id, legacy, &instance, &host, port, addr, scheme)
+                let Some((answer, to)) =
+                    dnssd::respond(&buf[..n], from.port(), &instance, &host, port, addr, scheme)
                 else {
                     continue;
                 };
-                let _ = if legacy {
-                    socket.send_to(&answer, from)
-                } else {
-                    socket.send_to(&answer, (dnssd::MDNS_GROUP, dnssd::MDNS_PORT))
+                let _ = match to {
+                    dnssd::ReplyTo::Asker => socket.send_to(&answer, from),
+                    dnssd::ReplyTo::Group => {
+                        socket.send_to(&answer, (dnssd::MDNS_GROUP, dnssd::MDNS_PORT))
+                    }
                 };
             }
         })

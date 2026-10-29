@@ -442,6 +442,44 @@ pub fn announcement(
     Ok(out)
 }
 
+/// Where a responder sends its answer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReplyTo {
+    /// The asker alone (a question from a port other than 5353).
+    Asker,
+    /// The multicast group.
+    Group,
+}
+
+/// A responder's whole decision for one datagram from `from_port`: `None`
+/// unless it asks for Lockdown servers; else the answer and where it goes
+/// (RFC 6762 §6.7: a legacy unicast asker gets its id and question back).
+pub fn respond(
+    datagram: &[u8],
+    from_port: u16,
+    instance_label: &str,
+    host: &str,
+    port: u16,
+    addr: Ipv4Addr,
+    scheme: &str,
+) -> Option<(Vec<u8>, ReplyTo)> {
+    let msg = parse(datagram)?;
+    if !asks_for_lockdown(&msg) {
+        return None;
+    }
+    let legacy = from_port != MDNS_PORT;
+    let id = if legacy { msg.id } else { 0 };
+    let answer = announcement(id, legacy, instance_label, host, port, addr, scheme).ok()?;
+    Some((
+        answer,
+        if legacy {
+            ReplyTo::Asker
+        } else {
+            ReplyTo::Group
+        },
+    ))
+}
+
 /// The nameservers this computer uses, from `/etc/resolv.conf`.
 pub fn system_nameservers(conf: &str) -> Vec<IpAddr> {
     conf.lines()
@@ -454,17 +492,38 @@ pub fn system_nameservers(conf: &str) -> Vec<IpAddr> {
 /// Asks the network for Lockdown servers for `wait`, from an ephemeral
 /// port, so responders answer this socket directly (RFC 6762 §6.7). Only
 /// answers from the local network are read.
+///
+/// The question goes out from an ephemeral port, so it never needs port
+/// 5353: on a Mac, where the system's mDNSResponder holds 5353, the answers
+/// come straight back to this socket.
 #[cfg(feature = "http")]
 pub fn browse(wait: std::time::Duration, max: usize) -> Vec<Service> {
+    browse_at(
+        std::net::SocketAddr::from((MDNS_GROUP, MDNS_PORT)),
+        wait,
+        max,
+    )
+}
+
+/// [`browse`], asking `target` instead of the multicast group: the seam the
+/// tests use to ask a responder on a loopback port.
+#[cfg(feature = "http")]
+pub fn browse_at(
+    target: std::net::SocketAddr,
+    wait: std::time::Duration,
+    max: usize,
+) -> Vec<Service> {
     use std::net::UdpSocket;
-    let Ok(socket) = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)) else {
+    let bind: IpAddr = if target.ip().is_loopback() {
+        Ipv4Addr::LOCALHOST.into()
+    } else {
+        Ipv4Addr::UNSPECIFIED.into()
+    };
+    let Ok(socket) = UdpSocket::bind((bind, 0)) else {
         return Vec::new();
     };
     let _ = socket.set_multicast_ttl_v4(255);
-    if socket
-        .send_to(&browse_query(), (MDNS_GROUP, MDNS_PORT))
-        .is_err()
-    {
+    if socket.send_to(&browse_query(), target).is_err() {
         return Vec::new();
     }
     let own = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))

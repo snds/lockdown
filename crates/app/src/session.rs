@@ -164,6 +164,11 @@ impl Paths {
     }
 }
 
+/// The account's server as `sync.cbor` names it, read without a session.
+pub(crate) fn account_server_on_disk(paths: &Paths) -> Option<String> {
+    SyncConfig::load_plain(&paths.sync_file()).map(|c| c.server)
+}
+
 /// The `lockdown` directory next to an identity root.
 fn beside(root: &Path) -> PathBuf {
     match root.parent() {
@@ -1698,6 +1703,7 @@ impl Session {
         };
         let server = cfg.server.clone();
         self.identity_confirmed = false;
+        self.check_confirmed_key(&server)?;
         let token = self.token()?;
         let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
         let outcome = match self.sync_with(&transport, &server, &token) {
@@ -1708,6 +1714,9 @@ impl Session {
             }
             done => done,
         }?;
+        // The key the log was verified under is the one the person
+        // confirmed for this server, if they confirmed one (§1.7).
+        self.check_confirmed_key(&server)?;
         // The sync that saw the split clear takes what waited for it at
         // once (`split_hold`; docs/plan/35-revoke-split.md §2).
         if self.anything_held() && !self.split_view() {
@@ -1716,6 +1725,14 @@ impl Session {
             return self.sync_with(&transport, &server, &token);
         }
         Ok(outcome)
+    }
+
+    /// Refuses a server whose pinned log key isn't the one confirmed for it.
+    fn check_confirmed_key(&self, server: &str) -> Result<(), String> {
+        match self.transparency.view(server) {
+            Some(view) => crate::discovery::check_pinned(&self.paths.data, server, &view.log_key),
+            None => Ok(()),
+        }
     }
 
     fn sync_with(
