@@ -64,7 +64,7 @@ const SCREENS: ReadonlyArray<ShellScreen> = [
  * All items and the smart views with counts, then Security · Sharing ·
  * Devices · Recovery · Status · Settings, and Lock. Codes is a view of the vault that opens its
  * own screen, because a code is usually part of a Login (brief §3). Rows
- * take the density knobs through `data-row`.
+ * take the density knobs through `data-row` (the navigation height, `nav`).
  */
 export function AppShell({ nav, personas, counts, onNavigate, onLock, organization, screens = SCREENS, footer, children }: AppShellProps) {
   const active = personas.find((p) => p.active)
@@ -132,7 +132,7 @@ export function NavRow({ icon, label, count, current, tone, depth = 0, onClick }
     <Button
       variant={current ? "secondary" : "ghost"}
       size="sm"
-      data-row=""
+      data-row="nav"
       data-tone={tone}
       className="w-full justify-start data-[tone=attention]:text-attention-text data-[tone=codes]:text-area-codes-text"
       aria-current={current ? "page" : undefined}

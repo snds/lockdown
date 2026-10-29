@@ -16,7 +16,7 @@ export interface AppError {
   detail?: string
 }
 
-/** Why only the account password signs this device in again (docs/plan/33-session-renewal.md). */
+/** Why only the master password signs this device in again (docs/plan/33-session-renewal.md). */
 export interface SignInNeeded {
   reason: "ended" | "revoked" | "idle" | "not_renewable" | "unknown"
   message: string
@@ -29,6 +29,14 @@ export interface Probe {
   device_key_present: boolean
   account_present: boolean
   device_name: string
+  /** The device's keys are sealed under a master password (docs/plan/39-first-run.md §1.3). */
+  master_password?: boolean
+  /** The account is the local one the app keeps itself (§1.1): no server words. */
+  local_account?: boolean
+  /** The name the lock screen shows. */
+  name?: string | null
+  /** How far an unfinished first run got. */
+  stage?: string | null
 }
 
 export type LockReason = "requested" | "idle" | "hidden" | "sleep"
@@ -245,6 +253,8 @@ export interface AccountStatus {
   transparency: TransparencyView | null
   /** Set when the server refused to renew this device's session; the words say why. */
   sign_in?: SignInNeeded
+  /** The local account the app keeps itself (docs/plan/39-first-run.md §1.1). */
+  local?: boolean
 }
 
 export interface Status {

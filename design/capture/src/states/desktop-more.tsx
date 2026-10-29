@@ -13,6 +13,7 @@ import type { World } from "../fixture/world"
 import { as, fail, forever } from "../host/core"
 import { Standalone } from "../harness/standalone"
 import type { StateDef, Step } from "../harness/types"
+import { MASTER_PASSWORD } from "../fixture/commands"
 import { WIDTHS } from "../harness/types"
 
 const DIALOG: Step = { see: '[role="dialog"], [role="alertdialog"]' }
@@ -20,7 +21,17 @@ const MENU: Step = { see: '[role="menu"]' }
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 const starts = (s: string) => new RegExp(`^${esc(s)}(\\s|$)`)
 const side = (label: string): Step => ({ click: starts(label), within: 'nav[aria-label="Sidebar"]' })
-const open: Step[] = [{ click: "Unlock" }, { wait: /^All items/ }]
+const open: Step[] = [{ fill: "Master password", value: MASTER_PASSWORD }, { click: "Unlock", role: "button" }, { wait: /^All items/ }]
+/** The first run's create path to the kit (doc 39 §1.9 screens 0–2). */
+const create: Step[] = [
+  { click: "Create a new vault" },
+  { fill: "Your name", value: "Sam Rivera" },
+  { fill: "Master password", value: MASTER_PASSWORD },
+  { fill: "Type it again", value: MASTER_PASSWORD },
+  { click: "Continue", role: "button" },
+]
+/** The kit put away. */
+const kitSaved: Step[] = [{ click: "I saved, printed or wrote down the kit" }, { click: "Continue", role: "button" }]
 const item = (title: string): Step[] => [{ click: starts(title), within: "main" }, { wait: title, role: "heading" }]
 /** The vaults, folders and tags trees are hidden below the `md` breakpoint, so these states have no phone width. */
 const WIDE = [1280, 900]
@@ -57,32 +68,40 @@ const reminders = (password: boolean, drill: boolean, kitTest: boolean) => ({
 })
 
 export const DESKTOP_MORE: StateDef[] = [
-  // --- first run, deeper ------------------------------------------------------------
-  d({ id: "desktop-first-run-kit", screen: "Kit page", state: "Shown once after create", brief_row: "Kit page (D69)", notes: "The Secret Key and recovery code in large print, every character captioned.", setup: fresh, steps: [{ click: "Create my vault", role: "button", within: '[role="tabpanel"]' }, { fill: "Login name", value: PERSON.login }, { fill: "Account password", value: "Tidal-Vesper-Orbit-48" }, { click: /^Create account/ }, DIALOG, { pause: 400 }] }),
-  d({ id: "desktop-first-run-kit-saved", screen: "Kit page", state: "Saved as a PDF", brief_row: "Kit page (D69)", notes: "Save as PDF… next to Print: the file's words, then the line once the OS's save dialog (not drawn) wrote it (doc 38).", setup: fresh, steps: [{ click: "Create my vault", role: "button", within: '[role="tabpanel"]' }, { fill: "Login name", value: PERSON.login }, { fill: "Account password", value: "Tidal-Vesper-Orbit-48" }, { click: /^Create account/ }, DIALOG, { pause: 400 }, { click: "Save as PDF…", role: "button" }, { wait: "Saved where you chose. Lockdown kept no copy." }] }),
-  d({ id: "desktop-first-run-keep-kit", screen: "First run", state: "Keep the kit", brief_row: "First run: create", notes: "Screen 3: printed, and the drill reminder.", setup: fresh, steps: [{ click: "Create my vault", role: "button", within: '[role="tabpanel"]' }, { fill: "Login name", value: PERSON.login }, { fill: "Account password", value: "Tidal-Vesper-Orbit-48" }, { click: /^Create account/ }, DIALOG, { click: "I have it" }, { wait: "Keep the kit somewhere safe" }] }),
-  d({ id: "desktop-first-run-proofs", screen: "First run", state: "Locked, even from us", brief_row: "First run: create", notes: "The proofs, once, as part of account creation (D95).", setup: fresh, steps: [{ click: "Create my vault", role: "button", within: '[role="tabpanel"]' }, { fill: "Login name", value: PERSON.login }, { fill: "Account password", value: "Tidal-Vesper-Orbit-48" }, { click: /^Create account/ }, DIALOG, { click: "I have it" }, { click: "I saved, printed or wrote down the kit" }, { click: "Continue", role: "button" }, { wait: "Locked, even from us" }] }),
-  d({
-    id: "desktop-first-run-weak-password",
-    screen: "First run",
-    state: "Error: weak password",
-    brief_row: "First run: create",
-    notes: "The password is under the signed floor.",
-    setup: fresh,
-    answers: () => ({ account_register: () => fail("refused", "That password would be guessed quickly. Use at least four random words, or let Lockdown suggest one.") }),
-    steps: [{ click: "Create my vault", role: "button", within: '[role="tabpanel"]' }, { fill: "Login name", value: PERSON.login }, { fill: "Account password", value: "sam1988" }, { click: /^Create account/ }, { wait: /would be guessed quickly/ }],
-  }),
-  d({ id: "desktop-first-run-opt-out", screen: "First run", state: "An account without a Secret Key", brief_row: "First run: create", notes: "Making an account without a Secret Key needs an explicit confirmation (D247).", setup: fresh, steps: [{ click: "Create my vault", role: "button", within: '[role="tabpanel"]' }, { click: "An account without a Secret Key" }, DIALOG] }),
-  d({ id: "desktop-first-run-join-device", screen: "Join from another device", state: "Code or QR", brief_row: "Join from another device", notes: "Join with a code or QR from an enrolled device, then compare six digits (D246).", setup: fresh, steps: [{ click: "Join", role: "tab" }, { click: "Join with another device instead" }, { pause: 400 }] }),
+  // --- first run, deeper (docs/plan/39-first-run.md §1.9) -----------------------------
+  d({ id: "desktop-first-run-kit", screen: "Kit page", state: "Shown once after create", brief_row: "Kit page (D69)", notes: "Screen 2: the Secret Key and recovery code in large print, Save as PDF, Print, and where to keep it.", setup: fresh, steps: [...create, { wait: "Save your recovery kit", role: "heading" }, { pause: 400 }] }),
+  d({ id: "desktop-first-run-kit-saved", screen: "Kit page", state: "Saved as a PDF", brief_row: "Kit page (D69)", notes: "Saved, with the reminder that a PDF on this computer alone won't help if it's lost (doc 38, doc 39).", setup: fresh, steps: [...create, { wait: "Save your recovery kit", role: "heading" }, { click: "Save as PDF", role: "button" }, { wait: /A PDF on this computer alone/ }] }),
+  d({ id: "desktop-first-run-import", screen: "First run", state: "Bring your passwords", brief_row: "First run: create", notes: "Screen 4: the importers Lockdown has, each with how to export, and Skip for now.", setup: fresh, steps: [...create, ...kitSaved, { wait: "Bring your passwords", role: "heading" }] }),
+  d({ id: "desktop-first-run-proofs", screen: "First run", state: "Locked, even from us", brief_row: "First run: create", notes: "The proofs, once, as part of account creation (D95).", setup: fresh, steps: [...create, ...kitSaved, { click: "Skip for now" }, { wait: "Locked, even from us", role: "heading" }] }),
+  {
+    ...d({
+      id: "desktop-first-run-weak-password",
+      screen: "First run",
+      state: "Weak password",
+      brief_row: "First run: create",
+      notes: "Under fair is refused (Q3), under the field, in the core's words.",
+      setup: fresh,
+      steps: [{ click: "Create a new vault" }, { fill: "Your name", value: "Sam Rivera" }, { fill: "Master password", value: "sam1988" }, { fill: "Type it again", value: "sam1988" }, { click: "Continue", role: "button" }, { wait: /at least fair/ }],
+    }),
+  },
+  d({ id: "desktop-first-run-join-device", screen: "Join from another device", state: "Code or QR", brief_row: "Join from another device", notes: "Approve from another device with a code or QR, then compare six digits (D246).", setup: fresh, steps: [{ click: "I already use Lockdown" }, { click: /^Approve from another device/ }, { pause: 400 }] }),
   d({
     id: "desktop-first-run-join-denied",
     screen: "First run",
     state: "Join: error",
     brief_row: "First run: join",
-    notes: "The server refused the join.",
+    notes: "The server refused the sign-in, after the server's key was confirmed.",
     setup: fresh,
     answers: () => ({ account_login: () => fail("refused", "The other device denied this request, or it timed out. Ask again from the other device.") }),
-    steps: [{ click: "Join", role: "tab" }, { fill: "Login name", value: PERSON.login }, { fill: "Account password", value: "x" }, { fill: "Secret Key", value: "A3-K7QF2M" }, { click: /^Join$/, role: "button", within: '[role="tabpanel"]' }, { wait: /denied this request/ }],
+    steps: [
+      { click: "I already use Lockdown" },
+      { wait: /nas\.rivera\.example/ },
+      { fill: "Login", value: PERSON.login },
+      { fill: "Master password", value: "x" },
+      { click: "Continue", role: "button" },
+      { click: "Connect", role: "button" },
+      { wait: /denied this request/ },
+    ],
   }),
 
   // --- organization ---------------------------------------------------------------------
@@ -180,8 +199,8 @@ export const DESKTOP_MORE: StateDef[] = [
   }),
   d({ id: "desktop-recovery-kit-replace", screen: "Kit page", state: "Replace the kit", brief_row: "Kit page (D69)", notes: "Making a new kit replaces the old one.", steps: [...open, side("Recovery"), { click: /^Replace/ }, DIALOG] }),
   d({ id: "desktop-recovery-emergency-sheet", screen: "Emergency sheet", state: "Printable", brief_row: "Emergency sheet", notes: "One page for a future you, with no secret.", steps: [...open, side("Recovery"), { click: "Emergency sheet" }, DIALOG] }),
-  d({ id: "desktop-status-no-account", screen: "Status", state: "No account", brief_row: "Status", notes: "This device only: Log in or Register.", answers: (w) => ({ status: () => ({ ...status(w), account: null }), unlock: () => ({ ...status(w), account: null }) }), steps: [...open, side("Status")] }),
-  d({ id: "desktop-status-register", screen: "Status", state: "Register an account", brief_row: "Status", notes: "Adding an account later, from Status.", answers: (w) => ({ status: () => ({ ...status(w), account: null }), unlock: () => ({ ...status(w), account: null }) }), steps: [...open, side("Status"), { click: /^Register/ }, DIALOG] }),
+  d({ id: "desktop-status-no-account", screen: "Status", state: "No account", brief_row: "Status", notes: "This device only: Log in or Register.", answers: (w) => ({ status: () => ({ ...status(w), account: null }), unlock: () => ({ ...status(w), account: null }), unlock_with_password: () => ({ ...status(w), account: null }) }), steps: [...open, side("Status")] }),
+  d({ id: "desktop-status-register", screen: "Status", state: "Register an account", brief_row: "Status", notes: "Adding an account later, from Status.", answers: (w) => ({ status: () => ({ ...status(w), account: null }), unlock: () => ({ ...status(w), account: null }), unlock_with_password: () => ({ ...status(w), account: null }) }), steps: [...open, side("Status"), { click: /^Register/ }, DIALOG] }),
   d({ id: "desktop-status-split", screen: "Status", state: "Mirror disagrees", brief_row: "Status", notes: "A mirror saw a different log: the split-view warning (D327, D328).", answers: (w) => ({ status: () => {
     const s = status(w)
     s.account!.transparency!.mirrors = [{ url: "https://kt.witness.example", named_by: "settings", at: ago(0.01), state: "split", message: "The mirror has a different log at size 48,209." }]
@@ -189,6 +208,20 @@ export const DESKTOP_MORE: StateDef[] = [
   } }), steps: [...open, side("Status")] }),
 
   // --- settings --------------------------------------------------------------------------------------------------
+  d({ id: "desktop-settings-server", screen: "Settings → Server", state: "Found servers", brief_row: "Settings", notes: "What discovery found (the server in use, one on the network, one that needs https), Look again, and a typed address (doc 39 §1.11).", steps: [...settings, { wait: /nas\.rivera\.example/ }, { run: () => document.getElementById("server-settings-title")?.scrollIntoView({ block: "start" }) }, { pause: 200 }] }),
+  d({ id: "desktop-settings-server-local", screen: "Settings → Server", state: "Kept on this computer", brief_row: "Settings", notes: "A local account: the vault is kept on this computer only; no server words above it until one is found.", setup: (w) => { w.device = { ...w.device, local: true } }, steps: [...settings, { wait: /kept on this computer only/ }, { run: () => document.getElementById("server-settings-title")?.scrollIntoView({ block: "start" }) }, { pause: 200 }] }),
+  d({
+    id: "desktop-settings-server-move",
+    screen: "Settings → Server",
+    state: "Move to your own server",
+    brief_row: "Settings",
+    notes: "A local account moving to a found server: after its key is confirmed, the login there and the master password (doc 39 §1.11).",
+    setup: (w) => {
+      w.device = { ...w.device, local: true }
+    },
+    steps: [...settings, { click: /^nas\.rivera\.example/ }, DIALOG, { click: "Continue", role: "button" }, { wait: /Your login on/ }],
+  }),
+  d({ id: "desktop-status-local", screen: "Status", state: "Kept on this computer", brief_row: "Status", notes: "A local account: this computer's proofs, and one line about sync (doc 39 §1.8).", setup: (w) => { w.device = { ...w.device, local: true } }, steps: [...open, side("Status"), { wait: /kept on this computer only/ }] }),
   d({ id: "desktop-settings-compact", screen: "Settings", state: "Compact density chosen", brief_row: "Settings", notes: "Appearance set to compact: the whole app tightens.", steps: [...settings, { click: "Compact" }, { pause: 300 }] }),
   d({ id: "desktop-settings-import", screen: "Import / export", state: "Import: pick a format", brief_row: "Import / export", notes: "Twenty formats; a preview before anything is kept.", steps: [...settings, { click: /^Import…/ }, DIALOG] }),
   d({ id: "desktop-settings-export", screen: "Import / export", state: "Export", brief_row: "Import / export", notes: "Four file kinds plus age; crown jewels left out unless opted in.", steps: [...settings, { click: /^Export…/ }, DIALOG, { pause: 400 }] }),
@@ -311,7 +344,7 @@ export const DESKTOP_MORE: StateDef[] = [
         s.account!.sign_in = { reason: "revoked", message: REVOKED }
         return s
       }
-      return { status: revoked, unlock: revoked }
+      return { status: revoked, unlock: revoked, unlock_with_password: revoked }
     },
     steps: [...open, side("Status"), { wait: REVOKED }],
   }),

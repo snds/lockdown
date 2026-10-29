@@ -16,7 +16,7 @@ interface ItemCrownJewelProps {
  * core's `approval_route` and judged by the core when the gated call
  * arrives (`app/gate.tsx`), the biometric named as the platform names it
  * (Touch ID, Windows Hello). Where this computer has no platform check
- * the route is the account password: `biometricName={null}`, and the
+ * the route is the master password: `biometricName={null}`, and the
  * surface's copy and announcement say the password is asked for both use
  * and reveal. Nested SecretField, CodeDisplay and LargeTypeView read the
  * surface and switch to gated mode on their own (a SecretField's reveal

@@ -30,7 +30,7 @@ export function RecoveryView({ status, onChanged, onNotice, onEmergency }: Recov
   const showOnce = (page: OncePageData) => setOnce({ title: "Your recovery kit", lines: page.lines, text: page.page.length ? decodeAndWipe(page.page) : null })
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 md:p-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-(--c-section-gap) p-(--c-page-gutter-narrow) md:p-(--c-page-gutter)">
       <PaneHeader title="Recovery">
         <EmergencySheetButton onNotice={onNotice} />
       </PaneHeader>

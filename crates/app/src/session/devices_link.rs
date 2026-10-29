@@ -21,7 +21,7 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use ecosystem_identity::FileKeystore;
+use crate::local_unlock::DeviceKeys;
 use lockdown_crypto::auth::OpaqueAccountAuth;
 use lockdown_store::{HeadMemory, SyncedIdentity};
 use lockdown_sync::HttpTransport;
@@ -33,7 +33,7 @@ use serde::Serialize;
 use serde_bytes::ByteBuf;
 
 use super::{
-    IDENTITY_SYNC_FILE, KEYSTORE_FILE, MEMORY_FILE, Paths, SYNC_V, Session, SyncConfig, binding_of,
+    IDENTITY_SYNC_FILE, MEMORY_FILE, Paths, SYNC_V, Session, SyncConfig, binding_of,
     check_root_empty, device_name, secret_key, sync_identity_records,
 };
 
@@ -95,7 +95,7 @@ impl Session {
                 link.asked.as_ref().map(|a| a.1.as_str()).unwrap_or("the new device"),
                 link.asked.as_ref().map(|a| a.0.as_str()).unwrap_or("")
             ),
-            "approved" => "Approved. The new device finishes by signing in with your account password.".into(),
+            "approved" => "Approved. The new device finishes by signing in with your master password.".into(),
             "declined" => "Declined. Nothing was changed.".into(),
             _ => "This link closed. Make a new code to try again.".into(),
         };
@@ -339,7 +339,7 @@ pub struct JoinView {
 pub struct Joining {
     paths: Paths,
     server: String,
-    keystore: Rc<FileKeystore>,
+    keystore: Rc<DeviceKeys>,
     link_id: Id,
     key: Vec<u8>,
     join: Join,
@@ -379,10 +379,7 @@ impl Joining {
             }
             None => server.trim().trim_end_matches('/').to_string(),
         };
-        let keystore = Rc::new(
-            FileKeystore::open_or_create(&paths.data.join(KEYSTORE_FILE))
-                .map_err(|e| e.to_string())?,
-        );
+        let keystore = Rc::new(DeviceKeys::open_or_create_plain(&paths.data)?);
         let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
         let joined = transport
             .link_join(invite.code.as_str())
@@ -421,9 +418,9 @@ impl Joining {
             "waiting" => "Waiting for the other device…".to_string(),
             "compare" => "Check that the other device shows the same six digits, then approve there.".into(),
             "approved" => match self.secret_key_state {
-                Some("sent") => "Approved. Your Secret Key came with it. Sign in with your account password to finish.".into(),
-                Some("opted-out") => "Approved. Your account has no Secret Key. Sign in with your account password to finish.".into(),
-                _ => "Approved. Sign in with your account password to finish; the Secret Key from your kit is asked for only if it's ever needed.".into(),
+                Some("sent") => "Approved. Your Secret Key came with it. Sign in with your master password to finish.".into(),
+                Some("opted-out") => "Approved. Your account has no Secret Key. Sign in with your master password to finish.".into(),
+                _ => "Approved. Sign in with your master password to finish; the Secret Key from your kit is asked for only if it's ever needed.".into(),
             },
             _ => "Done.".into(),
         };
@@ -508,9 +505,7 @@ pub fn finish_joined(
     sign_in: SignIn<'_>,
     secret_key: Option<[u8; 16]>,
 ) -> Result<Vec<String>, String> {
-    let keystore = Rc::new(
-        FileKeystore::open_or_create(&paths.data.join(KEYSTORE_FILE)).map_err(|e| e.to_string())?,
-    );
+    let keystore = Rc::new(DeviceKeys::open_or_create_plain(&paths.data)?);
     let mut memory = HeadMemory::open(&paths.data.join(MEMORY_FILE)).map_err(|e| e.to_string())?;
     let mut identity =
         lockdown_vault::identity::open_identity(&paths.root, keystore.as_ref(), memory.identity())

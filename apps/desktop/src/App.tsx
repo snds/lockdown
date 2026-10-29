@@ -26,7 +26,7 @@ import { upgradeToast, usePasskeyUpgrades } from "@/features/passkeys/use-passke
 import { RecoveryView } from "@/features/recovery/recovery-view"
 import { SecurityView } from "@/features/security/security-view"
 import { SettingsView } from "@/features/settings/settings-view"
-import { SharingView } from "@/features/sharing/sharing-view"
+import { SharingLocalOnly, SharingView } from "@/features/sharing/sharing-view"
 import { StatusView } from "@/features/status/status-view"
 import { LockedWash } from "@/features/unlock/locked-wash"
 import { UnlockScreen } from "@/features/unlock/unlock-screen"
@@ -52,6 +52,8 @@ import { useSecretWipe } from "@/features/hygiene/secret-wipe"
 import { QuickClientProvider } from "@/features/quick/quick-client"
 import { ScanClientProvider } from "@/features/scan/scan-client"
 import { PaperClientProvider } from "@/features/paper/paper-client"
+import { FirstRunClientProvider } from "@/features/unlock/first-run-client"
+import { tauriFirstRunClient } from "@/app/tauri-first-run"
 import { tauriPaperClient } from "@/app/tauri-paper"
 
 // The developer reset and the demo (docs/plan/40-devtools.md): one lazy
@@ -248,7 +250,8 @@ function Root() {
         )}
         {nav.area === "status" && <StatusView status={status} onStatus={setStatus} onNotice={notice} />}
         {nav.area === "settings" && <SettingsView status={status} lock={lock} onLock={setLock} onChanged={refreshStatus} onNotice={notice} />}
-        {nav.area === "sharing" && (
+        {nav.area === "sharing" && status.account?.local && <SharingLocalOnly />}
+        {nav.area === "sharing" && !status.account?.local && (
           <SharingView
             rows={rows ?? []}
             onOpenItem={(id) => {
@@ -317,7 +320,9 @@ export default function App() {
                           <ServerClientProvider value={tauriServerClient}>
                             <PqStatusClientProvider value={tauriPqStatusClient}>
                               <PaperClientProvider value={tauriPaperClient}>
-                                <Root />
+                                <FirstRunClientProvider value={tauriFirstRunClient}>
+                                  <Root />
+                                </FirstRunClientProvider>
                               </PaperClientProvider>
                             </PqStatusClientProvider>
                           </ServerClientProvider>

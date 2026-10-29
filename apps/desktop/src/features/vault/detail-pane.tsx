@@ -217,7 +217,7 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
   )
   const body = layoutFor(item, template, field, codeBlocks, passkeys)
   return (
-    <article className="flex flex-col gap-4 p-4 md:p-6">
+    <article className="flex flex-col gap-4 p-(--c-page-gutter-narrow) md:p-(--c-page-gutter)">
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="flex items-center gap-2 truncate text-xl font-semibold tracking-tight">

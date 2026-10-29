@@ -73,7 +73,7 @@ describe("a web sign-in that asks for a security key", () => {
     const credentials = { get: vi.fn(async () => assertion) } as unknown as CredentialsContainer
     render(<SignInScreen session={s} server="https://vault.example" onSignedIn={onSignedIn} credentials={credentials} />)
     await userEvent.type(screen.getByLabelText("Login name"), "me@example.com")
-    await userEvent.type(screen.getByLabelText("Account password"), "correct horse")
+    await userEvent.type(screen.getByLabelText("Master password"), "correct horse")
     await userEvent.type(screen.getByLabelText("Secret Key"), "A1-ABC")
     await userEvent.click(screen.getByRole("button", { name: "Sign in" }))
     await userEvent.click(await screen.findByRole("button", { name: "Use my security key" }))

@@ -80,9 +80,12 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
       }
     })
 
-  const account = status.account
+  // The local account the app keeps itself has no server words on screen
+  // (docs/plan/39-first-run.md §1.8): its proofs are this computer's.
+  const local = status.account?.local === true
+  const account = local ? null : status.account
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4 md:p-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-(--c-section-gap) p-(--c-page-gutter-narrow) md:p-(--c-page-gutter)">
       <PaneHeader title="Status" />
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -99,10 +102,21 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
           </Button>
         }
       >
-        <Proof ok={account !== null} text={account ? "Your password never leaves this device: the server holds a record it cannot turn back into it (OPAQUE)." : "No account yet, so no password exists anywhere."} />
+        <Proof
+          ok={account !== null || local}
+          text={
+            local
+              ? "Your master password never leaves this computer: it opens your vault here and is never stored."
+              : account
+                ? "Your password never leaves this device: the server holds a record it cannot turn back into it (OPAQUE)."
+                : "No account yet, so no password exists anywhere."
+          }
+        />
         <Proof ok={status.recovery !== "none"} text={status.recovery !== "none" ? "The Secret Key on your kit was made here; the server has never seen it." : "No recovery kit yet; make one on the Recovery screen."} />
         <Proof ok text={`Your vault history is signed by your devices: head ${status.head_seq}, ${status.head_hash.slice(0, 16)}…`} />
-        <Proof ok={!!account?.transparency} text={account ? `The server's public log: ${transparencyLine(account.transparency)}` : "The server's public log is checked once an account exists."} />
+        {!local && (
+          <Proof ok={!!account?.transparency} text={account ? `The server's public log: ${transparencyLine(account.transparency)}` : "The server's public log is checked once an account exists."} />
+        )}
         {account?.transparency && <MirrorProof checks={account.transparency.mirrors} />}
         <SplitWarning checks={account?.transparency?.mirrors} />
         {audit && (
@@ -118,6 +132,11 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
         )}
       </Section>
 
+      {local ? (
+        <Section title="Sync">
+          <p className="text-sm text-muted-foreground">Your vault is kept on this computer only. To use it on another device, set up a server in Settings → Server.</p>
+        </Section>
+      ) : (
       <Section
         title="Account and sync"
         actions={
@@ -176,6 +195,7 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
           <p className="text-sm text-muted-foreground">No account on this device. Register one on a server (yours or ours) to sync, or log in to one you have.</p>
         )}
       </Section>
+      )}
 
       <Section title="This device">
         <Fact label="Identity root" value={status.root} mono />

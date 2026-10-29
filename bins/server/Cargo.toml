@@ -61,9 +61,14 @@ sha2.workspace = true
 # range, as Pwned Passwords' k-anonymity does.
 sha1.workspace = true
 url.workspace = true
+# The in-process local server (local.rs) drives the router as a tower
+# service, with no socket.
+tower.workspace = true
+# `--announce` (announce.rs): the multicast DNS socket shares port 5353
+# with the system's own responder.
+socket2 = { version = "0.6", features = ["all"] }
 
 [dev-dependencies]
-tower.workspace = true
 http-body-util.workspace = true
 tempfile.workspace = true
 ciborium.workspace = true

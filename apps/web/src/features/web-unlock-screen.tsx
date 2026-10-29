@@ -25,7 +25,7 @@ interface WebUnlockScreenProps {
 
 /**
  * The lock screen in the browser. Locking dropped every key and wiped this
- * tab's device key file; the account password opens it again through a
+ * tab's device key file; the master password opens it again through a
  * fresh OPAQUE sign-in (no Secret Key: the tab is already a device).
  */
 export function WebUnlockScreen({ session, login, reason, onUnlocked, onSignedOut }: WebUnlockScreenProps) {
@@ -68,7 +68,7 @@ export function WebUnlockScreen({ session, login, reason, onUnlocked, onSignedOu
         </p>
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="unlock-password">Account password</FieldLabel>
+            <FieldLabel htmlFor="unlock-password">Master password</FieldLabel>
             <Input id="unlock-password" name="password" type="password" required autoFocus autoComplete="current-password" />
           </Field>
         </FieldGroup>

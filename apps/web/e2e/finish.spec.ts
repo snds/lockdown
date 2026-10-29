@@ -68,7 +68,7 @@ async function signedIn(context: BrowserContext, who: "a" | "b" | "c"): Promise<
   await page.goto("/vault/")
   const form = page.getByRole("form", { name: "Sign in" })
   await form.getByLabel("Login name").fill({ a: A, b: B, c: C }[who])
-  await form.getByLabel("Account password").fill(PASSWORD)
+  await form.getByLabel("Master password").fill(PASSWORD)
   await form.getByLabel("Secret Key").fill(keys[who]!)
   await form.getByRole("button", { name: "Sign in" }).click()
   await expect(page.getByRole("heading", { name: "All items" })).toBeVisible({ timeout: 90_000 })
@@ -105,7 +105,8 @@ test("a TV's code read by the tab's camera opens the real page after the passwor
   await dialog.getByRole("radio", { name: /YouTube TV/ }).check()
   const opened = context.waitForEvent("page")
   await dialog.getByRole("button", { name: "Sign in on www.youtube.com" }).click()
-  // The Approve gate: this tab's route is the account password.
+  // The Approve gate: this tab's route is the password (unicron's gate
+  // still calls it the account password).
   await page.getByLabel("Account password").fill(PASSWORD)
   await page.getByRole("button", { name: "Confirm" }).click()
   const tv = await opened

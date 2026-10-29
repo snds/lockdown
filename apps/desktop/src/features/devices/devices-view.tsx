@@ -85,20 +85,25 @@ export function DevicesView({ status, onChanged, onNotice, focus }: DevicesViewP
 
   const live = devices?.filter((d) => !d.revoked_at) ?? []
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 md:p-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-(--c-section-gap) p-(--c-page-gutter-narrow) md:p-(--c-page-gutter)">
       <PaneHeader title={`Devices (${status.devices}${status.devices_revoked ? `, ${status.devices_revoked} revoked` : ""})`} />
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
-      {status.account && (
+      {status.account && !status.account.local && (
         <div>
           <AddDevice onNotice={onNotice} onChanged={() => void load().then(onChanged)} />
         </div>
       )}
+      {status.account?.local && (
+        <p className="text-sm text-muted-foreground">
+          To use Lockdown on another device, both need a server they can reach. You can set one up in Settings → Server.
+        </p>
+      )}
       {!devices && !error && <Spinner />}
-      {devices && live.length <= 1 && (
+      {devices && live.length <= 1 && !status.account?.local && (
         <Empty>
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -144,8 +149,8 @@ export function DevicesView({ status, onChanged, onNotice, focus }: DevicesViewP
           </Item>
         ))}
       </ItemGroup>
-      {status.account && <SessionsSection onNotice={onNotice} />}
-      {status.account && <SecurityKeysSection onNotice={onNotice} />}
+      {status.account && !status.account.local && <SessionsSection onNotice={onNotice} />}
+      {status.account && !status.account.local && <SecurityKeysSection onNotice={onNotice} />}
       <Dialog open={revoking !== null} onOpenChange={(o) => !o && setRevoking(null)}>
         <DialogContent>
           <DialogHeader>

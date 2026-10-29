@@ -275,7 +275,16 @@ export interface World {
   settings: Settings
   lock: LockState
   /** What `probe` finds on this device. */
-  device: { identity: boolean; deviceKey: boolean }
+  device: {
+    identity: boolean
+    deviceKey: boolean
+    /** The keys are sealed under a master password (doc 39 §1.3); false is an install from before it. */
+    masterPassword?: boolean
+    /** The account is the local one the app keeps itself (§1.1). */
+    local?: boolean
+    /** How far an unfinished first run got. */
+    stage?: string | null
+  }
   /** How many copies the shell has made, for `clipboard_holds`. */
   copies: number
   /** The web vault's tab: signed in or not, open or locked (`web_state`). */

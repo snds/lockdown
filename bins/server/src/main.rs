@@ -519,6 +519,18 @@ struct ServeArgs {
         value_delimiter = ','
     )]
     kt_mirrors: Vec<String>,
+    /// Tell devices on the local network that this server is here
+    /// (multicast DNS, `_lockdown._tcp`). `auto` is on for a network
+    /// address and off on loopback.
+    #[arg(long, env = "LOCKDOWN_ANNOUNCE", value_enum, default_value_t = AnnounceFlag::Auto)]
+    announce: AnnounceFlag,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum AnnounceFlag {
+    Auto,
+    On,
+    Off,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -809,6 +821,32 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
             let _ = tokio::signal::ctrl_c().await;
             eprintln!("lockdown-server: stopping");
         };
+        let announce = match cli.announce {
+            AnnounceFlag::Auto => lockdown_server::announce::Announce::Auto,
+            AnnounceFlag::On => lockdown_server::announce::Announce::On,
+            AnnounceFlag::Off => lockdown_server::announce::Announce::Off,
+        };
+        if announce.applies(local.ip()) {
+            let scheme = if cert.is_some() { "https" } else { "http" };
+            let addr = match local.ip() {
+                std::net::IpAddr::V4(ip) if !ip.is_unspecified() => Some(ip),
+                _ => lockdown_server::announce::outward_address(),
+            };
+            match addr.map(|addr| {
+                lockdown_server::announce::start(
+                    local.port(),
+                    scheme,
+                    lockdown_server::announce::host_label(),
+                    addr,
+                )
+            }) {
+                Some(Ok(())) => eprintln!(
+                    "lockdown-server: announcing _lockdown._tcp on the local network (--announce off to stop)"
+                ),
+                Some(Err(e)) => eprintln!("lockdown-server: not announcing: {e}"),
+                None => eprintln!("lockdown-server: not announcing: no network address found"),
+            }
+        }
         let Some(cert) = cert else {
             if !local.ip().is_loopback() && !cli.insecure_http {
                 return Err(format!(

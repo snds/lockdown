@@ -27,6 +27,8 @@ import { ImportWizard } from "@/features/import/import-wizard"
 import { BrowsersSection } from "@/features/browsers/browsers-section"
 import { QuickSettings } from "@/features/quick/quick-settings"
 import { ServerChecks } from "@/features/server/server-checks"
+import { ServerSettings } from "@/features/server/server-settings"
+import { useFirstRunClient, type QuickUnlock } from "@/features/unlock/first-run-client"
 
 interface SettingsViewProps {
   status: Status
@@ -61,6 +63,29 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
   const [busy, setBusy] = useState(false)
   const [transfer, setTransfer] = useState<"import" | "export" | null>(null)
   const [approvals, setApprovals] = useState<ApprovalRoute | null>(null)
+  const frc = useFirstRunClient()
+  const [quick, setQuick] = useState<QuickUnlock | null>(null)
+  const [name, setName] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!frc) return
+    frc.quickUnlock().then(setQuick, () => setQuick(null))
+    client.probe().then((p) => setName(p.name ?? null), () => setName(null))
+  }, [frc, client])
+
+  const saveName = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!frc) return
+    const value = String(new FormData(e.currentTarget).get("name") ?? "")
+    setError(null)
+    frc.setName(value).then(
+      (saved) => {
+        setName(saved)
+        onNotice("Name saved.")
+      },
+      (err) => setError(describeError(err)),
+    )
+  }
 
   useEffect(() => {
     client.approvalRoute("use").then(setApprovals).catch(() => setApprovals(null))
@@ -86,7 +111,7 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4 md:p-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-(--c-section-gap) p-(--c-page-gutter-narrow) md:p-(--c-page-gutter)">
       <PaneHeader title="Settings" />
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -115,6 +140,19 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
             <FieldLabel htmlFor="hidden-lock">Lock when the window is out of view for 5 minutes</FieldLabel>
             <Switch id="hidden-lock" checked={settings.hidden_lock_secs !== null} onCheckedChange={(on) => void save({ hidden_lock_secs: on ? 300 : null })} disabled={busy} />
           </Field>
+          {frc && name !== null && (
+            <form onSubmit={saveName} className="flex items-end gap-2">
+              <Field>
+                <FieldLabel htmlFor="lock-name">Your name</FieldLabel>
+                <Input id="lock-name" name="name" defaultValue={name} autoComplete="name" />
+                <FieldDescription>Shown when Lockdown is locked. It stays on this computer.</FieldDescription>
+              </Field>
+              <Button type="submit" size="sm" variant="outline">
+                Save name
+              </Button>
+            </form>
+          )}
+          {quick && quick.kind !== "none" && !quick.available && quick.why && <FieldDescription>{quick.why}</FieldDescription>}
           <FieldDescription>
             The vault also locks when this computer wakes from sleep. The core enforces every timer; this screen only sets them.
             {lock?.idle_timeout_secs !== undefined && lock?.idle_timeout_secs !== null ? ` In force now: ${Math.round(lock.idle_timeout_secs / 60)} minutes idle.` : ""}
@@ -147,7 +185,7 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
               <ToggleGroupItem value="compact">Compact</ToggleGroupItem>
             </ToggleGroup>
           </Field>
-          <FieldDescription>Comfortable rows are 40 px; compact rows are 32 px.</FieldDescription>
+          <FieldDescription>Comfortable is roomier, with taller rows and more space between sections. Compact fits more on the screen.</FieldDescription>
         </FieldGroup>
       </Section>
 
@@ -172,13 +210,16 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
           {approvals === null
             ? "Checking what this computer offers…"
             : approvals.route === "platform"
-              ? `Using or approving protected things is confirmed with ${approvals.method}. Revealing one asks for your account password.`
+              ? `Using or approving protected things is confirmed with ${approvals.method}. Revealing one asks for your master password.`
               : approvals.route === "password"
-                ? "This computer has no built-in check, so protected things ask for your account password."
+                ? "This computer has no built-in check, so protected things ask for your master password."
                 : "No account yet and no built-in check on this computer: protected things ask you to confirm in this window. Register an account to protect them with a password."}
         </p>
       </Section>
 
+      {frc ? (
+        <ServerSettings frc={frc} status={status} onNotice={onNotice} onChanged={onChanged} />
+      ) : (
       <Section title="Server">
         <form onSubmit={saveServer} className="flex flex-col gap-3">
           <Field>
@@ -193,8 +234,9 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
           </div>
         </form>
       </Section>
+      )}
 
-      <ServerChecks onNotice={onNotice} />
+      {!(status.account?.local ?? false) && <ServerChecks onNotice={onNotice} />}
 
       <Section title="Import and export">
         <p className="text-sm text-muted-foreground">

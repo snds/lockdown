@@ -11,6 +11,7 @@ pub mod browser;
 pub mod clipboard;
 pub mod codes;
 pub mod depth;
+pub mod first_run;
 pub mod hygiene;
 pub mod items;
 pub mod live;
@@ -118,6 +119,9 @@ mod shell {
                     )?;
                 }
                 lockdown_app::secrets::install(Box::new(Keychain));
+                // The local account's server, inside the app, before the core
+                // opens anything (docs/plan/39-first-run.md §1.1).
+                lockdown_server::local::install();
                 let paths = paths()?;
                 let data = paths.data.clone();
                 let core = App::start(paths, None, LockPolicy::default());

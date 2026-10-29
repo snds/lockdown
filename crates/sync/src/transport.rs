@@ -167,6 +167,101 @@ pub fn install_http_hook(hook: HttpHook) -> bool {
     HTTP_HOOK.set(hook).is_ok()
 }
 
+/// The reserved base of the server the app runs inside itself for a local
+/// account (docs/plan/39-first-run.md §1.1): no socket, no port, no TLS.
+/// Requests to it go to the hook a host installs with
+/// [`install_local_server`], never to the network.
+pub const LOCAL_BASE: &str = "lockdown-local://this-device";
+
+/// The in-process server: handed the data directory whose server is meant
+/// (see [`set_local_home`]) and the request; answers like [`HttpHook`].
+pub type LocalHook = Box<
+    dyn Fn(&std::path::Path, &HttpRequest<'_>) -> std::result::Result<(u16, Vec<u8>), String>
+        + Send
+        + Sync,
+>;
+
+static LOCAL_HOOK: std::sync::OnceLock<LocalHook> = std::sync::OnceLock::new();
+static LOCAL_HOME: std::sync::RwLock<Option<std::path::PathBuf>> = std::sync::RwLock::new(None);
+
+thread_local! {
+    static THREAD_HOME: std::cell::RefCell<Option<std::path::PathBuf>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Installs the in-process server, once per process, before any transport
+/// to [`LOCAL_BASE`] is made. The desktop app and the command line do; the
+/// web vault never does. Returns `false` when one was installed already.
+pub fn install_local_server(hook: LocalHook) -> bool {
+    LOCAL_HOOK.set(hook).is_ok()
+}
+
+/// How a host closes the in-process server of one data directory.
+pub type LocalClose = Box<dyn Fn(&std::path::Path) + Send + Sync>;
+
+static LOCAL_CLOSE: std::sync::OnceLock<LocalClose> = std::sync::OnceLock::new();
+
+/// Installs how the in-process server of a data directory is closed (every
+/// file it holds let go), once per process, beside [`install_local_server`].
+pub fn install_local_server_close(close: LocalClose) -> bool {
+    LOCAL_CLOSE.set(close).is_ok()
+}
+
+/// Closes the in-process server of `home`, so its folder can be removed
+/// (a move to a real server, docs/plan/39-first-run.md §1.11). A request
+/// after this opens it again, which nothing does once the account names
+/// another server.
+pub fn close_local_server(home: &std::path::Path) {
+    if let Some(close) = LOCAL_CLOSE.get() {
+        close(home);
+    }
+}
+
+/// Whether a local server is installed in this process.
+pub fn local_server_installed() -> bool {
+    LOCAL_HOOK.get().is_some()
+}
+
+/// Names the data directory whose local server this thread's requests
+/// reach (the app's worker thread names its own; the command line names
+/// its one). `None` clears it.
+pub fn set_local_home(home: Option<std::path::PathBuf>) {
+    THREAD_HOME.with(|h| *h.borrow_mut() = home);
+}
+
+/// The process-wide fallback for [`set_local_home`], for a host with one
+/// data directory and requests on more than one thread.
+pub fn set_default_local_home(home: Option<std::path::PathBuf>) {
+    match LOCAL_HOME.write() {
+        Ok(mut h) => *h = home,
+        Err(poisoned) => *poisoned.into_inner() = home,
+    }
+}
+
+fn local_home() -> Option<std::path::PathBuf> {
+    THREAD_HOME
+        .with(|h| h.borrow().clone())
+        .or_else(|| match LOCAL_HOME.read() {
+            Ok(h) => h.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        })
+}
+
+/// Whether `base` is the reserved address of the in-process server.
+pub fn is_local(base: &str) -> bool {
+    base.trim_end_matches('/') == LOCAL_BASE
+}
+
+fn local_exchange(request: &HttpRequest<'_>) -> Result<(u16, Vec<u8>)> {
+    let hook = LOCAL_HOOK.get().ok_or_else(|| {
+        TransportError::Network("this build can't keep a vault on this computer alone".into())
+    })?;
+    let home = local_home().ok_or_else(|| {
+        TransportError::Network("the vault on this computer isn't open on this thread".into())
+    })?;
+    hook(&home, request).map_err(TransportError::Network)
+}
+
 static HOLD: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
 
 /// Holds every request this process makes through [`HttpTransport`],
@@ -228,6 +323,15 @@ pub fn user_agent() -> String {
 /// this machine (a session token is a bearer credential and must not cross
 /// a network in the clear; 05-self-host §3).
 pub fn check_base(base: &str) -> Result<()> {
+    if is_local(base) {
+        return if local_server_installed() {
+            Ok(())
+        } else {
+            Err(TransportError::Network(
+                "this build can't keep a vault on this computer alone".into(),
+            ))
+        };
+    }
     let lower = base.to_ascii_lowercase();
     if lower.starts_with("https://") {
         return Ok(());
@@ -270,7 +374,8 @@ impl HttpTransport {
         }
         #[cfg(not(feature = "http"))]
         {
-            if HTTP_HOOK.get().is_none() {
+            check_base(base)?;
+            if HTTP_HOOK.get().is_none() && !is_local(base) {
                 return Err(TransportError::Network(
                     "this build has no HTTP client and the host installed none".into(),
                 ));
@@ -371,6 +476,16 @@ impl HttpTransport {
     ) -> Result<(u16, Vec<u8>)> {
         not_held()?;
         let url = format!("{}{path}", self.base);
+        if is_local(&self.base) {
+            let authorization = token.map(|t| format!("{BEARER}{t}"));
+            return local_exchange(&HttpRequest {
+                method,
+                url: &url,
+                content_type,
+                authorization: authorization.as_deref(),
+                body: body.as_deref(),
+            });
+        }
         if let Some(hook) = HTTP_HOOK.get() {
             let authorization = token.map(|t| format!("{BEARER}{t}"));
             return hook(&HttpRequest {
@@ -849,6 +964,11 @@ impl HttpTransport {
     #[cfg(feature = "http")]
     pub fn events(&self, token: &str) -> Result<EventStream> {
         not_held()?;
+        if is_local(&self.base) {
+            return Err(TransportError::Network(
+                "the vault on this computer has no live channel".into(),
+            ));
+        }
         let tls = lockdown_tls::client_config(&self.trust)
             .map_err(|e| TransportError::Network(e.to_string()))?;
         let client = reqwest::blocking::Client::builder()
@@ -1018,7 +1138,7 @@ impl HttpTransport {
     /// `GET /healthz`, timed, with the answer's `Date` header. Through a
     /// host's hook there are no headers to read, so it says so.
     pub fn clock_sample(&self) -> Result<ClockSample> {
-        if HTTP_HOOK.get().is_some() {
+        if HTTP_HOOK.get().is_some() || is_local(&self.base) {
             return Err(TransportError::Network(
                 "this build reads no headers, so it can't check the server's clock".into(),
             ));
@@ -1115,6 +1235,42 @@ impl HttpTransport {
 mod tests {
     use super::*;
     use crate::wire::{LiveEvent, LiveKind};
+
+    #[test]
+    fn the_local_base_reaches_only_the_installed_hook_for_this_threads_home() {
+        // Before a host installs one, the reserved address is refused.
+        if !local_server_installed() {
+            assert!(check_base(LOCAL_BASE).is_err());
+        }
+        install_local_server(Box::new(|home, req| {
+            Ok((
+                200,
+                format!("{}|{}|{}", home.display(), req.method.as_str(), req.url).into_bytes(),
+            ))
+        }));
+        assert!(check_base(LOCAL_BASE).is_ok());
+        assert!(is_local("lockdown-local://this-device/"));
+        assert!(!is_local("https://lockdown-local.example"));
+        let t = HttpTransport::new(LOCAL_BASE).unwrap();
+        // No home named on this thread: nothing is sent anywhere.
+        let none = std::thread::spawn(move || {
+            t.exchange(Method::Get, "/healthz", CONTENT_TYPE, None, None)
+                .is_err()
+        });
+        assert!(none.join().unwrap());
+        set_local_home(Some(std::path::PathBuf::from("/tmp/a")));
+        let t = HttpTransport::new(LOCAL_BASE).unwrap();
+        let (status, body) = t
+            .exchange(Method::Post, "/v1/x", CONTENT_TYPE, None, None)
+            .unwrap();
+        assert_eq!(status, 200);
+        assert_eq!(
+            String::from_utf8(body).unwrap(),
+            "/tmp/a|POST|lockdown-local://this-device/v1/x"
+        );
+        assert!(t.events("t").is_err());
+        set_local_home(None);
+    }
 
     #[test]
     fn only_loopback_may_be_plain_http() {

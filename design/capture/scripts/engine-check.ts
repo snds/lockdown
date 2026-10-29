@@ -33,7 +33,7 @@ const ENGINES: Record<string, BrowserType> = { chromium, webkit, firefox }
 
 /** The main desktop screens: first run, unlock, the vault list and an item, settings, status, the kit page. */
 const SMOKE = [
-  "desktop-first-run-doors",
+  "desktop-first-run-welcome",
   "desktop-unlock-locked",
   "desktop-vault-filled",
   "desktop-item-login-full",

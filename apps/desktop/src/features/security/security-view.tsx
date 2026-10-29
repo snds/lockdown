@@ -136,7 +136,7 @@ export function SecurityView({ onOpenItem, onDevices, onRecovery, onChanged, onN
 
   const groups = groupBySeverity(report?.findings ?? [])
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-4 md:p-6">
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-(--c-section-gap) p-(--c-page-gutter-narrow) md:p-(--c-page-gutter)">
       <PaneHeader title="Security">
         <Button size="sm" variant="outline" onClick={() => void check()} disabled={checking}>
           {checking ? <Spinner data-icon="inline-start" /> : <Icon name="refresh" data-icon="inline-start" />}

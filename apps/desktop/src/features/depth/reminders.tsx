@@ -32,7 +32,7 @@ import { PASSWORD_DAYS, promptFor, useDepthClient, type DrillCheck, type Reminde
  * The reminders around recovery, asked once each time they come due
  * (docs/plan/22-security-depth.md §7): the first run's kit test
  * (skipped only by pressing "I understand an untested kit can fail", D251),
- * the account password
+ * the master password
  * every 14 days where unlocking never asks for it, and the yearly drill.
  */
 export function RemindersPrompt({ onNotice, onChanged }: { onNotice: (text: string) => void; onChanged: () => void }) {
@@ -81,14 +81,14 @@ export function RemindersPrompt({ onNotice, onChanged }: { onNotice: (text: stri
           {which === "password" ? (
             <form onSubmit={checkPassword} className="flex flex-col gap-4">
               <DialogHeader>
-                <DialogTitle>Your account password, once more</DialogTitle>
+                <DialogTitle>Your master password, once more</DialogTitle>
                 <DialogDescription>
                   This device opens without it, so it's easy to forget. A new device will need it. Type it here to keep it fresh; it's checked
                   without leaving this device.
                 </DialogDescription>
               </DialogHeader>
               <Field>
-                <FieldLabel htmlFor="reminder-password">Account password</FieldLabel>
+                <FieldLabel htmlFor="reminder-password">Master password</FieldLabel>
                 <Input id="reminder-password" name="password" type="password" required autoComplete="current-password" />
               </Field>
               {error && <FieldError role="alert">{error}</FieldError>}
@@ -196,7 +196,7 @@ export function DrillSection() {
       </ItemGroup>
       {reminders?.password.applies && (
         <Field>
-          <FieldLabel htmlFor="password-reminder-days">Ask for the account password every</FieldLabel>
+          <FieldLabel htmlFor="password-reminder-days">Ask for the master password every</FieldLabel>
           <NativeSelect
             id="password-reminder-days"
             value={String(reminders.password.every_days)}

@@ -60,7 +60,7 @@ export const WEB_STATES: StateDef[] = [
     notes: "The server refused the sign-in; the words come from the core.",
     setup: signedOut,
     answers: () => ({ web_sign_in: () => fail("refused", "That login name, password and Secret Key don't open an account on this server.") }),
-    steps: [{ fill: "Login name", value: PERSON.login }, { fill: "Account password", value: "not it" }, { fill: "Secret Key", value: "A3-K7QF2M" }, { click: "Sign in", role: "button", within: '[role="tabpanel"]' }, { wait: /don't open an account/ }],
+    steps: [{ fill: "Login name", value: PERSON.login }, { fill: "Master password", value: "not it" }, { fill: "Secret Key", value: "A3-K7QF2M" }, { click: "Sign in", role: "button", within: '[role="tabpanel"]' }, { wait: /don't open an account/ }],
   }),
   w({
     id: "web-sign-in-rate-limited",
@@ -70,7 +70,7 @@ export const WEB_STATES: StateDef[] = [
     notes: "Too many tries: the server's wait, in words.",
     setup: signedOut,
     answers: () => ({ web_sign_in: () => fail("refused", "Too many sign-in attempts for this login. Try again in 15 minutes.") }),
-    steps: [{ fill: "Login name", value: PERSON.login }, { fill: "Account password", value: "x" }, { fill: "Secret Key", value: "A3" }, { click: "Sign in", role: "button", within: '[role="tabpanel"]' }, { wait: /Too many sign-in attempts/ }],
+    steps: [{ fill: "Login name", value: PERSON.login }, { fill: "Master password", value: "x" }, { fill: "Secret Key", value: "A3" }, { click: "Sign in", role: "button", within: '[role="tabpanel"]' }, { wait: /Too many sign-in attempts/ }],
   }),
   w({
     id: "web-sign-in-security-key",
@@ -80,7 +80,7 @@ export const WEB_STATES: StateDef[] = [
     notes: "The account asks for a security key on a device it has never seen (D250).",
     setup: signedOut,
     answers: () => ({ web_sign_in: () => fail("approval_needed", "This account asks for a security key on a new device.", "security_key") }),
-    steps: [{ fill: "Login name", value: PERSON.login }, { fill: "Account password", value: "x" }, { fill: "Secret Key", value: "A3" }, { click: "Sign in", role: "button", within: '[role="tabpanel"]' }, { pause: 800 }],
+    steps: [{ fill: "Login name", value: PERSON.login }, { fill: "Master password", value: "x" }, { fill: "Secret Key", value: "A3" }, { click: "Sign in", role: "button", within: '[role="tabpanel"]' }, { pause: 800 }],
   }),
   w({
     id: "web-sign-in-email-wait",
@@ -90,7 +90,7 @@ export const WEB_STATES: StateDef[] = [
     notes: "The server emailed a link to approve this tab (D300); the address is masked.",
     setup: signedOut,
     answers: () => ({ web_sign_in: () => fail("approval_needed", "we emailed s••@rivera.example a link to approve this tab", "email"), web_sign_in_continue: () => forever() }),
-    steps: [{ fill: "Login name", value: PERSON.login }, { fill: "Account password", value: "x" }, { fill: "Secret Key", value: "A3" }, { click: "Sign in", role: "button", within: '[role="tabpanel"]' }, { pause: 800 }],
+    steps: [{ fill: "Login name", value: PERSON.login }, { fill: "Master password", value: "x" }, { fill: "Secret Key", value: "A3" }, { click: "Sign in", role: "button", within: '[role="tabpanel"]' }, { pause: 800 }],
   }),
   w({ id: "web-starting", screen: "Sign in", state: "Starting", brief_row: "Sign in", notes: "The worker has not answered yet.", answers: () => ({ web_state: () => forever() }), steps: [{ pause: 300 }] }),
   w({ id: "web-cant-start", screen: "Sign in", state: "Can't start", brief_row: "Sign in", notes: "The core module failed its integrity check.", answers: () => ({ web_state: () => fail("stopped", "The vault's core module didn't match its published hash, so it wasn't run. Reload the page; if this stays, tell the server's operator.") }), steps: [{ wait: "The web vault can't start" }] }),

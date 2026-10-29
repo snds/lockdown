@@ -75,18 +75,35 @@
 
 /* ── Tier 3 · Lockdown-only component knobs ─────────────────────────────── */
 :root {
-  --c-shell-list-width: 22rem;
-  --c-shell-sidebar-width: 14rem;
   --c-list-row-selected: var(--surface-selected);
 
-  /* Density (D92): the settings file's `density` lands on the root as
-     `data-density`; rows read these knobs. Both alias Tailwind's spacing
-     base from the unicron stylesheet (`--spacing`, 0.25rem), never a raw
-     length: comfortable rows are 10 units (40 px), compact 8 (32 px). */
-  --c-row-height: calc(var(--spacing) * 10);
-  --c-row-pad-y: calc(var(--spacing) * 2);
-  --c-row-gap: calc(var(--spacing) * 2.5);
-  --c-group-pad-y: calc(var(--spacing) * 3);
+  /* Density (D92, D475): the settings file's `density` lands on the root
+     as `data-density`; rows, panes and the shell read these knobs. Every
+     one aliases Tailwind's spacing base from the unicron stylesheet
+     (`--spacing`, 0.25rem = 1 unit), never a raw length. Comfortable, the
+     default, is roomy: 12-unit (48 px) rows, wide gutters and sections.
+     Compact keeps about what comfortable was before doc 39. These move to
+     unicron as a density token mode when it ships one (doc 39 §1.12). */
+  --c-row-height: calc(var(--spacing) * 12);
+  --c-row-pad-y: calc(var(--spacing) * 3);
+  --c-row-gap: calc(var(--spacing) * 3);
+  --c-group-pad-y: calc(var(--spacing) * 4);
+  --c-nav-row-height: calc(var(--spacing) * 10);
+  --c-page-gutter: calc(var(--spacing) * 8);
+  --c-page-gutter-narrow: calc(var(--spacing) * 4);
+  --c-section-gap: calc(var(--spacing) * 10);
+  --c-shell-list-width: calc(var(--spacing) * 96);
+  --c-shell-sidebar-width: calc(var(--spacing) * 60);
+
+  /* The welcome layout (the first run, joining, the migration, a forgotten
+     password, the unlock screen): one roomy column, the same at either
+     density. */
+  --c-welcome-column: calc(var(--spacing) * 128);
+  --c-welcome-pad-block: calc(var(--spacing) * 16);
+  --c-welcome-gap: calc(var(--spacing) * 8);
+  --c-welcome-gap-tight: calc(var(--spacing) * 3);
+  --c-welcome-mark: calc(var(--spacing) * 12);
+  --c-welcome-mark-unlock: calc(var(--spacing) * 10);
 
   /* unicron's row skeleton (`Skeleton variant="row"`) is as tall as a row
      at the person's density: mapped once here, it follows compact too. */
@@ -94,18 +111,35 @@
 }
 
 :root[data-density="compact"] {
-  --c-row-height: calc(var(--spacing) * 8);
-  --c-row-pad-y: var(--spacing);
-  --c-row-gap: calc(var(--spacing) * 2);
-  --c-group-pad-y: calc(var(--spacing) * 2);
+  --c-row-height: calc(var(--spacing) * 10);
+  --c-row-pad-y: calc(var(--spacing) * 2);
+  --c-row-gap: calc(var(--spacing) * 2.5);
+  --c-group-pad-y: calc(var(--spacing) * 3);
+  --c-nav-row-height: calc(var(--spacing) * 8);
+  --c-page-gutter: calc(var(--spacing) * 6);
+  --c-section-gap: calc(var(--spacing) * 6);
+  --c-shell-list-width: calc(var(--spacing) * 88);
+  --c-shell-sidebar-width: calc(var(--spacing) * 56);
 }
 
-/* A list row or a sidebar entry marked `data-row` takes the density knobs;
-   the unicron `Item` and `Button` keep their own padding otherwise. */
+@media (width < 40rem) {
+  :root {
+    --c-welcome-pad-block: calc(var(--spacing) * 8);
+  }
+}
+
+/* A list row marked `data-row` takes the density knobs; a sidebar entry
+   (`data-row="nav"`) takes the navigation height, so the sidebar doesn't
+   balloon with the list. The unicron `Item` and `Button` keep their own
+   padding otherwise. */
 [data-row] {
   min-height: var(--c-row-height);
   padding-block: var(--c-row-pad-y);
   gap: var(--c-row-gap);
+}
+[data-row="nav"] {
+  min-height: var(--c-nav-row-height);
+  padding-block: var(--spacing);
 }
 [data-group-header] {
   padding-top: var(--c-group-pad-y);

@@ -79,7 +79,7 @@ describe("the Status screen", () => {
 
   it("asks for the password, saying why, when the server won't renew the session (docs/plan/33)", async () => {
     const words =
-      "This device's session was ended from one of your devices or by whoever runs the server, so it can't renew itself. Log in again with your account password."
+      "This device's session was ended from one of your devices or by whoever runs the server, so it can't renew itself. Log in again with your master password."
     const sync = vi.fn(() => Promise.reject({ code: "sign_in_needed", message: words, detail: "ended" }))
     render(
       <ClientProvider value={fakeClient({ sync })}>
@@ -99,7 +99,7 @@ describe("the Status screen", () => {
       ...status,
       account: {
         ...status.account!,
-        sign_in: { reason: "idle", message: "This device went unused for longer than the server allows (30 days unless whoever runs it changed that), so its session can't be renewed. Log in again with your account password." },
+        sign_in: { reason: "idle", message: "This device went unused for longer than the server allows (30 days unless whoever runs it changed that), so its session can't be renewed. Log in again with your master password." },
       },
     }
     render(

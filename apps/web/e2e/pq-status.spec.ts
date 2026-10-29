@@ -61,7 +61,7 @@ test("the Security screen waits for the old device by name, then says on once it
   await page.goto("/vault/")
   const form = page.getByRole("form", { name: "Sign in" })
   await form.getByLabel("Login name").fill(LOGIN)
-  await form.getByLabel("Account password").fill(PASSWORD)
+  await form.getByLabel("Master password").fill(PASSWORD)
   await form.getByLabel("Secret Key").fill(secretKey)
   await form.getByRole("button", { name: "Sign in" }).click()
   await expect(page.getByRole("heading", { name: "All items" })).toBeVisible({ timeout: 90_000 })

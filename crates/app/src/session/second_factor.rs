@@ -11,15 +11,14 @@
 
 use std::rc::Rc;
 
-use ecosystem_identity::{ExportKey, FileKeystore};
+use crate::local_unlock::DeviceKeys;
+use ecosystem_identity::ExportKey;
 use lockdown_crypto::auth::{OpaqueAccountAuth, SecondFactorNeeded, Session as Signed};
 use lockdown_sync::HttpTransport;
 use lockdown_sync::account_security::session_of;
 use zeroize::Zeroizing;
 
-use super::{
-    KEYSTORE_FILE, Paths, binding_of, check_root_empty, enrol_signed_in, recover_signed_in,
-};
+use super::{Paths, binding_of, check_root_empty, enrol_signed_in, recover_signed_in};
 
 /// What the sign-in was for.
 pub(crate) enum Then {
@@ -42,7 +41,7 @@ pub struct WaitingSignIn {
     paths: Paths,
     login: String,
     transport: HttpTransport,
-    keystore: Rc<FileKeystore>,
+    keystore: Rc<DeviceKeys>,
     export_key: Option<ExportKey>,
     needed: SecondFactorNeeded,
     profile_id: lockdown_vault::Id,
@@ -68,9 +67,7 @@ pub(crate) fn sign_in_new_device(
     then: Then,
 ) -> Result<Result<Vec<String>, WaitingSignIn>, String> {
     check_root_empty(paths)?;
-    let keystore = Rc::new(
-        FileKeystore::open_or_create(&paths.data.join(KEYSTORE_FILE)).map_err(|e| e.to_string())?,
-    );
+    let keystore = Rc::new(DeviceKeys::open_or_create_plain(&paths.data)?);
     let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
     let mut auth = OpaqueAccountAuth::new(transport, login, binding_of(&keystore));
     let (export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
@@ -96,7 +93,7 @@ pub(crate) fn sign_in_new_device(
 fn finish(
     paths: &Paths,
     transport: &HttpTransport,
-    keystore: &Rc<FileKeystore>,
+    keystore: &Rc<DeviceKeys>,
     login: &str,
     export_key: ExportKey,
     session: Signed,

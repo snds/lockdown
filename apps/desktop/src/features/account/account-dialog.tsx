@@ -80,7 +80,7 @@ export function AccountDialog({ kind, reason, onClose, onDone }: AccountDialogPr
               <Input id="acct-login" name="login" required autoComplete="username" />
             </Field>
             <Field>
-              <FieldLabel htmlFor="acct-password">Account password</FieldLabel>
+              <FieldLabel htmlFor="acct-password">Master password</FieldLabel>
               <Input id="acct-password" name="password" type="password" required autoComplete={kind === "register" ? "new-password" : "current-password"} />
             </Field>
             <Field>

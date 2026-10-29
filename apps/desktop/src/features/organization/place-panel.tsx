@@ -49,7 +49,7 @@ type Ask = "jewel-on" | "jewel-off" | null
  * it into or take it out of the crown-jewel class, and see its history. A
  * move and a change of class seal the item again under new keys (its
  * history and files come along) and give it a new id; taking it out of the
- * class asks for the account password, as a reveal does.
+ * class asks for the master password, as a reveal does.
  */
 export function PlacePanel({ item, title, rows, onChanged, onReplaced, onError }: PlacePanelProps) {
   const client = useClient()
@@ -198,8 +198,8 @@ export function PlacePanel({ item, title, rows, onChanged, onReplaced, onError }
             <DialogTitle>{ask === "jewel-on" ? "Keep as a crown jewel?" : "Stop keeping it as a crown jewel?"}</DialogTitle>
             <DialogDescription>
               {ask === "jewel-on"
-                ? "Showing or using it will ask it's you first, it is never filled into a page, and lists show only its name. It is sealed again under the crown-jewel key. You can stop later from this menu, with your account password."
-                : "It will be shown, copied and filled like any other item. Your account password is asked for first, and it is sealed again under the vault's key."}
+                ? "Showing or using it will ask it's you first, it is never filled into a page, and lists show only its name. It is sealed again under the crown-jewel key. You can stop later from this menu, with your master password."
+                : "It will be shown, copied and filled like any other item. Your master password is asked for first, and it is sealed again under the vault's key."}
             </DialogDescription>
           </DialogHeader>
           <LabelledActions>

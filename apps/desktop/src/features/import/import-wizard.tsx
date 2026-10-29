@@ -32,6 +32,8 @@ interface ImportWizardProps {
   restore?: string | null
   onClose: () => void
   onImported: (report: ImportReport) => void
+  /** The format to start with (the first run's list picks one); "auto" otherwise. */
+  initialFormat?: string
 }
 
 type Step = "choose" | "password" | "checking" | "preview" | "saving" | "done"
@@ -49,10 +51,10 @@ const FIRST_NOTES = 8
  * from a backup in the backup folder and opens it with the key kept on
  * this computer, or its password.
  */
-export function ImportWizard({ open, restore = null, onClose, onImported }: ImportWizardProps) {
+export function ImportWizard({ open, restore = null, onClose, onImported, initialFormat }: ImportWizardProps) {
   const client = useClient()
   const [formats, setFormats] = useState<ImportFormatView[]>([])
-  const [format, setFormat] = useState(AUTO)
+  const [format, setFormat] = useState(initialFormat ?? AUTO)
   const { vaults } = useVaults()
   const [vault, setVault] = useState<string>("")
   const [fileName, setFileName] = useState("")

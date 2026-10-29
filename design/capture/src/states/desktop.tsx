@@ -6,6 +6,10 @@ import { QuickWindow } from "@/app/quick-window"
 
 import { as, fail, forever } from "../host/core"
 import type { StateDef, Step } from "../harness/types"
+import { MASTER_PASSWORD } from "../fixture/commands"
+import { PERSON } from "../fixture/seed"
+
+const PERSON_LOGIN = PERSON.login
 import { WIDTHS } from "../harness/types"
 import type { World } from "../fixture/world"
 import { status } from "../fixture/story"
@@ -20,7 +24,7 @@ const starts = (s: string) => new RegExp(`^${esc(s)}(\\s|$)`)
 /** A sidebar entry by its label. */
 const side = (label: string): Step => ({ click: starts(label), within: 'nav[aria-label="Sidebar"]' })
 /** Opens the unlocked app. */
-const open: Step[] = [{ click: "Unlock" }, { wait: /^All items/ }]
+const open: Step[] = [{ fill: "Master password", value: MASTER_PASSWORD }, { click: "Unlock", role: "button" }, { wait: /^All items/ }]
 /** Opens an item from the list by its title. */
 const item = (title: string): Step[] => [{ click: starts(title), within: "main" }, { wait: title, role: "heading" }]
 
@@ -36,8 +40,8 @@ const only = (keep: (w: World["items"][number]) => boolean) => (w: World) => {
 }
 
 export const DESKTOP_STATES: StateDef[] = [
-  // --- unlock and first run ------------------------------------------------------
-  d({ id: "desktop-unlock-locked", screen: "Unlock", state: "Locked", brief_row: "Unlock", notes: "The vault is locked; this device opens it with its own key. The washed shell stands behind.", steps: [{ wait: "Unlock", role: "button" }] }),
+  // --- unlock and first run (docs/plan/39-first-run.md §1.9–§1.10) --------------------
+  d({ id: "desktop-unlock-locked", screen: "Unlock", state: "Locked", brief_row: "Unlock", notes: "The name, the master password and the way back in with the kit. No server words. The washed shell stands behind.", steps: [{ wait: "Unlock", role: "button" }] }),
   d({
     id: "desktop-unlock-idle",
     screen: "Unlock",
@@ -52,11 +56,32 @@ export const DESKTOP_STATES: StateDef[] = [
   d({
     id: "desktop-unlock-error",
     screen: "Unlock",
-    state: "Error",
+    state: "Wrong password",
     brief_row: "Unlock",
-    notes: "The device keystore refused; the core's sentence is shown as is.",
-    answers: () => ({ unlock: () => fail("refused", "The system keychain refused to hand over this device's key. Unlock your Mac's keychain, then try again.") }),
-    steps: [{ click: "Unlock" }, { wait: /keychain refused/ }],
+    notes: "A wrong master password, in the core's words.",
+    steps: [{ fill: "Master password", value: "Tidal-Vesper-Orbit-84" }, { click: "Unlock", role: "button" }, { wait: /That isn't the master password/ }],
+  }),
+  d({
+    id: "desktop-unlock-forgot",
+    screen: "Unlock",
+    state: "Forgot: the kit",
+    brief_row: "Unlock",
+    notes: "Forgot your password? The kit's two lines (K1).",
+    steps: [{ click: "Forgot your password? Use your recovery kit" }, { wait: "Use your recovery kit", role: "heading" }],
+  }),
+  d({
+    id: "desktop-unlock-forgot-new",
+    screen: "Unlock",
+    state: "Forgot: a new password",
+    brief_row: "Unlock",
+    notes: "Then a new master password (K2).",
+    steps: [
+      { click: "Forgot your password? Use your recovery kit" },
+      { fill: "Secret Key", value: "A3-K7QF2M-9XWD4R-HT6PLC-8ZB3NV-Q5EY7J" },
+      { fill: "Recovery code", value: "RC4F-9K2M-XQ7H-TDPL-8B3Z-NW5V-6YEA-J2KD" },
+      { click: "Check the kit" },
+      { wait: "Choose a new master password", role: "heading" },
+    ],
   }),
   d({ id: "desktop-unlock-starting", screen: "Unlock", state: "Loading", brief_row: "Unlock", notes: "The core has not answered `probe` yet: a spinner on the wash.", answers: () => ({ probe: () => forever() }), steps: [{ pause: 300 }] }),
   d({
@@ -80,15 +105,15 @@ export const DESKTOP_STATES: StateDef[] = [
     steps: [{ wait: "This device isn't enrolled yet" }],
   }),
   d({
-    id: "desktop-first-run-doors",
+    id: "desktop-first-run-welcome",
     screen: "First run",
-    state: "Three doors",
+    state: "Welcome",
     brief_row: "First run: create",
-    notes: "Nothing on this computer: the tagline, once, and Create / Join / Recover (D94).",
+    notes: "Nothing on this computer: the tagline, once, Create a new vault and I already use Lockdown, and the server discovery found (D94; doc 39 screen 0).",
     setup: (w) => {
       w.device = { identity: false, deviceKey: false }
     },
-    steps: [{ wait: /Every way you sign in/ }],
+    steps: [{ wait: /Every way you sign in/ }, { wait: /Lockdown server: / }],
   }),
   d({
     id: "desktop-first-run-learn-more",
@@ -102,42 +127,72 @@ export const DESKTOP_STATES: StateDef[] = [
     steps: [{ click: /^Learn more/ }, DIALOG],
   }),
   d({
-    id: "desktop-first-run-create",
+    id: "desktop-first-run-password",
     screen: "First run",
-    state: "Create: account",
+    state: "Name and master password",
     brief_row: "First run: create",
-    notes: "Screen 2: the account and the kit, or this device only.",
+    notes: "Screen 1: the one password to remember, said plainly, with the strength meter.",
     setup: (w) => {
       w.device = { identity: false, deviceKey: false }
     },
-    steps: [{ click: "Create my vault", role: "button", within: '[role="tabpanel"]' }, { wait: "Your Secret Key and recovery kit" }],
+    steps: [{ click: "Create a new vault" }, { wait: "Choose your master password", role: "heading" }, { fill: "Your name", value: "Sam Rivera" }, { fill: "Master password", value: MASTER_PASSWORD }, { pause: 400 }],
   }),
   d({
     id: "desktop-first-run-join",
     screen: "First run",
-    state: "Join",
+    state: "I already use Lockdown",
     brief_row: "First run: join",
-    notes: "Join an account from another device: server, login, password, Secret Key.",
+    notes: "Approve from another device, sign in, or the kit, with the servers discovery found (doc 39 screen J).",
     setup: (w) => {
       w.device = { identity: false, deviceKey: false }
     },
-    steps: [{ click: "Join", role: "tab" }, { pause: 300 }],
+    steps: [{ click: "I already use Lockdown" }, { wait: "Add this computer to your Lockdown", role: "heading" }, { wait: /nas\.rivera\.example/ }],
   }),
   d({
-    id: "desktop-first-run-recover",
+    id: "desktop-first-run-join-confirm",
     screen: "First run",
-    state: "Recover",
-    brief_row: "Recovery drill",
-    notes: "Recover with the whole kit on a device with nothing on it.",
+    state: "Confirm the server",
+    brief_row: "First run: join",
+    notes: "Before anything is sent: the address, where it was found and the server key's fingerprint.",
     setup: (w) => {
       w.device = { identity: false, deviceKey: false }
     },
-    steps: [{ click: "Recover", role: "tab" }, { pause: 300 }],
+    steps: [
+      { click: "I already use Lockdown" },
+      { wait: /nas\.rivera\.example/ },
+      { fill: "Login", value: PERSON_LOGIN },
+      { fill: "Master password", value: MASTER_PASSWORD },
+      { click: "Continue", role: "button" },
+      DIALOG,
+    ],
+  }),
+  d({
+    id: "desktop-migration-name",
+    screen: "Migration",
+    state: "Lock your vault",
+    brief_row: "Unlock",
+    notes: "An install from before the master password gets one before the list draws (Q2: no Not now).",
+    setup: (w) => {
+      w.device = { identity: true, deviceKey: true, masterPassword: false }
+    },
+    answers: (w) => ({ unlock: () => ({ ...status(w), account: null }) }),
+    steps: [{ wait: "Lock your vault with a master password", role: "heading" }],
+  }),
+  d({
+    id: "desktop-migration-server",
+    screen: "Migration",
+    state: "An account on a server",
+    brief_row: "Unlock",
+    notes: "An install with an account on a server: that password, checked there once (M3).",
+    setup: (w) => {
+      w.device = { identity: true, deviceKey: true, masterPassword: false }
+    },
+    steps: [{ wait: "Unlock with your password from now on", role: "heading" }],
   }),
 
   // --- the vault list ----------------------------------------------------------------
   d({ id: "desktop-vault-filled", screen: "Vault", state: "Filled", brief_row: "Vault", notes: "All items, grouped by kind, title A to Z (D93).", compact: true, steps: open }),
-  d({ id: "desktop-vault-loading", screen: "Vault", state: "Loading", brief_row: "Vault", notes: "The list's rows have not arrived: skeleton rows.", answers: () => ({ list: () => forever() }), steps: [{ click: "Unlock" }, { wait: /^All items/ }] }),
+  d({ id: "desktop-vault-loading", screen: "Vault", state: "Loading", brief_row: "Vault", notes: "The list's rows have not arrived: skeleton rows.", answers: () => ({ list: () => forever() }), steps: open }),
   d({
     id: "desktop-vault-error",
     screen: "Vault",
@@ -221,7 +276,7 @@ export const DESKTOP_STATES: StateDef[] = [
     screen: "Item detail",
     state: "Crown jewel: password asked",
     brief_row: "Item detail",
-    notes: "Revealing a crown jewel's field asks for the full account password (D98, D101).",
+    notes: "Revealing a crown jewel's field asks for the full master password (D98, D101).",
     setup: (w) => {
       w.settings = { ...w.settings, reveal: "toggle" }
     },

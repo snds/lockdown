@@ -8,8 +8,8 @@
 
 use std::path::Path;
 
-use ecosystem_identity::FileKeystore;
 use ecosystem_identity::keystore::DeviceKeystore;
+use lockdown_app::local_unlock::DeviceKeys;
 use lockdown_sync::HttpTransport;
 use lockdown_sync::renew::{RenewError, SignInReason, renew, renewal_due};
 
@@ -36,7 +36,7 @@ pub(super) fn how(reason: SignInReason) -> &'static str {
 /// device saved, or a renewal now.
 pub(super) fn fresh_token(
     cfg: &mut SyncConfig,
-    keystore: &FileKeystore,
+    keystore: &DeviceKeys,
     path: &Path,
     refused: bool,
 ) -> Result<String, String> {

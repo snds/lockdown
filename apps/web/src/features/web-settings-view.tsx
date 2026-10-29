@@ -108,7 +108,7 @@ export function WebSettingsView({ server, login, onLock, onSignOut }: WebSetting
               disabled={busy}
             />
           </Field>
-          <FieldDescription>Unlocking asks for the account password. Closing the tab ends everything at once.</FieldDescription>
+          <FieldDescription>Unlocking asks for the master password. Closing the tab ends everything at once.</FieldDescription>
         </FieldGroup>
       </Section>
 

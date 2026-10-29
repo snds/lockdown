@@ -33,6 +33,7 @@
 //! The offline queue is not built yet.
 
 pub mod account_security;
+pub mod dnssd;
 pub mod engine;
 pub mod identity;
 pub mod kt;
@@ -49,8 +50,10 @@ pub use engine::{
 pub use identity::{pull_identity, push_identity};
 pub use kt::{AuditExpectations, AuditReport, DeviceExpectations, KtSession};
 pub use transport::{
-    HttpHook, HttpRequest, HttpTransport, Method, Transport, TransportError, hold_network,
-    install_http_hook, network_held,
+    HttpHook, HttpRequest, HttpTransport, LOCAL_BASE, LocalHook, Method, Transport, TransportError,
+    close_local_server, hold_network, install_http_hook, install_local_server,
+    install_local_server_close, is_local, local_server_installed, network_held,
+    set_default_local_home, set_local_home,
 };
 
 use std::collections::BTreeMap;

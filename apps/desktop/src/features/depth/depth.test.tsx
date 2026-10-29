@@ -3,7 +3,9 @@ import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 
 import { ClientProvider } from "@/core/client"
+import { FirstRunClientProvider } from "@/features/unlock/first-run-client"
 import { UnlockScreen } from "@/features/unlock/unlock-screen"
+import { fakeFirstRun, readyServer } from "@/test/fake-first-run"
 import { fakeClient } from "@/test/fake-client"
 import { fakeDepth } from "@/test/fake-depth"
 
@@ -105,7 +107,7 @@ describe("joining from another device", () => {
     await user.click(screen.getByRole("button", { name: "Join" }))
     expect(joinStart).toHaveBeenCalledWith("https://vault.example", "7KQ2M-9XH4P")
     await user.type(await screen.findByLabelText("Login name"), "me@example.com")
-    await user.type(screen.getByLabelText("Account password"), "a long password")
+    await user.type(screen.getByLabelText("Master password"), "a long password")
     await user.click(screen.getByRole("button", { name: "Finish" }))
     await waitFor(() => expect(onOpened).toHaveBeenCalled())
     expect(joinFinish).toHaveBeenCalledWith("me@example.com", "a long password")
@@ -159,11 +161,11 @@ describe("the reminders", () => {
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Test your recovery kit" })).not.toBeInTheDocument())
   })
 
-  it("asks for the account password when it's due and checks it", async () => {
+  it("asks for the master password when it's due and checks it", async () => {
     const passwordCheck = vi.fn(() => Promise.resolve(reminders({})))
     mount(fakeDepth({ reminders: () => Promise.resolve(reminders({ password: { due: true } })), passwordCheck }), <RemindersPrompt onNotice={() => {}} onChanged={() => {}} />)
     const user = userEvent.setup()
-    await user.type(await screen.findByLabelText("Account password"), "a long password")
+    await user.type(await screen.findByLabelText("Master password"), "a long password")
     await user.click(screen.getByRole("button", { name: "Check" }))
     await waitFor(() => expect(passwordCheck).toHaveBeenCalledWith("a long password"))
   })
@@ -188,6 +190,12 @@ describe("checking keys with a phrase", () => {
   })
 })
 
+/** Discovery finds the server; the master password is set after the sign-in. */
+const joinFirstRun = fakeFirstRun({
+  candidates: () => Promise.resolve([readyServer("https://vault.example")]),
+  setMasterPassword: () => Promise.resolve({ lines: [], page: new Uint8Array() }),
+})
+
 describe("a sign-in that waits for a security key", () => {
   it("opens the server's page and finishes once the key answered", async () => {
     const accountLogin = vi.fn(() => Promise.reject({ code: "approval_needed", message: "use your key", detail: "security_key" }))
@@ -200,20 +208,24 @@ describe("a sign-in that waits for a security key", () => {
         value={fakeClient({
           accountLogin,
           openVault,
+          status: () => Promise.resolve({ devices: 2 } as never),
           probe: () => Promise.resolve({ root: "/r", data: "/d", identity_present: false, device_key_present: false, account_present: false, device_name: "test" }),
         })}
       >
         <DepthClientProvider value={fakeDepth({ secondFactorOpen, secondFactorWait })}>
-          <UnlockScreen onOpened={onOpened} />
+          <FirstRunClientProvider value={joinFirstRun}>
+            <UnlockScreen onOpened={onOpened} />
+          </FirstRunClientProvider>
         </DepthClientProvider>
       </ClientProvider>,
     )
     const user = userEvent.setup()
-    await user.click(await screen.findByRole("tab", { name: "Join" }))
-    await user.type(screen.getByLabelText("Server"), "https://vault.example")
-    await user.type(screen.getByLabelText("Login name"), "me@example.com")
-    await user.type(screen.getByLabelText("Account password"), "a long account password")
-    await user.click(screen.getByRole("button", { name: "Join" }))
+    await user.click(await screen.findByRole("button", { name: "I already use Lockdown" }))
+    await user.click(await screen.findByRole("radio", { name: /vault\.example/ }))
+    await user.type(screen.getByLabelText("Login"), "me@example.com")
+    await user.type(screen.getByLabelText("Master password"), "a long master password")
+    await user.click(screen.getByRole("button", { name: "Continue" }))
+    await user.click(await screen.findByRole("button", { name: "Connect" }))
     expect(await screen.findByText(/asks for a security key/)).toBeInTheDocument()
     expect(secondFactorOpen).toHaveBeenCalledWith("https://vault.example")
     await waitFor(() => expect(onOpened).toHaveBeenCalled(), SLOW)
@@ -237,20 +249,24 @@ describe("a sign-in that waits for a security key", () => {
         value={fakeClient({
           accountLogin,
           openVault,
+          status: () => Promise.resolve({ devices: 2 } as never),
           probe: () => Promise.resolve({ root: "/r", data: "/d", identity_present: false, device_key_present: false, account_present: false, device_name: "test" }),
         })}
       >
         <DepthClientProvider value={fakeDepth({ secondFactorOpen, secondFactorWait })}>
-          <UnlockScreen onOpened={onOpened} />
+          <FirstRunClientProvider value={joinFirstRun}>
+            <UnlockScreen onOpened={onOpened} />
+          </FirstRunClientProvider>
         </DepthClientProvider>
       </ClientProvider>,
     )
     const user = userEvent.setup()
-    await user.click(await screen.findByRole("tab", { name: "Join" }))
-    await user.type(screen.getByLabelText("Server"), "https://vault.example")
-    await user.type(screen.getByLabelText("Login name"), "sean@example.com")
-    await user.type(screen.getByLabelText("Account password"), "a long account password")
-    await user.click(screen.getByRole("button", { name: "Join" }))
+    await user.click(await screen.findByRole("button", { name: "I already use Lockdown" }))
+    await user.click(await screen.findByRole("radio", { name: /vault\.example/ }))
+    await user.type(screen.getByLabelText("Login"), "sean@example.com")
+    await user.type(screen.getByLabelText("Master password"), "a long master password")
+    await user.click(screen.getByRole("button", { name: "Continue" }))
+    await user.click(await screen.findByRole("button", { name: "Connect" }))
     expect(await screen.findByText(/^The server emailed a link to s•••@example\.com/)).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Open the page again" })).not.toBeInTheDocument()
     await waitFor(() => expect(onOpened).toHaveBeenCalled(), SLOW)

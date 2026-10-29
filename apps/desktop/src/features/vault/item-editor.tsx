@@ -320,7 +320,7 @@ function EditorForm({
               <Switch id="editor-crown-jewel" checked={crownJewel} onCheckedChange={setCrownJewel} />
               <FieldContent>
                 <FieldLabel htmlFor="editor-crown-jewel">Keep as a crown jewel</FieldLabel>
-                <FieldDescription>Showing or using it will ask it's you first, and it is never filled into a page. To undo it later, choose Stop keeping as a crown jewel in the item's menu; it asks for your account password.</FieldDescription>
+                <FieldDescription>Showing or using it will ask it's you first, and it is never filled into a page. To undo it later, choose Stop keeping as a crown jewel in the item's menu; it asks for your master password.</FieldDescription>
               </FieldContent>
             </Field>
           ))}

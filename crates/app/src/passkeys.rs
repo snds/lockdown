@@ -381,7 +381,7 @@ impl Core {
                     Route::Password => Err(AppError::approval_needed(Route::Password, reason)),
                     Route::Window => Ok(Err(Refusal::new(
                         RefusalName::NotAllowed,
-                        "this site asks Lockdown to check it's you, and this computer has neither a fingerprint or face check nor an account password to check with",
+                        "this site asks Lockdown to check it's you, and this computer has neither a fingerprint or face check nor a master password to check with",
                     ))),
                 }
             }

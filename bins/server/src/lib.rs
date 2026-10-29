@@ -17,11 +17,13 @@
 //! - [`token`] — the `lk1` session token
 //! - [`ratelimit`] — the brake on the login endpoints
 //! - [`api`] — the handlers; the wire types are `lockdown_sync::wire`
+//! - [`announce`] — the server's multicast DNS answer on the local network
 //! - [`alerts`] — account alerts: a new device's sign-in, an email breach
 //! - [`breach_monitor`] — the email breach job over an injectable feed
 //! - [`breach_range`] — an operator's own breach feed, by k-anonymity
 //! - [`sessions`] — one row per session token, so a session can be ended
 //! - [`live`] — the live channel: content-free "something changed" events
+//! - [`local`] — the server the app runs inside itself for a local account
 //! - [`mail`] — SMTP, the outbox and the plain templates the server sends
 //! - [`pages`] — the server's own script-free HTML pages
 //! - [`admin`] — the operator's admin page and invites
@@ -48,6 +50,7 @@
 pub mod admin;
 pub mod admin_passkeys;
 pub mod alerts;
+pub mod announce;
 pub mod api;
 pub mod backup;
 pub mod breach_monitor;
@@ -60,6 +63,7 @@ pub mod keys;
 pub mod kit;
 pub mod legacy;
 pub mod live;
+pub mod local;
 pub mod mail;
 pub mod mirror;
 pub mod pages;

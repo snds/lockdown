@@ -37,6 +37,7 @@ shell = [
     "dep:objc2-app-kit",
     "dep:objc2-foundation",
     "dep:tauri-plugin-notification",
+    "dep:lockdown-server",
 ]
 # The developer tools (docs/plan/40-devtools.md), each self-contained in
 # crates/devtools and apps/desktop/src/devtools/: on in development builds,
@@ -50,6 +51,9 @@ tauri-build = { version = "2.7.2", optional = true , features = [] }
 
 [dependencies]
 lockdown-app.workspace = true
+# The local account's server, run inside the app with no socket
+# (docs/plan/39-first-run.md §1.1).
+lockdown-server = { workspace = true, optional = true }
 # The set-up card type the bridges commands hand over (docs/plan/23-bridges.md).
 lockdown-security.workspace = true
 # Touch ID / Windows Hello for approvals (D99, D101); nothing on Linux.
