@@ -22,7 +22,10 @@
   "D371": {"verdict": "accepted", "note": "The link to the device is kept. The proposed \"Revoke it on Devices\" hint is left out: a device that is waiting usually just needs updating, and a nudge to revoke could cost someone a device they still use."},
   "D442": {"verdict": "accepted", "note": "The status lines as built; the plural forms read naturally."},
   "D443": {"verdict": "accepted", "note": "Show then Copy keeps a code off the screen until asked, matching the app."},
-  "D444": {"verdict": "accepted", "note": "Bringing the window forward reveals nothing; the app still asks for its own unlock."}
+  "D444": {"verdict": "accepted", "note": "Bringing the window forward reveals nothing; the app still asks for its own unlock."},
+  "D455": {"verdict": "accepted", "note": "Sean asked for it after his first run on the Mac."},
+  "D456": {"verdict": "accepted", "note": "The words say plainly that the file opens the account with the password, and where to keep it."},
+  "D459": {"verdict": "changed", "note": "A4 suits most of the world but not a US printer. The PDF uses US Letter where the system's region uses it (US, Canada, Mexico, the Philippines and the rest of the Letter regions) and A4 elsewhere; the first-run slice carries it, since it rebuilds the kit screen."}
  },
  "areas": [
   {"id": "keys", "name": "Keys and encryption", "ids": "D30-D49,D379"},
@@ -40,6 +43,6 @@
   {"id": "release", "name": "Release and packaging", "ids": "D90-D99,D275-D289,D350-D356,D358-D364,D450"},
   {"id": "plans", "name": "Plans and pricing", "ids": "D375-D378"},
   {"id": "small-calls", "name": "Follow-ups to the review", "ids": "D410-D429,D440-D449"},
-  {"id": "design", "name": "Design and accessibility", "ids": "D380-D398"}
+  {"id": "design", "name": "Design and accessibility", "ids": "D380-D398,D451-D459"}
  ]
 }
