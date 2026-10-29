@@ -56,10 +56,10 @@ The deb and rpm are built inside an Ubuntu 22.04 image pinned by digest, with it
 
 Apple and Microsoft check their own signatures when you open the app:
 
-- **macOS:** a release made with Lockdown's Developer ID is signed and notarised. To check it yourself, run `spctl -a -vvv -t exec /Applications/Lockdown.app`, which should say `accepted` and `source=Notarized Developer ID`. A build made without those certificates is unsigned, and macOS will warn before it opens.
+- **macOS:** a release made with Lockdown's Developer ID is signed and notarised. To check it yourself, run `spctl -a -vvv -t exec /Applications/Lockdown.app`, which should say `accepted` and `source=Notarized Developer ID`. A build made without those certificates carries only an ad-hoc signature (D450): it says the files are intact, not who made them. macOS stops it the first time with "Apple could not verify Lockdown"; choose Done, then open System Settings → Privacy & Security and choose Open Anyway.
 - **Windows:** a release made with Lockdown's code-signing certificate shows the publisher in the install prompt. Check the signature under the file's Properties → Digital Signatures tab, or with `Get-AuthenticodeSignature .\Lockdown_0.1.0_x64-setup.exe`.
 
-Until those certificates exist, releases are unsigned on both systems. Steps 1 and 2 still apply.
+Until those certificates exist, releases are unsigned on Windows and ad-hoc signed on macOS. Steps 1 and 2 still apply.
 
 ## What is in it: the SBOMs
 
