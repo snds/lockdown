@@ -1,0 +1,17 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = """
+Everything the developer tools answer: the reset's plan and run, and the
+demo's open, leave, reset and pack. Granted at run time to the main window
+only (docs/plan/40-devtools.md §4); no capability file names it.
+"""
+permissions = [
+    "allow-status",
+    "allow-reset-plan",
+    "allow-reset-run",
+    "allow-demo-open",
+    "allow-demo-leave",
+    "allow-demo-reset",
+    "allow-demo-load-pack",
+]

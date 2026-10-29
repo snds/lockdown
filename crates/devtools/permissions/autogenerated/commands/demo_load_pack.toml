@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-demo-load-pack"
+description = "Enables the demo_load_pack command without any pre-configured scope."
+commands.allow = ["demo_load_pack"]
+
+[[permission]]
+identifier = "deny-demo-load-pack"
+description = "Denies the demo_load_pack command without any pre-configured scope."
+commands.deny = ["demo_load_pack"]
