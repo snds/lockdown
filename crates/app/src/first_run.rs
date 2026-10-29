@@ -360,6 +360,26 @@ impl App {
         self.call(move |core| core.password_reset_with_kit(&secret_key, &recovery_code, &password))
     }
 
+    /// Moves the local account to a server the person confirmed (§1.11):
+    /// registered there with the same identity and kit, every vault pushed,
+    /// then that server is the account's.
+    pub fn move_to_server(
+        &self,
+        server: &str,
+        login: &str,
+        password: &str,
+    ) -> AppResult<crate::types::SyncOutcome> {
+        let (server, login) = (server.to_string(), login.to_string());
+        let password = Zeroizing::new(password.to_string());
+        self.call(move |core| {
+            core.refuse_confined()?;
+            core.clock.touch(Instant::now());
+            core.session()?
+                .move_to_server(&server, &login, &password)
+                .map_err(AppError::refused)
+        })
+    }
+
     /// Records how far the first run got (`onboarding`), from a shell.
     pub fn onboarding_stage(&self, stage: &str) -> AppResult<()> {
         let stage = Stage::parse(stage)

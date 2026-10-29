@@ -218,7 +218,7 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
       </Section>
 
       {frc ? (
-        <ServerSettings frc={frc} status={status} onNotice={onNotice} />
+        <ServerSettings frc={frc} status={status} onNotice={onNotice} onChanged={onChanged} />
       ) : (
       <Section title="Server">
         <form onSubmit={saveServer} className="flex flex-col gap-3">

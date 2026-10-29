@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react"
 
-import type { OncePage, Status } from "@/core/types"
+import type { OncePage, Status, SyncOutcome } from "@/core/types"
 
 /**
  * The first run, the master password and finding a server, as the views
@@ -28,6 +28,8 @@ export interface FirstRunClient {
   domain(login: string): Promise<Candidate[]>
   confirm(address: string): Promise<Candidate>
   forget(address: string): Promise<void>
+  /** Moves the vault kept here to a confirmed server (§1.11). */
+  moveToServer(input: { address: string; login: string; password: string }): Promise<SyncOutcome>
 }
 
 export interface MasterPasswordInput {

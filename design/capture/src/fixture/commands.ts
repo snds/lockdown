@@ -411,6 +411,10 @@ export function commands(world: World): Record<string, Handler> {
     discovery_domain: () => [],
     discovery_confirm: (a) => typedCandidate(str(a, "address")),
     discovery_forget: () => undefined,
+    move_to_server: () => {
+      world.device = { ...world.device, local: false }
+      return { pushed: 43, pulled: 0, merged: 0, conflict_copies: [], head_seq: 1842, rounds: 1, transparency: status(world).account?.transparency, lines: [] }
+    },
     account_register: () => oncePage(["Your account is made on vault.rivera.example.", "Save, print or write down the kit now: it is shown once."], KIT),
     account_register_opted_out: () => oncePage(["Your account is made without a Secret Key."], KIT.replace(/^Secret Key:.*\n/m, "")),
     account_login: () => ["Signed in to vault.rivera.example as sam@rivera.example.", "Synced: 1,842 changes received."],

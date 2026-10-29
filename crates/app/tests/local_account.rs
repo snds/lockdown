@@ -325,3 +325,73 @@ fn a_forgotten_password_on_a_first_run_vault_and_a_new_kit_later() {
     app.unlock_with_password(PASSWORD).unwrap();
     app.sync().unwrap();
 }
+
+#[test]
+fn a_local_vault_moves_to_a_real_server_and_another_device_finds_it_there() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = start(dir.path());
+    let made = app.first_run_create(NAME, PASSWORD).unwrap();
+    let (sk, rc) = kit_lines(made.kit.unwrap().expose());
+    for (site, title) in [("a.example", "Alpha"), ("b.example", "Beta")] {
+        app.add_login(site, "me", b"pw".to_vec(), Some(title))
+            .unwrap();
+    }
+    let state = std::sync::Arc::new(
+        lockdown_server::AppState::in_memory(lockdown_server::Config::default()).unwrap(),
+    );
+    let server = lockdown_server::run_in_background(state).unwrap();
+    let url = server.url();
+    app.discovery_confirm(&url).unwrap();
+
+    // The master password is checked here first; nothing changes on a wrong one.
+    assert_eq!(
+        app.move_to_server(&url, "me@example.com", "not it at all, really")
+            .unwrap_err()
+            .message,
+        "That isn't your master password."
+    );
+    assert!(app.status().unwrap().account.unwrap().local);
+
+    app.move_to_server(&url, "me@example.com", PASSWORD)
+        .unwrap();
+    let account = app.status().unwrap().account.unwrap();
+    assert!(!account.local);
+    assert_eq!(account.server, url);
+    assert_eq!(titles(&app), ["Alpha", "Beta"]);
+    assert!(!data(&app).join("local-server").exists());
+    // Still opened by the master password here, offline or not.
+    app.lock().unwrap();
+    app.unlock_with_password(PASSWORD).unwrap();
+    app.sync().unwrap();
+
+    // A second computer recovers the same vault from that server with the kit.
+    let other = tempfile::tempdir().unwrap();
+    let paths = Paths::resolve(Some(other.path().join("snds/identity")), None).unwrap();
+    let b = App::start(paths, None, LockPolicy::default());
+    b.recover(&url, "me@example.com", PASSWORD, &sk, &rc)
+        .unwrap();
+    b.open_or_create(true).unwrap();
+    assert_eq!(titles(&b), ["Alpha", "Beta"]);
+
+    // A move that fails (the login is taken there) leaves the vault on its
+    // own computer, as it was, and its master password still checks.
+    let third = tempfile::tempdir().unwrap();
+    let c = start(third.path());
+    c.first_run_create("Alex", PASSWORD).unwrap();
+    c.add_login("c.example", "me", b"pw".to_vec(), Some("Gamma"))
+        .unwrap();
+    c.discovery_confirm(&url).unwrap();
+    let err = c
+        .move_to_server(&url, "me@example.com", PASSWORD)
+        .unwrap_err()
+        .message;
+    assert!(err.starts_with("The move stopped:"), "{err}");
+    assert!(
+        err.ends_with("Your vault is unchanged and still on this computer. You can try again.")
+    );
+    assert!(c.status().unwrap().account.unwrap().local);
+    assert_eq!(titles(&c), ["Gamma"]);
+    c.password_check(PASSWORD).unwrap();
+    c.sync().unwrap();
+    c.kit_create(true, Some(PASSWORD)).unwrap();
+}

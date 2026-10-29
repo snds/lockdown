@@ -29,4 +29,5 @@ export const tauriFirstRunClient: FirstRunClient = {
   domain: (login) => invoke("discovery_domain", { login }),
   confirm: (address) => invoke("discovery_confirm", { address }),
   forget: (address) => invoke("discovery_forget", { address }),
+  moveToServer: (input) => invoke("move_to_server", input),
 }

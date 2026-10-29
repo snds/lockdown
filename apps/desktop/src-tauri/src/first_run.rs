@@ -196,6 +196,17 @@ pub mod commands {
     }
 
     #[tauri::command]
+    pub async fn move_to_server(
+        app: State<'_, App>,
+        address: String,
+        login: String,
+        password: String,
+    ) -> AppResult<lockdown_app::SyncOutcome> {
+        let password = Zeroizing::new(password);
+        blocking(&app, move |a| a.move_to_server(&address, &login, &password)).await
+    }
+
+    #[tauri::command]
     pub async fn discovery_forget(app: State<'_, App>, address: String) -> AppResult<()> {
         blocking(&app, move |a| a.discovery_forget(&address)).await
     }

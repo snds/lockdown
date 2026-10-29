@@ -113,7 +113,7 @@ export const DESKTOP_STATES: StateDef[] = [
     setup: (w) => {
       w.device = { identity: false, deviceKey: false }
     },
-    steps: [{ wait: /Every way you sign in/ }, { wait: /We found a Lockdown server/ }],
+    steps: [{ wait: /Every way you sign in/ }, { wait: /Lockdown server: / }],
   }),
   d({
     id: "desktop-first-run-learn-more",

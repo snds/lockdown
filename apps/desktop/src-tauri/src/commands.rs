@@ -963,5 +963,6 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         crate::first_run::commands::discovery_domain,
         crate::first_run::commands::discovery_confirm,
         crate::first_run::commands::discovery_forget,
+        crate::first_run::commands::move_to_server,
     ]
 }

@@ -84,7 +84,7 @@ export const DESKTOP_MORE: StateDef[] = [
       steps: [{ click: "Create a new vault" }, { fill: "Your name", value: "Sam Rivera" }, { fill: "Master password", value: "sam1988" }, { fill: "Type it again", value: "sam1988" }, { click: "Continue", role: "button" }, { wait: /at least fair/ }],
     }),
   },
-  d({ id: "desktop-first-run-join-device", screen: "Join from another device", state: "Code or QR", brief_row: "Join from another device", notes: "Approve from another device with a code or QR, then compare six digits (D246).", setup: fresh, steps: [{ click: "I already use Lockdown" }, { click: "Approve from another device" }, { pause: 400 }] }),
+  d({ id: "desktop-first-run-join-device", screen: "Join from another device", state: "Code or QR", brief_row: "Join from another device", notes: "Approve from another device with a code or QR, then compare six digits (D246).", setup: fresh, steps: [{ click: "I already use Lockdown" }, { click: /^Approve from another device/ }, { pause: 400 }] }),
   d({
     id: "desktop-first-run-join-denied",
     screen: "First run",
@@ -199,8 +199,8 @@ export const DESKTOP_MORE: StateDef[] = [
   }),
   d({ id: "desktop-recovery-kit-replace", screen: "Kit page", state: "Replace the kit", brief_row: "Kit page (D69)", notes: "Making a new kit replaces the old one.", steps: [...open, side("Recovery"), { click: /^Replace/ }, DIALOG] }),
   d({ id: "desktop-recovery-emergency-sheet", screen: "Emergency sheet", state: "Printable", brief_row: "Emergency sheet", notes: "One page for a future you, with no secret.", steps: [...open, side("Recovery"), { click: "Emergency sheet" }, DIALOG] }),
-  d({ id: "desktop-status-no-account", screen: "Status", state: "No account", brief_row: "Status", notes: "This device only: Log in or Register.", answers: (w) => ({ status: () => ({ ...status(w), account: null }), unlock: () => ({ ...status(w), account: null }) }), steps: [...open, side("Status")] }),
-  d({ id: "desktop-status-register", screen: "Status", state: "Register an account", brief_row: "Status", notes: "Adding an account later, from Status.", answers: (w) => ({ status: () => ({ ...status(w), account: null }), unlock: () => ({ ...status(w), account: null }) }), steps: [...open, side("Status"), { click: /^Register/ }, DIALOG] }),
+  d({ id: "desktop-status-no-account", screen: "Status", state: "No account", brief_row: "Status", notes: "This device only: Log in or Register.", answers: (w) => ({ status: () => ({ ...status(w), account: null }), unlock: () => ({ ...status(w), account: null }), unlock_with_password: () => ({ ...status(w), account: null }) }), steps: [...open, side("Status")] }),
+  d({ id: "desktop-status-register", screen: "Status", state: "Register an account", brief_row: "Status", notes: "Adding an account later, from Status.", answers: (w) => ({ status: () => ({ ...status(w), account: null }), unlock: () => ({ ...status(w), account: null }), unlock_with_password: () => ({ ...status(w), account: null }) }), steps: [...open, side("Status"), { click: /^Register/ }, DIALOG] }),
   d({ id: "desktop-status-split", screen: "Status", state: "Mirror disagrees", brief_row: "Status", notes: "A mirror saw a different log: the split-view warning (D327, D328).", answers: (w) => ({ status: () => {
     const s = status(w)
     s.account!.transparency!.mirrors = [{ url: "https://kt.witness.example", named_by: "settings", at: ago(0.01), state: "split", message: "The mirror has a different log at size 48,209." }]
@@ -210,6 +210,17 @@ export const DESKTOP_MORE: StateDef[] = [
   // --- settings --------------------------------------------------------------------------------------------------
   d({ id: "desktop-settings-server", screen: "Settings → Server", state: "Found servers", brief_row: "Settings", notes: "What discovery found (the server in use, one on the network, one that needs https), Look again, and a typed address (doc 39 §1.11).", steps: [...settings, { wait: /nas\.rivera\.example/ }, { run: () => document.getElementById("server-settings-title")?.scrollIntoView({ block: "start" }) }, { pause: 200 }] }),
   d({ id: "desktop-settings-server-local", screen: "Settings → Server", state: "Kept on this computer", brief_row: "Settings", notes: "A local account: the vault is kept on this computer only; no server words above it until one is found.", setup: (w) => { w.device = { ...w.device, local: true } }, steps: [...settings, { wait: /kept on this computer only/ }, { run: () => document.getElementById("server-settings-title")?.scrollIntoView({ block: "start" }) }, { pause: 200 }] }),
+  d({
+    id: "desktop-settings-server-move",
+    screen: "Settings → Server",
+    state: "Move to your own server",
+    brief_row: "Settings",
+    notes: "A local account moving to a found server: after its key is confirmed, the login there and the master password (doc 39 §1.11).",
+    setup: (w) => {
+      w.device = { ...w.device, local: true }
+    },
+    steps: [...settings, { click: /^nas\.rivera\.example/ }, DIALOG, { click: "Continue", role: "button" }, { wait: /Your login on/ }],
+  }),
   d({ id: "desktop-status-local", screen: "Status", state: "Kept on this computer", brief_row: "Status", notes: "A local account: this computer's proofs, and one line about sync (doc 39 §1.8).", setup: (w) => { w.device = { ...w.device, local: true } }, steps: [...open, side("Status"), { wait: /kept on this computer only/ }] }),
   d({ id: "desktop-settings-compact", screen: "Settings", state: "Compact density chosen", brief_row: "Settings", notes: "Appearance set to compact: the whole app tightens.", steps: [...settings, { click: "Compact" }, { pause: 300 }] }),
   d({ id: "desktop-settings-import", screen: "Import / export", state: "Import: pick a format", brief_row: "Import / export", notes: "Twenty formats; a preview before anything is kept.", steps: [...settings, { click: /^Import…/ }, DIALOG] }),
@@ -333,7 +344,7 @@ export const DESKTOP_MORE: StateDef[] = [
         s.account!.sign_in = { reason: "revoked", message: REVOKED }
         return s
       }
-      return { status: revoked, unlock: revoked }
+      return { status: revoked, unlock: revoked, unlock_with_password: revoked }
     },
     steps: [...open, side("Status"), { wait: REVOKED }],
   }),
