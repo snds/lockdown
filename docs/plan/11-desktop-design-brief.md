@@ -359,11 +359,15 @@ Each was built locally in the app instead. They are requests for `snds/unicron`,
 | ApprovalSheet `matching: none` | host Dialogs for every real approval | 26 |
 | SecretField: copy-only host for strings; edit mode `masked` and `onWipe` | workarounds in the adapters | 18, 26 |
 | Command item with several actions | one action per item plus key shortcuts | 26 |
-| A plain-CSS token sheet | the extension's frames carry their own CSS | 16, 26 |
+| A plain-CSS token sheet | `extension/static/tokens.css`, generated from `@unicron/tokens` 0.6.0 | 16, 26, 32 |
 | Icon size; IconButton pressed state | worked around in the app | 15, 23 |
 | Toaster that works under a strict CSP; DropdownMenuLabel outside a group | worked around in the web vault | 17 |
 | DialogAction that keeps its words below `sm` (ApprovalSheet and CrownJewelGate draw it too) | a local `LabelledActions` and a small stylesheet for the two unicron components | 31 (review R1) |
 | A `link` Button that looks like a link at rest | an underline in the view | 31 (review R20) |
+| `ItemGroup` not a list by default, or `Item` a list item inside one; `ApprovalSheet` context rows as list items | `ListItems` and `role="listitem"` in Lockdown | 32 (review R7) |
+| `CodeDisplayList` with its live region outside the list | Lockdown's own `ul` inside it | 32 (review R7) |
+| `SecretField` dims only its own disabled controls, not the host's slot | `GateProvider.asking` disables Lockdown's control | 32 (review R4) |
+| A `container` prop on `DropdownMenuContent` and `TooltipContent` (landmarks) | none yet; axe `region` remains | 32 (review R18) |
 
 ### 11.2 Not built, or partly built
 
