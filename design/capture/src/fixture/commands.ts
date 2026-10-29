@@ -877,5 +877,10 @@ export function commands(world: World): Record<string, Handler> {
     page_key_request: () => ({ pending_id: uid("pending", 2), challenge: [1, 2, 3], rp_id: "vault.rivera.example", rp_name: "Lockdown", user_id: [1], user_name: PERSON.login, exclude: [], timeout_ms: 120_000 }),
     page_key_finish: () => undefined,
     security_key_add_page: () => `${PERSON.server}/vault/#/security-key/${uid("pending", 3)}`,
+    // Paper (docs/plan/38-mac-fixes.md): the shell's print panel and the kit's save dialog are the OS's, never drawn here;
+    // the fake answers as the shell does once the person printed or picked a place.
+    print_page: () => undefined,
+    kit_save_pdf: () => true,
+    kit_pdf: () => bytes("%PDF-1.7"),
   }
 }

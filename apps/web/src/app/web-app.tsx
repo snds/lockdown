@@ -45,6 +45,8 @@ import { WebUnlockScreen } from "../features/web-unlock-screen"
 import { WebSecurityView } from "../features/web-security-view"
 import { webPqStatusClient } from "../core/web-pq-status-client"
 import { PqStatusClientProvider } from "@/features/security/pq-status-client"
+import { PaperClientProvider } from "@/features/paper/paper-client"
+import { webPaperClient } from "../core/web-paper-client"
 
 /** A sync whose mirrors caught a split view says so until dismissed (docs/plan/27-web-server-finish.md §4). */
 function warnOnSplit(lines: readonly string[]) {
@@ -376,6 +378,7 @@ function WebDepth({ link, children }: { link: Link; children: ReactNode }) {
   const live = useMemo(() => webLiveClient(link), [link])
   const serverChecks = useMemo(() => webServerClient(link), [link])
   const pqStatus = useMemo(() => webPqStatusClient(link), [link])
+  const paper = useMemo(() => webPaperClient(link), [link])
   return (
     <LiveClientProvider value={live}>
     <DepthClientProvider value={depth}>
@@ -383,7 +386,9 @@ function WebDepth({ link, children }: { link: Link; children: ReactNode }) {
         <ScanClientProvider value={scan}>
           <HygieneClientProvider value={hygiene}>
             <ServerClientProvider value={serverChecks}>
-              <PqStatusClientProvider value={pqStatus}>{children}</PqStatusClientProvider>
+              <PqStatusClientProvider value={pqStatus}>
+                <PaperClientProvider value={paper}>{children}</PaperClientProvider>
+              </PqStatusClientProvider>
             </ServerClientProvider>
           </HygieneClientProvider>
         </ScanClientProvider>

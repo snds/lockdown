@@ -168,6 +168,7 @@
   }
   body:has([data-print-page]) [data-slot="dialog-overlay"],
   [data-print-page] [data-slot="dialog-close"],
+  [data-print-page] [data-slot="dialog-footer"],
   [data-print-page] [data-print-hide] {
     display: none;
   }

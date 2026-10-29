@@ -193,10 +193,11 @@ export function FirstRunCreate({ onOpened, onCancel }: FirstRunProps) {
       <>
         <Step
           title="Keep the kit somewhere safe"
-          sentence="Print the page or write it down, away from your devices; the drill checks it works before you need it."
+          sentence="Print the page, save it as a file or write it down, away from your devices; the drill checks it works before you need it."
           learnMore={
             <>
               <p>Lockdown keeps no copy of the kit. A printed page in a drawer, or a line in a safe place you already trust, is what most people lose least.</p>
+              <p>A saved file holds everything needed to get into your account with your password, so keep it off this computer: on a USB drive, as a printed copy, or in a safe.</p>
               <p>The recovery drill asks you to type the kit back in. Most people learn their recovery fails at the worst moment; the drill finds out now, and the Recovery screen reminds you until it has passed.</p>
             </>
           }
@@ -204,7 +205,7 @@ export function FirstRunCreate({ onOpened, onCancel }: FirstRunProps) {
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
               <Checkbox id="fr-printed" checked={printed} onCheckedChange={(c) => setPrinted(c === true)} />
-              <Label htmlFor="fr-printed">I printed or wrote down the kit</Label>
+              <Label htmlFor="fr-printed">I saved, printed or wrote down the kit</Label>
             </div>
             <div className="flex items-center gap-2">
               <Checkbox id="fr-remind" checked={remind} onCheckedChange={(c) => setRemind(c === true)} />
