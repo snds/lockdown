@@ -10,7 +10,7 @@
 
 use serde_json::{Value, json as j};
 
-use super::{Reply, done, json, req, unknown};
+use super::{Reply, done, json, req};
 use crate::host::WebVault;
 use lockdown_app::{AppError, AppResult};
 
@@ -47,6 +47,6 @@ pub(super) fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult
         "kt_mirrors_set" => json(web.app().set_kt_mirrors(req(args, "urls")?)?),
         // --- the Security screen's post-quantum line (docs/plan/30-pq-status-line.md)
         "pq_status" => json(web.app().pq_status()?),
-        other => unknown(other),
+        other => super::paper::dispatch(web, other, args),
     }
 }

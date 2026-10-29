@@ -153,3 +153,47 @@
     color: #000000;
   }
 }
+
+/*
+ * A page that prints alone (`[data-print-page]`: the recovery kit's page,
+ * the emergency sheet): while one is open the app behind it, the vault
+ * included, stays off the paper, and the page itself prints whole, as a
+ * page rather than a window floating over the app. Here rather than in
+ * each app's own sheet, so the desktop, the web vault and the review
+ * harness print the same way (docs/plan/38-mac-fixes.md §3).
+ */
+@media print {
+  body:has([data-print-page]) #root {
+    display: none;
+  }
+  body:has([data-print-page]) [data-slot="dialog-overlay"],
+  [data-print-page] [data-slot="dialog-close"],
+  [data-print-page] [data-slot="dialog-footer"],
+  [data-print-page] [data-print-hide] {
+    display: none;
+  }
+  [data-print-page] {
+    position: static;
+    inset: auto;
+    /* Tailwind's centring is a translate through these two; the build's
+       minifier folds a plain translate: none into transform. */
+    --tw-translate-x: 0;
+    --tw-translate-y: 0;
+    transform: none;
+    animation: none;
+    max-width: none;
+    max-height: none;
+    width: auto;
+    overflow: visible;
+    box-shadow: none;
+    border: 0;
+    background: #ffffff;
+    color: #000000;
+  }  /* WebKit focuses the page's first stop (the text block) when it opens
+     and draws its ring; the ring is not part of the page. */
+  [data-print-page] :focus,
+  [data-print-page] :focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+}

@@ -15,6 +15,7 @@
     "build": "vite build",
     "review:build": "node scripts/review-build.ts",
     "capture": "node scripts/capture.ts",
+    "engine:check": "node scripts/engine-check.ts",
     "typecheck": "tsc -b",
     "lint": "oxlint"
   },

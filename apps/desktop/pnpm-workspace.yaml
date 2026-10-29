@@ -10,3 +10,9 @@ overrides:
   # dependency at the same release tarball (unicron docs/05-consuming.md §1).
   "@unicron/tokens": https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.6.0/unicron-tokens-0.6.0.tgz
 
+
+patchedDependencies:
+  # unicron's Icon draws the glyph by its codepoint when the app gives it
+  # one: Apple's WebKit doesn't shape ligatures in SVG text, so the Mac app
+  # drew no icons (docs/plan/38-mac-fixes.md §2). Drop once unicron ships it.
+  "@unicron/ui@0.12.0": ../../patches/@unicron__ui@0.12.0.patch

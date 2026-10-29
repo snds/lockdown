@@ -51,6 +51,8 @@ import { HygieneClientProvider } from "@/features/hygiene/hygiene-client"
 import { useSecretWipe } from "@/features/hygiene/secret-wipe"
 import { QuickClientProvider } from "@/features/quick/quick-client"
 import { ScanClientProvider } from "@/features/scan/scan-client"
+import { PaperClientProvider } from "@/features/paper/paper-client"
+import { tauriPaperClient } from "@/app/tauri-paper"
 
 /**
  * Locked is the default state. `status` is set when the core opened the
@@ -281,7 +283,9 @@ export default function App() {
                         <HygieneClientProvider value={tauriHygieneClient}>
                           <ServerClientProvider value={tauriServerClient}>
                             <PqStatusClientProvider value={tauriPqStatusClient}>
-                              <Root />
+                              <PaperClientProvider value={tauriPaperClient}>
+                                <Root />
+                              </PaperClientProvider>
                             </PqStatusClientProvider>
                           </ServerClientProvider>
                         </HygieneClientProvider>

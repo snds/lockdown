@@ -35,6 +35,9 @@ lockdown-passkey.workspace = true
 # pages, and the QR decoder for camera frames and image files.
 lockdown-approval.workspace = true
 rqrr.workspace = true
+# The recovery kit's PDF (kit_pdf.rs), the same bytes on the desktop and in
+# the web vault's wasm.
+pdf-writer.workspace = true
 
 [features]
 default = ["native"]

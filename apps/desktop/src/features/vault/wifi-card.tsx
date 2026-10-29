@@ -7,6 +7,7 @@ import { useLocked } from "@/app/locked"
 import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 import { useCaptureProtect } from "@/features/hygiene/hygiene-client"
+import { usePrinting } from "@/features/paper/paper-client"
 
 import { WIFI_CARD_LIFETIME_S, qrPath } from "./depth-model"
 
@@ -34,7 +35,11 @@ interface WifiCardProps {
  * locks, and a printable card. The code holds the network's password, so
  * it comes from the core as bytes through the `Reveal` gate for a crown
  * jewel, counts as a use, and is wiped when the card closes. Printing
- * reveals the password once more (the same gate) for the card's words.
+ * reveals the password once more (the same gate) for the card's words,
+ * which are drawn only until printing is over. Printing goes through the
+ * host (docs/plan/38-mac-fixes.md §3); while a native print panel is up,
+ * the minute stops and losing the window to the panel doesn't hide the
+ * card, so the panel prints the card and not an empty page.
  */
 export function WifiCard({ itemId, ssid, hasPassword }: WifiCardProps) {
   const client = useClient()
@@ -45,6 +50,11 @@ export function WifiCard({ itemId, ssid, hasPassword }: WifiCardProps) {
   const [error, setError] = useState<string | null>(null)
   const [printed, setPrinted] = useState<string | null>(null)
   const held = useRef<Uint8Array | null>(null)
+  const { print: printPage, printing } = usePrinting()
+  const printingNow = useRef(false)
+  useEffect(() => {
+    printingNow.current = printing
+  }, [printing])
 
   const close = () => {
     held.current?.fill(0)
@@ -74,8 +84,11 @@ export function WifiCard({ itemId, ssid, hasPassword }: WifiCardProps) {
       held.current?.fill(0)
       return
     }
-    const tick = window.setInterval(() => setLeft((n) => n - 1), 1000)
-    const blur = () => close()
+    // The minute stands still while a print panel is up.
+    const tick = window.setInterval(() => setLeft((n) => (printingNow.current ? n : n - 1)), 1000)
+    const blur = () => {
+      if (!printingNow.current) close()
+    }
     window.addEventListener("blur", blur)
     return () => {
       window.clearInterval(tick)
@@ -102,10 +115,12 @@ export function WifiCard({ itemId, ssid, hasPassword }: WifiCardProps) {
       }
       setPrinted(words)
       // Drawn, then printed, then dropped: the words exist only for the print.
-      window.setTimeout(() => {
-        window.print()
+      await new Promise((r) => window.setTimeout(r, 0))
+      try {
+        await printPage()
+      } finally {
         setPrinted(null)
-      }, 0)
+      }
     } catch (e) {
       setError(describeError(e))
     }
