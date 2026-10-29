@@ -100,8 +100,27 @@ fn copy_without_pins(from: &Path, to: &Path) {
 fn the_cli_opens_the_personas_own_vault_when_a_shared_vault_others_wrote_to_sorts_first() {
     let dir = tempfile::tempdir().unwrap();
     let srv = server();
-    let alice = person(dir.path(), "alice", &srv);
     let bob = person(dir.path(), "bob", &srv);
+
+    // Vault ids are random and the store lists them by id: new vaults are
+    // made until one sorts in front of the person's first vault, and that
+    // one is shared with Bob, who writes to it. A persona holds at most 20
+    // vaults, so a person whose first vault sorts very low (1 time in 20)
+    // is set aside and another one made.
+    let (who, alice, personal, family, made) = (1..=10)
+        .find_map(|round| {
+            let who = format!("alice{round}");
+            let alice = person(dir.path(), &who, &srv);
+            let personal = alice.vaults().unwrap()[0].id.clone();
+            for made in 1..20 {
+                let id = alice.create_vault(&format!("Family {made}")).unwrap();
+                if id < personal {
+                    return Some((who, alice, personal, id, made));
+                }
+            }
+            None
+        })
+        .expect("one of ten people gets a vault that sorts first");
     let mail = alice
         .add_login(
             "https://mail.example.com",
@@ -110,19 +129,6 @@ fn the_cli_opens_the_personas_own_vault_when_a_shared_vault_others_wrote_to_sort
             Some("Mail"),
         )
         .unwrap();
-    let personal = alice.vaults().unwrap()[0].id.clone();
-
-    // Vault ids are random and the store lists them by id: new vaults are
-    // made until one sorts in front of Alice's first vault, and that one
-    // is shared with Bob, who writes to it.
-    let mut made = 0;
-    let family = loop {
-        made += 1;
-        let id = alice.create_vault(&format!("Family {made}")).unwrap();
-        if id < personal {
-            break id;
-        }
-    };
     alice.lookup_contact("bob@example.com").unwrap();
     alice
         .share_vault(&family, "bob@example.com", "edit", pw())
@@ -140,7 +146,7 @@ fn the_cli_opens_the_personas_own_vault_when_a_shared_vault_others_wrote_to_sort
 
     // The command line on Alice's laptop: the persona's own first vault,
     // whatever the ids say, with the shared vault open beside it.
-    let root = root_of(dir.path(), "alice");
+    let root = root_of(dir.path(), &who);
     let out = ok(&root, None, &["list"]);
     assert!(out.contains(&mail) && out.contains("Mail"), "{out}");
     assert!(!out.contains(&bobs), "{out}");
@@ -160,10 +166,7 @@ fn the_cli_opens_the_personas_own_vault_when_a_shared_vault_others_wrote_to_sort
     // The same device before it met Bob (its sharing record left out):
     // the shared vault waits instead of failing the command, and says so.
     let data = dir.path().join("alice-unmet");
-    copy_without_pins(
-        &dir.path().join("alice").join("snds").join("lockdown"),
-        &data,
-    );
+    copy_without_pins(&dir.path().join(&who).join("snds").join("lockdown"), &data);
     let out = ok(&root, Some(&data), &["list"]);
     assert!(out.contains(&mail), "{out}");
     let out = ok(&root, Some(&data), &["status"]);
