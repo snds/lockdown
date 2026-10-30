@@ -315,7 +315,11 @@ mod tests {
     }
 
     fn world() -> World {
-        let tmp = tempfile::tempdir().unwrap();
+        world_in(&std::env::temp_dir())
+    }
+
+    fn world_in(base: &Path) -> World {
+        let tmp = tempfile::tempdir_in(base).unwrap();
         let home = tmp.path().join("home");
         let old = old_mac_dirs(&home);
         let support = home.join("Library/Application Support/snds");
@@ -485,7 +489,10 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn links_and_sockets_are_not_copied() {
-        let w = world();
+        // A socket path must fit `sun_path` (104 bytes on a Mac, whose
+        // temporary folder is a long `/var/folders/…` path), so this world
+        // lives under `/tmp`.
+        let w = world_in(Path::new("/tmp"));
         put(&w.old.data.join("vault.sqlite"), b"vault");
         std::os::unix::fs::symlink("/etc/hostname", w.old.data.join("link")).unwrap();
         let _sock =

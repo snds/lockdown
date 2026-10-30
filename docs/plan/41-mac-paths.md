@@ -46,6 +46,13 @@ _Slice: `slice/mac-paths`, built 2026-10-30. Urgent fix for Sean's Mac. With the
 | The command line (`bins/cli/src/app.rs` `Paths::resolve`) | Its own copy of the rule and of `beside` | `lockdown_app::Paths::resolve`, so the two can't drift (D86). `run()` does the one-time move when neither `--root` nor `--data` is given. |
 | The browser host (`lockdown_native_messaging::endpoint::data_dir_from_env`) | `LOCKDOWN_DATA`, else `beside(LOCKDOWN_ROOT or ecosystem_identity::default_root())` | `LOCKDOWN_DATA`, else `beside(LOCKDOWN_ROOT)`, else `lockdown_paths::default_dirs().data`. `endpoint::beside` re-exports `lockdown_paths::beside`. The crate no longer depends on the identity crate. |
 
+**The browser socket still fits.** Application Support is a longer path than Group Containers was, and a Mac caps a socket path at 104 bytes. The existing short-path fallback (`endpoint::socket_path`) still applies, unchanged:
+
+- When `<data>/browser.sock` is at most 100 bytes, the socket lives inside the data directory. `/Users/sean.sands/Library/Application Support/snds/lockdown/browser.sock` is 73.
+- Past 100 bytes (a home folder name over about 45 characters), it moves to `$TMPDIR/snds-lockdown-<hash>/browser.sock`, about 80 bytes on a Mac.
+
+The endpoint file (`native-host.json`) is a regular file in the data directory and has no such limit. `the_mac_data_dir_keeps_its_socket_within_the_limit` tests both cases.
+
 The host links `lockdown-paths` directly rather than `lockdown-app`, because it is the small program a browser launches and it links no vault code. `lockdown_app::paths` wraps the same function, so there is still one rule.
 
 ### 2.2 The mode, decided at run time
@@ -153,7 +160,7 @@ None. No view changed. The can't-start state uses Welcome's existing heading and
 
 ## 7. Test counts
 
-Rust: 24 new tests (18 in `lockdown-paths`, 4 in `lockdown-app`, 2 in `lockdown-cli`); the workspace totals are in the PR. Design harness: one state's words changed and taken again. Desktop vitest unchanged: no view changed.
+Rust: 25 new tests (18 in `lockdown-paths`, 4 in `lockdown-app`, 2 in `lockdown-cli`, 1 in `lockdown-native-messaging`); the workspace totals are in the PR. Design harness: one state's words changed and taken again. Desktop vitest unchanged: no view changed.
 
 ## 8. Proposed decisions
 

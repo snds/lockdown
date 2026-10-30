@@ -185,6 +185,22 @@ mod tests {
     }
 
     #[test]
+    fn the_mac_data_dir_keeps_its_socket_within_the_limit() {
+        // docs/plan/41-mac-paths.md §2.1: Application Support is longer
+        // than Group Containers was. A usual home keeps the socket inside;
+        // a long one falls back to the short path, under the 104-byte
+        // `sun_path` a Mac allows.
+        let usual = Path::new("/Users/sean.sands/Library/Application Support/snds/lockdown");
+        assert_eq!(socket_path(usual), usual.join(SOCKET_NAME));
+        let long = Path::new("/Users")
+            .join("a-very-long-account-name-".repeat(3))
+            .join("Library/Application Support/snds/lockdown");
+        let s = socket_path(&long);
+        assert_ne!(s, long.join(SOCKET_NAME));
+        assert!(s.as_os_str().len() < 104, "{}", s.display());
+    }
+
+    #[test]
     fn the_data_dir_sits_beside_the_identity_root() {
         assert_eq!(
             beside(Path::new("/home/me/.local/share/snds/identity")),
