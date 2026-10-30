@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 
 import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Icon } from "@unicron/ui"
 
@@ -52,7 +52,11 @@ export function WifiCard({ itemId, ssid, hasPassword }: WifiCardProps) {
   const held = useRef<Uint8Array | null>(null)
   const { print: printPage, printing } = usePrinting()
   const printingNow = useRef(false)
-  useEffect(() => {
+  // A layout effect, not a plain one: it runs in the same task as the
+  // render that drops the words, before any event can land. A plain effect
+  // runs after paint, so a blur in between would still read "printing" and
+  // leave the card up.
+  useLayoutEffect(() => {
     printingNow.current = printing
   }, [printing])
 

@@ -31,6 +31,16 @@ interface Shown {
 const fields = new Map<string, Field>()
 let menu: Shown | null = null
 let prompt: Shown | null = null
+/** Each open of the menu takes the next turn. An open whose registration
+ *  comes back after a newer open began draws nothing: two opens in flight
+ *  at once (a field focused twice, a focus and the background's ask) would
+ *  otherwise both draw, and the first menu, left under the second and
+ *  forgotten, could never arm or close (docs/plan/42-frame-cover.md). */
+let menuTurn = 0
+/** A save prompt is being set up. The background asks for one when the
+ *  offer is made and the page asks when it loads; both can land before the
+ *  first registration returns, and one prompt answers both. */
+let promptPending = false
 
 function nonce(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("")
@@ -72,12 +82,14 @@ function place(host: HTMLElement, el: HTMLInputElement, wanted?: number) {
 async function openMenu(el: HTMLInputElement, kind: FillWhat, existing?: string, valueAtFocus?: string) {
   if (menu && menu.el === el) return
   closeMenu()
+  const turn = ++menuTurn
   // The value when the person arrived, read before any await: typing that
   // lands while the fixes or the registration are pending must still count.
   const before = valueAtFocus ?? el.value
   const n = existing ?? (await register(el, kind, kind === "login" && isNewPassword(el)))
-  // The person moved on, or started typing, while the menu was being set up.
-  if (document.activeElement !== el || el.value !== before) {
+  // The person moved on, or started typing, while the menu was being set
+  // up, or a newer open took over.
+  if (turn !== menuTurn || document.activeElement !== el || el.value !== before) {
     if (!existing) forget(n)
     return
   }
@@ -94,8 +106,14 @@ function closeMenu() {
 }
 
 async function showPrompt() {
-  if (window.top !== window || prompt) return
-  const n = await register(null, "prompt")
+  if (window.top !== window || prompt || promptPending) return
+  promptPending = true
+  let n: string
+  try {
+    n = await register(null, "prompt")
+  } finally {
+    promptPending = false
+  }
   const { host, frame } = makeHost(chrome.runtime.getURL(`frame.html#prompt:${n}`), "Save to Lockdown", MENU_W, MENU_H)
   host.style.top = "12px"
   host.style.right = "12px"
