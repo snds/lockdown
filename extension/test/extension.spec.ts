@@ -579,3 +579,195 @@ test("a sign-in field is not offered a new password", async () => {
   await expect(menu.getByRole("button", { name: /Use a strong password/ })).toHaveCount(0);
   await page.close();
 });
+
+// --- one frame at a time, and covers that come and go (docs/plan/42-frame-cover.md)
+//
+// A page sees Lockdown's hosts arrive (top-level children at the top z-index)
+// but never what is inside them. The page script below counts them, and the
+// hostile ones lay a decoy over each.
+
+/** Counts the Lockdown hosts this page is given and how many are still on it. */
+async function countHosts(page: Page) {
+  await page.evaluate(() => {
+    const w = window as unknown as { __hosts: Element[] };
+    w.__hosts = [];
+    new MutationObserver((records) => {
+      for (const r of records) for (const n of r.addedNodes) if (n instanceof HTMLElement && n.style.zIndex === "2147483647") w.__hosts.push(n);
+    }).observe(document.documentElement, { childList: true });
+  });
+  return () => page.evaluate(() => {
+    const hosts = (window as unknown as { __hosts: Element[] }).__hosts;
+    return { added: hosts.length, onPage: hosts.filter((h) => h.isConnected).length };
+  });
+}
+
+/** A hostile page (an init script, so it runs before the content script
+ *  and watches the whole document): every Lockdown host it sees is covered by a see-through
+ *  decoy of its own, raised over the host, that lets clicks through to it.
+ *  With `uncoverAfter`, the decoy goes after that long and the page notes
+ *  when (`__uncoveredAt`, wall clock). Nothing about the host's place or
+ *  size changes either way. */
+async function coverHosts(page: Page, uncoverAfter?: number) {
+  await page.addInitScript((after) => {
+    const w = window as unknown as { __uncoveredAt?: number };
+    new MutationObserver((records) => {
+      for (const r of records) for (const n of r.addedNodes) {
+        if (!(n instanceof HTMLElement) || n.style.zIndex !== "2147483647") continue;
+        const rect = n.getBoundingClientRect();
+        const d = document.createElement("div");
+        d.setAttribute("popover", "manual");
+        d.style.cssText = `position:fixed; margin:0; inset:auto; left:${rect.left}px; top:${rect.top}px; width:${rect.width}px; height:${rect.height}px; background:#fff; opacity:0; pointer-events:none; border:0; padding:0;`;
+        document.documentElement.append(d);
+        d.showPopover();
+        if (after !== null) {
+          setTimeout(() => {
+            d.remove();
+            w.__uncoveredAt = Date.now();
+          }, after);
+        }
+      }
+    }).observe(document, { childList: true, subtree: true });
+  }, uncoverAfter ?? null);
+}
+
+/** Signs up on `host` and lands on its welcome page, where the save prompt comes. */
+async function signUp(page: Page, host: string, user: string) {
+  await page.goto(at(host, "/ext/signup.html"));
+  await page.fill("#user", user);
+  await page.fill("#pass", "brand-new-pass-9");
+  await page.fill("#again", "brand-new-pass-9");
+  await page.click("#go");
+  await page.waitForURL(/welcome\.html/);
+}
+
+async function savedAs(user: string): Promise<boolean> {
+  const list = await desktop.ask("list", "list");
+  return (list.items as { username: string }[]).some((i) => i.username === user);
+}
+
+test("two requests for the save prompt at once draw one prompt, and it leaves no copy behind", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("localhost", "/ext/welcome.html"));
+  const hosts = await countHosts(page);
+  const tab = await tabId(`*://localhost/ext/welcome.html`);
+  // The background asks once when the offer is made and the page asks once
+  // when it loads; here both land together.
+  await worker.evaluate(async (id) => {
+    await Promise.all([chrome.tabs.sendMessage(id, { t: "show_prompt" }, { frameId: 0 }), chrome.tabs.sendMessage(id, { t: "show_prompt" }, { frameId: 0 })]);
+  }, tab);
+  await expect.poll(async () => (await hosts()).added).toBeGreaterThan(0);
+  // This tab has no offer, so the prompt closes itself.
+  await expect.poll(async () => (await hosts()).onPage, { timeout: 5_000 }).toBe(0);
+  expect((await hosts()).added).toBe(1);
+  await page.close();
+});
+
+test("a field focused twice in a row gets one menu, and Escape leaves none", async () => {
+  const page = await ctx.newPage();
+  await page.goto(at("localhost", "/ext/login.html"));
+  const hosts = await countHosts(page);
+  await page.evaluate(() => {
+    const u = document.getElementById("user") as HTMLInputElement;
+    u.focus();
+    u.blur();
+    u.focus();
+  });
+  const menu = await lockdownFrame(page);
+  await expect(menu.getByRole("button", { name: /Local site/ })).toBeEnabled();
+  expect(await hosts()).toEqual({ added: 1, onPage: 1 });
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await hosts()).onPage).toBe(0);
+  expect((await hosts()).added).toBe(1);
+  await page.close();
+});
+
+test("after a sign-up the welcome page holds one save prompt, and its Save arms", async () => {
+  const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    const w = window as unknown as { __hosts: number };
+    w.__hosts = 0;
+    new MutationObserver((records) => {
+      for (const r of records) for (const n of r.addedNodes) if (n instanceof HTMLElement && n.style.zIndex === "2147483647") w.__hosts++;
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await signUp(page, "one-prompt.test", "single");
+  const prompt = await lockdownFrame(page, "prompt");
+  await expect(prompt.getByRole("button", { name: "Save" })).toBeEnabled();
+  // Long enough for a second ask (the background's, the page's) to land.
+  await page.waitForTimeout(1_000);
+  expect(await page.evaluate(() => (window as unknown as { __hosts: number }).__hosts)).toBe(1);
+  expect(page.frames().filter((f) => f.url().includes("frame.html#prompt:"))).toHaveLength(1);
+  await page.close();
+});
+
+for (const [name, effect] of [
+  ["fades in", `h.style.opacity = "0"; h.style.transition = "opacity 300ms"; requestAnimationFrame(() => requestAnimationFrame(() => { h.style.opacity = "1"; }));`],
+  ["slides in", `h.style.transform = "translateY(12px) scale(0.96)"; h.style.transition = "transform 300ms"; requestAnimationFrame(() => requestAnimationFrame(() => { h.style.transform = "none"; }));`],
+  ["is held see-through", `h.style.opacity = "0.99"; setTimeout(() => { h.style.opacity = ""; }, 700);`],
+  ["is covered, then uncovered in place", `const r = h.getBoundingClientRect(); const d = document.createElement("div"); d.setAttribute("popover", "manual"); d.style.cssText = "position:fixed; margin:0; inset:auto; left:" + r.left + "px; top:" + r.top + "px; width:" + r.width + "px; height:" + r.height + "px; background:#fff; opacity:.5; border:0; padding:0;"; document.documentElement.append(d); d.showPopover(); setTimeout(() => { d.style.visibility = "hidden"; }, 700);`],
+] as const) {
+  test(`a menu whose host ${name} as it appears arms once it settles`, async () => {
+    const page = await ctx.newPage();
+    await page.goto(at("localhost", "/ext/login.html"));
+    await page.evaluate((code) => {
+      new MutationObserver((records) => {
+        for (const r of records) for (const n of r.addedNodes) {
+          if (n instanceof HTMLElement && n.style.zIndex === "2147483647") new Function("h", code)(n);
+        }
+      }).observe(document.documentElement, { childList: true });
+    }, effect);
+    await page.focus("#user");
+    const menu = await lockdownFrame(page);
+    await expect(menu.getByRole("button", { name: /Local site/ })).toBeEnabled({ timeout: 5_000 });
+    await page.close();
+  });
+}
+
+test("red team: a save prompt the page keeps covered never arms, and a click through the cover saves nothing", async () => {
+  const page = await ctx.newPage();
+  await coverHosts(page);
+  await signUp(page, "covered-prompt.test", "covered");
+  const prompt = await lockdownFrame(page, "prompt");
+  const save = prompt.getByRole("button", { name: "Save" });
+  await expect(save).toBeVisible();
+  // Once IntersectionObserver v2 has spoken (its first report comes within
+  // about 100 ms), the button looks disabled, with no arming cue...
+  await expect.poll(() => save.getAttribute("data-arming")).toBeNull();
+  // ...and stays that way while the cover does.
+  for (let i = 0; i < 6; i++) {
+    await expect(save).toBeDisabled();
+    expect(await save.getAttribute("data-arming")).toBeNull();
+    await page.waitForTimeout(500);
+  }
+  // The decoy lets the pointer through: a real click lands on the frame.
+  const box = await save.boundingBox();
+  if (!box) throw new Error("Save has no box");
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(500);
+  expect(await savedAs("covered")).toBe(false);
+  await expect(save).toBeDisabled();
+  await page.close();
+});
+
+test("a save prompt uncovered in place re-arms after the full 400 ms, then saves", async () => {
+  const page = await ctx.newPage();
+  await coverHosts(page, 1_500);
+  await signUp(page, "uncovered-prompt.test", "uncovered");
+  const prompt = await lockdownFrame(page, "prompt");
+  const save = prompt.getByRole("button", { name: "Save" });
+  await expect(save).toBeVisible();
+  // Watched from inside the frame, every animation frame, until it arms.
+  const armedAt = await save.evaluate(
+    (b: HTMLButtonElement) =>
+      new Promise<number>((resolve) => {
+        const look = () => (b.disabled ? requestAnimationFrame(look) : resolve(Date.now()));
+        look();
+      }),
+  );
+  const uncoveredAt = await page.evaluate(() => (window as unknown as { __uncoveredAt?: number }).__uncoveredAt);
+  expect(uncoveredAt, "the page never uncovered the prompt").toBeDefined();
+  expect(armedAt - (uncoveredAt as number)).toBeGreaterThanOrEqual(400);
+  await save.click();
+  await expect.poll(() => savedAs("uncovered")).toBe(true);
+  await page.close();
+});
