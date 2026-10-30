@@ -554,3 +554,21 @@ jobs:
           name: engine-check-${{ matrix.os }}
           path: ${{ runner.temp }}/engine-check
           if-no-files-found: error
+
+  # Where Lockdown keeps its files on a real Mac (docs/plan/41-mac-paths.md):
+  # the app's resolution, the browser host's and the command line's, with a
+  # fresh $HOME, under Library/Application Support/snds/ and never under
+  # Library/Group Containers; an ad-hoc signature naming the app group still
+  # stays out of it; an older build's vault moves once and opens.
+  mac-paths:
+    name: where files go (macos)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the command line and the app's path check
+        run: cargo build -p lockdown-cli -p lockdown-app --bin lockdown --example paths
+      - name: A fresh home, an ad-hoc group, an older build's vault
+        run: packaging/mac-paths/check.sh target/debug/lockdown target/debug/examples/paths

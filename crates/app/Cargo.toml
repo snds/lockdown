@@ -52,6 +52,9 @@ native = ["lockdown-store/sqlite", "lockdown-sync/http", "lockdown-security/http
 
 [dev-dependencies]
 tempfile.workspace = true
+# The browser host's data directory beside the app's, in the `paths`
+# example the macOS CI job runs (docs/plan/41-mac-paths.md).
+lockdown-native-messaging.workspace = true
 # The relying party's side of the passkey tests: verify what the core signed.
 ring.workspace = true
 ciborium.workspace = true

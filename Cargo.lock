@@ -3255,6 +3255,7 @@ dependencies = [
  "lockdown-crypto",
  "lockdown-cxf",
  "lockdown-matcher",
+ "lockdown-native-messaging",
  "lockdown-passkey",
  "lockdown-paths",
  "lockdown-policy",
