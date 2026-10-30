@@ -41,7 +41,7 @@
   {"id": "vault", "name": "Vault and items", "ids": "D100-D123,D146-D155,D230-D244,D272,D305-D319"},
   {"id": "security", "name": "Security center", "ids": "D125-D134,D261,D270"},
   {"id": "backups", "name": "Backups and export", "ids": "D135-D145,D273,D274"},
-  {"id": "browser", "name": "Browser and passkeys", "ids": "D156-D169,D200-D214,D264-D269,D331"},
+  {"id": "browser", "name": "Browser and passkeys", "ids": "D156-D169,D200-D214,D264-D269,D331,D500-D509"},
   {"id": "web", "name": "Web vault", "ids": "D170-D184,D320,D321,D357"},
   {"id": "sharing", "name": "Sharing and emergency", "ids": "D185-D199,D430-D439"},
   {"id": "server", "name": "Self-host server", "ids": "D215-D229,D290-D304,D322-D330,D332"},
