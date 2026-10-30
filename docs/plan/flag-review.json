@@ -32,7 +32,8 @@
   "D488": {"verdict": "accepted", "note": "Records Sean's Q5 call: the demo opens from first run with no account, a bar on every screen, and Leave the demo."},
   "D466": {"verdict": "accepted", "note": "The master password through --master-password-stdin, LOCKDOWN_MASTER_PASSWORD or a prompt. One follow-up: lockdown init without --name still makes a passwordless install for old scripts; that should become a refusal or a prompt, so a command-line-only install is sealed too."},
   "D473": {"verdict": "accepted", "note": "The move copies everything and switches only once it's all there; a failed move leaves the vault as it was."},
-  "D475": {"verdict": "accepted", "note": "What Sean asked for: comfortable is roomier by default, compact by setting, all tokens."}
+  "D475": {"verdict": "accepted", "note": "What Sean asked for: comfortable is roomier by default, compact by setting, all tokens."},
+  "D502": {"verdict": "accepted", "note": "A see-through element over the menu keeps it off, which is the safe side; a follow-up adds a line saying why instead of staying silent."}
  },
  "areas": [
   {"id": "keys", "name": "Keys and encryption", "ids": "D30-D49,D379"},
