@@ -19,6 +19,9 @@ path = "src/main.rs"
 lockdown-crypto.workspace = true
 lockdown-vault.workspace = true
 lockdown-sync.workspace = true
+# The local account's folder, named in words when it can't be made
+# (docs/plan/41-mac-paths.md).
+lockdown-paths.workspace = true
 # Security keys on the account: the relying party's checks (second_factor.rs).
 lockdown-passkey.workspace = true
 # The restore drill's client check (drill_account.rs): the real client signs

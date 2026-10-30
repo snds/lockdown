@@ -8,9 +8,9 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-# The identity root's default place (D15), so the host finds Lockdown's
-# data directory the same way the app does (D47).
-ecosystem-identity.workspace = true
+# Where Lockdown's data directory is (D47, docs/plan/41-mac-paths.md): the
+# same rule the app and the command line ask, so the host finds the app.
+lockdown-paths.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 data-encoding.workspace = true

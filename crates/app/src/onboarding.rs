@@ -106,8 +106,7 @@ impl Onboarding {
     pub fn save(&self, data: &Path) -> Result<(), String> {
         let mut kept = self.clone();
         kept.v = FILE_V;
-        std::fs::create_dir_all(data)
-            .map_err(|e| format!("couldn't make {}: {e}", data.display()))?;
+        crate::paths::make_dir(data)?;
         let bytes = lockdown_crypto::cbor::to_canonical(&kept).map_err(|e| e.to_string())?;
         write_private(&data.join(FILE), &bytes)
             .map_err(|e| format!("couldn't write {}: {e}", data.join(FILE).display()))

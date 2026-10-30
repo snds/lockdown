@@ -43,3 +43,6 @@ ecosystem-identity = { workspace = true, features = ["insecure-test-kdf"] }
 lockdown-crypto = { workspace = true, features = ["insecure-test-kdf"] }
 # A throwaway CA and certificate for the end-to-end test over hybrid TLS.
 lockdown-tls = { workspace = true, features = ["test-certs"] }
+# The browser host's data directory, checked against the command line's
+# and the app's (docs/plan/41-mac-paths.md).
+lockdown-native-messaging.workspace = true

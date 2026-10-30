@@ -21,7 +21,9 @@ use core_foundation::string::CFString;
 use core_foundation_sys::array::{CFArrayGetCount, CFArrayGetTypeID, CFArrayGetValueAtIndex};
 use core_foundation_sys::base::{CFGetTypeID, CFRelease, CFTypeRef};
 use core_foundation_sys::data::{CFDataGetBytePtr, CFDataGetLength, CFDataRef};
-use core_foundation_sys::dictionary::{CFDictionaryGetValue, CFDictionaryRef};
+use core_foundation_sys::dictionary::{
+    CFDictionaryGetTypeID, CFDictionaryGetValue, CFDictionaryRef,
+};
 use core_foundation_sys::number::{
     CFNumberGetTypeID, CFNumberGetValue, CFNumberRef, kCFNumberSInt64Type,
 };
@@ -36,6 +38,8 @@ type SecCSFlags = u32;
 const K_SEC_CS_DEFAULT_FLAGS: SecCSFlags = 0;
 /// `kSecCSSigningInformation`: include the certificates and team.
 const K_SEC_CS_SIGNING_INFORMATION: SecCSFlags = 1 << 1;
+/// `kSecCSRequirementInformation`: include the entitlements.
+const K_SEC_CS_REQUIREMENT_INFORMATION: SecCSFlags = 1 << 2;
 /// `kSecCodeSignatureAdhoc` in `kSecCodeInfoFlags`.
 const K_SEC_CODE_SIGNATURE_ADHOC: i64 = 0x0002;
 
@@ -52,6 +56,7 @@ unsafe extern "C" {
     static kSecCodeInfoTeamIdentifier: CFStringRef;
     static kSecCodeInfoCertificates: CFStringRef;
     static kSecCodeInfoFlags: CFStringRef;
+    static kSecCodeInfoEntitlementsDict: CFStringRef;
 
     fn SecCodeCopySelf(flags: SecCSFlags, code: *mut CFTypeRef) -> OSStatus;
     fn SecCodeCopyGuestWithAttributes(
@@ -272,4 +277,53 @@ pub fn verify(token: &AuditToken, expected: &Expected) -> Result<(), String> {
     // SAFETY: `guest.0` is the live SecCodeRef.
     let peer = unsafe { signature_of(guest.0, true)? };
     expected.check(&peer)
+}
+
+/// The entitlement that names the app groups a program may use.
+pub const APP_GROUPS_ENTITLEMENT: &str = "com.apple.security.application-groups";
+
+/// The app groups this process's own signature names
+/// ([`APP_GROUPS_ENTITLEMENT`]), in the order they were signed; empty when
+/// the program is unsigned or names none. This reads what the signature
+/// says, not whether macOS honours it: the caller decides that from the
+/// kind of signature ([`own`]), since an ad-hoc one can't carry a usable
+/// group (docs/plan/41-mac-paths.md).
+pub fn own_app_groups() -> Result<Vec<String>, String> {
+    let mut code: CFTypeRef = std::ptr::null();
+    // SAFETY: `code` is a valid out-pointer.
+    let s = unsafe { SecCodeCopySelf(K_SEC_CS_DEFAULT_FLAGS, &raw mut code) };
+    if s != 0 {
+        return Err(status("couldn't read this program's code", s));
+    }
+    let code = Owned(code);
+    let mut info: CFDictionaryRef = std::ptr::null();
+    // SAFETY: `code.0` is the live SecCodeRef just copied; `info` is a
+    // valid out-pointer.
+    let s = unsafe {
+        SecCodeCopySigningInformation(code.0, K_SEC_CS_REQUIREMENT_INFORMATION, &raw mut info)
+    };
+    if s != 0 {
+        return Err(status("couldn't read this program's entitlements", s));
+    }
+    let _info = Owned(info.cast());
+    let key = CFString::new(APP_GROUPS_ENTITLEMENT);
+    // SAFETY: `info` is a live dictionary owned by `_info`; every value
+    // read from it is borrowed and its type checked before use.
+    unsafe {
+        let entitlements = value(info, kSecCodeInfoEntitlementsDict);
+        if entitlements.is_null() || CFGetTypeID(entitlements) != CFDictionaryGetTypeID() {
+            return Ok(Vec::new());
+        }
+        let groups = CFDictionaryGetValue(
+            entitlements as CFDictionaryRef,
+            key.as_concrete_TypeRef().cast::<c_void>(),
+        );
+        if groups.is_null() || CFGetTypeID(groups) != CFArrayGetTypeID() {
+            return Ok(Vec::new());
+        }
+        let count = CFArrayGetCount(groups.cast());
+        Ok((0..count)
+            .filter_map(|i| text(CFArrayGetValueAtIndex(groups.cast(), i)))
+            .collect())
+    }
 }

@@ -277,8 +277,7 @@ impl DeviceKeys {
     }
 
     fn write_plain(&self, data: &Path) -> Result<(), String> {
-        std::fs::create_dir_all(data)
-            .map_err(|e| format!("couldn't make {}: {e}", data.display()))?;
+        crate::paths::make_dir(data)?;
         let file = PlainFile {
             v: PLAIN_V,
             device_id: self.device_id,
@@ -438,8 +437,7 @@ impl DeviceKeys {
     }
 
     fn write_sealed(&self, data: &Path, file: &SealedFile) -> Result<(), String> {
-        std::fs::create_dir_all(data)
-            .map_err(|e| format!("couldn't make {}: {e}", data.display()))?;
+        crate::paths::make_dir(data)?;
         let bytes = to_canonical(file).map_err(|e| e.to_string())?;
         write_private(&data.join(SEALED_FILE), &bytes).map_err(|e| e.to_string())
     }

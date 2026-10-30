@@ -388,8 +388,7 @@ impl Endpoint {
         copy: Arc<dyn CopySink>,
         config: EndpointConfig,
     ) -> Result<Self, String> {
-        std::fs::create_dir_all(&config.data)
-            .map_err(|e| format!("couldn't make the data directory: {e}"))?;
+        lockdown_app::paths::make_dir(&config.data)?;
         let shared = Arc::new(Shared::new(app, copy, &config.data)?);
         let policy = Arc::new(own_policy(HOST_IDENTIFIER));
         Ok(match Self::listen(Arc::clone(&shared), &config, policy) {

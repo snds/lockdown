@@ -423,7 +423,7 @@ pub fn erase(places: &Places, keystore: &dyn Keystore) -> Erased {
 
 /// Leaves word in `data` that a reset waits for the next launch.
 pub fn mark_pending(data: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(data).map_err(|e| e.to_string())?;
+    lockdown_app::paths::make_dir(data)?;
     std::fs::write(data.join(PENDING_FILE), b"reset\n").map_err(|e| e.to_string())
 }
 

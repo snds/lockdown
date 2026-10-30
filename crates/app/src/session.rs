@@ -27,9 +27,7 @@ use std::rc::Rc;
 use ecosystem_identity::keys::Irk;
 use ecosystem_identity::keystore::DeviceKeystore;
 use ecosystem_identity::records::{KeyEnvelope, KeyRef, KeyRefKind, Purpose, RecoveryState};
-use ecosystem_identity::{
-    AccountAuth, AccountCredentials, ExportKey, Identity, RecoveryKit, default_root,
-};
+use ecosystem_identity::{AccountAuth, AccountCredentials, ExportKey, Identity, RecoveryKit};
 use lockdown_crypto::auth::{DeviceBinding, OpaqueAccountAuth};
 use lockdown_store::{
     DeviceStore, HeadMemory, RememberedHead, ServerView, SyncedIdentity, TransparencyMemory,
@@ -105,19 +103,26 @@ pub struct Paths {
 }
 
 impl Paths {
-    /// Resolves an explicit root and data dir. With neither, the platform's
-    /// identity root (D15) and the `lockdown` directory beside it. With a
-    /// root alone, the `lockdown` directory beside that root.
+    /// Resolves an explicit root and data dir. With neither, this
+    /// computer's places ([`crate::paths::default_paths`]: D15 and D47, and
+    /// Application Support on a Mac, doc 41). With a root alone, the
+    /// `lockdown` directory beside that root; with a data dir alone, the
+    /// default root.
     pub fn resolve(root: Option<PathBuf>, data: Option<PathBuf>) -> Result<Self, String> {
-        let root = match root {
-            Some(r) => r,
-            None => default_root().map_err(|e| e.to_string())?,
-        };
-        let data = match data {
-            Some(d) => d,
-            None => beside(&root),
-        };
-        Ok(Self { root, data })
+        match (root, data) {
+            (Some(root), Some(data)) => Ok(Self { root, data }),
+            (Some(root), None) => {
+                let data = crate::paths::beside(&root);
+                Ok(Self { root, data })
+            }
+            (None, data) => {
+                let found = crate::paths::default_paths()?;
+                Ok(Self {
+                    root: found.root,
+                    data: data.unwrap_or(found.data),
+                })
+            }
+        }
     }
 
     fn sync_file(&self) -> PathBuf {
@@ -140,8 +145,12 @@ impl Paths {
         self.data.join(TRANSPARENCY_FILE)
     }
 
-    /// What is here before anything opens.
+    /// What is here before anything opens. The data directory is made
+    /// first, so a computer that won't allow it says so in plain words
+    /// before any screen asks for anything (doc 41 §2.5).
     pub fn probe(&self) -> Result<Probe, String> {
+        #[cfg(feature = "native")]
+        crate::paths::make_dir(&self.data)?;
         let identity_present = ecosystem_identity::Store::at(&self.root)
             .probe()
             .map_err(|e| e.to_string())?
@@ -168,14 +177,6 @@ impl Paths {
 #[cfg(feature = "native")]
 pub(crate) fn account_server_on_disk(paths: &Paths) -> Option<String> {
     SyncConfig::load_plain(&paths.sync_file()).map(|c| c.server)
-}
-
-/// The `lockdown` directory next to an identity root.
-fn beside(root: &Path) -> PathBuf {
-    match root.parent() {
-        Some(parent) if !parent.as_os_str().is_empty() => parent.join("lockdown"),
-        _ => root.join("lockdown"),
-    }
 }
 
 /// A name for this device in the identity's device list and on conflict

@@ -3255,7 +3255,9 @@ dependencies = [
  "lockdown-crypto",
  "lockdown-cxf",
  "lockdown-matcher",
+ "lockdown-native-messaging",
  "lockdown-passkey",
+ "lockdown-paths",
  "lockdown-policy",
  "lockdown-security",
  "lockdown-server",
@@ -3311,6 +3313,7 @@ dependencies = [
  "lockdown-codes",
  "lockdown-crypto",
  "lockdown-matcher",
+ "lockdown-native-messaging",
  "lockdown-server",
  "lockdown-store",
  "lockdown-sync",
@@ -3525,7 +3528,7 @@ name = "lockdown-native-messaging"
 version = "0.1.0"
 dependencies = [
  "data-encoding",
- "ecosystem-identity",
+ "lockdown-paths",
  "serde",
  "serde_json",
  "tempfile",
@@ -3544,6 +3547,15 @@ dependencies = [
  "serde",
  "serde_json",
  "zeroize",
+]
+
+[[package]]
+name = "lockdown-paths"
+version = "0.1.0"
+dependencies = [
+ "ecosystem-identity",
+ "lockdown-codesign",
+ "tempfile",
 ]
 
 [[package]]
@@ -3615,6 +3627,7 @@ dependencies = [
  "lockdown-app",
  "lockdown-crypto",
  "lockdown-passkey",
+ "lockdown-paths",
  "lockdown-sync",
  "lockdown-tls",
  "lockdown-vault",

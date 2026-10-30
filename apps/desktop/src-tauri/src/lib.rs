@@ -37,7 +37,6 @@ mod passkey_commands;
 
 #[cfg(feature = "shell")]
 mod shell {
-    use std::path::PathBuf;
     use std::time::Duration;
 
     use lockdown_app::secrets::SecretStore;
@@ -76,12 +75,13 @@ mod shell {
         }
     }
 
-    /// Where the app lives: the platform identity root (D15) and the
-    /// `lockdown` directory beside it (D47), unless `LOCKDOWN_ROOT` or
-    /// `LOCKDOWN_DATA` say otherwise (a second profile for testing).
+    /// Where the app lives: this computer's identity root and the
+    /// `lockdown` directory beside it (D15, D47; Application Support on a
+    /// Mac, after the one-time move out of Group Containers, doc 41),
+    /// unless `LOCKDOWN_ROOT` or `LOCKDOWN_DATA` say otherwise (a second
+    /// profile for testing).
     fn paths() -> Result<Paths, String> {
-        let env = |name: &str| std::env::var_os(name).map(PathBuf::from);
-        Paths::resolve(env("LOCKDOWN_ROOT"), env("LOCKDOWN_DATA"))
+        lockdown_app::paths::at_start()
     }
 
     pub fn run() {

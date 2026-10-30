@@ -89,8 +89,14 @@ export const DESKTOP_STATES: StateDef[] = [
     screen: "Unlock",
     state: "Can't start",
     brief_row: "Unlock",
-    notes: "The data folder can't be read.",
-    answers: () => ({ probe: () => fail("stopped", "Lockdown can't read its data folder (/Users/sam/Library/Application Support/Lockdown): permission denied.") }),
+    notes: "The data folder can't be made: the core names it and a fix (docs/plan/41-mac-paths.md §2.5).",
+    answers: () => ({
+      probe: () =>
+        fail(
+          "refused",
+          "Lockdown couldn't create its folder /Users/sam/Library/Application Support/snds/lockdown: macOS didn't allow it. Check that your user account can write to /Users/sam/Library/Application Support/snds, then try again.",
+        ),
+    }),
     steps: [{ wait: "Lockdown can't start" }],
   }),
   d({

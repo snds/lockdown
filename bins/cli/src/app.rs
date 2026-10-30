@@ -15,7 +15,8 @@
 //!
 //! The identity root is the shared, platform-fixed place every ecosystem
 //! app reads. The data dir is Lockdown's own: next to the root
-//! (`…/snds/lockdown` beside `…/snds/identity`) unless `--data` says
+//! (`…/snds/lockdown` beside `…/snds/identity`; on a Mac both under
+//! `~/Library/Application Support`, doc 41) unless `--data` says
 //! otherwise.
 
 use std::collections::BTreeMap;
@@ -25,9 +26,7 @@ use std::rc::Rc;
 use ecosystem_identity::keys::Irk;
 use ecosystem_identity::keystore::DeviceKeystore;
 use ecosystem_identity::records::{KeyEnvelope, KeyRef, KeyRefKind, Purpose, RecoveryState};
-use ecosystem_identity::{
-    AccountAuth, AccountCredentials, ExportKey, Identity, RecoveryKit, default_root,
-};
+use ecosystem_identity::{AccountAuth, AccountCredentials, ExportKey, Identity, RecoveryKit};
 use lockdown_app::local_unlock::{self, DeviceKeys};
 use lockdown_app::sharing::SharingState;
 use lockdown_app::vault_open::{self, PersonaVaults, Waiting};
@@ -71,31 +70,21 @@ pub struct Paths {
 }
 
 impl Paths {
-    /// Resolves `--root` and `--data`. With neither, the platform's
-    /// identity root (D15) and the `lockdown` directory beside it. With
-    /// `--root` alone, the `lockdown` directory beside that root.
+    /// Resolves `--root` and `--data` by the app's own rule
+    /// (`lockdown_app::Paths::resolve`, docs/plan/41-mac-paths.md), so the
+    /// command line and the app are one device (D86). With neither, this
+    /// computer's places; with `--root` alone, the `lockdown` directory
+    /// beside that root.
     pub fn resolve(root: Option<PathBuf>, data: Option<PathBuf>) -> Result<Self, String> {
-        let root = match root {
-            Some(r) => r,
-            None => default_root().map_err(|e| e.to_string())?,
-        };
-        let data = match data {
-            Some(d) => d,
-            None => beside(&root),
-        };
-        Ok(Self { root, data })
+        let found = lockdown_app::Paths::resolve(root, data)?;
+        Ok(Self {
+            root: found.root,
+            data: found.data,
+        })
     }
 
     fn sync_file(&self) -> PathBuf {
         self.data.join(SYNC_FILE)
-    }
-}
-
-/// The `lockdown` directory next to an identity root.
-fn beside(root: &Path) -> PathBuf {
-    match root.parent() {
-        Some(parent) if !parent.as_os_str().is_empty() => parent.join("lockdown"),
-        _ => root.join("lockdown"),
     }
 }
 
@@ -220,6 +209,10 @@ impl App {
     }
 
     fn open(paths: Paths, persona: Option<&str>, mode: Mode) -> Result<Self, String> {
+        if mode == Mode::Init {
+            // A folder that can't be made is named in words (doc 41).
+            lockdown_app::paths::make_dir(&paths.data)?;
+        }
         let file = local_unlock::key_file(&paths.data);
         if mode != Mode::Init
             && file == local_unlock::KeyFile::None

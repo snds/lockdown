@@ -35,6 +35,7 @@ pub mod local_unlock;
 pub mod lock;
 pub mod onboarding;
 pub mod passkeys;
+pub mod paths;
 pub mod pq_status;
 pub mod protection;
 pub mod qr;
