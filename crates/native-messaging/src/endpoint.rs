@@ -97,29 +97,27 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// Lockdown's data directory as the app resolves it (D47): `LOCKDOWN_DATA`,
-/// else the `lockdown` directory beside `LOCKDOWN_ROOT` or the platform's
-/// identity root (D15). The browser starts the host with the browser's own
-/// environment, so a second profile set by those variables reaches it.
+/// Lockdown's data directory as the app resolves it (D47, doc 41):
+/// `LOCKDOWN_DATA`, else the `lockdown` directory beside `LOCKDOWN_ROOT`,
+/// else this computer's place from `lockdown-paths`, the one rule the app
+/// and the command line use too. The browser starts the host with the
+/// browser's own environment, so a second profile set by those variables
+/// reaches it.
 pub fn data_dir_from_env() -> Result<PathBuf> {
     let env = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty());
     if let Some(data) = env("LOCKDOWN_DATA") {
         return Ok(PathBuf::from(data));
     }
-    let root = match env("LOCKDOWN_ROOT") {
-        Some(root) => PathBuf::from(root),
-        None => ecosystem_identity::default_root().map_err(|e| Error::NoDataDir(e.to_string()))?,
-    };
-    Ok(beside(&root))
+    match env("LOCKDOWN_ROOT") {
+        Some(root) => Ok(beside(Path::new(&root))),
+        None => lockdown_paths::default_dirs()
+            .map(|d| d.data)
+            .map_err(Error::NoDataDir),
+    }
 }
 
 /// The `lockdown` directory beside an identity root (the app's rule).
-pub fn beside(root: &Path) -> PathBuf {
-    match root.parent() {
-        Some(parent) if !parent.as_os_str().is_empty() => parent.join("lockdown"),
-        _ => root.join("lockdown"),
-    }
-}
+pub use lockdown_paths::beside;
 
 /// Where the socket for the data directory `data` lives: inside it when
 /// the path fits the platform's limit, else a short path named by a hash

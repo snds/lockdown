@@ -50,7 +50,8 @@ use crate::app::{App, Paths};
 #[command(name = "lockdown", version, about)]
 struct Cli {
     /// The ecosystem identity root. Default: the platform's shared place
-    /// (Linux: $XDG_DATA_HOME/snds/identity).
+    /// (Linux: $XDG_DATA_HOME/snds/identity; macOS: ~/Library/Application
+    /// Support/snds/identity).
     #[arg(long, global = true, value_name = "DIR")]
     root: Option<PathBuf>,
     /// Lockdown's own data directory (device key, vault file, memory).
@@ -540,6 +541,11 @@ fn run(cli: Cli) -> Result<Vec<String>, String> {
     // The local account's server runs inside this process, over the data
     // directory's files (docs/plan/39-first-run.md §1.1).
     lockdown_server::local::install();
+    // An older Mac build's folders come out of Group Containers once,
+    // before anything opens (docs/plan/41-mac-paths.md).
+    if cli.root.is_none() && cli.data.is_none() {
+        lockdown_app::paths::settle_defaults();
+    }
     if let Ok(paths) = Paths::resolve(cli.root.clone(), cli.data.clone()) {
         lockdown_sync::set_default_local_home(Some(paths.data));
     }
@@ -930,6 +936,30 @@ mod tests {
         )
         .unwrap();
         assert_eq!(p.data, PathBuf::from("/elsewhere"));
+    }
+
+    #[test]
+    fn the_command_line_the_browser_host_and_the_app_agree_on_this_computer() {
+        // One rule for all three (docs/plan/41-mac-paths.md): the command
+        // line and the app are one device (D86), and the browser host
+        // finds the app's endpoint in the same data directory.
+        let cli = Paths::resolve(None, None).unwrap();
+        let app = lockdown_app::paths::default_paths().unwrap();
+        assert_eq!((&cli.root, &cli.data), (&app.root, &app.data));
+        let overridden = ["LOCKDOWN_DATA", "LOCKDOWN_ROOT"]
+            .iter()
+            .any(|v| std::env::var_os(v).is_some_and(|v| !v.is_empty()));
+        if !overridden {
+            let host = lockdown_native_messaging::endpoint::data_dir_from_env().unwrap();
+            assert_eq!(host, app.data);
+        }
+        if cfg!(target_os = "macos") {
+            assert!(
+                !app.data.to_string_lossy().contains("Group Containers"),
+                "{}",
+                app.data.display()
+            );
+        }
     }
 
     #[test]

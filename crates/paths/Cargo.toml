@@ -1,0 +1,22 @@
+[package]
+name = "lockdown-paths"
+description = "Where Lockdown keeps its files on this computer: the one place the app, the command line, the browser host and the developer reset ask, and the one-time move out of the Mac's Group Containers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# The shared identity's names (the Apple app group, `snds/identity`; D15),
+# so the old place on a Mac and the Windows and Linux places are spelled
+# once, by the crate that owns them.
+ecosystem-identity.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# This program's own signature and the app groups it names: the identity
+# goes to a group container only when a Developer ID signature carries one.
+lockdown-codesign.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

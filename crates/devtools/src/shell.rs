@@ -42,10 +42,10 @@ pub struct Devtools {
 }
 
 /// Where the app lives, as the desktop resolves it (`LOCKDOWN_ROOT`,
-/// `LOCKDOWN_DATA`, else the platform's place).
+/// `LOCKDOWN_DATA`, else this computer's place after the one-time move;
+/// docs/plan/41-mac-paths.md). The reset erases what is here.
 fn home() -> Result<Paths, String> {
-    let env = |name: &str| std::env::var_os(name).map(PathBuf::from);
-    Paths::resolve(env("LOCKDOWN_ROOT"), env("LOCKDOWN_DATA"))
+    lockdown_app::paths::at_start()
 }
 
 /// The shell's own folders, each with what it holds, deduplicated.

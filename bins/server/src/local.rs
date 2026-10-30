@@ -77,8 +77,7 @@ pub fn dir(data: &Path) -> PathBuf {
 impl LocalServer {
     fn open(data: &Path) -> Result<Self, String> {
         let dir = dir(data);
-        crate::keys::create_private_dir(&dir)
-            .map_err(|e| format!("couldn't make {}: {e}", dir.display()))?;
+        crate::keys::create_private_dir(&dir).map_err(|e| lockdown_paths::cant_make(&dir, &e))?;
         let lock = dir.join(LOCK_FILE);
         let guard = Self::take_lock(&lock)?;
         let storage = SqlStorage::open(&dir.join(DB_FILE)).map_err(|e| e.to_string())?;

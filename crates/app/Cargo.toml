@@ -40,6 +40,8 @@ rqrr.workspace = true
 pdf-writer.workspace = true
 # An administrator's preset server (discovery.rs, `lockdown_policy::managed`).
 lockdown-policy.workspace = true
+# Where the app keeps its files, decided in one place (docs/plan/41-mac-paths.md).
+lockdown-paths.workspace = true
 
 [features]
 default = ["native"]
