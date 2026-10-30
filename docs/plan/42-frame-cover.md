@@ -105,7 +105,7 @@ Before the fix, the whole suite failed on its first local run at the light save-
 
 The extension suite grew from 71 tests to 80. The design-system ratchet passes, and so do the axe checks (all in `a11y.spec.ts` above).
 
-## 3.2 A desktop race fixed on the way
+### 3.2 A desktop race fixed on the way
 
 CI on this branch's first commit failed the desktop vitest "keeps the guest card and its words while a native print panel is up, then drops the words" (from slice 37, doc 38). In `apps/desktop/src/features/vault/wifi-card.tsx`, the `printingNow` ref was set from `printing` in a plain effect, which runs after paint. So a `blur` landing just after the print panel closed still read "printing", and the card stayed up. The ref is now set in a layout effect. A layout effect runs in the same task as the render that drops the words, before any event can be handled. The test is unchanged. It is a separate commit because it is unrelated to the frames.
 
