@@ -48,8 +48,8 @@ _Slice: `slice/mac-paths`, built 2026-10-30. Urgent fix for Sean's Mac. With the
 
 **The browser socket still fits.** Application Support is a longer path than Group Containers was, and a Mac caps a socket path at 104 bytes. The existing short-path fallback (`endpoint::socket_path`) still applies, unchanged:
 
-- When `<data>/browser.sock` is at most 100 bytes, the socket lives inside the data directory. `/Users/sean.sands/Library/Application Support/snds/lockdown/browser.sock` is 73.
-- Past 100 bytes (a home folder name over about 45 characters), it moves to `$TMPDIR/snds-lockdown-<hash>/browser.sock`, about 80 bytes on a Mac.
+- When `<data>/browser.sock` is at most 100 bytes, the socket lives inside the data directory. `/Users/sean.sands/Library/Application Support/snds/lockdown/browser.sock` is 72.
+- Past 100 bytes (an account name over 38 characters), it moves to `$TMPDIR/snds-lockdown-<hash>/browser.sock`, about 80 bytes on a Mac.
 
 The endpoint file (`native-host.json`) is a regular file in the data directory and has no such limit. `the_mac_data_dir_keeps_its_socket_within_the_limit` tests both cases.
 
