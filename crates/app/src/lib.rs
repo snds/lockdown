@@ -28,6 +28,7 @@ pub mod devices;
 pub mod discovery;
 pub mod first_run;
 pub mod hygiene;
+mod join_sealed;
 pub mod key_check;
 pub mod kit_pdf;
 pub mod live;

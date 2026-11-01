@@ -37,9 +37,13 @@
 //! opens, says so on every command, and `password set` gives it one;
 //! `password reset` chooses a new one with the recovery kit
 //! (docs/plan/39-first-run.md §1.5). `account register` on a sealed vault
-//! moves its local account to that server (D473).
+//! moves its local account to that server (D473). A computer that joins an
+//! account (`account login` or `recover` on an empty one) is sealed too,
+//! under the account's password, which becomes its master password
+//! (`join`, docs/plan/44-cli-join-sealed.md).
 
 mod app;
+mod join;
 mod master;
 mod sealed;
 
@@ -172,7 +176,10 @@ enum Command {
         what: KitWhat,
     },
     /// On a device with nothing on it: get the identity and the vault back
-    /// from the server with the recovery kit and the account password.
+    /// from the server with the recovery kit and the account password. The
+    /// account password becomes this computer's master password: give it
+    /// with --master-password-stdin or LOCKDOWN_MASTER_PASSWORD, or type it
+    /// at the prompt.
     Recover(RecoverArgs),
     /// Print the current one-time code for an otpauth:// or steam:// URI.
     Code {
@@ -314,8 +321,9 @@ struct RecoverArgs {
     /// The login name the account is filed under.
     #[arg(long, value_name = "NAME")]
     login: String,
-    /// Read the account password from the first line of standard input
-    /// (else LOCKDOWN_PASSWORD).
+    /// Also read the account password from standard input (else
+    /// LOCKDOWN_PASSWORD). Optional: it must be the master password, which
+    /// is the one this computer is sealed with.
     #[arg(long)]
     password_stdin: bool,
     /// Read the Secret Key and the recovery code from the next two lines
@@ -332,7 +340,10 @@ enum AccountWhat {
     /// the master password as the account's password.
     Register(AccountArgs),
     /// Log in. On a device that holds the identity: a fresh session. On an
-    /// empty one: enrol this device from the account and its identity backup.
+    /// empty one: enrol this device from the account and its identity
+    /// backup, sealed under the account password, which becomes this
+    /// computer's master password (give it with --master-password-stdin or
+    /// LOCKDOWN_MASTER_PASSWORD, or type it at the prompt).
     Login(AccountArgs),
 }
 
@@ -345,7 +356,9 @@ struct AccountArgs {
     #[arg(long, value_name = "NAME")]
     login: String,
     /// Read the account password from the first line of standard input.
-    /// Without it, the LOCKDOWN_PASSWORD environment variable is used.
+    /// Without it, the LOCKDOWN_PASSWORD environment variable is used. On an
+    /// empty computer `login` seals with the master password, and this,
+    /// when given, must be the same.
     #[arg(long)]
     password_stdin: bool,
     /// Read the kit's Secret Key from the next line of standard input
@@ -659,17 +672,20 @@ fn run(cli: Cli) -> Result<Vec<String>, String> {
                 }
                 AccountWhat::Login(args) => {
                     let mut secrets = Secrets::read(args.password_stdin || args.secret_key_stdin)?;
-                    let password = secrets.password(args.password_stdin)?;
-                    let secret_key = secrets.secret_key_if_given(args.secret_key_stdin)?;
                     if app::root_is_empty(&paths)? {
-                        App::enrol_from_account(
+                        // A new computer joins sealed (`join`, D514).
+                        let password = secrets.password_if_given(args.password_stdin)?;
+                        let secret_key = secrets.secret_key_if_given(args.secret_key_stdin)?;
+                        join::join(
                             paths,
                             &args.server,
                             &args.login,
-                            &password,
-                            secret_key.as_deref(),
+                            password,
+                            join::Way::Account { secret_key },
                         )
                     } else {
+                        let password = secrets.password(args.password_stdin)?;
+                        let secret_key = secrets.secret_key_if_given(args.secret_key_stdin)?;
                         App::open_existing(paths, persona)?.account_login(
                             &args.server,
                             &args.login,
@@ -722,16 +738,18 @@ fn run(cli: Cli) -> Result<Vec<String>, String> {
         Command::Recover(args) => {
             let paths = Paths::resolve(cli.root, cli.data)?;
             let mut secrets = Secrets::read(args.password_stdin || args.kit_stdin)?;
-            let password = secrets.password(args.password_stdin)?;
+            let password = secrets.password_if_given(args.password_stdin)?;
             let secret_key = secrets.secret_key(args.kit_stdin)?;
             let recovery_code = secrets.recovery_code(args.kit_stdin)?;
-            App::recover(
+            join::join(
                 paths,
                 &args.server,
                 &args.login,
-                &password,
-                &secret_key,
-                &recovery_code,
+                password,
+                join::Way::Kit {
+                    secret_key,
+                    recovery_code,
+                },
             )
         }
         Command::Sync => App::open_for_sync(Paths::resolve(cli.root, cli.data)?, persona)?.sync(),

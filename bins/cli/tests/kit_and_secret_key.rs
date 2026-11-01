@@ -41,6 +41,9 @@ impl Device {
             .env_remove("LOCKDOWN_PASSWORD")
             .env_remove("LOCKDOWN_SECRET_KEY")
             .env_remove("LOCKDOWN_RECOVERY_CODE")
+            // A device that joins is sealed under the account's password
+            // (docs/plan/44-cli-join-sealed.md); older installs ignore it.
+            .env("LOCKDOWN_MASTER_PASSWORD", PASSWORD)
             .env("HOSTNAME", self.name)
             .envs(env.iter().copied())
             .stdin(if stdin.is_some() {

@@ -83,6 +83,12 @@ pub fn master_password(data: &Path) -> Result<Zeroizing<String>, String> {
     ))
 }
 
+/// Keeps `password` as this run's master password once a command has it
+/// (a join that asked for it), so the rest of the run doesn't ask again.
+pub fn keep(password: Zeroizing<String>) {
+    *SOURCE.lock().unwrap_or_else(|p| p.into_inner()) = Some(Source::Given(password));
+}
+
 /// The master password when a script gave it (the first stdin line, or
 /// the variable), without asking.
 pub fn given() -> Option<Zeroizing<String>> {

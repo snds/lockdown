@@ -557,7 +557,8 @@ fn register_on_a_sealed_vault_moves_it_to_the_server_with_the_master_password() 
     assert!(run.out.contains(&url), "{}", run.out);
 
     // The phone comes back with the kit init printed and the master
-    // password, which is the account's password now.
+    // password, which is the account's password now and the phone's master
+    // password too (docs/plan/44-cli-join-sealed.md).
     let run = lockdown(
         &phone,
         &[
@@ -570,10 +571,12 @@ fn register_on_a_sealed_vault_moves_it_to_the_server_with_the_master_password() 
             "--kit-stdin",
         ],
         Some(&format!("{MASTER}\n{sk}\n{rc}\n")),
-        &[],
+        &with,
     );
     assert!(run.ok, "{}", run.err);
-    let run = lockdown(&phone, &["list"], None, &[]);
+    assert!(data_of(&phone).join("device-key.sealed.cbor").exists());
+    assert!(!data_of(&phone).join("device-key.cbor").exists());
+    let run = lockdown(&phone, &["list"], None, &with);
     assert!(run.ok, "{}", run.err);
     assert!(run.out.contains("bank.example"), "{}", run.out);
 

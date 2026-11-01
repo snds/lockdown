@@ -322,6 +322,7 @@ impl App {
                     &login,
                     &password,
                     Then::Enrol { secret_key },
+                    false,
                 ),
             )
         })
@@ -352,6 +353,7 @@ impl App {
                         secret_key,
                         recovery_code,
                     },
+                    false,
                 ),
             )
         })
@@ -392,7 +394,7 @@ impl App {
     }
 }
 
-fn start_waiting(
+pub(crate) fn start_waiting(
     core: &mut crate::Core,
     step: Result<Result<Vec<String>, WaitingSignIn>, String>,
 ) -> AppResult<Vec<String>> {
