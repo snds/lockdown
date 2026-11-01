@@ -29,22 +29,30 @@ let linksSecretKey = ""
 
 /** The CLI as one person's computer: `who` names its own identity root and data directory. */
 function lockdown(args: string[], input?: string, who = "first"): string {
-  const run = spawnSync(cli, ["--root", path.join(home, who, "identity"), ...args], { input, encoding: "utf8", timeout: 120_000 })
+  const env = { ...process.env, LOCKDOWN_MASTER_PASSWORD: PASSWORD }
+  const run = spawnSync(cli, ["--root", path.join(home, who, "identity"), ...args], { input, env, encoding: "utf8", timeout: 120_000 })
   if (run.status !== 0) throw new Error(`lockdown ${args.join(" ")}: ${run.stderr || run.error}`)
   return run.stdout
 }
 
+/**
+ * Every vault the CLI makes has a master password (docs/plan/43-cli-sealed.md):
+ * `init --name` seals it and prints the kit, and `account register` moves it
+ * to the server with the master password as the account's password, the one
+ * the web vault signs in with.
+ */
 test.beforeAll(async ({ baseURL }) => {
+  test.setTimeout(600_000)
   home = mkdtempSync(path.join(tmpdir(), "lockdown-web-e2e-cli-"))
-  lockdown(["init"])
-  const kit = lockdown(["account", "register", "--server", baseURL!, "--login", LOGIN, "--password-stdin"], `${PASSWORD}\n`)
+  const kit = lockdown(["init", "--name", "First"])
   secretKey = /^Secret Key:\s*(\S+)/m.exec(kit)?.[1] ?? ""
   expect(secretKey, "the kit page names the Secret Key").toMatch(/^A1-/)
+  lockdown(["account", "register", "--server", baseURL!, "--login", LOGIN])
   lockdown(["add", "login", "--site", "https://bank.example.com", "--username", "me", "--title", "Bank from the desktop", "--password-stdin"], "a-bank-password-1\n")
   lockdown(["sync"])
-  lockdown(["init"], undefined, "links")
-  const linksKit = lockdown(["account", "register", "--server", baseURL!, "--login", LINKS_LOGIN, "--password-stdin"], `${PASSWORD}\n`, "links")
+  const linksKit = lockdown(["init", "--name", "Links"], undefined, "links")
   linksSecretKey = /^Secret Key:\s*(\S+)/m.exec(linksKit)?.[1] ?? ""
+  lockdown(["account", "register", "--server", baseURL!, "--login", LINKS_LOGIN], undefined, "links")
   lockdown(["sync"], undefined, "links")
 })
 

@@ -351,7 +351,9 @@ fn registering_with_a_kit_already_made_needs_its_secret_key() {
         run_in_background(Arc::new(AppState::in_memory(Config::default()).unwrap())).unwrap();
     let url = server.url();
     let a = device(dir.path(), "laptop");
-    a.ok(&["init"], None, &[]);
+    // An install made before every vault had a master password
+    // (docs/plan/43-cli-sealed.md): the account flows such installs still run.
+    lockdown_devtools::legacy::make(&a.root, None).unwrap();
     let out = a.ok(&["kit", "create"], None, &[]);
     assert!(out.contains("no account on this device yet"), "{out}");
     let secret_key = kit_field(&out, "Secret Key:");

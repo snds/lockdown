@@ -46,3 +46,7 @@ lockdown-tls = { workspace = true, features = ["test-certs"] }
 # The browser host's data directory, checked against the command line's
 # and the app's (docs/plan/41-mac-paths.md).
 lockdown-native-messaging.workspace = true
+# A passwordless install, as `init` made one before every vault had a
+# master password, for the tests that check such an install still opens
+# (docs/plan/43-cli-sealed.md). Never in the binary itself.
+lockdown-devtools = { workspace = true, default-features = false, features = ["legacy-install"] }

@@ -152,8 +152,7 @@ fn init_with_a_name_makes_a_vault_only_the_master_password_opens() {
 fn an_older_install_gets_a_master_password_and_a_forgotten_one_is_reset() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("snds/identity");
-    let (ok, _, err) = lockdown(&root, &["init"], None, &[]);
-    assert!(ok, "{err}");
+    lockdown_devtools::legacy::make(&root, None).unwrap();
     let (ok, out, err) = lockdown(&root, &["kit", "create"], None, &[]);
     assert!(ok, "{err}");
     let (sk, rc) = kit_of(&out);

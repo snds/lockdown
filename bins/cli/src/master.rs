@@ -83,6 +83,18 @@ pub fn master_password(data: &Path) -> Result<Zeroizing<String>, String> {
     ))
 }
 
+/// The master password when a script gave it (the first stdin line, or
+/// the variable), without asking.
+pub fn given() -> Option<Zeroizing<String>> {
+    if let Some(Source::Given(p)) = SOURCE.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
+        return Some(p.clone());
+    }
+    match std::env::var(VAR) {
+        Ok(v) if !v.is_empty() => Some(Zeroizing::new(v)),
+        _ => None,
+    }
+}
+
 /// A new master password: the stdin line or the variable when one was
 /// given (`from`), else asked twice at a terminal.
 pub fn new_password(from: Option<Zeroizing<String>>) -> Result<Zeroizing<String>, String> {

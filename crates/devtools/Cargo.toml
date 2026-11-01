@@ -42,6 +42,11 @@ os-keystore = [
 # (with `reset` and `os-keystore`) or `demo-vault` (with `demo`); nothing
 # else does.
 shell = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:tauri-plugin"]
+# A passwordless install, as Lockdown made one before every vault had a
+# master password, for the tests that check such an install still opens
+# (docs/plan/43-cli-sealed.md). Only the command line's tests and the
+# `lockdown-legacy-install` tool turn it on; never the desktop.
+legacy-install = []
 
 [build-dependencies]
 tauri-plugin = { version = "2.7.2", optional = true, features = ["build"] }
@@ -87,3 +92,8 @@ lockdown-crypto = { workspace = true, features = ["insecure-test-kdf"] }
 [[example]]
 name = "make-default-pack"
 required-features = ["demo"]
+
+[[bin]]
+name = "lockdown-legacy-install"
+path = "src/bin/lockdown-legacy-install.rs"
+required-features = ["legacy-install"]

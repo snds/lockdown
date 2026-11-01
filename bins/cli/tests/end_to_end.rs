@@ -1,11 +1,15 @@
 //! Drives the `lockdown` binary end to end on a temp root: init → add →
 //! list → show → status, each a separate process, so the second and every
 //! later invocation opens the vault through the identity root and the
-//! device keystore alone, with no re-init, no kit and no master password.
+//! device keystore alone, with no re-init and no kit: the master password
+//! (`LOCKDOWN_MASTER_PASSWORD` here) opens the sealed keys
+//! (docs/plan/43-cli-sealed.md).
 
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
+
+const MASTER: &str = "orbit lantern pickle meadow";
 
 fn lockdown(root: &Path, args: &[&str], stdin: Option<&str>) -> (bool, String, String) {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_lockdown"));
@@ -13,6 +17,7 @@ fn lockdown(root: &Path, args: &[&str], stdin: Option<&str>) -> (bool, String, S
         .arg(root)
         .args(args)
         .env_remove("LOCKDOWN_PASSWORD")
+        .env("LOCKDOWN_MASTER_PASSWORD", MASTER)
         .env("HOSTNAME", "test-laptop")
         .stdin(if stdin.is_some() {
             Stdio::piped()
@@ -51,10 +56,14 @@ fn init_add_list_show_status_across_processes() {
     assert!(!root.exists());
     assert!(!data.exists());
 
-    // init creates the identity and the vault.
-    let (ok, out, err) = lockdown(&root, &["init"], None);
+    // init creates the identity and the vault, sealed under the master
+    // password, and prints the recovery kit.
+    let (ok, out, err) = lockdown(&root, &["init", "--name", "Sean"], None);
     assert!(ok, "{err}");
-    assert!(out.starts_with("identity created, vault created"), "{out}");
+    assert!(out.starts_with("vault created for Sean"), "{out}");
+    assert!(out.contains("Secret Key:"), "{out}");
+    let (ok, out, err) = lockdown(&root, &["status"], None);
+    assert!(ok, "{err}");
     assert!(out.contains("managed by lockdown"), "{out}");
     assert!(
         out.contains("device         Lockdown on test-laptop"),
@@ -63,7 +72,8 @@ fn init_add_list_show_status_across_processes() {
     assert!(out.contains("vault head     seq 1 "), "{out}");
     assert!(root.join("FORMAT").exists());
     assert!(data.join("vault.sqlite").exists());
-    assert!(data.join("device-key.cbor").exists());
+    assert!(data.join("device-key.sealed.cbor").exists());
+    assert!(!data.join("device-key.cbor").exists());
     assert!(data.join("remembered.cbor").exists());
 
     // add: the password comes from stdin, never an argument.
@@ -129,6 +139,7 @@ fn init_add_list_show_status_across_processes() {
             "Mail",
         ])
         .env("LOCKDOWN_PASSWORD", "hunter2")
+        .env("LOCKDOWN_MASTER_PASSWORD", MASTER)
         .env("HOSTNAME", "test-laptop")
         .output()
         .unwrap();

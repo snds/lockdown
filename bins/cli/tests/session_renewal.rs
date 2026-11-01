@@ -96,7 +96,9 @@ fn the_command_line_syncs_past_a_short_session_and_an_ended_one_asks_for_the_pas
     let url = server.url();
     let root = dir.path().join("laptop").join("snds").join("identity");
 
-    ok(&root, &["init"], None);
+    // An install made before every vault had a master password
+    // (docs/plan/43-cli-sealed.md): the account flows such installs still run.
+    lockdown_devtools::legacy::make(&root, None).unwrap();
     ok(
         &root,
         &[

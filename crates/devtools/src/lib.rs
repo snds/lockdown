@@ -6,6 +6,9 @@
 //!   vault filled from a replaceable data pack.
 //! - [`keystore`] (feature `os-keystore`): the OS keystore searched by
 //!   Lockdown's service name, for the reset.
+//! - [`legacy`] (feature `legacy-install`): a passwordless install, as
+//!   Lockdown made one before every vault had a master password, for the
+//!   tests that check such an install still opens.
 //! - [`shell`] (feature `shell`): the Tauri plugin the desktop registers
 //!   with its `dev-reset` and `demo-vault` features: the commands, the
 //!   Developer menu and the relaunch.
@@ -32,3 +35,6 @@ pub mod demo;
 
 #[cfg(feature = "shell")]
 pub mod shell;
+
+#[cfg(feature = "legacy-install")]
+pub mod legacy;

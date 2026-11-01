@@ -27,14 +27,21 @@
 //! `--kit-stdin`, one per line in that order) or from `LOCKDOWN_PASSWORD`,
 //! `LOCKDOWN_SECRET_KEY` and `LOCKDOWN_RECOVERY_CODE`.
 //!
-//! A vault made with a master password (`init --name`, or the app's first
-//! run) opens only with it: `--master-password-stdin`,
-//! `LOCKDOWN_MASTER_PASSWORD`, or a prompt at a terminal (`master`).
-//! `password set` gives an older install one; `password reset` chooses a
-//! new one with the recovery kit (docs/plan/39-first-run.md §1.5).
+//! Every vault `init` makes has a master password, as the app's first run
+//! makes it (`sealed`, docs/plan/43-cli-sealed.md): a terminal is asked
+//! for the name and the password, a script gives `--name` and the password
+//! on stdin or in `LOCKDOWN_MASTER_PASSWORD`, and anything else is refused
+//! before a file is written. The vault then opens only with it:
+//! `--master-password-stdin`, `LOCKDOWN_MASTER_PASSWORD`, or a prompt at a
+//! terminal (`master`). An install made before the master password still
+//! opens, says so on every command, and `password set` gives it one;
+//! `password reset` chooses a new one with the recovery kit
+//! (docs/plan/39-first-run.md §1.5). `account register` on a sealed vault
+//! moves its local account to that server (D473).
 
 mod app;
 mod master;
+mod sealed;
 
 use std::io::Read;
 use std::path::PathBuf;
@@ -72,10 +79,11 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// Open the ecosystem identity at the root (or create it) and the
-    /// persona's vault (or create it). Safe to run again. With --name, a
-    /// new vault gets a master password and a recovery kit, as the app's
-    /// first run makes.
+    /// Set up Lockdown on this computer: your name, a master password and
+    /// a recovery kit, as the app's first run makes them. In a terminal
+    /// you're asked; in a script give --name and the password with
+    /// --master-password-stdin or LOCKDOWN_MASTER_PASSWORD. Run again, it
+    /// opens what is there.
     Init(InitArgs),
     /// Add an item to the vault.
     Add {
@@ -193,11 +201,12 @@ enum Command {
 #[derive(Args, Debug)]
 struct InitArgs {
     /// The name your vault shows when it's locked (not an email; it stays
-    /// on this computer). Makes the vault with a master password.
+    /// on this computer). Asked for at a terminal when left out.
     #[arg(long, value_name = "NAME")]
     name: Option<String>,
-    /// Read the new master password from stdin (else LOCKDOWN_PASSWORD,
-    /// or asked twice at a terminal).
+    /// Read the new master password from stdin, as --master-password-stdin
+    /// does (else LOCKDOWN_MASTER_PASSWORD or LOCKDOWN_PASSWORD, or asked
+    /// twice at a terminal).
     #[arg(long)]
     password_stdin: bool,
     /// Save the recovery kit to this file instead of printing it.
@@ -318,7 +327,9 @@ struct RecoverArgs {
 #[derive(Subcommand, Debug)]
 enum AccountWhat {
     /// Make an account on a server for this identity (OPAQUE: the
-    /// password never leaves this device).
+    /// password never leaves this device). On a vault with a master
+    /// password, its account moves from this computer to that server, with
+    /// the master password as the account's password.
     Register(AccountArgs),
     /// Log in. On a device that holds the identity: a fresh session. On an
     /// empty one: enrol this device from the account and its identity backup.
@@ -558,46 +569,7 @@ fn run(cli: Cli) -> Result<Vec<String>, String> {
     match cli.command {
         Command::Code { uri } => code_lines(&uri, now),
         Command::Match { saved, current } => match_line(&saved, &current).map(|l| vec![l]),
-        Command::Init(args) if args.name.is_some() => {
-            let paths = Paths::resolve(cli.root, cli.data)?;
-            kit_target_free(args.save.as_ref())?;
-            let name = args.name.unwrap_or_default();
-            let mut secrets = Secrets::read(args.password_stdin)?;
-            let typed = secrets.password_if_given(args.password_stdin)?;
-            let password = master::new_password(typed.map(Zeroizing::new))?;
-            let core = core_app(&paths);
-            let made = core
-                .first_run_create(&name, &password)
-                .map_err(|e| e.message)?;
-            core.onboarding_stage("done").map_err(|e| e.message)?;
-            let mut lines = vec![format!(
-                "vault created for {name}; it opens only with your master password"
-            )];
-            if let Some(kit) = made.kit {
-                let text = String::from_utf8_lossy(kit.expose()).into_owned();
-                lines.push(String::new());
-                lines.extend(deliver_kit(text, args.save.as_ref())?);
-            }
-            Ok(lines)
-        }
-        Command::Init(_) => {
-            let app = App::init(Paths::resolve(cli.root, cli.data)?, persona)?;
-            let mut lines = vec![format!(
-                "identity {}, vault {}",
-                if app.identity_created {
-                    "created"
-                } else {
-                    "attached"
-                },
-                if app.vault_created() {
-                    "created"
-                } else {
-                    "opened"
-                }
-            )];
-            lines.extend(app.status_lines()?);
-            Ok(lines)
-        }
+        Command::Init(args) => sealed::init(Paths::resolve(cli.root, cli.data)?, args, persona),
         Command::Add { what } => {
             let AddWhat::Login(login) = what;
             let password = read_password(login.password_stdin)?;
@@ -656,6 +628,19 @@ fn run(cli: Cli) -> Result<Vec<String>, String> {
         Command::Account { what } => {
             let paths = Paths::resolve(cli.root, cli.data)?;
             match what {
+                AccountWhat::Register(args) if sealed::is_sealed(&paths.data) => {
+                    let mut secrets = Secrets::read(args.password_stdin || args.secret_key_stdin)?;
+                    let password = secrets.password_if_given(args.password_stdin)?;
+                    let secret_key = secrets.secret_key_if_given(args.secret_key_stdin)?;
+                    sealed::register(
+                        &paths,
+                        &args.server,
+                        &args.login,
+                        password,
+                        secret_key.is_some(),
+                        args.kit_file.as_ref(),
+                    )
+                }
                 AccountWhat::Register(args) => {
                     let mut secrets = Secrets::read(args.password_stdin || args.secret_key_stdin)?;
                     let password = secrets.password(args.password_stdin)?;

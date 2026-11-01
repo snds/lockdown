@@ -83,7 +83,9 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
     let b = device(dir.path(), "phone");
 
     // A: identity, account, a login, sync.
-    a.ok(&["init"], None);
+    // An install made before every vault had a master password
+    // (docs/plan/43-cli-sealed.md): the account flows such installs still run.
+    lockdown_devtools::legacy::make(&a.root, None).unwrap();
     let (ok, _, err) = a.run(&["sync"], None);
     assert!(!ok);
     assert!(err.contains("account register"), "{err}");

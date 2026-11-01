@@ -3312,6 +3312,7 @@ dependencies = [
  "lockdown-app",
  "lockdown-codes",
  "lockdown-crypto",
+ "lockdown-devtools",
  "lockdown-matcher",
  "lockdown-native-messaging",
  "lockdown-server",

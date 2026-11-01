@@ -192,7 +192,10 @@ pub struct App {
 }
 
 impl App {
-    /// `lockdown init`: opens what is there and creates what is not.
+    /// `lockdown init` on a computer already set up: opens what is there,
+    /// pulling the account's vault, or making the persona's first vault
+    /// when it has none. The keys must exist; `init` makes them sealed
+    /// first (`sealed`).
     pub fn init(paths: Paths, persona: Option<&str>) -> Result<Self, String> {
         Self::open(paths, persona, Mode::Init)
     }
@@ -234,7 +237,15 @@ impl App {
                 crate::master::no_master_password_notice();
                 DeviceKeys::open_plain(&paths.data)?
             }
-            local_unlock::KeyFile::None => DeviceKeys::open_or_create_plain(&paths.data)?,
+            // Keys are made only by `init`, sealed, through the app's
+            // first run (docs/plan/43-cli-sealed.md), or by joining an
+            // account (`account login`, `recover`).
+            local_unlock::KeyFile::None => {
+                return Err(format!(
+                    "this computer has no Lockdown keys in {} yet; run `lockdown init`, or `lockdown account login` or `lockdown recover` to join an account",
+                    paths.data.display()
+                ));
+            }
         });
         let mut memory =
             HeadMemory::open(&paths.data.join(MEMORY_FILE)).map_err(|e| e.to_string())?;
