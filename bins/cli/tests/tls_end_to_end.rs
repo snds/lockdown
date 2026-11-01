@@ -29,6 +29,9 @@ impl Device {
             .arg(&self.root)
             .args(args)
             .env_remove("LOCKDOWN_PASSWORD")
+            // The phone joins sealed under the account's password
+            // (docs/plan/44-cli-join-sealed.md).
+            .env("LOCKDOWN_MASTER_PASSWORD", PASSWORD.trim_end())
             .env("HOSTNAME", self.name)
             .stdin(if stdin.is_some() {
                 Stdio::piped()

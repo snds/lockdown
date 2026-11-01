@@ -73,7 +73,7 @@ The extension suite and the desktop's harness fixtures don't run `lockdown init`
 
 ## 5. Gaps
 
-1. **Joining leaves unsealed keys.** `lockdown recover` and `lockdown account login` on an empty computer still make the plain key file (they join an account; they don't make a vault). The desktop's join seals right after with the account's password (`setMasterPassword`); the command line should too (D514, proposed). Until then such a device says on every command that it has no master password.
+1. **Joining leaves unsealed keys.** `lockdown recover` and `lockdown account login` on an empty computer still make the plain key file (they join an account; they don't make a vault). The desktop's join seals right after with the account's password (`setMasterPassword`); the command line should too (D514, proposed). Until then such a device says on every command that it has no master password. Closed by doc 44 (`44-cli-join-sealed.md`): both now seal under the account's password.
 2. **The core can still make a plain install.** `App::open_or_create(true)` with no keys makes the plain key file. The desktop's join calls it and seals at once; the desktop's tests and the extension's endpoint fixture use it for throwaway vaults. Nothing user-facing reaches it without sealing after, but the core doesn't refuse it.
 3. **`init` beside another app's identity.** With an ecosystem identity at the root that Lockdown hasn't joined, `init` refuses and points to `account login` and `recover`. The old passwordless `init` tried to attach and failed later; the app's first run refuses too.
 4. **One try at a terminal.** A weak or mismatched password ends the command; it doesn't ask again. Scripts and people both get a clear sentence and run it again.

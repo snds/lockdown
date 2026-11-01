@@ -80,6 +80,11 @@ grep -q "pushed 1" "$WORK/sync.txt"
 
 say "a second device recovers with the kit and gets the item"
 printf '%s\n%s\n%s\n' "$PW" "$SK" "$RC" | HOSTNAME=phone "$CLI" --root "$B" recover --server "$URL" --login smoke@example.com --password-stdin --kit-stdin
+# A computer that joins is sealed under the account's password, which is its
+# master password from then on (docs/plan/44-cli-join-sealed.md): only the
+# sealed key file, never the plain one.
+test -f "$WORK/b/snds/lockdown/device-key.sealed.cbor"
+test ! -e "$WORK/b/snds/lockdown/device-key.cbor"
 "$CLI" --root "$B" list | tee "$WORK/list.txt"
 grep -q bank.example "$WORK/list.txt"
 

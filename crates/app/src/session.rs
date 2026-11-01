@@ -2038,10 +2038,13 @@ pub fn enrol_from_sign_in(
     let keystore = Rc::new(DeviceKeys::open_plain(&paths.data)?);
     let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
     enrol_signed_in(
-        paths, &transport, &keystore, login, export_key, session, secret_key,
+        paths, &transport, &keystore, login, export_key, session, secret_key, None,
     )
 }
 
+/// With `seal` (a sealed join, `join_sealed`), the keys are sealed under
+/// that password just before the identity names them.
+#[allow(clippy::too_many_arguments)]
 fn enrol_signed_in(
     paths: &Paths,
     transport: &HttpTransport,
@@ -2050,6 +2053,7 @@ fn enrol_signed_in(
     export_key: ExportKey,
     session: lockdown_crypto::auth::Session,
     secret_key: Option<&str>,
+    seal: Option<&str>,
 ) -> Result<Vec<String>, String> {
     let server = transport.base().to_string();
     let secret_key = secret_key.filter(|s| !s.trim().is_empty());
@@ -2069,6 +2073,9 @@ fn enrol_signed_in(
         None => None,
     };
     let mut prepared = PreparedExportKey(Some(export_key));
+    if let Some(password) = seal {
+        crate::join_sealed::seal_for_join(&paths.data, keystore, password, None)?;
+    }
     let mut identity = Identity::recover_with_account(
         &paths.root,
         APP,
@@ -2150,6 +2157,7 @@ pub(crate) fn recover_signed_in(
     session: lockdown_crypto::auth::Session,
     secret_key: &str,
     recovery_code: &str,
+    seal: Option<&str>,
 ) -> Result<Vec<String>, String> {
     let server = transport.base().to_string();
     if session.token.is_empty() {
@@ -2168,6 +2176,11 @@ pub(crate) fn recover_signed_in(
     let kit = RecoveryKit::from_text(verified.profile.profile_id, secret_key, recovery_code)
         .map_err(|e| e.to_string())?;
     let backup = verified.to_backup();
+    // A sealed join seals under the password and the kit (the kit slot,
+    // for a forgotten password later) before the identity names the keys.
+    if let Some(password) = seal {
+        crate::join_sealed::seal_for_join(&paths.data, keystore, password, Some(&kit))?;
+    }
     let mut identity = Identity::recover_with_kit(
         &paths.root,
         APP,

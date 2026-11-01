@@ -26,6 +26,10 @@ impl Device {
             .arg(&self.root)
             .args(args)
             .env_remove("LOCKDOWN_PASSWORD")
+            // A computer that joins is sealed under the account's password
+            // (docs/plan/44-cli-join-sealed.md); the laptop, an older
+            // install, has no master password and ignores it.
+            .env("LOCKDOWN_MASTER_PASSWORD", PASSWORD.trim_end())
             .env("HOSTNAME", self.name)
             .stdin(if stdin.is_some() {
                 Stdio::piped()
@@ -205,24 +209,28 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
     assert!(!ok);
     assert!(err.contains("already an account"), "{err}");
 
-    // B: nothing local. A wrong password is just "didn't go through"; a
+    // B: nothing local. A wrong password (the master password, which a
+    // joining computer is sealed with) is just "didn't go through"; a
     // wrong recovery code is refused after the login, with nothing written
     // and nothing the server could learn from it.
     let (ok, _, err) = b.run(
         &[
+            "--master-password-stdin",
             "recover",
             "--server",
             &url,
             "--login",
             "me@example.com",
-            "--password-stdin",
             "--kit-stdin",
         ],
         Some(&format!("wrong horse\n{secret_key}\n{recovery_code}\n")),
     );
     assert!(!ok);
     assert!(err.contains("didn't go through"), "{err}");
-    assert!(!b.root.exists(), "a failed login creates nothing");
+    assert!(
+        !b.root.parent().unwrap().parent().unwrap().exists(),
+        "a failed login creates nothing"
+    );
     let (ok, _, err) = b.run(
         &[
             "recover",
@@ -241,6 +249,11 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
     assert!(!ok);
     assert!(err.contains("recovery kit didn't open"), "{err}");
     assert!(!b.root.exists(), "a wrong kit creates nothing");
+    // The keys it signed in with stay, sealed, so the next try is the same
+    // device; nothing is in the clear.
+    let b_data = b.root.parent().unwrap().join("lockdown");
+    assert!(b_data.join("device-key.sealed.cbor").exists());
+    assert!(!b_data.join("device-key.cbor").exists());
     let out = b.ok(
         &[
             "recover",
@@ -258,6 +271,8 @@ fn two_devices_register_sync_conflict_and_list_the_copy() {
         "{out}"
     );
     assert!(out.contains("pulled (1 live items)"), "{out}");
+    assert!(b_data.join("device-key.sealed.cbor").exists());
+    assert!(!b_data.join("device-key.cbor").exists());
     let out = b.ok(&["list"], None);
     assert!(out.contains(&id), "the vault came with the recovery: {out}");
     let out = b.ok(&["sync"], None);

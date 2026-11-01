@@ -46,6 +46,9 @@ pub struct WaitingSignIn {
     needed: SecondFactorNeeded,
     profile_id: lockdown_vault::Id,
     then: Then,
+    /// The password the keys are sealed under once the key answers, for a
+    /// sealed join (`join_sealed`); the keys are in memory only until then.
+    seal: Option<Zeroizing<String>>,
 }
 
 impl std::fmt::Debug for WaitingSignIn {
@@ -59,15 +62,25 @@ impl std::fmt::Debug for WaitingSignIn {
 
 /// Signs this empty device in; `Ok(Ok(lines))` when no key was needed and
 /// the enrolment or recovery is done, `Ok(Err(waiting))` when a key is.
+/// With `seal`, the device's keys stay in memory and are sealed under
+/// `password` just before the identity names them (`join_sealed`);
+/// without, they start as the plain key file and the shell seals them
+/// right after (the desktop's join).
 pub(crate) fn sign_in_new_device(
     paths: &Paths,
     server: &str,
     login: &str,
     password: &str,
     then: Then,
+    seal: bool,
 ) -> Result<Result<Vec<String>, WaitingSignIn>, String> {
     check_root_empty(paths)?;
-    let keystore = Rc::new(DeviceKeys::open_or_create_plain(&paths.data)?);
+    let keystore = Rc::new(if seal {
+        crate::join_sealed::join_keys(&paths.data, password)?
+    } else {
+        DeviceKeys::open_or_create_plain(&paths.data)?
+    });
+    let seal = seal.then(|| Zeroizing::new(password.to_string()));
     let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
     let mut auth = OpaqueAccountAuth::new(transport, login, binding_of(&keystore));
     let (export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
@@ -82,14 +95,23 @@ pub(crate) fn sign_in_new_device(
             profile_id: session.profile_id,
             needed,
             then,
+            seal,
         })),
         None => finish(
-            paths, &transport, &keystore, login, export_key, session, &then,
+            paths,
+            &transport,
+            &keystore,
+            login,
+            export_key,
+            session,
+            &then,
+            seal.as_deref().map(String::as_str),
         )
         .map(Ok),
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn finish(
     paths: &Paths,
     transport: &HttpTransport,
@@ -98,8 +120,9 @@ fn finish(
     export_key: ExportKey,
     session: Signed,
     then: &Then,
+    seal: Option<&str>,
 ) -> Result<Vec<String>, String> {
-    match then {
+    let lines = match then {
         Then::Enrol { secret_key } => enrol_signed_in(
             paths,
             transport,
@@ -108,6 +131,7 @@ fn finish(
             export_key,
             session,
             secret_key.as_deref().map(String::as_str),
+            seal,
         ),
         Then::Recover {
             secret_key,
@@ -121,8 +145,13 @@ fn finish(
             session,
             secret_key,
             recovery_code,
+            seal,
         ),
+    }?;
+    if seal.is_some() {
+        crate::join_sealed::note_joined(&paths.data, login)?;
     }
+    Ok(lines)
 }
 
 impl WaitingSignIn {
@@ -167,6 +196,7 @@ impl WaitingSignIn {
             export_key,
             session,
             &self.then,
+            self.seal.as_deref().map(String::as_str),
         )
         .map(Some)
     }
