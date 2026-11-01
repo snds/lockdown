@@ -6,12 +6,16 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+const MASTER: &str = "orbit lantern pickle meadow";
+
 fn lockdown(root: &Path, args: &[&str], stdin: Option<&str>) -> (bool, String, String) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_lockdown"))
         .arg("--root")
         .arg(root)
         .args(args)
         .env_remove("LOCKDOWN_PASSWORD")
+        // Every vault has a master password (docs/plan/43-cli-sealed.md).
+        .env("LOCKDOWN_MASTER_PASSWORD", MASTER)
         .stdin(if stdin.is_some() {
             Stdio::piped()
         } else {
@@ -41,7 +45,7 @@ fn lockdown(root: &Path, args: &[&str], stdin: Option<&str>) -> (bool, String, S
 fn search_finds_by_words_forgives_a_typo_and_never_a_password() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("snds").join("identity");
-    assert!(lockdown(&root, &["init"], None).0);
+    assert!(lockdown(&root, &["init", "--name", "Sean"], None).0);
     for (site, user, pw) in [
         ("https://github.com/login", "octo", "horse-battery-staple"),
         ("https://mail.example.com", "me@example.com", "mail-pass"),

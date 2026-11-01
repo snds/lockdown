@@ -21,6 +21,11 @@ const target = process.env.CARGO_TARGET_DIR ?? path.resolve(import.meta.dirname,
 const cli = process.env.LOCKDOWN_CLI_BIN ?? path.join(target, "debug", "lockdown")
 // `cargo build -p lockdown-vault --example older-device`
 const olderDevice = process.env.LOCKDOWN_OLDER_DEVICE_BIN ?? path.join(target, "debug", "examples", "older-device")
+// `cargo build -p lockdown-devtools --no-default-features --features legacy-install --bin lockdown-legacy-install`:
+// the older device signs with this computer's plain key file, so this test
+// starts from an install made before every vault had a master password
+// (docs/plan/43-cli-sealed.md), which only this developer tool can make.
+const legacyInstall = process.env.LOCKDOWN_LEGACY_INSTALL_BIN ?? path.join(target, "debug", "lockdown-legacy-install")
 
 let home = ""
 let secretKey = ""
@@ -38,7 +43,7 @@ const older = (args: string[]) =>
 
 test.beforeAll(async ({ baseURL }) => {
   home = mkdtempSync(path.join(tmpdir(), "lockdown-web-pq-"))
-  lockdown(["init"])
+  run(legacyInstall, ["--root", path.join(home, "identity")])
   const kit = lockdown(["account", "register", "--server", baseURL!, "--login", LOGIN, "--password-stdin"], `${PASSWORD}\n`)
   secretKey = /^Secret Key:\s*(\S+)/m.exec(kit)?.[1] ?? ""
   // An older Lockdown on another computer: it reads the account's key

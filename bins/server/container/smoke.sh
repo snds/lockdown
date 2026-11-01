@@ -66,10 +66,14 @@ say "register, add, sync with the real CLI over hybrid TLS"
 export LOCKDOWN_CA_CERT="$WORK/ca.pem"
 A="$WORK/a/snds/identity"; B="$WORK/b/snds/identity"
 PW='a long smoke-test password'
-HOSTNAME=laptop "$CLI" --root "$A" init
-OUT=$(printf '%s\n' "$PW" | HOSTNAME=laptop "$CLI" --root "$A" account register --server "$URL" --login smoke@example.com --password-stdin)
+# Every vault has a master password (docs/plan/43-cli-sealed.md): init seals
+# it and prints the kit; register moves it to the server, where the master
+# password is the account's password.
+OUT=$(printf '%s\n' "$PW" | HOSTNAME=laptop "$CLI" --root "$A" --master-password-stdin init --name Smoke)
 SK=$(printf '%s\n' "$OUT" | awk '/^Secret Key:/ {print $NF}')
 RC=$(printf '%s\n' "$OUT" | awk '/^Recovery code:/ {print $NF}')
+export LOCKDOWN_MASTER_PASSWORD="$PW"
+HOSTNAME=laptop "$CLI" --root "$A" account register --server "$URL" --login smoke@example.com
 printf 'first secret\n' | "$CLI" --root "$A" add login --site https://bank.example --username me --password-stdin
 "$CLI" --root "$A" sync | tee "$WORK/sync.txt"
 grep -q "pushed 1" "$WORK/sync.txt"

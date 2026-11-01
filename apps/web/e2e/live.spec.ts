@@ -23,16 +23,24 @@ let home = ""
 let secretKey = ""
 
 function lockdown(args: string[], input?: string): string {
-  const run = spawnSync(cli, ["--root", path.join(home, "identity"), ...args], { input, encoding: "utf8", timeout: 120_000 })
+  const env = { ...process.env, LOCKDOWN_MASTER_PASSWORD: PASSWORD }
+  const run = spawnSync(cli, ["--root", path.join(home, "identity"), ...args], { input, env, encoding: "utf8", timeout: 120_000 })
   if (run.status !== 0) throw new Error(`lockdown ${args.join(" ")}: ${run.stderr || run.error}`)
   return run.stdout
 }
 
+/**
+ * Every vault the CLI makes has a master password (docs/plan/43-cli-sealed.md):
+ * `init --name` seals it and prints the kit, and `account register` moves it
+ * to the server with the master password as the account's password, the one
+ * the web vault signs in with.
+ */
 test.beforeAll(async ({ baseURL }) => {
+  test.setTimeout(600_000)
   home = mkdtempSync(path.join(tmpdir(), "lockdown-web-live-"))
-  lockdown(["init"])
-  const kit = lockdown(["account", "register", "--server", baseURL!, "--login", LOGIN, "--password-stdin"], `${PASSWORD}\n`)
+  const kit = lockdown(["init", "--name", "Live"])
   secretKey = /^Secret Key:\s*(\S+)/m.exec(kit)?.[1] ?? ""
+  lockdown(["account", "register", "--server", baseURL!, "--login", LOGIN])
   lockdown(["sync"])
 })
 

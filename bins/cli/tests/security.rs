@@ -69,7 +69,9 @@ fn security_prints_the_same_line_as_the_screen() {
         run_in_background(Arc::new(AppState::in_memory(Config::default()).unwrap())).unwrap();
     let url = server.url();
     let root = dir.path().join("laptop/snds/identity");
-    lockdown(&root, &["init"], None);
+    // An install made before every vault had a master password
+    // (docs/plan/43-cli-sealed.md): the account flows such installs still run.
+    lockdown_devtools::legacy::make(&root, None).unwrap();
 
     let out = lockdown(&root, &["security"], None);
     assert!(

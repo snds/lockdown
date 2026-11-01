@@ -98,7 +98,9 @@ fn two_cli_devices_sync_through_the_server_over_hybrid_tls() {
 
     let a = device(dir.path(), "laptop", Some(files.ca.clone()));
     let b = device(dir.path(), "phone", Some(files.ca.clone()));
-    a.ok(&["init"], None);
+    // An install made before every vault had a master password
+    // (docs/plan/43-cli-sealed.md): the account flows such installs still run.
+    lockdown_devtools::legacy::make(&a.root, None).unwrap();
     let out = a.ok(
         &[
             "account",
@@ -170,7 +172,7 @@ fn two_cli_devices_sync_through_the_server_over_hybrid_tls() {
     // The same client without the pinned CA refuses the server: the
     // certificate is from a CA the system doesn't know.
     let c = device(dir.path(), "stranger", None);
-    c.ok(&["init"], None);
+    lockdown_devtools::legacy::make(&c.root, None).unwrap();
     let (ok, _, err) = c.run(
         &[
             "account",
