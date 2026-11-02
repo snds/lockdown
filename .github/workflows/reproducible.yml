@@ -4,7 +4,8 @@
 # desktop packages (deb, rpm) and the Flatpak's files and OSTree commit are
 # each built twice, on two different runner images, from the same commit,
 # and must match. The Flatpak bundle file's own bytes, and the macOS and Windows
-# bundles (built on two runner images each outside pull requests), are
+# bundles and the Mac command line (built on two runner images each outside
+# pull requests), are
 # compared and reported, not required; doc 29 says what differs and why.
 name: Reproducible
 
@@ -281,6 +282,9 @@ jobs:
             sudo xcode-select -s /Applications/Xcode_16.2.app
             node scripts/stage-host.mjs --universal --release
             pnpm tauri build --ci --target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.bundle.conf.json
+            # The Mac command line as release.yml's macos-cli job builds it,
+            # before it is signed (docs/plan/46-mac-cli-download.md).
+            ../../packaging/macos-cli/build.sh ../../target/macos-cli
           else
             node scripts/stage-host.mjs --release
             pnpm tauri build --ci --bundles msi,nsis --config src-tauri/tauri.bundle.conf.json
@@ -298,6 +302,8 @@ jobs:
               done
               (cd "$b/dmg" && shasum -a 256 *.dmg | sed 's#  #  dmg:#')
               (cd "$b/macos" && find . -type f -print0 | sort -z | xargs -0 shasum -a 256 | sed 's#  \./#  app:#')
+              echo "info: lockdown (command line) $(dwarfdump --uuid target/macos-cli/lockdown | awk '{print $2, $3}' | tr '\n' ' ')"
+              (cd target/macos-cli && shasum -a 256 lockdown | sed 's#  #  cli:#')
             else
               # Git Bash's sha256sum marks binary mode with " *".
               h() { sha256sum "$@" | sed 's# \*#  #'; }

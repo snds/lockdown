@@ -18,6 +18,8 @@
 #   signature (D450), so macOS offers "Open Anyway" in Privacy & Security
 #   instead of calling the download damaged. It proves nothing about who
 #   built it; only the Developer ID does that.
+# - The Mac `lockdown` command (macos-cli) is signed the same way: the
+#   Developer ID and notarisation with the secrets, ad hoc without them.
 #
 # Secrets a real run uses when present (none is required; each step that
 # needs one is skipped without it):
@@ -317,6 +319,85 @@ jobs:
           path: out/*
           if-no-files-found: error
 
+  # The `lockdown` command for a Mac (docs/plan/46-mac-cli-download.md):
+  # Apple silicon and Intel joined with lipo, signed like the app (a
+  # Developer ID with the hardened runtime and a timestamp, then notarised,
+  # when the secrets exist; ad hoc otherwise, D450), run on the runner and
+  # packed with its licence and a README. Its own job, beside `macos`, so
+  # neither waits for the other: it needs no Node or Tauri, and the app's
+  # build already takes most of that job's hour.
+  macos-cli:
+    name: macos · command line (universal)
+    needs: meta
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
+      HAVE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_SIGNING_IDENTITY != '' }}
+      HAVE_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remapped paths (no runner path in the binary)
+        run: echo "RUSTFLAGS=--remap-path-prefix=$GITHUB_WORKSPACE=/lockdown --remap-path-prefix=$HOME/.cargo=/cargo" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-macos-cli
+      - name: Build (both architectures, lipo)
+        run: packaging/macos-cli/build.sh out
+      - name: The developer tools and legacy-install are never in it
+        run: packaging/devtools/check.sh absent out/lockdown
+      - name: Signing identity (only with the secrets)
+        if: env.HAVE_SIGNING == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          keychain="$RUNNER_TEMP/lockdown-signing.keychain-db"
+          pass="$(openssl rand -hex 16)"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$pass" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$pass" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$pass" "$keychain"
+          # The search list is split into names on purpose.
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+      - name: Ad-hoc identity (without the secrets)
+        if: env.HAVE_SIGNING != 'true'
+        run: echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+      - name: Sign, and notarise with the secrets
+        env:
+          APPLE_ID: ${{ env.HAVE_SIGNING == 'true' && env.HAVE_NOTARY == 'true' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ env.HAVE_SIGNING == 'true' && env.HAVE_NOTARY == 'true' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ env.HAVE_SIGNING == 'true' && env.HAVE_NOTARY == 'true' && secrets.APPLE_TEAM_ID || '' }}
+        run: packaging/macos-cli/sign.sh out/lockdown
+      - name: Check both architectures, the signature, and that it runs
+        run: packaging/macos-cli/check.sh ${{ env.HAVE_SIGNING == 'true' && 'developer-id' || 'adhoc' }} out/lockdown "${{ needs.meta.outputs.version }}"
+      - name: Gatekeeper's view (a notarised build; reported)
+        if: env.HAVE_SIGNING == 'true' && env.HAVE_NOTARY == 'true'
+        run: spctl -a -vvv -t open --context context:primary-signature out/lockdown 2>&1 || echo "spctl gave no verdict for a bare binary; the notary service accepted it above"
+      - name: Pack (binary, licence, README)
+        run: |
+          python3 packaging/macos-cli/pack.py out/lockdown "${{ needs.meta.outputs.version }}" release
+          # What people unpack is what was checked.
+          mkdir -p unpacked
+          tar -xzf release/lockdown-*-macos-universal.tar.gz -C unpacked
+          cmp out/lockdown unpacked/lockdown-*-macos-universal/lockdown
+          codesign --verify --strict unpacked/lockdown-*-macos-universal/lockdown
+          ls -la release unpacked/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-cli
+          path: release/*
+          if-no-files-found: error
+
   # MSI and NSIS installers through Tauri's bundler, and the MSIX layout
   # packed unsigned (a dry run of the package; the Store submission and the
   # passkey plug-in that needs it are OS-level work, D122).
@@ -511,6 +592,18 @@ jobs:
           mkdir -p sbom
           find . -name '*.cdx.json' -not -path './target/*' -not -path '*/node_modules/*' -exec cp {} sbom/ \;
           ls sbom
+      # The Mac command line (the macos-cli job): one SBOM per slice of the
+      # universal binary, the crates it links on that target, beside the
+      # run above on this Linux runner.
+      - name: The Mac command line, per architecture
+        run: |
+          for t in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo cyclonedx --manifest-path bins/cli/Cargo.toml --target "$t" --format json --spec-version 1.5
+            cp bins/cli/lockdown-cli.cdx.json "sbom/lockdown-cli-$t.cdx.json"
+          done
+          for f in sbom/lockdown-cli*.cdx.json; do
+            echo "$f: $(jq '.components | length' "$f") components"
+          done
       - name: Desktop UI (apps/desktop)
         uses: anchore/sbom-action@v0
         with:
@@ -537,7 +630,7 @@ jobs:
           for f in sbom/*.cdx.json; do
             jq -e '.bomFormat == "CycloneDX"' "$f" > /dev/null || { echo "::error::$f is not CycloneDX"; exit 1; }
           done
-          for f in lockdown-desktop lockdown-server lockdown-cli lockdown-native-host lockdown-desktop-ui lockdown-web-vault lockdown-extension; do
+          for f in lockdown-desktop lockdown-server lockdown-cli lockdown-cli-aarch64-apple-darwin lockdown-cli-x86_64-apple-darwin lockdown-native-host lockdown-desktop-ui lockdown-web-vault lockdown-extension; do
             jq -e '(.components | length) > 0' "sbom/$f.cdx.json" > /dev/null || { echo "::error::sbom/$f.cdx.json lists no components"; exit 1; }
           done
           tar --sort=name --mtime="@$(git log -1 --format=%ct)" --owner=0 --group=0 --numeric-owner \
@@ -553,7 +646,7 @@ jobs:
   # reads the draft and publishes it.
   publish:
     name: checksums · provenance · draft release
-    needs: [meta, linux, linux-install, flatpak, macos, windows, extension, server, sbom]
+    needs: [meta, linux, linux-install, flatpak, macos, macos-cli, windows, extension, server, sbom]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -565,7 +658,7 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-          pattern: "{linux-packages,linux-flatpak,macos-universal,windows-installers,extension-packages,server,sbom}"
+          pattern: "{linux-packages,linux-flatpak,macos-universal,macos-cli,windows-installers,extension-packages,server,sbom}"
       - name: Checksums
         working-directory: dist
         run: |
