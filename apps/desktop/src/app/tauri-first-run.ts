@@ -30,4 +30,7 @@ export const tauriFirstRunClient: FirstRunClient = {
   confirm: (address) => invoke("discovery_confirm", { address }),
   forget: (address) => invoke("discovery_forget", { address }),
   moveToServer: (input) => invoke("move_to_server", input),
+  accountLoginSealed: (input) => invoke("account_login_sealed", input),
+  recoverSealed: (input) => invoke("recover_sealed", input),
+  openJoined: (password) => invoke("open_joined", { password }),
 }

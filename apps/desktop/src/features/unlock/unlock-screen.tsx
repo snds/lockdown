@@ -37,6 +37,7 @@ const REASONS: Record<LockReason, string> = {
  *   that stopped after the account was made resumes at the kit;
  * - keys from before the master password → they open the vault one last
  *   time, then the migration asks for one (Q2: required);
+ * - keys but no identity (a join that stopped part way) → screen J again;
  * - an identity this computer is not enrolled in → a plain explanation.
  *
  * Never a server word on this screen. Every error comes from the core in
@@ -87,6 +88,10 @@ export function UnlockScreen({ reason, onOpened }: UnlockScreenProps) {
   }
   if (resume) return <FirstRun onOpened={onOpened} start="kit" kit={resume} />
   if (!probe.identity_present && !probe.device_key_present) return <FirstRun onOpened={onOpened} />
+  // Keys but no identity: a join that stopped after its keys were sealed
+  // (a refused Secret Key or kit keeps them, D522). Joining again with the
+  // same password carries on as the same device.
+  if (!probe.identity_present && frc) return <FirstRun onOpened={onOpened} start="join" />
   if (!enrolled) {
     return (
       <WelcomeColumn locked>
