@@ -55,7 +55,7 @@ case "$kind" in
     fail "the kind is adhoc or developer-id"
     ;;
 esac
-echo "ok: a $kind signature with the hardened runtime and no entitlements"
+echo "ok: the $kind signature holds, with the hardened runtime and no entitlements"
 
 echo "== 3. it runs"
 out="$("$bin" --version)"
