@@ -709,11 +709,38 @@ impl App {
         self.call(|core| core.paths.probe().map_err(AppError::from))
     }
 
-    /// First run or a later one: with `create`, the identity and the vault
-    /// are made when missing; without, only what exists is opened.
+    /// Opens what is on this device. With `create`, the first open after a
+    /// join: the vaults are pulled from the account's server, or the first
+    /// one made when the account has none. It never makes device keys from
+    /// nothing: a computer with no key file is refused (a new vault starts
+    /// sealed, through [`App::first_run_create`] or a sealed join;
+    /// docs/plan/45-desktop-join-sealed.md). Without `create`, only what
+    /// exists is opened.
     pub fn open_or_create(&self, create: bool) -> AppResult<Status> {
         let mode = if create { Mode::Init } else { Mode::Open };
-        self.call(move |core| core.open(mode))
+        self.call(move |core| {
+            if create && local_unlock::key_file(&core.paths.data) == local_unlock::KeyFile::None {
+                return Err(AppError {
+                    code: ErrorCode::NotSetUp,
+                    message: "Nothing is set up on this computer yet.".into(),
+                    detail: None,
+                });
+            }
+            core.open(mode)
+        })
+    }
+
+    /// A passwordless install, as Lockdown made them before every vault
+    /// had a master password: the device key in the plain file, the
+    /// identity and the first vault, made when missing. Nothing a person
+    /// runs reaches it. Its callers are test fixtures, the developer tools
+    /// (`lockdown-devtools`: the demo vault and the legacy-install tool)
+    /// and the server's restore-drill account, which lives in the server's
+    /// own private folder and holds no one's data. A real vault starts
+    /// sealed ([`App::first_run_create`], [`App::account_login_sealed`],
+    /// [`App::recover_sealed`], [`App::join_start_sealed`]).
+    pub fn open_or_create_plain(&self) -> AppResult<Status> {
+        self.call(|core| core.open(Mode::Init))
     }
 
     /// Opens again after a lock, through the device keystore (D11).
@@ -1585,7 +1612,11 @@ mod tests {
         assert!(!probe.device_key_present);
         let err = app.open_or_create(false).unwrap_err();
         assert_eq!(err.code, ErrorCode::NotSetUp);
-        let status = app.open_or_create(true).unwrap();
+        // The open a join uses never makes keys from nothing.
+        let err = app.open_or_create(true).unwrap_err();
+        assert_eq!(err.code, ErrorCode::NotSetUp);
+        assert!(!app.probe().unwrap().device_key_present);
+        let status = app.open_or_create_plain().unwrap();
         assert_eq!(status.live_items, 0);
         assert!(status.device_name.starts_with("Lockdown"));
         let probe = app.probe().unwrap();
@@ -1596,7 +1627,7 @@ mod tests {
     #[test]
     fn show_is_masked_until_asked_and_reveal_comes_back_as_bytes() {
         let (_dir, app) = fresh();
-        app.open_or_create(true).unwrap();
+        app.open_or_create_plain().unwrap();
         let id = app
             .add_login(
                 "https://example.com/login",
@@ -1691,7 +1722,7 @@ mod tests {
     fn every_kind_goes_through_one_path_and_secrets_never_cross_as_json() {
         use lockdown_vault::{Change, FieldChange, FieldInput, FieldKind};
         let (_dir, app) = fresh();
-        app.open_or_create(true).unwrap();
+        app.open_or_create_plain().unwrap();
         let templates = app.templates();
         assert!(templates.iter().any(|t| t.kind == "wi-fi" && t.creatable));
         assert!(templates.iter().all(|t| t.kind != "consent"));
@@ -1906,7 +1937,7 @@ mod tests {
     fn every_kind_survives_an_export_and_an_import_and_a_wallet_stays_a_crown_jewel() {
         use lockdown_vault::{Change, FieldChange, FieldInput};
         let (_dir, app) = fresh();
-        app.open_or_create(true).unwrap();
+        app.open_or_create_plain().unwrap();
         let confirmed = GateInput {
             password: None,
             confirmed: true,
@@ -1938,7 +1969,7 @@ mod tests {
         let file = app.export_items("cxf", confirmed.clone()).unwrap();
 
         let (_other, again) = fresh();
-        again.open_or_create(true).unwrap();
+        again.open_or_create_plain().unwrap();
         let report = again.import_items(file.expose().to_vec(), "cxf").unwrap();
         assert_eq!(report.imported, 2);
         assert!(report.notes.is_empty(), "{:?}", report.notes);
@@ -2006,7 +2037,7 @@ mod tests {
     #[test]
     fn codes_come_as_values_and_timing_never_the_seed() {
         let (_dir, app) = fresh();
-        app.open_or_create(true).unwrap();
+        app.open_or_create_plain().unwrap();
         const SEED: &str = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
         let uri = format!("otpauth://totp/Example:alice?secret={SEED}&digits=8&period=30");
         let code_id = app.add_code(&uri, None, None).unwrap();
@@ -2069,7 +2100,7 @@ mod tests {
     #[test]
     fn an_hotp_code_moves_on_when_asked_and_keeps_its_counter_through_a_lock() {
         let (_dir, app) = fresh();
-        app.open_or_create(true).unwrap();
+        app.open_or_create_plain().unwrap();
         const SEED: &str = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
         let hotp = app
             .add_code(
@@ -2187,7 +2218,7 @@ mod tests {
     #[test]
     fn without_a_platform_check_or_an_account_the_gate_is_the_window() {
         let (_dir, app) = fresh();
-        app.open_or_create(true).unwrap();
+        app.open_or_create_plain().unwrap();
         app.add_login("https://example.com", "me", b"pw".to_vec(), None)
             .unwrap();
         let (route, method) = app.approval_route(ApprovalKind::Reveal).unwrap();
@@ -2232,7 +2263,7 @@ mod tests {
     #[test]
     fn a_platform_check_takes_use_and_approve_and_stands_in_for_the_password() {
         let (_dir, app) = fresh();
-        app.open_or_create(true).unwrap();
+        app.open_or_create_plain().unwrap();
         let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         app.set_approver(Box::new(FakePlatform {
             answer: true,
@@ -2267,7 +2298,7 @@ mod tests {
     #[test]
     fn import_takes_a_csv_and_a_cxf_file_and_refuses_a_hostile_one() {
         let (_dir, app) = fresh();
-        app.open_or_create(true).unwrap();
+        app.open_or_create_plain().unwrap();
         let csv = b"name,url,username,password,totp\nShop,https://shop.example,me,pw1,\n".to_vec();
         let report = app.import_items(csv, "csv").unwrap();
         assert_eq!(report.imported, 1);
@@ -2308,7 +2339,7 @@ mod tests {
     #[test]
     fn the_idle_timer_locks_and_unlock_opens_again() {
         let (_dir, app) = fresh();
-        app.open_or_create(true).unwrap();
+        app.open_or_create_plain().unwrap();
         app.add_login("https://example.com", "me", b"pw".to_vec(), None)
             .unwrap();
         // An idle timeout of zero: due on the very next tick.
@@ -2335,7 +2366,7 @@ mod tests {
     #[test]
     fn a_hidden_window_locks_after_its_timeout_and_a_request_locks_at_once() {
         let (_dir, app) = fresh();
-        app.open_or_create(true).unwrap();
+        app.open_or_create_plain().unwrap();
         app.set_policy(LockPolicy {
             idle: None,
             hidden: Some(Duration::ZERO),

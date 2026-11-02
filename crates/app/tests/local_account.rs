@@ -130,7 +130,7 @@ fn an_install_without_a_master_password_moves_to_one_and_loses_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let app = start(dir.path());
     // "This device only", the old way: a plain key file and a kit.
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     let kit = app.kit_create(false, None).unwrap();
     let (secret_key, recovery_code) = kit_lines(kit.kit.expose());
     for (site, title) in [("a.example", "Alpha"), ("b.example", "Beta")] {
@@ -268,7 +268,7 @@ fn an_install_without_a_master_password_moves_to_one_and_loses_nothing() {
 fn a_migration_can_make_a_new_kit_instead() {
     let dir = tempfile::tempdir().unwrap();
     let app = start(dir.path());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     let old = app.kit_create(false, None).unwrap();
     let (old_sk, old_rc) = kit_lines(old.kit.expose());
     app.add_login("a.example", "me", b"pw".to_vec(), Some("Alpha"))

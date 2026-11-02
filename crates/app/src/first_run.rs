@@ -81,7 +81,7 @@ fn now() -> i64 {
 
 impl Core {
     /// Takes `session` as the open one, as an unlock does.
-    fn adopt(&mut self, session: Session) -> AppResult<Status> {
+    pub(crate) fn adopt(&mut self, session: Session) -> AppResult<Status> {
         let status = session.status()?;
         self.session = Some(session);
         self.last_reason = None;

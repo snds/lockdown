@@ -72,7 +72,7 @@ fn a_drill_signs_a_client_in_to_the_restored_copy_and_the_clients_read_the_resul
         None,
         lockdown_app::LockPolicy::default(),
     );
-    person.open_or_create(true).unwrap();
+    person.open_or_create_plain().unwrap();
     person
         .account_register(&url, "sean@example.com", "a long account password", None)
         .unwrap();

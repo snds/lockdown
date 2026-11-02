@@ -35,7 +35,7 @@ fn root_of(dir: &Path, name: &str) -> PathBuf {
 fn person(dir: &Path, name: &str, server: &RunningServer) -> App {
     let paths = Paths::resolve(Some(root_of(dir, name)), None).unwrap();
     let app = App::start(paths, None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     app.account_register(
         &server.url(),
         &format!("{name}@example.com"),

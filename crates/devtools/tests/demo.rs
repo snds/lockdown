@@ -204,7 +204,7 @@ fn the_demo_is_whole_separate_offline_and_leaves_no_trace() {
     let dir = tempfile::tempdir().unwrap();
     let home = Paths::resolve(Some(dir.path().join("snds/identity")), None).unwrap();
     let app = App::start(home.clone(), None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     let mine = app
         .add_login(
             "https://mine.example.com",

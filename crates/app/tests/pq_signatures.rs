@@ -78,7 +78,7 @@ fn both_devices_sign_heads_post_quantum_and_a_server_that_bends_or_strips_one_is
     // Device A alone: it marks itself, publishes the key, and its first
     // synced head carries both signatures.
     let a = device(dir.path(), "a");
-    a.open_or_create(true).unwrap();
+    a.open_or_create_plain().unwrap();
     let registered = a.account_register(&url, LOGIN, PASSWORD, None).unwrap();
     let secret_key = secret_key_of(registered.kit.as_ref().unwrap().expose());
     a.add_login("https://example.com", "me", b"pw".to_vec(), None)

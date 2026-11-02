@@ -29,7 +29,7 @@ pub fn make(root: &Path, data: Option<&Path>) -> Result<PathBuf, String> {
     }
     let data = paths.data.clone();
     let app = lockdown_app::App::start(paths, None, lockdown_app::LockPolicy::default());
-    app.open_or_create(true)
+    app.open_or_create_plain()
         .map_err(|e| format!("{} ({})", e.message, crate::MARKER))?;
     app.lock().map_err(|e| e.message)?;
     Ok(data)

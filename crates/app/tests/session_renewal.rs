@@ -50,7 +50,7 @@ fn secret_key_of(page: &[u8]) -> String {
 /// Two devices of one account: A made it, B joined with the kit.
 fn two_devices(dir: &std::path::Path, url: &str) -> (App, App) {
     let a = device(dir, "a");
-    a.open_or_create(true).unwrap();
+    a.open_or_create_plain().unwrap();
     let registered = a.account_register(url, LOGIN, PASSWORD, None).unwrap();
     let secret_key = secret_key_of(registered.kit.as_ref().unwrap().expose());
     a.add_login("https://one.example", "me", b"pw".to_vec(), None)
@@ -286,7 +286,7 @@ fn a_revoked_device_cant_sign_back_in_and_joins_again_as_a_new_device() {
     // The same machine, set up afresh, joins from A as a new device (D246).
     let again = device(dir.path(), "b-again");
     let offered = a.link_offer().unwrap();
-    again.join_start(&url, &offered.code).unwrap();
+    again.join_start_sealed(&url, &offered.code).unwrap();
     assert_eq!(a.link_poll().unwrap().state, "compare");
     assert_eq!(again.join_poll().unwrap().state, "compare");
     a.link_approve(gate()).unwrap();

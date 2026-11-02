@@ -95,7 +95,7 @@ fn a_mirror_agrees_then_catches_a_server_that_rewrote_its_history() {
     // Device A: an account, a login, a sync. The mirror hasn't copied
     // anything yet, so it can't vouch: said, not counted as agreement.
     let a = device(dir.path(), "a");
-    a.open_or_create(true).unwrap();
+    a.open_or_create_plain().unwrap();
     a.account_register(&url, "a@example.com", PASSWORD, None)
         .unwrap();
     a.add_login("https://example.com", "me", b"pw".to_vec(), None)
@@ -153,7 +153,7 @@ fn a_mirror_agrees_then_catches_a_server_that_rewrote_its_history() {
     rewrite_first_leaf(&dir.path().join("account"));
     account.mirrors.set_named(&[]).unwrap();
     let b = device(dir.path(), "b");
-    b.open_or_create(true).unwrap();
+    b.open_or_create_plain().unwrap();
     b.set_kt_mirrors(vec![format!("{mirror_url}/")]).unwrap();
     assert_eq!(b.kt_mirrors().unwrap().configured, vec![mirror_url.clone()]);
     b.account_register(&url, "b@example.com", PASSWORD, None)
@@ -219,7 +219,7 @@ fn a_mirror_of_another_server_and_a_bad_address_are_said_so() {
     );
     mirror.poll_once(now()).unwrap();
     let a = device(dir.path(), "a");
-    a.open_or_create(true).unwrap();
+    a.open_or_create_plain().unwrap();
     let refused = a.set_kt_mirrors(vec!["http://mirror.example".into()]);
     assert!(refused.unwrap_err().message.contains("https://"));
     a.set_kt_mirrors(vec![mirror_running.url()]).unwrap();
@@ -249,7 +249,7 @@ fn a_mirror_the_server_stops_naming_is_still_checked() {
         mirror_server(&dir.path().join("mirror"), &url, &dir.path().join("static"));
     account.mirrors.set_named(&[mirror_running.url()]).unwrap();
     let a = device(dir.path(), "a");
-    a.open_or_create(true).unwrap();
+    a.open_or_create_plain().unwrap();
     a.account_register(&url, "a@example.com", PASSWORD, None)
         .unwrap();
     a.sync().unwrap();
@@ -301,7 +301,7 @@ fn a_mirror_that_saw_another_or_no_post_quantum_log_key_is_a_split() {
     let (mirror, _mirror_running) =
         mirror_server(&dir.path().join("mirror"), &url, &dir.path().join("static"));
     let a = device(dir.path(), "a");
-    a.open_or_create(true).unwrap();
+    a.open_or_create_plain().unwrap();
     a.account_register(&url, "a@example.com", PASSWORD, None)
         .unwrap();
     a.sync().unwrap();

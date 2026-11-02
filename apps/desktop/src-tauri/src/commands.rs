@@ -42,6 +42,10 @@ async fn probe(app: State<'_, App>) -> AppResult<lockdown_app::Probe> {
     blocking(&app, |a| a.probe()).await
 }
 
+/// Opens what is here; with `create`, the first open after a join. The
+/// core refuses to make device keys from nothing: a new vault starts
+/// sealed (`first_run_create`, `account_login_sealed`, `recover_sealed`,
+/// the sealed `join_start`), and the join opens with `open_joined`.
 #[tauri::command]
 async fn open_vault(app: State<'_, App>, create: bool) -> AppResult<lockdown_app::Status> {
     blocking(&app, move |a| a.open_or_create(create)).await
@@ -964,5 +968,8 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         crate::first_run::commands::discovery_confirm,
         crate::first_run::commands::discovery_forget,
         crate::first_run::commands::move_to_server,
+        crate::first_run::commands::account_login_sealed,
+        crate::first_run::commands::recover_sealed,
+        crate::first_run::commands::open_joined,
     ]
 }

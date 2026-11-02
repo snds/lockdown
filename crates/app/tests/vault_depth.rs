@@ -40,7 +40,7 @@ fn the_attachment_room_is_the_servers_and_templates_travel() {
     let url = running.url();
 
     let a = device(dir.path(), "a");
-    a.open_or_create(true).unwrap();
+    a.open_or_create_plain().unwrap();
     assert_eq!(a.storage_usage().unwrap(), None, "no account yet");
     let registered = a.account_register(&url, LOGIN, PASSWORD, None).unwrap();
     let secret_key = secret_key_of(registered.kit.as_ref().unwrap().expose());

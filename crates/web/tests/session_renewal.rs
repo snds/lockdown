@@ -40,7 +40,7 @@ fn ok(web: &mut WebVault, cmd: &str, args: Value) -> Value {
 fn register(dir: &std::path::Path, url: &str) -> (lockdown_app::App, String) {
     let paths = lockdown_app::Paths::resolve(Some(dir.join("desktop/identity")), None).unwrap();
     let app = lockdown_app::App::start(paths, None, lockdown_app::LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     let registered = app.account_register(url, LOGIN, PASSWORD, None).unwrap();
     app.sync().unwrap();
     let page = String::from_utf8(registered.kit.unwrap().expose().to_vec()).unwrap();

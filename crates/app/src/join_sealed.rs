@@ -23,8 +23,12 @@
 //! your password?" works on this computer later. The name the lock screen
 //! shows is the account's login, as the desktop's join records it.
 //!
-//! The desktop's join still signs in with plain keys and seals right after
-//! (`setMasterPassword`); moving it here is doc 44's gap 1.
+//! The command line and the desktop both join this way. The desktop then
+//! opens the vault with [`App::open_joined`], which pulls it from the
+//! server as the first open of a joined computer does; its "let another
+//! device approve this one" join seals the same way
+//! (`devices_link::Joining::finish_sealed`;
+//! docs/plan/45-desktop-join-sealed.md).
 
 use std::path::Path;
 
@@ -34,7 +38,8 @@ use zeroize::Zeroizing;
 use crate::local_unlock::{self, DeviceKeys, KeyFile};
 use crate::onboarding::{self, Onboarding, Stage};
 use crate::session::second_factor::{Then, sign_in_new_device};
-use crate::{App, AppResult};
+use crate::session::{Mode, Session};
+use crate::{App, AppError, AppResult, Core, Status};
 
 /// The keys a sealed join signs in with: fresh ones kept only in memory, or
 /// the ones a join that stopped half way left here (a sealed file, opened
@@ -94,7 +99,45 @@ pub(crate) fn note_joined(data: &Path, login: &str) -> Result<(), String> {
     o.save(data)
 }
 
+impl Core {
+    /// Opens a computer a sealed join just finished, with the password it
+    /// was sealed under: the vaults are pulled from the server (or the
+    /// first one made, for an account with none), as the first open after
+    /// a join does. Refused unless the keys are sealed and the identity
+    /// names this device, so it never makes anything from nothing.
+    pub(crate) fn open_joined(&mut self, password: &str) -> AppResult<Status> {
+        if local_unlock::key_file(&self.paths.data) != KeyFile::Sealed {
+            return Err(AppError::refused(
+                "Nothing joined on this computer is sealed yet.",
+            ));
+        }
+        if !self.paths.probe()?.identity_present {
+            return Err(AppError::refused(
+                "This computer's join didn't finish. Join again with the same password.",
+            ));
+        }
+        let keys = DeviceKeys::open_with_password(&self.paths.data, password)
+            .map_err(AppError::refused)?;
+        let session = Session::open_with(
+            self.paths.clone(),
+            self.persona.as_deref(),
+            Mode::Init,
+            Some(keys),
+        )?;
+        self.adopt(session)
+    }
+}
+
 impl App {
+    /// Opens the vault on a computer a sealed join just finished
+    /// ([`App::account_login_sealed`], [`App::recover_sealed`], after a
+    /// security key or emailed approval answered too) with the password it
+    /// was sealed under, pulling the vaults from the server.
+    pub fn open_joined(&self, password: &str) -> AppResult<Status> {
+        let password = Zeroizing::new(password.to_string());
+        self.call(move |core| core.open_joined(&password))
+    }
+
     /// [`App::account_login`] on a computer that holds nothing yet, sealed:
     /// signs in, enrols this device through the account slot (the password
     /// and, when the slot wants it, the Secret Key), with the device's keys

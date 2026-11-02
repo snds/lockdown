@@ -172,7 +172,7 @@ impl Demo {
             self.app
                 .rehome(self.paths(), Some(WHY.into()))
                 .map_err(err)?;
-            self.app.open_or_create(true).map_err(err)?;
+            self.app.open_or_create_plain().map_err(err)?;
             let mut settings = self.app.settings().map_err(err)?;
             settings.breach_check = false;
             settings.change_password_check = false;
