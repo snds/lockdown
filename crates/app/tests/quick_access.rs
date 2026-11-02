@@ -8,7 +8,7 @@ use lockdown_app::{App, ErrorCode, GateInput, LockPolicy, Paths};
 fn device(dir: &std::path::Path) -> App {
     let paths = Paths::resolve(Some(dir.join("a/snds/identity")), None).unwrap();
     let app = App::start(paths, None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     app
 }
 

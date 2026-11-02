@@ -6,10 +6,13 @@
 //!   and shows the six digits, [`App::link_approve`] enrols it after the
 //!   `Approve` gate (D99: the platform check confirms, the digits are the
 //!   check), [`App::link_decline`] writes nothing.
-//! - **Join from another device** (this one empty): [`App::join_start`]
-//!   with the typed code or the scanned payload, [`App::join_poll`] until
-//!   the digits and then the approval, [`App::join_finish`] with the
-//!   account password. No kit is typed.
+//! - **Join from another device** (this one empty): [`App::join_start_sealed`]
+//!   (the desktop) or [`App::join_start`] (the web vault) with the typed
+//!   code or the scanned payload, [`App::join_poll`] until the digits and
+//!   then the approval, [`App::join_finish`] with the account password (the
+//!   desktop: the keys are sealed under it before the identity is written,
+//!   docs/plan/45-desktop-join-sealed.md) or [`App::join_finish_signed_in`]
+//!   (the web vault). No kit is typed.
 //! - **The Secret Key**: [`App::secret_key_status`] says whether this
 //!   device keeps it (so it can hand it on); [`App::account_register_opted_out`]
 //!   is the documented opt-out, refused until the person confirms the
@@ -32,7 +35,7 @@ use serde::Serialize;
 use zeroize::Zeroizing;
 
 pub use crate::session::devices_link::{JoinView, LinkView};
-use crate::session::devices_link::{Joining, SignIn, finish_joined};
+use crate::session::devices_link::{Joining, finish_joined};
 use crate::session::second_factor::{Then, WaitingSignIn, sign_in_new_device};
 use crate::{App, AppError, AppResult, ApprovalKind, ErrorCode, GateInput, Registered, Status};
 
@@ -124,12 +127,29 @@ impl App {
 
     /// On a device with nothing on it: joins the link `invite` names (the
     /// typed code, or the QR payload, which also names the server and pins
-    /// the other device's key).
+    /// the other device's key). The keys start as the plain key file, which
+    /// the web vault seals under its sign-in's export key itself; it
+    /// finishes with [`App::join_finish_signed_in`].
     pub fn join_start(&self, server: &str, invite: &str) -> AppResult<JoinView> {
+        self.join_start_as(server, invite, false)
+    }
+
+    /// [`App::join_start`] sealed (the desktop): the new device's keys stay
+    /// in memory, and the identity waits beside them, until
+    /// [`App::join_finish`] has the password, seals the keys under it and
+    /// only then restores the identity. Nothing is written before.
+    pub fn join_start_sealed(&self, server: &str, invite: &str) -> AppResult<JoinView> {
+        self.join_start_as(server, invite, true)
+    }
+
+    fn join_start_as(&self, server: &str, invite: &str, sealed: bool) -> AppResult<JoinView> {
         let (server, invite) = (server.to_string(), Zeroizing::new(invite.to_string()));
         self.call(move |core| {
+            if sealed {
+                core.refuse_confined()?;
+            }
             let joining =
-                Joining::start(&core.paths, &server, &invite).map_err(AppError::refused)?;
+                Joining::start(&core.paths, &server, &invite, sealed).map_err(AppError::refused)?;
             let view = joining.view();
             core.depth.joining = Some(joining);
             Ok(view)
@@ -155,32 +175,33 @@ impl App {
         })
     }
 
-    /// Finishes an approved join: signs in with the account password, then
-    /// opens the vault (pulling it from the server).
+    /// Finishes an approved sealed join ([`App::join_start_sealed`]): signs
+    /// in with the account password, seals the keys under it (this
+    /// computer's master password from then on), restores the identity,
+    /// then opens the vault with that password (pulling it from the
+    /// server). A wrong password writes nothing and the join stays, so the
+    /// person can try again.
     pub fn join_finish(&self, login: &str, password: &str) -> AppResult<Status> {
         let login = login.to_string();
         let password = Zeroizing::new(password.to_string());
         self.call(move |core| {
-            let (server, sk) = match core.depth.joining.as_ref() {
-                Some(j) => (j.server().to_string(), j.secret_key()),
-                None => return Err(AppError::refused("no join is under way")),
-            };
-            finish_joined(
-                &core.paths,
-                &server,
-                &login,
-                SignIn::Password(&password),
-                sk,
-            )
-            .map_err(AppError::refused)?;
+            let joining = core
+                .depth
+                .joining
+                .as_mut()
+                .ok_or_else(|| AppError::refused("no join is under way"))?;
+            joining
+                .finish_sealed(&login, &password)
+                .map_err(AppError::refused)?;
             core.depth.joining = None;
-            core.open(crate::session::Mode::Init)
+            core.open_joined(&password)
         })
     }
 
-    /// [`App::join_finish`] after a sign-in the shell ran itself with this
-    /// device's keystore (the web vault, which seals its device key with
-    /// the export key). Does not open the vault; the shell does.
+    /// Finishes an approved plain join ([`App::join_start`]) after a
+    /// sign-in the shell ran itself with this device's keystore (the web
+    /// vault, which seals its device key with the export key). Does not
+    /// open the vault; the shell does.
     pub fn join_finish_signed_in(
         &self,
         login: &str,
@@ -190,17 +211,16 @@ impl App {
         let login = login.to_string();
         self.call(move |core| {
             let (server, sk) = match core.depth.joining.as_ref() {
+                Some(j) if j.is_sealed() => {
+                    return Err(AppError::refused(
+                        "this join seals its keys under the password; finish it with join_finish",
+                    ));
+                }
                 Some(j) => (j.server().to_string(), j.secret_key()),
                 None => return Err(AppError::refused("no join is under way")),
             };
-            let lines = finish_joined(
-                &core.paths,
-                &server,
-                &login,
-                SignIn::Done(export_key, session),
-                sk,
-            )
-            .map_err(AppError::refused)?;
+            let lines = finish_joined(&core.paths, &server, &login, export_key, session, sk)
+                .map_err(AppError::refused)?;
             core.depth.joining = None;
             Ok(lines)
         })

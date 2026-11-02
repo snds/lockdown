@@ -11,7 +11,7 @@ use lockdown_app::{App, ErrorCode, FieldChange, GateInput, LockPolicy, Paths};
 fn fresh(dir: &Path, name: &str) -> App {
     let paths = Paths::resolve(Some(dir.join(name).join("snds/identity")), None).unwrap();
     let app = App::start(paths, None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     app
 }
 

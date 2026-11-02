@@ -16,7 +16,7 @@ import {
   Spinner,
 } from "@unicron/ui"
 
-import { describeError, useClient } from "@/core/client"
+import { describeError } from "@/core/client"
 import type { Status } from "@/core/types"
 import { needsEmailApproval, needsSecurityKey } from "@/features/depth/depth-client"
 import { JoinWithDevice, SecondFactorWait } from "@/features/depth/join-device"
@@ -41,11 +41,12 @@ const DOMAIN_PAUSE_MS = 600
  * approve this computer from another device, sign in to a server, or use
  * the recovery kit. The servers discovery found are listed with the best
  * one chosen; nothing is sent to one before the person confirms its key.
- * After a sign-in the typed password becomes this computer's master
- * password (§1.3).
+ * The typed password becomes this computer's master password (§1.3): the
+ * core seals the new device's keys under it in the same step as the
+ * sign-in or recovery, so no plain key file is ever written
+ * (docs/plan/45-desktop-join-sealed.md), then opens the vault with it.
  */
 export function JoinScreen({ onBack, onOpened }: { onBack: () => void; onOpened: (s: Status) => void }) {
-  const client = useClient()
   const frc = useFirstRunClient()
   const [way, setWay] = useState<Way>("signin")
   const [candidates, setCandidates] = useState<Candidate[]>([])
@@ -116,14 +117,13 @@ export function JoinScreen({ onBack, onOpened }: { onBack: () => void; onOpened:
     try {
       // The key is pinned before anything is sent there.
       await frc.confirm(c.address)
-      if (way === "signin") await client.accountLogin({ server: c.address, login: login.trim(), password, secretKey: secretKey.trim() || undefined })
-      else await client.recover({ server: c.address, login: login.trim(), password, secretKey: secretKey.trim(), recoveryCode: recoveryCode.trim() })
-      await client.openVault(true)
-      await frc.setMasterPassword({ password })
+      if (way === "signin") await frc.accountLoginSealed({ server: c.address, login: login.trim(), password, secretKey: secretKey.trim() || undefined })
+      else await frc.recoverSealed({ server: c.address, login: login.trim(), password, secretKey: secretKey.trim(), recoveryCode: recoveryCode.trim() })
+      const status = await frc.openJoined(password)
       setPassword("")
       setSecretKey("")
       setRecoveryCode("")
-      onOpened(await client.status())
+      onOpened(status)
     } catch (err) {
       if (needsSecurityKey(err)) setWaiting({ server: c.address, email: null })
       else if (needsEmailApproval(err)) setWaiting({ server: c.address, email: describeError(err) })
@@ -142,11 +142,16 @@ export function JoinScreen({ onBack, onOpened }: { onBack: () => void; onOpened:
           onCancel={() => setWaiting(null)}
           onDone={() => {
             setWaiting(null)
-            void client
-              .openVault(true)
-              .then(() => frc?.setMasterPassword({ password }))
-              .then(() => client.status())
-              .then(onOpened, (e) => setError(describeError(e)))
+            if (!frc) return
+            void frc.openJoined(password).then(
+              (status) => {
+                setPassword("")
+                setSecretKey("")
+                setRecoveryCode("")
+                onOpened(status)
+              },
+              (e) => setError(describeError(e)),
+            )
           }}
         />
       </WelcomeColumn>

@@ -1,5 +1,6 @@
 //! The first run, the master password and finding a server, as Tauri
-//! commands (docs/plan/39-first-run.md §1.2–§1.11). Each is a thin call
+//! commands (docs/plan/39-first-run.md §1.2–§1.11), and the sealed join of
+//! screen J (docs/plan/45-desktop-join-sealed.md). Each is a thin call
 //! into `lockdown_app`; a kit page crosses as the once-page body
 //! `kit_create` uses (the notes as JSON, a NUL, the page's bytes) and is
 //! never a JSON string.
@@ -209,6 +210,62 @@ pub mod commands {
     #[tauri::command]
     pub async fn discovery_forget(app: State<'_, App>, address: String) -> AppResult<()> {
         blocking(&app, move |a| a.discovery_forget(&address)).await
+    }
+
+    // --- the sealed join (docs/plan/45-desktop-join-sealed.md) -------------
+
+    /// Signs this empty computer in and enrols it, its keys sealed under
+    /// the password before the identity names them. A security key or an
+    /// emailed approval comes back as `approval_needed`, and
+    /// `second_factor_wait` finishes it.
+    #[tauri::command]
+    pub async fn account_login_sealed(
+        app: State<'_, App>,
+        server: String,
+        login: String,
+        password: String,
+        secret_key: Option<String>,
+    ) -> AppResult<Vec<String>> {
+        let password = Zeroizing::new(password);
+        let secret_key = secret_key.map(Zeroizing::new);
+        blocking(&app, move |a| {
+            a.account_login_sealed(
+                &server,
+                &login,
+                &password,
+                secret_key.as_deref().map(|s| s.as_str()),
+            )
+        })
+        .await
+    }
+
+    /// The recovery with the kit on this empty computer, sealed under the
+    /// password and the kit.
+    #[tauri::command]
+    pub async fn recover_sealed(
+        app: State<'_, App>,
+        server: String,
+        login: String,
+        password: String,
+        secret_key: String,
+        recovery_code: String,
+    ) -> AppResult<Vec<String>> {
+        let (password, secret_key, recovery_code) = (
+            Zeroizing::new(password),
+            Zeroizing::new(secret_key),
+            Zeroizing::new(recovery_code),
+        );
+        blocking(&app, move |a| {
+            a.recover_sealed(&server, &login, &password, &secret_key, &recovery_code)
+        })
+        .await
+    }
+
+    /// Opens the vault a sealed join just finished, with its password.
+    #[tauri::command]
+    pub async fn open_joined(app: State<'_, App>, password: String) -> AppResult<Status> {
+        let password = Zeroizing::new(password);
+        blocking(&app, move |a| a.open_joined(&password)).await
     }
 }
 

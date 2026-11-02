@@ -155,7 +155,7 @@ impl DrillAccount {
         let app =
             lockdown_app::App::start(paths(&self.dir), None, lockdown_app::LockPolicy::default());
         let made = (|| {
-            app.open_or_create(true).map_err(|e| e.message)?;
+            app.open_or_create_plain().map_err(|e| e.message)?;
             app.add_login(
                 SITE,
                 "restore-drill",

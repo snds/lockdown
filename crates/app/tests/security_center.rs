@@ -23,7 +23,7 @@ fn fresh() -> (tempfile::TempDir, App) {
     let dir = tempfile::tempdir().unwrap();
     let paths = Paths::resolve(Some(dir.path().join("snds/identity")), None).unwrap();
     let app = App::start(paths, None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     (dir, app)
 }
 
@@ -531,7 +531,7 @@ fn a_new_device_on_the_account_is_a_finding_on_the_others_until_dismissed() {
         App::start(paths, None, LockPolicy::default())
     };
     let a = device("a");
-    a.open_or_create(true).unwrap();
+    a.open_or_create_plain().unwrap();
     let registered = a
         .account_register(&url, "me@example.com", "correct horse battery staple", None)
         .unwrap();

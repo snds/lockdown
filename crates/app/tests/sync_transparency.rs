@@ -56,7 +56,7 @@ fn a_sync_audits_the_log_before_and_after_and_remembers_the_view() {
 
     // Device A: identity, account, one login, sync.
     let a = device(dir.path(), "a");
-    a.open_or_create(true).unwrap();
+    a.open_or_create_plain().unwrap();
     let registered = a.account_register(&url, LOGIN, PASSWORD, None).unwrap();
     let secret_key = secret_key_of(registered.kit.as_ref().unwrap().expose());
     assert_eq!(
@@ -123,7 +123,7 @@ fn a_server_that_swaps_this_devices_key_is_refused_by_the_audit() {
     let (state, running) = server_on_disk(dir.path());
     let url = running.url();
     let a = device(dir.path(), "a");
-    a.open_or_create(true).unwrap();
+    a.open_or_create_plain().unwrap();
     a.account_register(&url, LOGIN, PASSWORD, None).unwrap();
     assert_eq!(state.storage.log_size().unwrap(), 2);
 
@@ -185,7 +185,7 @@ fn a_tree_head_smaller_than_the_remembered_one_is_a_rollback() {
     let (_state, running) = server();
     let url = running.url();
     let a = device(dir.path(), "a");
-    a.open_or_create(true).unwrap();
+    a.open_or_create_plain().unwrap();
     a.account_register(&url, LOGIN, PASSWORD, None).unwrap();
     let outcome = a.sync().unwrap();
     assert_eq!(outcome.transparency.log_size, 3);
@@ -220,7 +220,7 @@ fn with_an_account_the_reveal_gate_is_the_password_checked_by_opaque() {
     let (_state, running) = server();
     let url = running.url();
     let a = device(dir.path(), "a");
-    a.open_or_create(true).unwrap();
+    a.open_or_create_plain().unwrap();
     a.account_register(&url, LOGIN, PASSWORD, None).unwrap();
     a.add_login("https://example.com", "me", b"pw".to_vec(), None)
         .unwrap();

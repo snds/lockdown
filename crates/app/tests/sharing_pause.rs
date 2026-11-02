@@ -57,7 +57,7 @@ fn server() -> Server {
 fn person(dir: &std::path::Path, name: &str, server: &Server) -> App {
     let paths = Paths::resolve(Some(dir.join(name).join("snds/identity")), None).unwrap();
     let app = App::start(paths, None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     app.account_register(
         &server.running.url(),
         &format!("{name}@example.com"),
@@ -325,7 +325,7 @@ fn during_a_split_new_members_wait_and_known_members_items_still_sync() {
         None,
         LockPolicy::default(),
     );
-    alice.open_or_create(true).unwrap();
+    alice.open_or_create_plain().unwrap();
     let registered = alice
         .account_register(&url, "alice@example.com", PASSWORD, None)
         .unwrap();
@@ -489,7 +489,7 @@ fn alice_with_kit(dir: &std::path::Path, url: &str) -> (App, String) {
         None,
         LockPolicy::default(),
     );
-    alice.open_or_create(true).unwrap();
+    alice.open_or_create_plain().unwrap();
     let registered = alice
         .account_register(url, "alice@example.com", PASSWORD, None)
         .unwrap();

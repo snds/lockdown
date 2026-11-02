@@ -41,7 +41,7 @@ fn a_signed_in_tab_gets_the_desktops_pdf_of_the_kit_page_and_a_locked_one_does_n
     let paths =
         lockdown_app::Paths::resolve(Some(dir.path().join("desktop/identity")), None).unwrap();
     let desktop = lockdown_app::App::start(paths, None, lockdown_app::LockPolicy::default());
-    desktop.open_or_create(true).unwrap();
+    desktop.open_or_create_plain().unwrap();
     let registered = desktop
         .account_register(&url, LOGIN, PASSWORD, None)
         .unwrap();

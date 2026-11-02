@@ -43,7 +43,7 @@ fn paths(dir: &std::path::Path, name: &str) -> Paths {
 /// recovery code, read off the page the registration showed.
 fn person(dir: &std::path::Path, name: &str, srv: &Server) -> (App, String, String) {
     let app = App::start(paths(dir, name), None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     let reg = app
         .account_register(
             &srv.running.url(),

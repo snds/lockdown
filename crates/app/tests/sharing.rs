@@ -42,7 +42,7 @@ fn server() -> Server {
 fn person(dir: &std::path::Path, name: &str, server: &Server) -> App {
     let paths = Paths::resolve(Some(dir.join(name).join("snds/identity")), None).unwrap();
     let app = App::start(paths, None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     app.account_register(
         &server.running.url(),
         &format!("{name}@example.com"),

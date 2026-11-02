@@ -91,7 +91,7 @@ fn main() {
     let paths = Paths::resolve(Some(dir.join("snds/identity")), None).expect("paths");
     let data = paths.data.clone();
     let app = App::start(paths, None, LockPolicy::default());
-    app.open_or_create(true).expect("a vault");
+    app.open_or_create_plain().expect("a vault");
     let platform = Arc::new(AtomicBool::new(true));
     if std::env::args().any(|a| a == "--platform-check") {
         app.set_approver(Box::new(TestCheck {

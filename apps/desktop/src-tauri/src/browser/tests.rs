@@ -41,7 +41,7 @@ fn rig() -> Rig {
     let paths = Paths::resolve(Some(dir.path().join("snds/identity")), None).unwrap();
     let data = paths.data.clone();
     let app = App::start(paths, None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     let clipboard = Arc::new(FakeClipboard::default());
     let config = EndpointConfig {
         data: data.clone(),
@@ -349,7 +349,7 @@ fn a_confined_home_reads_as_locked_and_answers_no_page() {
         .app
         .rehome(demo, Some("the demo never goes online".into()))
         .unwrap();
-    rig.app.open_or_create(true).unwrap();
+    rig.app.open_or_create_plain().unwrap();
     assert_eq!(host.ok("status", json!({}))["locked"], true);
     assert_eq!(
         host.err("matches", json!({ "frame": "https://example.com" })),
@@ -406,7 +406,7 @@ fn over_the_real_socket_the_host_binary_is_checked_by_process_identity() {
     let paths = Paths::resolve(Some(dir.path().join("snds/identity")), None).unwrap();
     let data = paths.data.clone();
     let app = App::start(paths, None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     // This test binary plays both the app and the host: the endpoint allows
     // exactly this executable, by path and hash, on the other end.
     let me = std::env::current_exe().unwrap();
@@ -468,7 +468,7 @@ fn over_the_real_pipe_the_host_binary_is_checked_by_process_identity() {
     let paths = Paths::resolve(Some(dir.path().join("snds/identity")), None).unwrap();
     let data = paths.data.clone();
     let app = App::start(paths, None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     let me = std::env::current_exe().unwrap();
     let config = EndpointConfig {
         data: data.clone(),
@@ -521,7 +521,7 @@ fn over_the_real_pipe_another_program_is_refused() {
     let paths = Paths::resolve(Some(dir.path().join("snds/identity")), None).unwrap();
     let data = paths.data.clone();
     let app = App::start(paths, None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     let me = std::env::current_exe().unwrap();
     // A stand-in host: a real file that isn't this test binary.
     let other = dir.path().join("lockdown-native-host.exe");

@@ -12,7 +12,7 @@ fn fresh() -> (tempfile::TempDir, App) {
     let dir = tempfile::tempdir().unwrap();
     let paths = Paths::resolve(Some(dir.path().join("snds/identity")), None).unwrap();
     let app = App::start(paths, None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     (dir, app)
 }
 

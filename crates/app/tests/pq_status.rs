@@ -52,7 +52,7 @@ fn the_line_follows_the_rollout_and_never_says_on_unconfirmed() {
     let url = running.url();
     let paths = Paths::resolve(Some(dir.path().join("a/snds/identity")), None).unwrap();
     let a = App::start(paths, None, LockPolicy::default());
-    a.open_or_create(true).unwrap();
+    a.open_or_create_plain().unwrap();
 
     // No account: nothing to check against.
     let s = a.pq_status().unwrap();

@@ -411,6 +411,20 @@ export function commands(world: World): Record<string, Handler> {
     discovery_domain: () => [],
     discovery_confirm: (a) => typedCandidate(str(a, "address")),
     discovery_forget: () => undefined,
+    // The sealed join (doc 45): the keys sealed under the password in the
+    // same step, then the vault opens with it.
+    account_login_sealed: () => {
+      world.device = { identity: true, deviceKey: true, masterPassword: true, local: false, stage: "done" }
+      return ["Signed in to vault.rivera.example as sam@rivera.example.", "This device is now enrolled."]
+    },
+    recover_sealed: () => {
+      world.device = { identity: true, deviceKey: true, masterPassword: true, local: false, stage: "done" }
+      return ["Recovered with the kit. This device is enrolled and its key is in the identity."]
+    },
+    open_joined: () => {
+      world.lock = { ...world.lock, locked: false, reason: null, idle_secs: 0 }
+      return status(world)
+    },
     move_to_server: () => {
       world.device = { ...world.device, local: false }
       return { pushed: 43, pulled: 0, merged: 0, conflict_copies: [], head_seq: 1842, rounds: 1, transparency: status(world).account?.transparency, lines: [] }
