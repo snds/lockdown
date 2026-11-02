@@ -157,6 +157,7 @@ mod tests {
             by_device: Id::new(),
             at: Timestamp(0),
             sig: Vec::new(),
+            pq_sig: None,
         }
     }
 

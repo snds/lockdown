@@ -460,7 +460,39 @@ pub async fn vault_key(
     }))
 }
 
+/// A sharing record's post-quantum signature, when it carries one, must
+/// check out under the key the sending account's profile publishes, as a
+/// head's must (D341; docs/plan/47-shared-vault-pq.md). Whether a record
+/// needs one is the clients' rule; the server refuses only what can't be
+/// right: a bad signature, or one from an account that publishes no key.
+fn check_pq_sig(
+    state: &AppState,
+    session: &Session,
+    what: &str,
+    present: bool,
+    verify: impl FnOnce(&lockdown_crypto::pq_sign::PqVerifyingKey) -> bool,
+) -> ApiResult<()> {
+    if !present {
+        return Ok(());
+    }
+    let bad =
+        |message: String| ApiError::new(StatusCode::FORBIDDEN, ErrorCode::BadSignature, message);
+    let key = crate::api::account_pq_key(state, session.account_id)?.ok_or_else(|| {
+        bad(format!(
+            "{what} carries a post-quantum signature but the account publishes no post-quantum key"
+        ))
+    })?;
+    if verify(&key) {
+        Ok(())
+    } else {
+        Err(bad(format!(
+            "{what}'s post-quantum signature didn't check out"
+        )))
+    }
+}
+
 fn check_envelope(
+    state: &AppState,
     env: &ShareEnvelope,
     key: &VerifyingKey,
     session: &Session,
@@ -478,7 +510,14 @@ fn check_envelope(
         ));
     }
     env.verify(key)
-        .map_err(|_| ApiError::forbidden("a share envelope's signature didn't check out"))
+        .map_err(|_| ApiError::forbidden("a share envelope's signature didn't check out"))?;
+    check_pq_sig(
+        state,
+        session,
+        "a share envelope",
+        env.pq_sig.is_some(),
+        |k| env.verify_post_quantum(k).is_ok(),
+    )
 }
 
 /// `POST /v1/vaults/{vault}/members`.
@@ -505,6 +544,13 @@ pub async fn push_membership(
     event
         .verify(&key)
         .map_err(|_| ApiError::forbidden("the membership change's signature didn't check out"))?;
+    check_pq_sig(
+        &state,
+        &session,
+        "the membership change",
+        event.pq_sig.is_some(),
+        |k| event.verify_post_quantum(k).is_ok(),
+    )?;
     let roster = match roster_of(store, vault_id)? {
         None => {
             if row.account_id != session.account_id {
@@ -539,7 +585,7 @@ pub async fn push_membership(
     for bytes in &push.envelopes {
         let env = ShareEnvelope::from_bytes(bytes)
             .map_err(|_| ApiError::bad_request("that isn't a share envelope"))?;
-        check_envelope(&env, &key, &session, SharePurpose::Vault, vault_id)?;
+        check_envelope(&state, &env, &key, &session, SharePurpose::Vault, vault_id)?;
         if env.place.key_id != roster.key_ref {
             return Err(ApiError::bad_request(
                 "a share envelope names another key generation than the vault's",
@@ -655,7 +701,14 @@ pub async fn share_item(
     let key = device_key(&state, &session, session.device_id)?;
     let env = ShareEnvelope::from_bytes(&create.envelope)
         .map_err(|_| ApiError::bad_request("that isn't a share envelope"))?;
-    check_envelope(&env, &key, &session, SharePurpose::Item, create.vault_id)?;
+    check_envelope(
+        &state,
+        &env,
+        &key,
+        &session,
+        SharePurpose::Item,
+        create.vault_id,
+    )?;
     if env.place.item_id != Some(create.item_id)
         || env.place.key_id != create.item_id
         || env.place.grant_id != Some(create.share_id)
@@ -1101,6 +1154,7 @@ fn check_emergency_envelopes(
         let env = ShareEnvelope::from_bytes(bytes)
             .map_err(|_| ApiError::bad_request("that isn't a share envelope"))?;
         check_envelope(
+            state,
             &env,
             key,
             session,
@@ -1144,6 +1198,13 @@ pub async fn create_emergency(
     grant
         .verify(&key)
         .map_err(|e| ApiError::bad_request(e.to_string()))?;
+    check_pq_sig(
+        &state,
+        &session,
+        "the emergency grant",
+        grant.pq_sig.is_some(),
+        |k| grant.check_post_quantum(Some(k)).is_ok(),
+    )?;
     state
         .storage
         .account(grant.contact.account_id)?

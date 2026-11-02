@@ -187,6 +187,11 @@ pub struct ContactDevice {
     pub name: String,
     /// Whether their identity revoked it.
     pub revoked: bool,
+    /// The post-quantum support level its record marks (`crate::pq`'s
+    /// `lockdown.pq`), when it marks one. Absent for a contact pinned
+    /// before this field, and for a device from a build before the mark.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_level: Option<u64>,
 }
 
 /// Another person, pinned on this device.
@@ -321,6 +326,7 @@ impl Contact {
                             device_pub: d.device_pub,
                             name: d.name.clone(),
                             revoked: d.revoked_at.is_some() || revoked.contains(&d.device_id),
+                            pq_level: crate::pq::level_of(d),
                         },
                     )
                 })
@@ -368,6 +374,34 @@ impl Contact {
         self.devices
             .get(&device_id)
             .and_then(|d| VerifyingKey::from_bytes(&d.device_pub).ok())
+    }
+
+    /// Their identity's ML-DSA-65 key, as pinned; `None` while they
+    /// published none when this device last looked them up.
+    pub fn pq_key(&self) -> Result<Option<lockdown_crypto::pq_sign::PqVerifyingKey>> {
+        Ok(match &self.pq_isk {
+            Some(b) => Some(lockdown_crypto::pq_sign::PqVerifyingKey::from_bytes(b)?),
+            None => None,
+        })
+    }
+
+    /// Their devices not revoked that don't read post-quantum vault heads
+    /// yet (below level 2, or no mark), as this device last saw them, in
+    /// id order: who holds their side of a shared vault back.
+    pub fn devices_without_head_support(&self) -> Vec<(Id, &ContactDevice)> {
+        self.devices
+            .iter()
+            .filter(|(_, d)| !d.revoked && d.pq_level.is_none_or(|l| l < crate::pq::HEAD_LEVEL))
+            .map(|(id, d)| (*id, d))
+            .collect()
+    }
+
+    /// Whether their side of a shared vault is post-quantum as this device
+    /// last saw them: they publish a key and every device not revoked
+    /// reads post-quantum heads (doc 28's rollout rule, read from their
+    /// public records).
+    pub fn signs_heads_post_quantum(&self) -> bool {
+        self.pq_isk.is_some() && self.devices_without_head_support().is_empty()
     }
 
     /// Takes a fresh lookup of the same person: it must keep the pinned
