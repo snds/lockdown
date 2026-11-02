@@ -30,6 +30,16 @@ export interface FirstRunClient {
   forget(address: string): Promise<void>
   /** Moves the vault kept here to a confirmed server (§1.11). */
   moveToServer(input: { address: string; login: string; password: string }): Promise<SyncOutcome>
+  /**
+   * Screen J's sign-in on this empty computer, sealed under the password in
+   * one step (docs/plan/45-desktop-join-sealed.md). A security key or an
+   * emailed approval rejects with `approval_needed`; the wait finishes it.
+   */
+  accountLoginSealed(input: { server: string; login: string; password: string; secretKey?: string }): Promise<string[]>
+  /** Screen J's recovery with the kit, sealed under the password and the kit. */
+  recoverSealed(input: { server: string; login: string; password: string; secretKey: string; recoveryCode: string }): Promise<string[]>
+  /** Opens the vault a sealed join just finished, with its password. */
+  openJoined(password: string): Promise<Status>
 }
 
 export interface MasterPasswordInput {

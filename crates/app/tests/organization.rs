@@ -29,7 +29,7 @@ fn confirmed() -> GateInput {
 fn vaults_folders_tags_favourites_and_the_archive() {
     let dir = tempfile::tempdir().unwrap();
     let app = device(dir.path(), "a");
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     let vaults = app.vaults().unwrap();
     assert_eq!(vaults.len(), 1);
     assert_eq!(vaults[0].name, "Personal");
@@ -171,7 +171,7 @@ fn vaults_folders_tags_favourites_and_the_archive() {
 fn moves_classes_history_files_duplicates_and_reminders() {
     let dir = tempfile::tempdir().unwrap();
     let app = device(dir.path(), "a");
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     let family = app.create_vault("Family").unwrap();
     let personal = app.vaults().unwrap()[0].id.clone();
     let shop = app
@@ -396,7 +396,7 @@ fn a_second_vault_its_folders_and_the_archive_reach_another_device() {
     let url = running.url();
 
     let a = device(dir.path(), "a");
-    a.open_or_create(true).unwrap();
+    a.open_or_create_plain().unwrap();
     let registered = a
         .account_register(&url, "me@example.com", "correct horse battery staple", None)
         .unwrap();

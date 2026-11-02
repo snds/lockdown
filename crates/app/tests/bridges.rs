@@ -23,7 +23,7 @@ fn fresh() -> (tempfile::TempDir, App) {
     let dir = tempfile::tempdir().unwrap();
     let paths = Paths::resolve(Some(dir.path().join("snds/identity")), None).unwrap();
     let app = App::start(paths, None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     (dir, app)
 }
 
@@ -483,7 +483,7 @@ fn alias_monitoring_tells_the_server_and_off_empties_the_list() {
     let url = running.url();
     let paths = Paths::resolve(Some(dir.path().join("snds/identity")), None).unwrap();
     let app = App::start(paths, None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     app.account_register(&url, "me@example.com", "correct horse battery staple", None)
         .unwrap();
     app.add_login(

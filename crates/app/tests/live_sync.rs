@@ -52,7 +52,7 @@ fn a_change_on_one_device_shows_on_the_other_without_a_sync_and_sessions_end() {
     let url = running.url();
 
     let a = device(dir.path(), "a");
-    a.open_or_create(true).unwrap();
+    a.open_or_create_plain().unwrap();
     let registered = a.account_register(&url, LOGIN, PASSWORD, None).unwrap();
     let secret_key = secret_key_of(registered.kit.as_ref().unwrap().expose());
     a.add_login("https://one.example", "me", b"pw".to_vec(), None)

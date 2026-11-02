@@ -287,7 +287,9 @@ pub mod commands {
         invite: String,
     ) -> AppResult<JoinView> {
         let invite = Zeroizing::new(invite);
-        blocking(&app, move |a| a.join_start(&server, &invite)).await
+        // Sealed: the new device's keys stay in memory until `join_finish`
+        // seals them under the password (docs/plan/45-desktop-join-sealed.md).
+        blocking(&app, move |a| a.join_start_sealed(&server, &invite)).await
     }
 
     #[tauri::command]

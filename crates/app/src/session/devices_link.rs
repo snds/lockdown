@@ -12,22 +12,38 @@
 //! itself listed.
 //!
 //! On the **new device** there is no session yet: [`Joining`] holds the
-//! keystore and the relay's key between the shell's calls. When the
-//! Welcome checks out the identity is restored at once from the root key
-//! it carried ([`Joining::poll`]); [`finish_joined`] then signs in with the
-//! account password (the session, the records, the vaults), and keeps the
-//! Secret Key once it has opened the account slot.
+//! keystore and the relay's key between the shell's calls. A join is one of
+//! two kinds:
+//!
+//! - **Sealed** (the desktop, docs/plan/45-desktop-join-sealed.md): the
+//!   new device's keys live only in memory, and what the Welcome carried
+//!   waits beside them ([`Joining::poll`]). [`Joining::finish_sealed`]
+//!   signs in with the account password, seals the keys under it (this
+//!   computer's master password from then on) and only then restores the
+//!   identity from the root key, so no plain key file is ever written and
+//!   a wrong password writes nothing.
+//! - **Plain** (the web vault, whose tab seals its key file under the
+//!   sign-in's export key itself): the keys start as the plain file, the
+//!   identity is restored the moment the Welcome checks out, and
+//!   [`finish_joined`] takes the sign-in the tab ran with the account
+//!   password.
+//!
+//! Either way the finish brings the records in step, keeps the session,
+//! and keeps the Secret Key once it has opened the account slot.
 
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use crate::local_unlock::DeviceKeys;
+use crate::local_unlock::{self, DeviceKeys, KeyFile};
+use ecosystem_identity::Identity;
 use lockdown_crypto::auth::OpaqueAccountAuth;
 use lockdown_store::{HeadMemory, SyncedIdentity};
 use lockdown_sync::HttpTransport;
 use lockdown_sync::account_security::{LinkDevice, LinkOpen, LinkSide};
 use lockdown_vault::Id;
-use lockdown_vault::device_link::{Join, JoinStep, LinkInvite, Offer, SecretKeyState, sas_words};
+use lockdown_vault::device_link::{
+    HandedOver, Join, JoinStep, LinkInvite, Offer, SecretKeyState, sas_words,
+};
 use lockdown_vault::identity::APP;
 use serde::Serialize;
 use serde_bytes::ByteBuf;
@@ -347,6 +363,27 @@ pub struct Joining {
     state: &'static str,
     secret_key: Option<[u8; 16]>,
     secret_key_state: Option<&'static str>,
+    /// A sealed join: the keys are only in memory until the finish.
+    sealed: bool,
+    /// What the Welcome carried, on a sealed join, until the finish
+    /// restores the identity from it.
+    handed: Option<Box<HandedOver>>,
+}
+
+/// The keys a sealed device-link join starts with: fresh ones kept only in
+/// memory, or the plain file an older join left (sealed at the finish). A
+/// sealed file with no identity is a sealed join that stopped between the
+/// seal and the identity; it can't be opened before the password is asked,
+/// so it is refused in words.
+fn sealed_link_keys(data: &std::path::Path) -> Result<DeviceKeys, String> {
+    match local_unlock::key_file(data) {
+        KeyFile::None => DeviceKeys::generate(),
+        KeyFile::Plain => DeviceKeys::open_plain(data),
+        KeyFile::Sealed => Err(format!(
+            "This computer kept the keys of a join that didn't finish. Remove {} to start afresh.",
+            data.join(local_unlock::SEALED_FILE).display()
+        )),
+    }
 }
 
 impl std::fmt::Debug for Joining {
@@ -361,7 +398,9 @@ impl std::fmt::Debug for Joining {
 impl Joining {
     /// Joins the link `invite` names (a scanned QR payload or a typed code)
     /// on `server` (the QR's, when it names one; it must then be the same).
-    pub fn start(paths: &Paths, server: &str, invite: &str) -> Result<Self, String> {
+    /// With `sealed`, the keys stay in memory until [`Joining::finish_sealed`]
+    /// seals them; without, they start as the plain key file (the web vault).
+    pub fn start(paths: &Paths, server: &str, invite: &str, sealed: bool) -> Result<Self, String> {
         check_root_empty(paths)?;
         let invite = LinkInvite::parse(invite).map_err(|e| e.to_string())?;
         let server = match &invite.server {
@@ -379,7 +418,11 @@ impl Joining {
             }
             None => server.trim().trim_end_matches('/').to_string(),
         };
-        let keystore = Rc::new(DeviceKeys::open_or_create_plain(&paths.data)?);
+        let keystore = Rc::new(if sealed {
+            sealed_link_keys(&paths.data)?
+        } else {
+            DeviceKeys::open_or_create_plain(&paths.data)?
+        });
         let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
         let joined = transport
             .link_join(invite.code.as_str())
@@ -409,6 +452,8 @@ impl Joining {
             state: "waiting",
             secret_key: None,
             secret_key_state: None,
+            sealed,
+            handed: None,
         })
     }
 
@@ -453,18 +498,24 @@ impl Joining {
                 JoinStep::Compare(_) => self.state = "compare",
                 JoinStep::Granted => {}
                 JoinStep::Done(handed) => {
-                    let handed = *handed;
-                    lockdown_vault::handover::restore_from_root_key(
-                        &self.paths.root,
-                        APP,
-                        self.keystore.as_ref(),
-                        handed.irk,
-                        handed.irk_id,
-                        &handed.backup,
-                    )
-                    .map_err(|e| e.to_string())?;
                     self.secret_key = handed.secret_key;
                     self.secret_key_state = Some(handed.secret_key_state);
+                    if self.sealed {
+                        // The identity would name keys that are only in
+                        // memory: it waits for the finish, after the seal.
+                        self.handed = Some(handed);
+                    } else {
+                        let handed = *handed;
+                        lockdown_vault::handover::restore_from_root_key(
+                            &self.paths.root,
+                            APP,
+                            self.keystore.as_ref(),
+                            handed.irk,
+                            handed.irk_id,
+                            &handed.backup,
+                        )
+                        .map_err(|e| e.to_string())?;
+                    }
                     self.state = "approved";
                     return Ok(self.view());
                 }
@@ -485,6 +536,81 @@ impl Joining {
     pub fn secret_key(&self) -> Option<[u8; 16]> {
         self.secret_key
     }
+
+    /// Whether this is a sealed join (keys in memory until the finish).
+    pub fn is_sealed(&self) -> bool {
+        self.sealed
+    }
+
+    /// Finishes an approved sealed join: signs in with the account
+    /// password, seals the keys under it, restores the identity from the
+    /// root key, then brings the records in step and keeps the session as
+    /// [`finish_joined`] does. The password is this computer's master
+    /// password from then on.
+    ///
+    /// A wrong password writes nothing and the join stays, so the person
+    /// can try again as the same device. After the sign-in the keys are
+    /// sealed before anything else is written (D522: the server's log
+    /// already recorded this device).
+    pub fn finish_sealed(&mut self, login: &str, password: &str) -> Result<Vec<String>, String> {
+        if !self.sealed {
+            return Err("this join keeps its keys the web vault's way; finish it there".into());
+        }
+        if self.state != "approved" || self.handed.is_none() {
+            return Err("the other device hasn't approved this one yet".into());
+        }
+        let transport = HttpTransport::new(&self.server).map_err(|e| e.to_string())?;
+        let mut auth = OpaqueAccountAuth::new(transport, login, binding_of(&self.keystore));
+        let (export_key, session) = auth.sign_in(password).map_err(|e| e.to_string())?;
+        if session.second_factor.is_some() {
+            return Err(
+                "the server asks this device for a security key, though another device approved it; sign in again in a minute"
+                    .into(),
+            );
+        }
+        let profile_id = self
+            .handed
+            .as_ref()
+            .map(|h| h.backup.profile.profile_id)
+            .ok_or("the other device hasn't approved this one yet")?;
+        if session.profile_id != profile_id {
+            return Err(format!(
+                "the account '{login}' belongs to another identity than the device that approved this one; nothing was kept"
+            ));
+        }
+        crate::join_sealed::seal_for_join(&self.paths.data, &self.keystore, password, None)?;
+        let mut handed = *self.handed.take().ok_or("this join already finished")?;
+        // The join keeps its own copy of the Secret Key (`self.secret_key`).
+        if let Some(sk) = handed.secret_key.as_mut() {
+            zeroize::Zeroize::zeroize(sk);
+        }
+        let identity = lockdown_vault::handover::restore_from_root_key(
+            &self.paths.root,
+            APP,
+            self.keystore.as_ref(),
+            handed.irk,
+            handed.irk_id,
+            &handed.backup,
+        )
+        .map_err(|e| e.to_string())?;
+        let mut memory =
+            HeadMemory::open(&self.paths.data.join(MEMORY_FILE)).map_err(|e| e.to_string())?;
+        let server = self.server.clone();
+        let lines = finish_signed_in(
+            &self.paths,
+            &server,
+            login,
+            &self.keystore,
+            identity,
+            &mut memory,
+            export_key,
+            session,
+            self.secret_key,
+        )?;
+        crate::join_sealed::note_joined(&self.paths.data, login)?;
+        self.state = "done";
+        Ok(lines)
+    }
 }
 
 impl Drop for Joining {
@@ -492,35 +618,31 @@ impl Drop for Joining {
         if let Some(sk) = self.secret_key.as_mut() {
             zeroize::Zeroize::zeroize(sk);
         }
+        if let Some(sk) = self.handed.as_mut().and_then(|h| h.secret_key.as_mut()) {
+            zeroize::Zeroize::zeroize(sk);
+        }
     }
 }
 
-/// After a join was approved (the identity is here, the account not yet):
-/// signs in with the account password, brings the records in step, keeps
-/// the session, and keeps the Secret Key once it opened the account slot.
+/// After a plain join was approved (the identity is here, the account not
+/// yet), with a sign-in the shell ran itself with this device's keystore
+/// (the web vault, which needs the export key to seal its device key):
+/// brings the records in step, keeps the session, and keeps the Secret Key
+/// once it opened the account slot.
 pub fn finish_joined(
     paths: &Paths,
     server: &str,
     login: &str,
-    sign_in: SignIn<'_>,
+    export_key: ecosystem_identity::ExportKey,
+    session: lockdown_crypto::auth::Session,
     secret_key: Option<[u8; 16]>,
 ) -> Result<Vec<String>, String> {
     let keystore = Rc::new(DeviceKeys::open_or_create_plain(&paths.data)?);
     let mut memory = HeadMemory::open(&paths.data.join(MEMORY_FILE)).map_err(|e| e.to_string())?;
-    let mut identity =
+    let identity =
         lockdown_vault::identity::open_identity(&paths.root, keystore.as_ref(), memory.identity())
             .map_err(|e| e.to_string())?
             .ok_or("nothing was joined on this device yet")?;
-    let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
-    let (export_key, session) = match sign_in {
-        SignIn::Password(password) => {
-            let mut auth = OpaqueAccountAuth::new(transport, login, binding_of(&keystore));
-            let out = auth.sign_in(password).map_err(|e| e.to_string())?;
-            (out.0, out.1)
-        }
-        SignIn::Done(export_key, session) => (export_key, session),
-    };
-    let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
     if session.second_factor.is_some() {
         return Err(
             "the server asks this device for a security key, though another device approved it; sign in again in a minute"
@@ -532,6 +654,35 @@ pub fn finish_joined(
             "the account '{login}' belongs to another identity than the device that approved this one; nothing was kept"
         ));
     }
+    finish_signed_in(
+        paths,
+        server,
+        login,
+        &keystore,
+        identity,
+        &mut memory,
+        export_key,
+        session,
+        secret_key,
+    )
+}
+
+/// The rest of a finish once the identity is here and the sign-in is
+/// checked: the records in step, the Secret Key kept when it opened the
+/// account slot, the session kept.
+#[allow(clippy::too_many_arguments)]
+fn finish_signed_in(
+    paths: &Paths,
+    server: &str,
+    login: &str,
+    keystore: &Rc<DeviceKeys>,
+    mut identity: Identity,
+    memory: &mut HeadMemory,
+    export_key: ecosystem_identity::ExportKey,
+    session: lockdown_crypto::auth::Session,
+    secret_key: Option<[u8; 16]>,
+) -> Result<Vec<String>, String> {
+    let transport = HttpTransport::new(server).map_err(|e| e.to_string())?;
     memory
         .remember_identity(identity.head())
         .map_err(|e| e.to_string())?;
@@ -544,7 +695,7 @@ pub fn finish_joined(
         &mut identity,
         keystore.as_ref(),
         &mut synced,
-        &mut memory,
+        memory,
     )?;
     let profile_id = identity.profile().profile_id;
     let mut lines = vec![format!(
@@ -577,19 +728,6 @@ pub fn finish_joined(
     };
     cfg.save(&paths.sync_file())?;
     Ok(lines)
-}
-
-/// How the joined device signs in: with the password here, or with a
-/// sign-in the shell already ran with this device's keystore (the web
-/// vault, which needs the export key to seal its device key).
-pub enum SignIn<'a> {
-    /// The account password.
-    Password(&'a str),
-    /// The export key and session of a sign-in already made.
-    Done(
-        ecosystem_identity::ExportKey,
-        lockdown_crypto::auth::Session,
-    ),
 }
 
 impl Session {

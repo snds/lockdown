@@ -40,7 +40,7 @@ fn a_running_server_is_found_confirmed_and_held_to_its_key() {
 
     // Confirmed: pinned. An account there syncs while the key matches.
     app.discovery_confirm(&url).unwrap();
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     app.account_register(&url, "me@example.com", "correct horse battery staple", None)
         .unwrap();
     app.sync().unwrap();

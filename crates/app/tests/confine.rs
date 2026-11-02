@@ -26,7 +26,7 @@ fn a_confined_home_is_separate_offline_and_keeps_nothing_in() {
     let dir = tempfile::tempdir().unwrap();
     let real = paths(dir.path(), "real");
     let app = App::start(real.clone(), None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     app.add_login("https://a.example.com", "sam", b"pw-one".to_vec(), None)
         .unwrap();
     assert_eq!(app.confinement().unwrap(), None);
@@ -39,7 +39,7 @@ fn a_confined_home_is_separate_offline_and_keeps_nothing_in() {
         "the real vault was locked"
     );
     assert_eq!(app.confinement().unwrap().as_deref(), Some(WHY));
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     assert!(app.list().unwrap().is_empty(), "the demo starts empty");
     app.add_login("https://b.example.org", "demo", b"pw-two".to_vec(), None)
         .unwrap();

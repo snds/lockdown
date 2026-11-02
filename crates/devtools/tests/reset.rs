@@ -68,7 +68,7 @@ fn a_reset_of_a_fully_used_profile_leaves_nothing_and_the_next_launch_is_first_r
     let home = tmp.path().join("home/sam");
     let paths = Paths::resolve(Some(home.join(".local/share/snds/identity")), None).unwrap();
     let app = App::start(paths.clone(), None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     app.add_login(
         "https://mail.example.com",
         "sam",
@@ -162,7 +162,7 @@ fn an_identity_another_app_uses_is_kept() {
     let home = tmp.path().join("home/alex");
     let paths = Paths::resolve(Some(home.join(".local/share/snds/identity")), None).unwrap();
     let app = App::start(paths.clone(), None, LockPolicy::default());
-    app.open_or_create(true).unwrap();
+    app.open_or_create_plain().unwrap();
     app.lock().unwrap();
     drop(app);
     assert!(reset::identity_plan(&paths.root).erase);
