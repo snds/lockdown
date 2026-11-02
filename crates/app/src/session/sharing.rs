@@ -45,6 +45,7 @@ use crate::sharing::{
 use lockdown_vault::identity::keys_for;
 
 pub(crate) mod phrase;
+pub(crate) mod pq;
 
 /// The most a shared item or link title is cut to in a message.
 const NAME_CHARS: usize = 60;
@@ -250,7 +251,11 @@ impl Session {
     }
 
     fn replay(&self, vault_id: Id) -> Result<Option<Roster>, String> {
-        crate::vault_open::roster(&self.sharing, &self.own_device_keys(), vault_id)
+        let roster = crate::vault_open::roster(&self.sharing, &self.own_device_keys(), vault_id)?;
+        if roster.is_some() {
+            self.check_membership_pq(vault_id)?;
+        }
+        Ok(roster)
     }
 
     /// The keys of every device whose heads and versions a shared vault
@@ -283,7 +288,9 @@ impl Session {
             vault.trust_device(id, key);
         }
         vault.set_members(Self::members_list(&roster));
-        Ok(())
+        // The other writers' heads, under their own post-quantum rules
+        // (docs/plan/47-shared-vault-pq.md).
+        self.hold_members_to_pq(vault_id)
     }
 
     fn vault_slot(&mut self, vault_id: Id) -> Result<&mut Vault, String> {
@@ -481,7 +488,12 @@ impl Session {
             if !self.sharing.vault(vault_id).is_some_and(|s| s.owned) {
                 let _ = self.open_shared_vault(vault_id);
             }
-            let _ = self.apply_roster(vault_id);
+            // An open vault whose chain breaks a post-quantum rule under
+            // its members' pinned keys stops the unlock, as one of the
+            // identity's own would (doc 28, D338).
+            if self.vaults().any(|v| v.context().vault_id == vault_id) {
+                self.apply_roster(vault_id)?;
+            }
         }
         let released: Vec<Id> = self
             .sharing
@@ -530,6 +542,15 @@ impl Session {
             },
         )
         .map_err(|e| e.to_string())?;
+        // This identity's own heads in it follow doc 28's rules here too,
+        // from where this device remembers the first one.
+        let mut vault = vault;
+        vault
+            .set_post_quantum(self.own_pq()?)
+            .map_err(|e| e.to_string())?;
+        vault
+            .require_post_quantum_from(self.memory.pq_since(vault_id))
+            .map_err(|e| e.to_string())?;
         self.more.push(OpenVault {
             vault,
             keys,
@@ -793,6 +814,9 @@ impl Session {
 
     fn sign_event(&self, mut event: MembershipEvent) -> Result<MembershipEvent, String> {
         event.sign(&self.keystore).map_err(|e| e.to_string())?;
+        if let Some(key) = self.sharing_pq_key(Some(event.vault_id))? {
+            event.sign_post_quantum(&key).map_err(|e| e.to_string())?;
+        }
         Ok(event)
     }
 
@@ -839,7 +863,7 @@ impl Session {
         if roster.right_of(contact.account_id).is_some() {
             return Err(format!("{} is already in this vault", contact.login));
         }
-        let envelope = self
+        let mut envelope = self
             .vault_by_id(vault_id)?
             .seal_vault_key(
                 contact.party(),
@@ -849,6 +873,7 @@ impl Session {
                 None,
             )
             .map_err(|e| e.to_string())?;
+        self.pq_sign_envelope(&mut envelope, Some(vault_id))?;
         let event = self.sign_event(roster.propose(
             Change::Add {
                 member: contact.party(),
@@ -971,6 +996,9 @@ impl Session {
                     .map_err(|e| e.to_string())?,
             );
         }
+        for envelope in &mut envelopes {
+            self.pq_sign_envelope(envelope, Some(vault_id))?;
+        }
         let event = self.sign_event(roster.propose(
             Change::Remove {
                 account_id: account,
@@ -1020,7 +1048,7 @@ impl Session {
             let Some(contact) = self.sharing.contact(s.recipient.account_id).cloned() else {
                 continue;
             };
-            let env = self
+            let mut env = self
                 .vault_by_id(vault_id)?
                 .seal_item_key(
                     s.item_id,
@@ -1030,6 +1058,7 @@ impl Session {
                     s.share_id,
                 )
                 .map_err(|e| e.to_string())?;
+            self.pq_sign_envelope(&mut env, None)?;
             transport
                 .share_item(
                     token,
@@ -1057,7 +1086,7 @@ impl Session {
             let Some(contact) = self.sharing.contact(grant.contact.account_id).cloned() else {
                 continue;
             };
-            let env = self
+            let mut env = self
                 .vault_by_id(vault_id)?
                 .seal_vault_key(
                     grant.contact,
@@ -1067,6 +1096,7 @@ impl Session {
                     Some(grant.grant_id),
                 )
                 .map_err(|e| e.to_string())?;
+            self.pq_sign_envelope(&mut env, None)?;
             transport
                 .emergency_envelopes(
                     token,
@@ -1157,6 +1187,7 @@ impl Session {
             if self.held_vaults.contains_key(&own.vault_id) {
                 continue;
             }
+            self.refresh_unready(transport, token, sth, own.vault_id)?;
             self.take_new_key(transport, token, own.vault_id, own.key_ref)?;
         }
         // Vaults shared with this persona.
@@ -1173,6 +1204,7 @@ impl Session {
             if self.held_vaults.contains_key(&vault_id) {
                 continue;
             }
+            self.refresh_unready(transport, token, sth, vault_id)?;
             let open = self.vaults().any(|v| v.context().vault_id == vault_id);
             if !open {
                 self.join_shared(transport, token, sth, shared)?;
@@ -1248,11 +1280,21 @@ impl Session {
         } = since;
         taken.truncate(take.count);
         let share = self.sharing.vault_mut(vault_id);
+        let before = share.events.len();
         share.events.extend(taken);
         share
             .logins
             .extend(logins.into_iter().filter(|(a, _)| accounts.contains(a)));
-        let Some(roster) = self.replay(vault_id)? else {
+        // A chain that doesn't check out isn't kept, even in memory: the
+        // next pull fetches the same changes again and checks them afresh.
+        let replayed = match self.replay(vault_id) {
+            Ok(r) => r,
+            Err(e) => {
+                self.sharing.vault_mut(vault_id).events.truncate(before);
+                return Err(e);
+            }
+        };
+        let Some(roster) = replayed else {
             if self.held_vaults.contains_key(&vault_id) {
                 return Ok(());
             }
@@ -1298,6 +1340,13 @@ impl Session {
         if account != env.place.from_account {
             return Err("a vault key was signed by a device of someone else; refused".into());
         }
+        // Its sender's post-quantum signature: checked when this device
+        // knows their key, required when the membership change that handed
+        // it over carries one (docs/plan/47-shared-vault-pq.md).
+        let required = purpose == SharePurpose::Vault
+            && self.envelope_needs_pq(vault_id, key_ref, env.place.from_account);
+        env.check_post_quantum(self.pq_key_of(env.place.from_account).as_ref(), required)
+            .map_err(|e| e.to_string())?;
         env.open::<VaultKey>(&self.kem_secret()?, &expected, &key)
             .map_err(|e| e.to_string())
     }
@@ -1587,6 +1636,15 @@ impl Session {
             if account != r.owner.account_id || item.vault_id != record.context.vault_id {
                 continue;
             }
+            // No chain pins an item share, so a missing post-quantum
+            // signature can't be told from one never made; one that is
+            // there must check out under the owner's pinned key.
+            if env
+                .check_post_quantum(self.pq_key_of(r.owner.account_id).as_ref(), false)
+                .is_err()
+            {
+                continue;
+            }
             let Ok(key) = env.open::<ItemKey>(&kem, &expected, &sender) else {
                 continue;
             };
@@ -1677,7 +1735,7 @@ impl Session {
         let me_account = self.learn_account(&transport, &token, &sth)?;
         let contact = self.pin(&transport, &token, &sth, Ok(contact.account_id))?;
         let share_id = Id::new();
-        let env = self
+        let mut env = self
             .holding(item_id)?
             .seal_item_key(
                 item_id,
@@ -1687,6 +1745,7 @@ impl Session {
                 share_id,
             )
             .map_err(|e| e.to_string())?;
+        self.pq_sign_envelope(&mut env, None)?;
         transport
             .share_item(
                 &token,
@@ -1752,7 +1811,7 @@ impl Session {
                 else {
                     continue;
                 };
-                let env = self
+                let mut env = self
                     .vault_by_id(vault_id)?
                     .seal_item_key(
                         item_id,
@@ -1762,6 +1821,7 @@ impl Session {
                         other.share_id,
                     )
                     .map_err(|e| e.to_string())?;
+                self.pq_sign_envelope(&mut env, None)?;
                 transport
                     .share_item(
                         &token,
@@ -2265,9 +2325,12 @@ impl Session {
             EmergencyGrant::new(me, contact.party(), days, ids, self.identity.device_id())
                 .map_err(|e| e.to_string())?;
         grant.sign(&self.keystore).map_err(|e| e.to_string())?;
+        if let Some(key) = self.sharing_pq_key(None)? {
+            grant.sign_post_quantum(&key).map_err(|e| e.to_string())?;
+        }
         let mut envelopes = Vec::new();
         for v in &grant.vaults {
-            let env = self
+            let mut env = self
                 .vault_by_id(*v)?
                 .seal_vault_key(
                     contact.party(),
@@ -2277,6 +2340,7 @@ impl Session {
                     Some(grant.grant_id),
                 )
                 .map_err(|e| e.to_string())?;
+            self.pq_sign_envelope(&mut env, None)?;
             envelopes.push(ByteBuf::from(env.to_bytes().map_err(|e| e.to_string())?));
         }
         transport
@@ -2378,6 +2442,9 @@ impl Session {
             .get(&grant.by_device)
             .ok_or("the grant was signed by a device its owner's identity doesn't list")?;
         grant.verify(signer).map_err(|e| e.to_string())?;
+        grant
+            .check_post_quantum(self.pq_key_of(grant.owner.account_id).as_ref())
+            .map_err(|e| e.to_string())?;
         let release = transport
             .emergency_release(token, grant_id)
             .map_err(|e| e.to_string())?;
