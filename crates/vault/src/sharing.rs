@@ -36,6 +36,7 @@ use ecosystem_identity::records::{KeyEnvelope, KeyRef, KeyRefKind, Purpose, Reco
 use lockdown_crypto::VerifyingKey;
 use lockdown_crypto::cbor::to_canonical;
 use lockdown_crypto::hash::hash;
+use lockdown_crypto::pq_sign::{PqSigningKey, PqVerifyingKey};
 use serde::{Deserialize, Serialize};
 
 use crate::signer::Signer;
@@ -209,16 +210,50 @@ pub struct MembershipEvent {
     /// Ed25519 by `by_device` over the prefix and the event with `sig` empty.
     #[serde(with = "serde_bytes")]
     pub sig: Vec<u8>,
+    /// ML-DSA-65 by `by_account`'s identity key over the same bytes
+    /// (`crate::pq::MEMBERSHIP_CONTEXT`; docs/plan/47-shared-vault-pq.md).
+    /// Outside both signatures and outside [`Self::hash`], so an older
+    /// build drops it and its chain still checks. Absent until the signing
+    /// identity rolled out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_sig: Option<serde_bytes::ByteBuf>,
 }
 
 impl MembershipEvent {
-    /// The bytes the signature covers.
+    /// The bytes the signatures cover: the event with both cleared.
     pub fn signable(&self) -> Result<Vec<u8>> {
         let mut copy = self.clone();
         copy.sig.clear();
+        copy.pq_sig = None;
         let mut out = EVENT_SIG_PREFIX.to_vec();
         out.extend(to_canonical(&copy)?);
         Ok(out)
+    }
+
+    /// Adds the signing identity's ML-DSA-65 signature.
+    pub fn sign_post_quantum(&mut self, key: &PqSigningKey) -> Result<()> {
+        let sig = key.sign(&self.signable()?, crate::pq::MEMBERSHIP_CONTEXT)?;
+        self.pq_sig = Some(serde_bytes::ByteBuf::from(sig));
+        Ok(())
+    }
+
+    /// Checks the ML-DSA-65 signature under `key`: it must be there and
+    /// verify. Whether an event needs one is `crate::pq::check_events`'s rule.
+    pub fn verify_post_quantum(&self, key: &PqVerifyingKey) -> Result<()> {
+        let broken = |why: &str| Error::ChainBroken {
+            seq: self.seq,
+            why: why.into(),
+        };
+        let sig = self.pq_sig.as_ref().ok_or_else(|| {
+            broken("a membership change isn't signed with its maker's post-quantum key")
+        })?;
+        key.verify(
+            &self.signable()?,
+            crate::pq::MEMBERSHIP_CONTEXT,
+            sig,
+            &format!("membership event {}", self.seq),
+        )
+        .map_err(|_| broken("a membership change's post-quantum signature didn't check out"))
     }
 
     /// Signs with this device.
@@ -240,9 +275,13 @@ impl MembershipEvent {
         })
     }
 
-    /// BLAKE3 of the signed event: what the next one names as `prev_hash`.
+    /// BLAKE3 of the signed event without its post-quantum signature: what
+    /// the next one names as `prev_hash`. The same on a build that knows
+    /// `pq_sig` and on one that doesn't.
     pub fn hash(&self) -> Result<Hash32> {
-        Ok(hash(&self.to_bytes()?))
+        let mut copy = self.clone();
+        copy.pq_sig = None;
+        Ok(hash(&copy.to_bytes()?))
     }
 
     /// As canonical CBOR.
@@ -352,6 +391,7 @@ impl Roster {
             by_device,
             at: Timestamp::now(),
             sig: Vec::new(),
+            pq_sig: None,
         }
     }
 
@@ -585,6 +625,7 @@ impl Roster {
             by_device,
             at: Timestamp::now(),
             sig: Vec::new(),
+            pq_sig: None,
         }
     }
 
@@ -665,6 +706,11 @@ pub struct ShareEnvelope {
     /// Ed25519 by `by_device` over the prefix and the envelope with `sig` empty.
     #[serde(with = "serde_bytes")]
     pub sig: Vec<u8>,
+    /// ML-DSA-65 by the sending identity's key over the same bytes
+    /// (`crate::pq::SHARE_CONTEXT`; docs/plan/47-shared-vault-pq.md).
+    /// Outside both signatures; absent until the sender rolled out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_sig: Option<serde_bytes::ByteBuf>,
 }
 
 fn inner_aad(place: &SharePlace) -> ecosystem_identity::records::Aad {
@@ -700,18 +746,58 @@ impl ShareEnvelope {
             by_device,
             at: Timestamp::now(),
             sig: Vec::new(),
+            pq_sig: None,
         };
         envelope.sig = signer.sign(&envelope.signable()?)?.to_vec();
         Ok(envelope)
     }
 
-    /// The bytes the signature covers.
+    /// The bytes the signatures cover: the envelope with both cleared.
     pub fn signable(&self) -> Result<Vec<u8>> {
         let mut copy = self.clone();
         copy.sig.clear();
+        copy.pq_sig = None;
         let mut out = SHARE_SIG_PREFIX.to_vec();
         out.extend(to_canonical(&copy)?);
         Ok(out)
+    }
+
+    /// Adds the sending identity's ML-DSA-65 signature.
+    pub fn sign_post_quantum(&mut self, key: &PqSigningKey) -> Result<()> {
+        let sig = key.sign(&self.signable()?, crate::pq::SHARE_CONTEXT)?;
+        self.pq_sig = Some(serde_bytes::ByteBuf::from(sig));
+        Ok(())
+    }
+
+    /// Checks the ML-DSA-65 signature under the sender's `key`: it must be
+    /// there and verify.
+    pub fn verify_post_quantum(&self, key: &PqVerifyingKey) -> Result<()> {
+        let sig = self.pq_sig.as_ref().ok_or_else(|| {
+            Error::KeyMoved(
+                "a shared key isn't signed with its sender's post-quantum key, though it must be"
+                    .into(),
+            )
+        })?;
+        key.verify(&self.signable()?, crate::pq::SHARE_CONTEXT, sig, "a shared key")
+            .map_err(|_| {
+                Error::KeyMoved(
+                    "a shared key whose sender's post-quantum signature didn't check out (it may have been swapped)"
+                        .into(),
+                )
+            })
+    }
+
+    /// The post-quantum rule for an envelope: a `pq_sig` must verify under
+    /// the sender's pinned key when this device knows one (one it can't
+    /// check counts for nothing), and must be there when `required`.
+    pub fn check_post_quantum(&self, key: Option<&PqVerifyingKey>, required: bool) -> Result<()> {
+        match (key, &self.pq_sig) {
+            (Some(key), Some(_)) => self.verify_post_quantum(key),
+            _ if required => Err(Error::KeyMoved(
+                "a shared key lost its sender's post-quantum signature; refused".into(),
+            )),
+            _ => Ok(()),
+        }
     }
 
     /// Checks the sending device's signature.
@@ -798,6 +884,11 @@ pub struct EmergencyGrant {
     /// Ed25519 by `by_device`.
     #[serde(with = "serde_bytes")]
     pub sig: Vec<u8>,
+    /// ML-DSA-65 by the owner's identity key over the same bytes
+    /// (`crate::pq::EMERGENCY_CONTEXT`; docs/plan/47-shared-vault-pq.md).
+    /// Absent until the owner rolled out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_sig: Option<serde_bytes::ByteBuf>,
 }
 
 /// One step of an emergency grant's life, signed by the person taking it.
@@ -910,15 +1001,48 @@ impl EmergencyGrant {
             by_device,
             at: Timestamp::now(),
             sig: Vec::new(),
+            pq_sig: None,
+        })
+    }
+
+    fn signable(&self) -> Result<Vec<u8>> {
+        emergency_signable(self, |c| {
+            c.sig.clear();
+            c.pq_sig = None;
         })
     }
 
     /// Signs with the owner's device.
     pub fn sign(&mut self, signer: &dyn Signer) -> Result<()> {
-        self.sig = signer
-            .sign(&emergency_signable(self, |c| c.sig.clear())?)?
-            .to_vec();
+        self.sig = signer.sign(&self.signable()?)?.to_vec();
         Ok(())
+    }
+
+    /// Adds the owner identity's ML-DSA-65 signature.
+    pub fn sign_post_quantum(&mut self, key: &PqSigningKey) -> Result<()> {
+        let sig = key.sign(&self.signable()?, crate::pq::EMERGENCY_CONTEXT)?;
+        self.pq_sig = Some(serde_bytes::ByteBuf::from(sig));
+        Ok(())
+    }
+
+    /// The post-quantum rule for a grant, as for an envelope: a `pq_sig`
+    /// must verify under the owner's pinned key when this device knows one.
+    pub fn check_post_quantum(&self, key: Option<&PqVerifyingKey>) -> Result<()> {
+        match (key, &self.pq_sig) {
+            (Some(key), Some(sig)) => key
+                .verify(
+                    &self.signable()?,
+                    crate::pq::EMERGENCY_CONTEXT,
+                    sig,
+                    "an emergency grant",
+                )
+                .map_err(|_| {
+                    Error::Invalid(
+                        "an emergency grant's post-quantum signature didn't check out".into(),
+                    )
+                }),
+            _ => Ok(()),
+        }
     }
 
     /// Checks the owner's device signature and the grant's shape.
@@ -945,12 +1069,8 @@ impl EmergencyGrant {
                 "an emergency grant's waiting period is out of range".into(),
             ));
         }
-        key.verify(
-            &emergency_signable(self, |c| c.sig.clear())?,
-            &self.sig,
-            "an emergency grant",
-        )
-        .map_err(|_| Error::Invalid("an emergency grant's signature didn't check out".into()))
+        key.verify(&self.signable()?, &self.sig, "an emergency grant")
+            .map_err(|_| Error::Invalid("an emergency grant's signature didn't check out".into()))
     }
 
     /// As canonical CBOR.
@@ -1271,5 +1391,188 @@ mod tests {
         }
         assert!(Right::parse("owner").is_err());
         assert!(Right::FillOnly < Right::Manage);
+    }
+
+    // --- post-quantum signatures on sharing records (docs/plan/47-shared-vault-pq.md)
+
+    fn pq(seed: u8) -> PqSigningKey {
+        PqSigningKey::from_seed([seed; 32])
+    }
+
+    #[test]
+    fn membership_changes_follow_each_makers_post_quantum_rule_and_older_builds_ignore_it() {
+        let (alice, bob) = (person(), person());
+        let (alice_pq, bob_pq) = (pq(1), pq(2));
+        let vault = Id::new();
+        let devices = lookup(&[&alice, &bob]);
+        let keys = |account: Id| {
+            if account == alice.party.account_id {
+                Some(alice_pq.verifying_key())
+            } else if account == bob.party.account_id {
+                Some(bob_pq.verifying_key())
+            } else {
+                None
+            }
+        };
+        let both = |mut e: MembershipEvent, by: &Person, key: Option<&PqSigningKey>| {
+            e.sign(&by.key).unwrap();
+            if let Some(key) = key {
+                e.sign_post_quantum(key).unwrap();
+            }
+            e
+        };
+        // Alice hasn't rolled out when she shares; she has by the time she
+        // adds Bob as a manager. Bob hasn't rolled out when he changes a right.
+        let mut events = vec![both(
+            Roster::genesis(
+                vault,
+                alice.party,
+                VaultKind::Shared,
+                Id::new(),
+                alice.device,
+            ),
+            &alice,
+            None,
+        )];
+        let add = |events: &[MembershipEvent], change: Change, by: &Person| {
+            Roster::replay(events, &devices).unwrap().propose(
+                change,
+                None,
+                by.party.account_id,
+                by.device,
+            )
+        };
+        events.push(both(
+            add(
+                &events,
+                Change::Add {
+                    member: bob.party,
+                    right: Right::Manage,
+                },
+                &alice,
+            ),
+            &alice,
+            Some(&alice_pq),
+        ));
+        let carol = person();
+        events.push(both(
+            add(
+                &events,
+                Change::Add {
+                    member: carol.party,
+                    right: Right::View,
+                },
+                &bob,
+            ),
+            &bob,
+            None,
+        ));
+        events.push(both(
+            add(
+                &events,
+                Change::SetRight {
+                    account_id: carol.party.account_id,
+                    right: Right::Edit,
+                },
+                &alice,
+            ),
+            &alice,
+            Some(&alice_pq),
+        ));
+        Roster::replay(&events, &devices).unwrap();
+        let first = crate::pq::check_events(&events, &keys).unwrap();
+        assert_eq!(first.get(&alice.party.account_id), Some(&2));
+        assert_eq!(
+            first.get(&bob.party.account_id),
+            None,
+            "Bob holds nobody back"
+        );
+
+        // A build from before drops the field: same hash, same signed bytes,
+        // so its replay of the same chain passes.
+        let older: Vec<MembershipEvent> = events
+            .iter()
+            .map(|e| {
+                let mut o = e.clone();
+                o.pq_sig = None;
+                o
+            })
+            .collect();
+        for (a, b) in older.iter().zip(&events) {
+            assert_eq!(a.hash().unwrap(), b.hash().unwrap());
+            assert_eq!(a.signable().unwrap(), b.signable().unwrap());
+        }
+        Roster::replay(&older, &devices).unwrap();
+        let wire = MembershipEvent::from_bytes(&events[1].to_bytes().unwrap()).unwrap();
+        assert_eq!(wire, events[1], "the field survives the wire");
+
+        // Bent: refused. Under another key: refused.
+        let mut bent = events.clone();
+        bent[3].pq_sig.as_mut().unwrap()[5] ^= 1;
+        let err = crate::pq::check_events(&bent, &keys).unwrap_err();
+        assert!(err.to_string().contains("didn't check out"), "{err}");
+        let swapped = |account: Id| keys(account).map(|_| pq(9).verifying_key());
+        assert!(crate::pq::check_events(&events, &swapped).is_err());
+        // Alice's later change stripped: refused, since her earlier one carries it.
+        let mut stripped = events.clone();
+        stripped[3].pq_sig = None;
+        let err = crate::pq::check_events(&stripped, &keys).unwrap_err();
+        assert!(err.to_string().contains("lost its post-quantum"), "{err}");
+        // A key this device doesn't know: the signature counts for nothing,
+        // so it neither starts the rule nor meets it.
+        let none = |_: Id| None;
+        assert!(crate::pq::check_events(&events, &none).unwrap().is_empty());
+    }
+
+    #[test]
+    fn envelopes_and_grants_carry_the_senders_post_quantum_signature() {
+        let (alice, bob) = (person(), person());
+        let alice_pq = pq(1);
+        let (_, bob_pk) = ecosystem_identity::kem::kem(ecosystem_identity::kem::DEFAULT_KEM)
+            .keypair(lockdown_crypto::rand::random_32().unwrap())
+            .unwrap();
+        let key = VaultKey::from_bytes(lockdown_crypto::rand::random_32().unwrap());
+        let place = SharePlace {
+            purpose: SharePurpose::Item,
+            vault_id: Id::new(),
+            item_id: Some(Id::new()),
+            key_id: Id::new(),
+            to: bob.party,
+            from_account: alice.party.account_id,
+            grant_id: Some(Id::new()),
+        };
+        let mut env = ShareEnvelope::seal(&key, &bob_pk, place, alice.device, &alice.key).unwrap();
+        let plain = env.clone();
+        env.sign_post_quantum(&alice_pq).unwrap();
+        let env = ShareEnvelope::from_bytes(&env.to_bytes().unwrap()).unwrap();
+        // Ed25519 still checks, as an older build checks it.
+        env.verify(&alice.key.verifying_key()).unwrap();
+        assert_eq!(env.signable().unwrap(), plain.signable().unwrap());
+        let alice_key = alice_pq.verifying_key();
+        env.check_post_quantum(Some(&alice_key), true).unwrap();
+        env.check_post_quantum(None, false).unwrap();
+        // Bent, or another key: refused. Missing where required: refused;
+        // missing where not: taken (an item share has no chain to require it).
+        let mut bent = env.clone();
+        bent.pq_sig.as_mut().unwrap()[0] ^= 1;
+        assert!(bent.check_post_quantum(Some(&alice_key), false).is_err());
+        assert!(
+            env.check_post_quantum(Some(&pq(3).verifying_key()), false)
+                .is_err()
+        );
+        assert!(plain.check_post_quantum(Some(&alice_key), true).is_err());
+        plain.check_post_quantum(Some(&alice_key), false).unwrap();
+
+        let mut grant =
+            EmergencyGrant::new(alice.party, bob.party, 7, vec![Id::new()], alice.device).unwrap();
+        grant.sign(&alice.key).unwrap();
+        grant.sign_post_quantum(&alice_pq).unwrap();
+        let grant = EmergencyGrant::from_bytes(&grant.to_bytes().unwrap()).unwrap();
+        grant.verify(&alice.key.verifying_key()).unwrap();
+        grant.check_post_quantum(Some(&alice_key)).unwrap();
+        let mut bent = grant.clone();
+        bent.pq_sig.as_mut().unwrap()[0] ^= 1;
+        bent.verify(&alice.key.verifying_key()).unwrap();
+        assert!(bent.check_post_quantum(Some(&alice_key)).is_err());
     }
 }

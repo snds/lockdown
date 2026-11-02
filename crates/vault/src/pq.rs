@@ -134,6 +134,14 @@ pub const HEAD_LEVEL: u64 = 2;
 /// What this build supports, and marks its own record with.
 pub const SUPPORT_LEVEL: u64 = HEAD_LEVEL;
 
+/// The level `device` marks, if it marks one.
+pub fn level_of(device: &ecosystem_identity::records::Device) -> Option<u64> {
+    match device.extra.get(SUPPORT_FIELD) {
+        Some(ciborium::Value::Integer(n)) => u64::try_from(i128::from(*n)).ok(),
+        _ => None,
+    }
+}
+
 /// Whether `device` says it supports the post-quantum signatures at
 /// `level` or above.
 pub fn supports_level(device: &ecosystem_identity::records::Device, level: u64) -> bool {
@@ -257,9 +265,9 @@ pub fn verify_manifest(profile: &Profile, manifest: &IdentityManifest) -> Result
 //   every head from the `seq` this device remembers seeing the first one
 //   at (`HeadMemory::pq_since`), so a server that strips the signatures
 //   from the whole chain is refused, not just ignored.
-// - **Not covered.** Heads signed by other people's devices in a shared
-//   vault stay Ed25519 (their keys would come from pinned contacts; doc 28
-//   §8).
+// - **Shared vaults.** Heads signed by other people's devices follow the
+//   same rules under each person's pinned key ([`MemberPq`],
+//   [`check_member_heads`]; docs/plan/47-shared-vault-pq.md).
 
 /// What a vault needs to sign and check post-quantum heads.
 #[derive(Clone)]
@@ -342,9 +350,22 @@ pub fn check_heads(
                 .into(),
         ));
     }
+    check_signer_heads(heads, key, own, since)
+}
+
+/// The rules of [`check_heads`] for the heads one identity's devices
+/// (`of`) signed, under that identity's key: the identity's first verified
+/// post-quantum head, if any. A `pq_sig` that can't be checked (no key)
+/// counts for nothing: it neither starts the requirement nor meets it.
+fn check_signer_heads(
+    heads: &[crate::ManifestHead],
+    key: Option<&PqVerifyingKey>,
+    of: &dyn Fn(ecosystem_identity::records::Id) -> bool,
+    since: Option<u64>,
+) -> Result<Option<u64>> {
     let mut first: Option<u64> = None;
     for head in heads {
-        if !own(head.signer) {
+        if !of(head.signer) {
             continue;
         }
         match (key, &head.pq_sig) {
@@ -352,7 +373,7 @@ pub fn check_heads(
                 head.verify_post_quantum(key)?;
                 first.get_or_insert(head.seq);
             }
-            (_, None) => {
+            _ => {
                 let required = first.is_some() || since.is_some_and(|s| head.seq >= s);
                 if required {
                     return Err(Error::ChainBroken {
@@ -361,7 +382,104 @@ pub fn check_heads(
                     });
                 }
             }
-            (None, Some(_)) => {}
+        }
+    }
+    Ok(first)
+}
+
+// --- shared vaults: every member's own heads (docs/plan/47-shared-vault-pq.md) -----
+//
+// A shared vault's chain interleaves heads by several identities. Each
+// identity follows doc 28's rules for its own heads, under its own key:
+// this identity's key is derived from the root key and checked against the
+// profile (D339); another member's is the key their pinned contact holds
+// (`Contact::pq_isk`, pinned on first sight like their Ed25519 key, D248).
+// Once one of a member's heads in the chain carries a verified signature,
+// every later head by that member must; from the `seq` this device
+// remembers for that member (`HeadMemory::member_pq_since`), every head by
+// them must. Nothing about one member's heads depends on another's: a
+// `pq_sig` is outside every signed byte and every hash, so an older build
+// ignores it, and a member who can't sign yet never holds anyone else back
+// nor is held to a signature they can't make.
+
+/// Another person in a shared vault, as this device pinned them: their
+/// devices, their identity's post-quantum key, and where this device first
+/// saw the server confirm a post-quantum head of theirs.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct MemberPq {
+    /// Their devices (never one of this identity's).
+    pub devices: std::collections::BTreeSet<ecosystem_identity::records::Id>,
+    /// Their published ML-DSA-65 key, as pinned; `None` while they publish
+    /// none (their heads then carry nothing this device can check).
+    pub key: Option<PqVerifyingKey>,
+    /// The `seq` from which their heads must carry a signature.
+    pub since: Option<u64>,
+}
+
+/// Checks every member's heads in `heads` (oldest first) under that
+/// member's own rules, and answers, per member (by account), the `seq` of
+/// their first head carrying a verified post-quantum signature.
+pub fn check_member_heads(
+    heads: &[crate::ManifestHead],
+    members: &std::collections::BTreeMap<ecosystem_identity::records::Id, MemberPq>,
+) -> Result<std::collections::BTreeMap<ecosystem_identity::records::Id, u64>> {
+    let mut out = std::collections::BTreeMap::new();
+    for (account, member) in members {
+        if member.since.is_some() && member.key.is_none() {
+            return Err(Error::Invalid(
+                "this device saw post-quantum signatures from a member of this vault but knows no post-quantum key for them now; refusing it"
+                    .into(),
+            ));
+        }
+        let of = |id: ecosystem_identity::records::Id| member.devices.contains(&id);
+        if let Some(first) = check_signer_heads(heads, member.key.as_ref(), &of, member.since)? {
+            out.insert(*account, first);
+        }
+    }
+    Ok(out)
+}
+
+// --- sharing records (docs/plan/47-shared-vault-pq.md) ----------------------------
+//
+// Membership events, share envelopes and emergency grants carry an ML-DSA-65
+// signature beside the device's Ed25519 one, by the signing identity's key,
+// over the same bytes (the record with both signatures cleared). It sits
+// outside those bytes and outside a membership event's hash, as on heads,
+// so an older build decodes it away and its chain still checks.
+
+/// The ML-DSA context of a membership event.
+pub const MEMBERSHIP_CONTEXT: &[u8] = b"lockdown membership event";
+/// The ML-DSA context of a share envelope.
+pub const SHARE_CONTEXT: &[u8] = b"lockdown share envelope";
+/// The ML-DSA context of an emergency grant.
+pub const EMERGENCY_CONTEXT: &[u8] = b"lockdown emergency grant";
+
+/// Checks the post-quantum rules over a membership chain (oldest first),
+/// per signing account: every `pq_sig` whose signer's key this device
+/// knows must verify; once an account's event carries a verified one,
+/// every later event by that account must. `key_of` answers an account's
+/// post-quantum key (this identity's own, or a pinned contact's). Answers
+/// the accounts whose events carry one, with the first such event's `seq`.
+pub fn check_events(
+    events: &[crate::sharing::MembershipEvent],
+    key_of: &dyn Fn(ecosystem_identity::records::Id) -> Option<PqVerifyingKey>,
+) -> Result<std::collections::BTreeMap<ecosystem_identity::records::Id, u64>> {
+    let mut first = std::collections::BTreeMap::new();
+    for event in events {
+        let key = key_of(event.by_account);
+        match (&key, &event.pq_sig) {
+            (Some(key), Some(_)) => {
+                event.verify_post_quantum(key)?;
+                first.entry(event.by_account).or_insert(event.seq);
+            }
+            _ => {
+                if first.contains_key(&event.by_account) {
+                    return Err(Error::ChainBroken {
+                        seq: event.seq,
+                        why: "a membership change lost its post-quantum signature: the same person's changes before it carry one, so every later one must; refusing it".into(),
+                    });
+                }
+            }
         }
     }
     Ok(first)

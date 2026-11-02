@@ -126,6 +126,11 @@ pub struct Vault {
     pq: Option<crate::pq::HeadPq>,
     /// The `seq` this device remembers the first post-quantum head at.
     pq_since: Option<u64>,
+    /// In a shared vault, the other members by account, each with their
+    /// devices, pinned post-quantum key and remembered `seq`
+    /// (`crate::pq::MemberPq`); `None` until the caller says, and then
+    /// their heads aren't held to post-quantum rules here.
+    pq_members: Option<BTreeMap<Id, crate::pq::MemberPq>>,
 }
 
 /// A file sealed by [`Vault::seal_stream`], not yet on its item.
@@ -210,6 +215,7 @@ impl Vault {
             released_items: BTreeMap::new(),
             pq: None,
             pq_since: None,
+            pq_members: None,
         };
         vault.commit_head()?;
         Ok(vault)
@@ -328,6 +334,7 @@ impl Vault {
             released_items: BTreeMap::new(),
             pq: None,
             pq_since: None,
+            pq_members: None,
         };
         vault.members = vault.members()?;
         Ok(vault)
@@ -1140,6 +1147,50 @@ impl Vault {
         Ok(())
     }
 
+    /// Sets the other members of a shared vault, by account: their devices,
+    /// their pinned post-quantum keys and where this device remembers their
+    /// first post-quantum head (`crate::pq::check_member_heads`), and checks
+    /// the chain held now under them. Refused, with nothing changed, when
+    /// the chain breaks a post-quantum rule for any of them. Unchanged
+    /// members aren't checked again.
+    pub fn set_member_post_quantum(
+        &mut self,
+        members: BTreeMap<Id, crate::pq::MemberPq>,
+    ) -> Result<()> {
+        if self.pq_members.as_ref() == Some(&members) {
+            return Ok(());
+        }
+        crate::pq::check_member_heads(&self.heads, &members)?;
+        self.pq_members = Some(members);
+        Ok(())
+    }
+
+    /// The other members' post-quantum setting, when one was set.
+    pub fn member_post_quantum(&self) -> Option<&BTreeMap<Id, crate::pq::MemberPq>> {
+        self.pq_members.as_ref()
+    }
+
+    /// Per member (by account), the `seq` of their first head at or before
+    /// `through` carrying a verified post-quantum signature under their
+    /// pinned key: what this device remembers once the server confirmed
+    /// that far.
+    pub fn member_post_quantum_since(&self, through: u64) -> BTreeMap<Id, u64> {
+        let Some(members) = &self.pq_members else {
+            return BTreeMap::new();
+        };
+        members
+            .iter()
+            .filter_map(|(account, m)| {
+                let key = m.key.as_ref()?;
+                self.heads
+                    .iter()
+                    .filter(|h| h.seq <= through && m.devices.contains(&h.signer))
+                    .find(|h| h.verify_post_quantum(key).is_ok())
+                    .map(|h| (*account, h.seq))
+            })
+            .collect()
+    }
+
     /// The `seq` of the first head at or before `through` that carries a
     /// verified post-quantum signature by one of the identity's devices:
     /// what a device remembers once the server confirmed that far.
@@ -1155,21 +1206,36 @@ impl Vault {
     /// Whether the next head this device commits carries a post-quantum
     /// signature: it holds the key and either every device reads them or
     /// the chain already carries one.
+    ///
+    /// "The chain" means this identity's own heads in it: in a shared
+    /// vault, another member's post-quantum head says nothing about whether
+    /// every device of this identity reads them (docs/plan/47-shared-vault-pq.md).
+    /// Every head held was checked when it was taken, so one of the
+    /// identity's that carries a signature carries a verified one.
     pub fn signs_post_quantum(&self) -> bool {
         let Some(pq) = &self.pq else {
             return false;
         };
-        pq.signer.is_some() && (pq.ready || self.heads.iter().any(|h| h.pq_sig.is_some()))
+        pq.signer.is_some()
+            && (pq.ready
+                || self
+                    .heads
+                    .iter()
+                    .any(|h| h.pq_sig.is_some() && pq.own.contains(&h.signer)))
     }
 
     fn check_post_quantum(&self, heads: &[ManifestHead]) -> Result<Option<u64>> {
         let own = |id: Id| self.pq.as_ref().is_some_and(|pq| pq.own.contains(&id));
-        crate::pq::check_heads(
+        let first = crate::pq::check_heads(
             heads,
             self.pq.as_ref().map(|pq| &pq.key),
             &own,
             self.pq_since,
-        )
+        )?;
+        if let Some(members) = &self.pq_members {
+            crate::pq::check_member_heads(heads, members)?;
+        }
+        Ok(first)
     }
 
     /// Drops every head after `seq`: the provisional heads this device
@@ -2360,5 +2426,141 @@ mod tests {
                 .is_err()
         );
         assert_eq!(vault.post_quantum().unwrap().key, pq);
+    }
+
+    /// Has `vault` commit as another device: the key from `seed` signs,
+    /// `pq` is that device's identity's setting.
+    fn as_device(vault: &mut Vault, seed: [u8; 32], id: Id, pq: Option<crate::pq::HeadPq>) {
+        let key = lockdown_crypto::SigningKey::from_bytes(seed);
+        let public = key.verifying_key();
+        vault.verifying = public.clone();
+        vault.signer = Box::new(key);
+        vault.device_id = id;
+        vault.trust_device(id, public);
+        vault.pq = pq;
+    }
+
+    #[test]
+    fn each_members_heads_follow_their_own_post_quantum_rule_under_their_pinned_key() {
+        use crate::pq::MemberPq;
+        let mut vault = sample_vault();
+        let alice_device = vault.device_id;
+        let (alice_key, bob_key) = ([3; 32], [4; 32]);
+        let bob_device = Id::new();
+        let bob_account = Id::new();
+        as_device(&mut vault, alice_key, alice_device, None);
+        let alice = |ready| pq_setting(&vault_of(alice_device), 9, ready);
+        // Alice's identity rolled out; Bob's hasn't (he publishes no key).
+        vault.set_post_quantum(Some(alice(true))).unwrap();
+        note(&mut vault, "alice one"); // 2, both signatures
+        as_device(&mut vault, bob_key, bob_device, None);
+        note(&mut vault, "bob one"); // 3, Ed25519 only
+        // Alice's own setting isn't held up by Bob, and Bob isn't held to a
+        // signature he can't make.
+        as_device(&mut vault, alice_key, alice_device, Some(alice(true)));
+        let members = |key: Option<&lockdown_crypto::pq_sign::PqSigningKey>, since| {
+            BTreeMap::from([(
+                bob_account,
+                MemberPq {
+                    devices: BTreeSet::from([bob_device]),
+                    key: key.map(|k| k.verifying_key()),
+                    since,
+                },
+            )])
+        };
+        vault.set_member_post_quantum(members(None, None)).unwrap();
+        note(&mut vault, "alice two"); // 4
+        assert!(vault.head().unwrap().pq_sig.is_some());
+
+        // Bob rolls out: his device signs, and his next heads must too.
+        let bob_pq = lockdown_crypto::pq_sign::PqSigningKey::from_seed([7; 32]);
+        let bob_setting = crate::pq::HeadPq {
+            key: bob_pq.verifying_key(),
+            signer: Some(std::sync::Arc::new(
+                lockdown_crypto::pq_sign::PqSigningKey::from_seed([7; 32]),
+            )),
+            ready: false,
+            own: BTreeSet::from([bob_device]),
+        };
+        as_device(&mut vault, bob_key, bob_device, Some(bob_setting.clone()));
+        assert!(
+            !vault.signs_post_quantum(),
+            "Alice's post-quantum heads don't stand for Bob's devices"
+        );
+        let mut ready = bob_setting.clone();
+        ready.ready = true;
+        vault.pq = Some(ready);
+        note(&mut vault, "bob two"); // 5
+        vault.pq = Some(bob_setting);
+        assert!(
+            vault.signs_post_quantum(),
+            "Bob's own chain carries one now"
+        );
+        note(&mut vault, "bob three"); // 6
+        assert!(vault.head().unwrap().pq_sig.is_some());
+
+        as_device(&mut vault, alice_key, alice_device, Some(alice(true)));
+        vault
+            .set_member_post_quantum(members(Some(&bob_pq), None))
+            .unwrap();
+        assert_eq!(
+            vault.member_post_quantum_since(vault.seq()),
+            BTreeMap::from([(bob_account, 5)])
+        );
+        assert!(vault.member_post_quantum_since(4).is_empty());
+        let good = vault.heads.clone();
+        let check = |heads: &[ManifestHead], m: BTreeMap<Id, MemberPq>| {
+            crate::pq::check_member_heads(heads, &m)
+        };
+
+        // Bob's later head stripped: refused, though Alice's heads are fine.
+        let mut stripped = good.clone();
+        stripped[5].pq_sig = None;
+        let err = check(&stripped, members(Some(&bob_pq), None)).unwrap_err();
+        assert!(err.to_string().contains("lost its post-quantum"), "{err}");
+        let err = vault.rebase(4, stripped[4..].to_vec()).unwrap_err();
+        assert!(err.to_string().contains("post-quantum"), "{err}");
+        assert_eq!(vault.heads, good, "a refused rebase changes nothing");
+        // Bent: refused. Under a key other than the pinned one: refused.
+        let mut bent = good.clone();
+        bent[4].pq_sig.as_mut().unwrap()[9] ^= 1;
+        assert!(check(&bent, members(Some(&bob_pq), None)).is_err());
+        let other = lockdown_crypto::pq_sign::PqSigningKey::from_seed([1; 32]);
+        assert!(check(&good, members(Some(&other), None)).is_err());
+        // Alice's key on Bob's head (a member's device can't pass as hers,
+        // nor hers as his): refused.
+        let mut swapped = good.clone();
+        swapped[4].pq_sig = good[3].pq_sig.clone();
+        assert!(check(&swapped, members(Some(&bob_pq), None)).is_err());
+
+        // Every one of Bob's signatures stripped: a device that never saw
+        // them can't tell; one that remembers Bob's first at 5 refuses.
+        let mut bare = good.clone();
+        for h in bare.iter_mut().filter(|h| h.signer == bob_device) {
+            h.pq_sig = None;
+        }
+        check(&bare, members(Some(&bob_pq), None)).unwrap();
+        let err = check(&bare, members(Some(&bob_pq), Some(5))).unwrap_err();
+        assert!(err.to_string().contains("lost its post-quantum"), "{err}");
+        assert!(
+            vault
+                .set_member_post_quantum(members(Some(&bob_pq), Some(3)))
+                .is_err(),
+            "a memory naming a head that has none is refused"
+        );
+        vault
+            .set_member_post_quantum(members(Some(&bob_pq), Some(5)))
+            .unwrap();
+        assert!(vault.rebase(4, bare[4..].to_vec()).is_err());
+        // A remembered member whose key this device lost: refused.
+        assert!(check(&good, members(None, Some(5))).is_err());
+        // Bob's heads before he rolled out (3) stay fine: history holds.
+        check(&good, members(Some(&bob_pq), Some(5))).unwrap();
+    }
+
+    fn vault_of(device: Id) -> Vault {
+        let mut v = sample_vault();
+        v.device_id = device;
+        v
     }
 }

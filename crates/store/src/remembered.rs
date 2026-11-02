@@ -44,6 +44,12 @@ struct MemoryFile {
     /// (docs/plan/28-pq-signatures.md). Additive; absent before.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pq_since: BTreeMap<Id, u64>,
+    /// Per shared vault, per other member's account, the `seq` of that
+    /// member's first post-quantum head the server confirmed: from there
+    /// on every head by their devices must carry one
+    /// (docs/plan/47-shared-vault-pq.md). Additive; absent before.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    member_pq_since: BTreeMap<Id, BTreeMap<Id, u64>>,
 }
 
 /// The device's memory of accepted heads, backed by one file.
@@ -143,6 +149,34 @@ impl HeadMemory {
             return Ok(());
         }
         self.file.pq_since.insert(vault_id, seq);
+        self.write()
+    }
+
+    /// Per other member (by account) of a shared vault, the `seq` from
+    /// which their heads must carry a post-quantum signature, for the
+    /// members this device saw one confirmed for.
+    pub fn member_pq_since(&self, vault_id: Id) -> BTreeMap<Id, u64> {
+        self.file
+            .member_pq_since
+            .get(&vault_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Records a member's first confirmed post-quantum head in a shared
+    /// vault and writes the file. Like [`Self::remember_pq_since`], it only
+    /// ever moves down, never up or away.
+    pub fn remember_member_pq_since(
+        &mut self,
+        vault_id: Id,
+        account: Id,
+        seq: u64,
+    ) -> StoreResult<()> {
+        let seen = self.file.member_pq_since.entry(vault_id).or_default();
+        if seen.get(&account).is_some_and(|s| *s <= seq) {
+            return Ok(());
+        }
+        seen.insert(account, seq);
         self.write()
     }
 
@@ -286,5 +320,30 @@ mod tests {
         let memory = HeadMemory::open(&path).unwrap();
         assert_eq!(memory.pq_since(vault), Some(4));
         assert_eq!(memory.pq_since(other), None);
+    }
+
+    #[test]
+    fn a_members_first_post_quantum_head_is_remembered_per_vault_and_never_forgotten() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("remembered.cbor");
+        let (vault, other, bob, carol) = (Id::new(), Id::new(), Id::new(), Id::new());
+        let mut memory = HeadMemory::open(&path).unwrap();
+        assert!(memory.member_pq_since(vault).is_empty());
+        memory.remember_member_pq_since(vault, bob, 7).unwrap();
+        memory.remember_member_pq_since(vault, bob, 9).unwrap();
+        memory.remember_member_pq_since(vault, carol, 12).unwrap();
+        memory.remember_member_pq_since(vault, bob, 5).unwrap();
+        drop(memory);
+        let memory = HeadMemory::open(&path).unwrap();
+        assert_eq!(
+            memory.member_pq_since(vault),
+            BTreeMap::from([(bob, 5), (carol, 12)])
+        );
+        assert!(memory.member_pq_since(other).is_empty());
+        assert_eq!(
+            memory.pq_since(vault),
+            None,
+            "kept apart from this identity's own"
+        );
     }
 }

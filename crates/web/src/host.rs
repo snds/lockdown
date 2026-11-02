@@ -655,12 +655,19 @@ impl WebVault {
             .iter()
             .filter_map(|id| memory.pq_since(*id).map(|s| (*id, s)))
             .collect();
+        let member_pq_since = self
+            .known_vaults
+            .iter()
+            .map(|id| (*id, memory.member_pq_since(*id)))
+            .filter(|(_, m)| !m.is_empty())
+            .collect();
         let carried = Carried {
             v: CARRIED_V,
             server: account.server.clone(),
             log,
             vaults,
             pq_since,
+            member_pq_since,
         };
         lockdown_crypto::cbor::to_canonical(&carried)
             .map(Some)
@@ -709,6 +716,13 @@ impl WebVault {
                 .remember_pq_since(vault_id, since)
                 .map_err(|e| refused(e.to_string()))?;
         }
+        for (vault_id, members) in carried.member_pq_since {
+            for (account, since) in members {
+                memory
+                    .remember_member_pq_since(vault_id, account, since)
+                    .map_err(|e| refused(e.to_string()))?;
+            }
+        }
         Ok(())
     }
 }
@@ -727,6 +741,11 @@ struct Carried {
     /// absent from what an older build carried.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pq_since: BTreeMap<Id, u64>,
+    /// Per shared vault, per other member, their first post-quantum head
+    /// the server confirmed (docs/plan/47-shared-vault-pq.md); absent from
+    /// what an older build carried.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    member_pq_since: BTreeMap<Id, BTreeMap<Id, u64>>,
 }
 
 /// A server's log as last verified: its key and its newest tree head.

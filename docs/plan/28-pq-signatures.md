@@ -163,6 +163,8 @@ What it can no longer do, once the rollout finishes:
 
 These stay Ed25519, deferred as doc 26 §10 proposed. Their heads, roster events and grants are signed by other people's devices. Checking them post-quantum needs each member's ML-DSA key from their pinned contact (`Contact.pq_isk` exists), plus a rollout across everyone in the vault. `check_heads` skips heads whose signer isn't one of this identity's devices. A head this identity's devices sign in a shared vault still carries `pq_sig`, and their own devices check it. Other members never see the field: they open shared vaults through `Vault::load` without a post-quantum setting.
 
+Closed by doc 47 ([47-shared-vault-pq.md](47-shared-vault-pq.md), D550–D559): each member's heads, membership changes and grants under their own pinned key.
+
 ## 9. Gaps
 
 - **No screen shows the rollout.** `devices_without_head_support` names the devices holding heads back, but Settings and Security don't show it. A line in Security ("Post-quantum signatures: on" or "waiting for …") is proposed (D346), not built.

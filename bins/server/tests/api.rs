@@ -1460,3 +1460,350 @@ async fn a_heads_post_quantum_signature_must_check_out_under_the_accounts_publis
         lockdown_crypto::pq_sign::PqVerifyingKey::from_bytes(&sth.pq_log_key.unwrap()).unwrap();
     sth.sth.verify_hybrid(&ed, Some(&ml)).unwrap();
 }
+
+// --- shared vaults: the server's check on every kind (docs/plan/47-shared-vault-pq.md)
+
+/// Someone for the shared-vault test: an identity, a device logged in, its
+/// account id, and (once published) its post-quantum key.
+struct PqPerson {
+    identity: Identity,
+    keystore: FileKeystore,
+    device: Device,
+    token: String,
+    account: Id,
+    pq: lockdown_crypto::pq_sign::PqSigningKey,
+}
+
+impl PqPerson {
+    async fn new(h: &Harness, dir: &std::path::Path, login: &str) -> Self {
+        let keystore = FileKeystore::open_or_create(&dir.join(format!("{login}.cbor"))).unwrap();
+        let identity = Identity::create(&dir.join(login), "lockdown", "laptop", &keystore).unwrap();
+        let password = "correct horse battery staple";
+        h.register(login, password, identity.profile().profile_id)
+            .await;
+        let device = Device::new();
+        let token = h.login(login, password, &device).await.unwrap().token;
+        let entries: lockdown_sync::kt::AccountEntries = h
+            .cbor("GET", "/v1/kt/entries?from=0", Some(&token), &())
+            .await
+            .unwrap();
+        let pq = lockdown_vault::pq::identity_pq_key(&identity, &keystore).unwrap();
+        Self {
+            identity,
+            keystore,
+            device,
+            token,
+            account: entries.account_id,
+            pq,
+        }
+    }
+
+    /// Publishes the identity's post-quantum key and pushes its records,
+    /// signed with both keys, listing this device.
+    async fn publish(&mut self, h: &Harness) {
+        lockdown_vault::pq::publish_key(&mut self.identity, &self.keystore).unwrap();
+        let isk = identity_signing_key(&self.identity, &self.keystore).unwrap();
+        let record = device_record(&self.identity, &self.device, "laptop", &isk);
+        let mut set = set_with(
+            &self.identity,
+            std::slice::from_ref(&record),
+            None,
+            Vec::new(),
+            &isk,
+        );
+        set.sign_hybrid(&isk, &self.pq).unwrap();
+        let paths: Vec<&str> = set.records.keys().map(String::as_str).collect();
+        put_identity(h, &self.token, &set, &paths).await.unwrap();
+    }
+}
+
+/// POSTs `body` to `path`, answering the status and the error code.
+async fn post_status<T: serde::Serialize>(
+    h: &Harness,
+    token: &str,
+    path: &str,
+    body: &T,
+) -> (StatusCode, Option<ErrorCode>) {
+    let (status, bytes) = h
+        .call("POST", path, Some(token), wire::encode(body).unwrap())
+        .await;
+    let code = (!status.is_success()).then(|| wire::decode::<ErrorBody>(&bytes).unwrap().code);
+    (status, code)
+}
+
+fn bend(sig: &mut Option<serde_bytes::ByteBuf>) {
+    sig.as_mut().unwrap()[7] ^= 1;
+}
+
+#[tokio::test]
+async fn a_shared_vaults_heads_membership_changes_and_grants_must_carry_a_good_post_quantum_signature_if_any()
+ {
+    use lockdown_sync::sharing::{EmergencyCreate, ItemShareCreate, MembershipPush};
+    use lockdown_vault::sharing::{
+        Change, EmergencyGrant, Party, Right, Roster, ShareEnvelope, SharePlace, SharePurpose,
+        VaultKind,
+    };
+    use serde_bytes::ByteBuf;
+    const FORBIDDEN: (StatusCode, Option<ErrorCode>) =
+        (StatusCode::FORBIDDEN, Some(ErrorCode::BadSignature));
+
+    let dir = tempfile::tempdir().unwrap();
+    let h = harness(Config::default());
+    let mut alice = PqPerson::new(&h, dir.path(), "alice@example.com").await;
+    let mut bob = PqPerson::new(&h, dir.path(), "bob@example.com").await;
+    bob.publish(&h).await;
+
+    // Alice's vault, with one item and a head, before she publishes her key.
+    let mut local = LocalVault::new(Device {
+        id: alice.device.id,
+        seed: alice.device.seed,
+    });
+    let (status, _) = h
+        .call(
+            "PUT",
+            &format!("/v1/vaults/{}", local.id()),
+            Some(&alice.token),
+            local.record(),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let mut item = local.new_item();
+    item.rev = push(&h, &alice.token, local.id(), &item, 0).await.unwrap();
+    let key_ref = local.vault.vault_key_id();
+    let mut head1 = local.head(1, Hash32::ZERO, &[&item]);
+    head1.vault_key_ref = key_ref;
+    head1.sign(&alice.device.key()).unwrap();
+    put_head(&h, &alice.token, &head1).await.unwrap();
+
+    let ctx = *local.vault.context();
+    let alice_party = Party {
+        account_id: alice.account,
+        profile_id: ctx.profile_id,
+        persona_id: ctx.persona_id,
+    };
+    let bob_party = Party {
+        account_id: bob.account,
+        profile_id: bob.identity.profile().profile_id,
+        persona_id: Id::new(),
+    };
+    let members = format!("/v1/vaults/{}/members", local.id());
+    let push_of =
+        |e: &lockdown_vault::sharing::MembershipEvent, envs: &[ShareEnvelope]| MembershipPush {
+            event: ByteBuf::from(e.to_bytes().unwrap()),
+            envelopes: envs
+                .iter()
+                .map(|e| ByteBuf::from(e.to_bytes().unwrap()))
+                .collect(),
+        };
+
+    // Membership events. Signed post-quantum while Alice's account
+    // publishes no key: refused, it can't be right.
+    let mut genesis = Roster::genesis(
+        local.id(),
+        alice_party,
+        VaultKind::Shared,
+        key_ref,
+        alice.device.id,
+    );
+    genesis.sign(&alice.device.key()).unwrap();
+    genesis.sign_post_quantum(&alice.pq).unwrap();
+    assert_eq!(
+        post_status(&h, &alice.token, &members, &push_of(&genesis, &[])).await,
+        FORBIDDEN
+    );
+    alice.publish(&h).await;
+    let mut bent = genesis.clone();
+    bend(&mut bent.pq_sig);
+    assert_eq!(
+        post_status(&h, &alice.token, &members, &push_of(&bent, &[])).await,
+        FORBIDDEN
+    );
+    let mut foreign = genesis.clone();
+    foreign.sign_post_quantum(&bob.pq).unwrap();
+    assert_eq!(
+        post_status(&h, &alice.token, &members, &push_of(&foreign, &[])).await,
+        FORBIDDEN,
+        "Bob's key on Alice's change"
+    );
+    assert_eq!(
+        post_status(&h, &alice.token, &members, &push_of(&genesis, &[]))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let roster = Roster::replay_trusted(std::slice::from_ref(&genesis)).unwrap();
+
+    // A vault key grant (the envelope that rides with Bob's addition).
+    let (_, bob_kem) =
+        lockdown_crypto::identity::kem::kem(lockdown_crypto::identity::kem::DEFAULT_KEM)
+            .keypair(lockdown_crypto::rand::random_32().unwrap())
+            .unwrap();
+    let vault_key =
+        lockdown_vault::VaultKey::from_bytes(lockdown_crypto::rand::random_32().unwrap());
+    let place = SharePlace {
+        purpose: SharePurpose::Vault,
+        vault_id: local.id(),
+        item_id: None,
+        key_id: key_ref,
+        to: bob_party,
+        from_account: alice.account,
+        grant_id: None,
+    };
+    let mut envelope = ShareEnvelope::seal(
+        &vault_key,
+        &bob_kem,
+        place,
+        alice.device.id,
+        &alice.device.key(),
+    )
+    .unwrap();
+    envelope.sign_post_quantum(&alice.pq).unwrap();
+    let mut add = roster.propose(
+        Change::Add {
+            member: bob_party,
+            right: Right::Edit,
+        },
+        None,
+        alice.account,
+        alice.device.id,
+    );
+    add.sign(&alice.device.key()).unwrap();
+    add.sign_post_quantum(&alice.pq).unwrap();
+    let mut bent_env = envelope.clone();
+    bend(&mut bent_env.pq_sig);
+    assert_eq!(
+        post_status(&h, &alice.token, &members, &push_of(&add, &[bent_env])).await,
+        FORBIDDEN
+    );
+    assert_eq!(
+        post_status(
+            &h,
+            &alice.token,
+            &members,
+            &push_of(&add, std::slice::from_ref(&envelope))
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+
+    // Bob's head in Alice's vault, under Bob's own published key.
+    let mut head2 = head1.clone();
+    head2.seq = 2;
+    head2.prev_hash = head1.hash().unwrap();
+    head2.signer = bob.device.id;
+    head2.pq_sig = None;
+    head2.sign(&bob.device.key()).unwrap();
+    head2.sign_post_quantum(&bob.pq).unwrap();
+    let mut bent = head2.clone();
+    bend(&mut bent.pq_sig);
+    assert_eq!(put_head_status(&h, &bob.token, &bent).await, FORBIDDEN);
+    let mut as_alice = head2.clone();
+    as_alice.sign_post_quantum(&alice.pq).unwrap();
+    assert_eq!(
+        put_head_status(&h, &bob.token, &as_alice).await,
+        FORBIDDEN,
+        "Alice's key on Bob's head"
+    );
+    assert_eq!(
+        put_head_status(&h, &bob.token, &head2).await,
+        (StatusCode::OK, None)
+    );
+    // Not required: Bob's next head without one is the clients' business.
+    let mut head3 = head2.clone();
+    head3.seq = 3;
+    head3.prev_hash = head2.hash().unwrap();
+    head3.pq_sig = None;
+    head3.sign(&bob.device.key()).unwrap();
+    assert_eq!(
+        put_head_status(&h, &bob.token, &head3).await,
+        (StatusCode::OK, None)
+    );
+
+    // An item shared on its own: the same check on its envelope.
+    let share_id = Id::new();
+    let item_place = SharePlace {
+        purpose: SharePurpose::Item,
+        vault_id: local.id(),
+        item_id: Some(item.item_id),
+        key_id: item.item_id,
+        to: bob_party,
+        from_account: alice.account,
+        grant_id: Some(share_id),
+    };
+    let mut item_env = ShareEnvelope::seal(
+        &vault_key,
+        &bob_kem,
+        item_place,
+        alice.device.id,
+        &alice.device.key(),
+    )
+    .unwrap();
+    item_env.sign_post_quantum(&alice.pq).unwrap();
+    let create = |env: &ShareEnvelope| ItemShareCreate {
+        share_id,
+        vault_id: local.id(),
+        item_id: item.item_id,
+        recipient: bob_party,
+        right: Right::View,
+        envelope: ByteBuf::from(env.to_bytes().unwrap()),
+    };
+    let mut bent_env = item_env.clone();
+    bend(&mut bent_env.pq_sig);
+    assert_eq!(
+        post_status(&h, &alice.token, "/v1/shares/items", &create(&bent_env)).await,
+        FORBIDDEN
+    );
+    assert!(
+        post_status(&h, &alice.token, "/v1/shares/items", &create(&item_env))
+            .await
+            .0
+            .is_success()
+    );
+
+    // An emergency grant and its envelope.
+    let mut grant =
+        EmergencyGrant::new(alice_party, bob_party, 7, vec![local.id()], alice.device.id).unwrap();
+    grant.sign(&alice.device.key()).unwrap();
+    grant.sign_post_quantum(&alice.pq).unwrap();
+    let em_place = SharePlace {
+        purpose: SharePurpose::Emergency,
+        vault_id: local.id(),
+        item_id: None,
+        key_id: key_ref,
+        to: bob_party,
+        from_account: alice.account,
+        grant_id: Some(grant.grant_id),
+    };
+    let mut em_env = ShareEnvelope::seal(
+        &vault_key,
+        &bob_kem,
+        em_place,
+        alice.device.id,
+        &alice.device.key(),
+    )
+    .unwrap();
+    em_env.sign_post_quantum(&alice.pq).unwrap();
+    let em = |g: &EmergencyGrant, e: &ShareEnvelope| EmergencyCreate {
+        grant: ByteBuf::from(g.to_bytes().unwrap()),
+        envelopes: vec![ByteBuf::from(e.to_bytes().unwrap())],
+    };
+    let mut bent_grant = grant.clone();
+    bend(&mut bent_grant.pq_sig);
+    assert_eq!(
+        post_status(&h, &alice.token, "/v1/emergency", &em(&bent_grant, &em_env)).await,
+        FORBIDDEN
+    );
+    let mut bent_env = em_env.clone();
+    bend(&mut bent_env.pq_sig);
+    assert_eq!(
+        post_status(&h, &alice.token, "/v1/emergency", &em(&grant, &bent_env)).await,
+        FORBIDDEN
+    );
+    assert_eq!(
+        post_status(&h, &alice.token, "/v1/emergency", &em(&grant, &em_env))
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+}

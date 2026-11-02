@@ -1876,6 +1876,18 @@ impl Session {
                     .require_post_quantum_from(self.memory.pq_since(vault_id))
                     .map_err(|e| e.to_string())?;
             }
+            // So is each other member's first one, in a shared vault: from
+            // there on their heads must carry it too
+            // (docs/plan/47-shared-vault-pq.md).
+            let members = open.vault.member_post_quantum_since(one.head_seq);
+            if !members.is_empty() {
+                for (account, since) in members {
+                    self.memory
+                        .remember_member_pq_since(vault_id, account, since)
+                        .map_err(|e| e.to_string())?;
+                }
+                self.apply_roster(vault_id)?;
+            }
             if idx == 0 {
                 report.head_seq = one.head_seq;
             }
