@@ -579,7 +579,11 @@ impl Joining {
             ));
         }
         crate::join_sealed::seal_for_join(&self.paths.data, &self.keystore, password, None)?;
-        let handed = *self.handed.take().ok_or("this join already finished")?;
+        let mut handed = *self.handed.take().ok_or("this join already finished")?;
+        // The join keeps its own copy of the Secret Key (`self.secret_key`).
+        if let Some(sk) = handed.secret_key.as_mut() {
+            zeroize::Zeroize::zeroize(sk);
+        }
         let identity = lockdown_vault::handover::restore_from_root_key(
             &self.paths.root,
             APP,
@@ -612,6 +616,9 @@ impl Joining {
 impl Drop for Joining {
     fn drop(&mut self) {
         if let Some(sk) = self.secret_key.as_mut() {
+            zeroize::Zeroize::zeroize(sk);
+        }
+        if let Some(sk) = self.handed.as_mut().and_then(|h| h.secret_key.as_mut()) {
             zeroize::Zeroize::zeroize(sk);
         }
     }
