@@ -14,7 +14,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**497 decisions, forty-three build slices, no release yet (2026-10-29).** Of the 122 features committed to v1, 83 are done, 15 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
+**504 decisions, forty-four build slices, no release yet (2026-10-29).** Of the 122 features committed to v1, 83 are done, 15 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
 
 | Slice | What it delivered |
 |---|---|
@@ -62,6 +62,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 | **41 · One prompt per page** ✅ | The extension's Save sometimes stayed disabled: a race drew two save prompts (and two fill menus) stacked in one place, and the covered one rightly stayed off. One of each is now claimed before the first await; the frame's cover guard is unchanged. Also: the Wi-Fi card hides on the first blur after printing. [Doc 42](docs/plan/42-frame-cover.md), D500–D503. |
 | **42 · The command line always seals** ✅ | `lockdown init` can no longer make a vault without a master password: it asks at a terminal (name, then the password twice) or takes `--name` and the password from stdin or `LOCKDOWN_MASTER_PASSWORD`, refuses and writes nothing otherwise, and hands over the recovery kit. `account register` moves a sealed vault onto your server. Old passwordless installs still open and `password set` seals them. [Doc 43](docs/plan/43-cli-sealed.md), D510–D515. |
 | **43 · Adding a computer seals it** ✅ | `lockdown account login` and `lockdown recover` on a new computer now join and seal in one step in the core: the keys stay in memory until the sign-in proves the password, then are sealed under it (and, after a recovery, under the kit), so no plain key file is ever written. No terminal and no password, or a wrong one, writes nothing. [Doc 44](docs/plan/44-cli-join-sealed.md), D520–D526. |
+| **44 · Every computer the desktop adds is sealed** ✅ | The desktop's sign-in, kit recovery, security-key and email waits, and "approve from another device" joins now seal the new computer's keys under the master password in one step, through the core's sealed join; no plain key file is written. A join that stopped partway comes back to sign-in. An open never makes keys from nothing. [Doc 45](docs/plan/45-desktop-join-sealed.md), D530–D536. |
 | **Next** | Browser extension (fill, save, passkeys), mobile apps, sharing and family, breach monitoring, packaged and signed releases |
 
 | Real (with tests) | Skeleton (types, traits, one real rule each) |
