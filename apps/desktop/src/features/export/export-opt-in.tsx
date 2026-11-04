@@ -15,10 +15,13 @@ interface ExportOptInProps {
 
 /**
  * A crown jewel's "Include in exports and backups" (D121). Off by default:
- * a crown jewel stays out of every bulk export and backup until the person
- * turns this on for that one item, which asks first (the `Reveal` gate, the
+ * a crown jewel stays out of every plain export until the person turns
+ * this on for that one item, which asks first (the `Reveal` gate, the
  * master password where one exists). Turning it off asks nothing. The
- * choice is a setting on the item, so it syncs to every device.
+ * choice is a setting on the item, so it syncs to every device. Locked
+ * backups carry every crown jewel anyway while Settings, Backups,
+ * "Include crown jewels" is on (D138 as decided, doc 48); off, this
+ * switch decides for them too.
  */
 export function ExportOptIn({ item, onChanged, onNotice }: ExportOptInProps) {
   const client = useClient()
@@ -33,7 +36,7 @@ export function ExportOptIn({ item, onChanged, onNotice }: ExportOptInProps) {
     try {
       await gate.run((g) => client.setExportOptIn(item.id, next, g))
       onChanged(await client.show(item.id))
-      onNotice(next ? "This item will be included in exports and backups." : "This item stays out of exports and backups.")
+      onNotice(next ? "This item will be included in exports and backups." : "This item stays out of plain exports.")
     } catch (e) {
       setError(describeError(e))
     } finally {
@@ -49,7 +52,7 @@ export function ExportOptIn({ item, onChanged, onNotice }: ExportOptInProps) {
           <FieldDescription>
             {on
               ? "This crown jewel leaves in every export and backup you make, protected only as well as that file is."
-              : "Crown jewels stay out of exports and backups unless you choose to include them, one by one."}
+              : "Crown jewels stay out of plain exports unless you include them here, one by one. Locked backups carry them unless you turn that off in Settings, Backups."}
           </FieldDescription>
         </FieldContent>
         <Switch id={`export-opt-in-${item.id}`} checked={on} onCheckedChange={(v) => void change(v)} disabled={busy} />

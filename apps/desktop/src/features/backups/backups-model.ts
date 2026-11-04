@@ -38,9 +38,33 @@ export function sizeWords(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/** "Include crown jewels" (D138 as decided, doc 48): on unless the core says off. */
+export function includesCrownJewels(s: BackupStatus): boolean {
+  return s.include_crown_jewels !== false
+}
+
+/** The switch's one-line explanation, for its state. */
+export function crownSwitchHelp(on: boolean): string {
+  return on
+    ? "Recovery phrases, recovery codes and your other crown jewels go into every locked backup, protected by its password."
+    : "Crown jewels stay out of locked backups unless you include them one by one."
+}
+
+/** Said once after the switch starts carrying them: the newest backup lacks them, the next one won't. `null` otherwise. */
+export function waitingLine(s: BackupStatus): string | null {
+  const n = s.crown_jewels_waiting ?? 0
+  if (!includesCrownJewels(s) || n <= 0) return null
+  return `Your next backup will be the first to include your ${n} crown ${n === 1 ? "jewel" : "jewels"}.`
+}
+
+/** The toast after the switch changes. */
+export function crownSwitchNotice(on: boolean): string {
+  return on ? "Crown jewels will be in your next backup." : "Crown jewels stay out of new backups. Backups you already have keep what they hold."
+}
+
 /** The crown jewels a backup leaves out (D121), or `null`. */
 export function crownLine(s: BackupStatus): string | null {
-  if (!s.crown_jewels_left_out) return null
+  if (includesCrownJewels(s) || !s.crown_jewels_left_out) return null
   const n = s.crown_jewels_left_out
   return `${n} crown ${n === 1 ? "jewel isn't" : "jewels aren't"} in your backups. To include one, open it and turn on "Include in exports and backups".`
 }

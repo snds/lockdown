@@ -140,6 +140,7 @@ export function webClient(link: Link, clipboard: WebClipboard): Client {
     backupNow: () => notHere("Backups"),
     backupOff: () => notHere("Backups"),
     backupRestorePreview: () => notHere("Backups"),
+    backupCrownJewels: () => notHere("Backups"),
     vaults: () => call("vaults"),
     createVault: (name) => call("create_vault", { name }),
     renameVault: (vaultId, name) => call("rename_vault", { vaultId, name }),
