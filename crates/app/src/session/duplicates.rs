@@ -81,7 +81,10 @@ impl Session {
                 if item.kind.hidden() || item.state != ItemState::Live {
                     continue;
                 }
-                let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
+                // One that doesn't open here is left out (docs/plan/51-rekey-push.md §3).
+                let Ok(fields) = vault.open_item(item.item_id) else {
+                    continue;
+                };
                 let i = seen.len();
                 seen.push(Seen {
                     id: item.item_id,

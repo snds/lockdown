@@ -822,7 +822,13 @@ impl Session {
             if !vault.can_open(item.item_id) {
                 continue;
             }
-            let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
+            // One item that doesn't open here (an Item Key that doesn't
+            // match the copy held, a key gone) is left out on its own; the
+            // rest of the vault still lists, and it is back once a copy
+            // that opens arrives (docs/plan/51-rekey-push.md §3).
+            let Ok(fields) = vault.open_item(item.item_id) else {
+                continue;
+            };
             let latest = item.latest().map_err(|e| e.to_string())?;
             let title = text_of(&fields, "title").unwrap_or_default();
             let mut row = ItemSummary {
@@ -1849,6 +1855,9 @@ impl Session {
         // Then the vaults of this persona not open yet (pulled just now, or
         // waiting since the unlock), trusting those writers (`shared_sync`).
         self.open_pulled_vaults(transport, &token, kt.sth())?;
+        // Items an earlier build re-keyed here and never pushed get their
+        // re-key version, once per vault (docs/plan/51-rekey-push.md §4).
+        let compared = self.repair_rekeyed(transport, &token)?;
         let syncer = Syncer {
             transport,
             token: &token,
@@ -2018,6 +2027,9 @@ impl Session {
         if let Some(cfg) = &self.sync {
             cfg.save(&self.paths.sync_file())?;
         }
+        // The new keys of items now on the server go to the people they
+        // are shared with (docs/plan/51-rekey-push.md §2).
+        self.after_rekey_push(transport, &token, &compared)?;
         // A purge whose grace ran out on another device's clock, or here
         // while offline, happens now (and syncs next time).
         self.sweep_trash()?;

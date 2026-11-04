@@ -46,6 +46,7 @@ use lockdown_vault::identity::keys_for;
 
 pub(crate) mod phrase;
 pub(crate) mod pq;
+pub(crate) mod rekey;
 
 /// The most a shared item or link title is cut to in a message.
 const NAME_CHARS: usize = 60;
@@ -1016,6 +1017,12 @@ impl Session {
             .vault_slot(vault_id)?
             .rotate_vault_key()
             .map_err(|e| e.to_string())?;
+        // The items shared on their own from this vault, and the emergency
+        // grants covering it, get the new keys once the re-keyed items are
+        // on the server: at the end of the sync below, or a later one
+        // (`rekey`; docs/plan/51-rekey-push.md §2).
+        self.sharing.mark_reseal(vault_id, true, &[]);
+        self.save_sharing()?;
         let mut envelopes = Vec::new();
         let vault = self.vault_by_id(vault_id)?;
         for p in &staying {
@@ -1076,7 +1083,6 @@ impl Session {
         }
         self.save()?;
         self.sync()?;
-        self.after_rotation(&transport, &token, vault_id)?;
         self.vault_sharing(&vault_id.to_string())
     }
 
@@ -1085,82 +1091,6 @@ impl Session {
             .chain(self.more.iter())
             .find(|o| o.vault.context().vault_id == vault_id)
             .ok_or_else(|| format!("vault {vault_id} isn't open here"))
-    }
-
-    /// After a rotation: the items shared from the vault on their own and
-    /// the emergency grants that cover it get envelopes for the new keys.
-    fn after_rotation(
-        &mut self,
-        transport: &HttpTransport,
-        token: &str,
-        vault_id: Id,
-    ) -> Result<(), String> {
-        let me = self.me()?;
-        let sent = transport.sent_items(token).map_err(|e| e.to_string())?;
-        for s in sent.items.iter().filter(|s| s.vault_id == vault_id) {
-            let Some(contact) = self.sharing.contact(s.recipient.account_id).cloned() else {
-                continue;
-            };
-            let mut env = self
-                .vault_by_id(vault_id)?
-                .seal_item_key(
-                    s.item_id,
-                    s.recipient,
-                    &contact.kem_pub,
-                    me.account_id,
-                    s.share_id,
-                )
-                .map_err(|e| e.to_string())?;
-            self.pq_sign_envelope(&mut env, None)?;
-            transport
-                .share_item(
-                    token,
-                    &ItemShareCreate {
-                        share_id: s.share_id,
-                        vault_id,
-                        item_id: s.item_id,
-                        recipient: s.recipient,
-                        right: s.right,
-                        envelope: ByteBuf::from(env.to_bytes().map_err(|e| e.to_string())?),
-                    },
-                )
-                .map_err(|e| e.to_string())?;
-        }
-        let list = transport.emergency(token).map_err(|e| e.to_string())?;
-        for w in &list.as_owner {
-            let Ok(grant) = EmergencyGrant::from_bytes(&w.grant) else {
-                continue;
-            };
-            if !grant.vaults.contains(&vault_id)
-                || matches!(w.state, EmergencyState::Declined | EmergencyState::Revoked)
-            {
-                continue;
-            }
-            let Some(contact) = self.sharing.contact(grant.contact.account_id).cloned() else {
-                continue;
-            };
-            let mut env = self
-                .vault_by_id(vault_id)?
-                .seal_vault_key(
-                    grant.contact,
-                    &contact.kem_pub,
-                    me.account_id,
-                    SharePurpose::Emergency,
-                    Some(grant.grant_id),
-                )
-                .map_err(|e| e.to_string())?;
-            self.pq_sign_envelope(&mut env, None)?;
-            transport
-                .emergency_envelopes(
-                    token,
-                    grant.grant_id,
-                    &EmergencyEnvelopes {
-                        envelopes: vec![ByteBuf::from(env.to_bytes().map_err(|e| e.to_string())?)],
-                    },
-                )
-                .map_err(|e| e.to_string())?;
-        }
-        Ok(())
     }
 
     /// Makes a household: a new vault, shared as a family with this person
@@ -1644,6 +1574,13 @@ impl Session {
                 vault.rekey_item(item).map_err(|e| e.to_string())?;
             }
         }
+        // The owner's items shared on their own and emergency grants follow
+        // the new key once the vault's items under it are on the server
+        // (another device of the owner, or a manager, rotated it; `rekey`).
+        if roster.owner.account_id == me.account_id {
+            self.sharing.mark_reseal(vault_id, true, &[]);
+            self.save_sharing()?;
+        }
         self.save()
     }
 
@@ -1755,7 +1692,21 @@ impl Session {
                     if signed {
                         newly_marked.insert(r.owner.account_id);
                     }
-                    out.insert(r.share_id, taken);
+                    // A share whose key doesn't open the copy the server
+                    // serves (the owner's re-key is on its way), or a copy
+                    // none of the owner's devices signed, keeps what this
+                    // device had of it while that opens. Nothing is held
+                    // back over it; the next sync takes it again
+                    // (`rekey`; docs/plan/51-rekey-push.md §2).
+                    let had = self
+                        .sharing
+                        .received()
+                        .get(&r.share_id)
+                        .filter(|had| !self.received_opens(&taken) && self.received_opens(had));
+                    match had {
+                        Some(had) => out.insert(r.share_id, had.clone()),
+                        None => out.insert(r.share_id, taken),
+                    };
                 }
                 Err(why) => {
                     self.hold_unverified(super::quiet::Held {
@@ -1992,43 +1943,13 @@ impl Session {
             self.holding_mut(item_id)?
                 .rekey_item(item_id)
                 .map_err(|e| e.to_string())?;
+            // Anyone it is still shared with gets the new key once the
+            // re-keyed item is on the server: at the end of this sync, or a
+            // later one (`rekey`; docs/plan/51-rekey-push.md §2).
+            self.sharing.mark_reseal(vault_id, false, &[item_id]);
+            self.save_sharing()?;
             self.save()?;
             self.sync()?;
-            let me = self.me()?;
-            for other in sent
-                .items
-                .iter()
-                .filter(|o| o.item_id == item_id && o.share_id != share_id)
-            {
-                let Some(contact) = self.sharing.contact(other.recipient.account_id).cloned()
-                else {
-                    continue;
-                };
-                let mut env = self
-                    .vault_by_id(vault_id)?
-                    .seal_item_key(
-                        item_id,
-                        other.recipient,
-                        &contact.kem_pub,
-                        me.account_id,
-                        other.share_id,
-                    )
-                    .map_err(|e| e.to_string())?;
-                self.pq_sign_envelope(&mut env, None)?;
-                transport
-                    .share_item(
-                        &token,
-                        &ItemShareCreate {
-                            share_id: other.share_id,
-                            vault_id,
-                            item_id,
-                            recipient: other.recipient,
-                            right: other.right,
-                            envelope: ByteBuf::from(env.to_bytes().map_err(|e| e.to_string())?),
-                        },
-                    )
-                    .map_err(|e| e.to_string())?;
-            }
             return Ok(());
         }
         // Shared with this persona: it can let go of it too.

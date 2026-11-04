@@ -84,7 +84,10 @@ impl Session {
                 if item.kind != ItemKind::Login || item.state != ItemState::Live {
                     continue;
                 }
-                let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
+                // One that doesn't open here is left out (docs/plan/51-rekey-push.md §3).
+                let Ok(fields) = vault.open_item(item.item_id) else {
+                    continue;
+                };
                 let filled = |id: &str| {
                     fields.iter().any(|f| {
                         f.field_id == id
@@ -136,7 +139,10 @@ impl Session {
                 if item.kind.hidden() || item.state != ItemState::Live {
                     continue;
                 }
-                let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
+                // One that doesn't open here is left out (docs/plan/51-rekey-push.md §3).
+                let Ok(fields) = vault.open_item(item.item_id) else {
+                    continue;
+                };
                 if fields.iter().any(|f| f.kind == FieldKind::Totp) {
                     out.push((
                         item.item_id,
@@ -219,7 +225,10 @@ impl Session {
                 if item.kind != ItemKind::ApiCredential || item.state != ItemState::Live {
                     continue;
                 }
-                let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
+                // One that doesn't open here is left out (docs/plan/51-rekey-push.md §3).
+                let Ok(fields) = vault.open_item(item.item_id) else {
+                    continue;
+                };
                 if let Some(config) = text_of(&fields, ALIAS_FIELD) {
                     out.push(AliasItem {
                         item_id: item.item_id,

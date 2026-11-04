@@ -50,7 +50,7 @@ pub use carry::{CarriedAttachment, CarriedItem, CarriedVersion};
 mod legacy;
 mod share;
 pub use legacy::{LEGACY_OPT_IN, legacy_opted_in};
-pub use share::member_record;
+pub use share::{member_record, received_key_opens};
 
 /// Who and where a vault belongs to: the ids that go into every piece of
 /// associated data.
@@ -1314,6 +1314,9 @@ impl Vault {
     /// The items that differ from what the head at `seq` recorded (latest
     /// version, state, keys), plus any the head does not list: what has
     /// changed on this device since that head. With `seq` zero, every item.
+    /// An Item Key moved on its own is not a difference here (no signed
+    /// byte changes), which is why a re-key also writes a version
+    /// (`share`; docs/plan/51-rekey-push.md).
     pub fn changed_since(&self, seq: u64) -> Result<Vec<Id>> {
         let base = if seq == 0 { None } else { self.head_at(seq) };
         let mut out = Vec::new();

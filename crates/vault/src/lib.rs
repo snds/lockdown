@@ -119,5 +119,5 @@ pub use user_template::{UserField, UserTemplate, user_template_of};
 pub use vault::{
     AttachmentInfo, EXPORT_OPT_IN, ImportSpec, LEGACY_OPT_IN, NewAttachment, PreparedAttachment,
     Unlock, Vault, VaultContext, export_opted_in, is_reserved_field, legacy_opted_in,
-    member_record,
+    member_record, received_key_opens,
 };

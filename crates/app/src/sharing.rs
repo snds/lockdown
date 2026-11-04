@@ -12,7 +12,7 @@
 //! an error: it holds the pins that stop a key swap, so silently starting
 //! over would let a server swap a key unnoticed.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use ecosystem_identity::keys::AppDataKey;
@@ -78,6 +78,19 @@ impl std::fmt::Debug for ReceivedItem {
     }
 }
 
+/// What waits to be sealed again from one vault once its re-keyed items
+/// are on the server (docs/plan/51-rekey-push.md §2).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Reseal {
+    /// The vault moved to a new Vault Key: every item shared from it on its
+    /// own, and every emergency grant covering it.
+    #[serde(default)]
+    pub rotated: bool,
+    /// The items shared on their own that moved to a fresh Item Key.
+    #[serde(default)]
+    pub items: BTreeSet<Id>,
+}
+
 /// Vaults an emergency contact may read after a release.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Released {
@@ -114,6 +127,15 @@ struct Body {
     /// post-quantum, so a grant made before their update still releases.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     grants_seen: BTreeMap<Id, ByteBuf>,
+    /// Vaults whose items moved to fresh keys on this device, waiting for
+    /// those items to reach the server before the items shared from them on
+    /// their own get envelopes for the new keys (docs/plan/51-rekey-push.md §2).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    reseal: BTreeMap<Id, Reseal>,
+    /// Vaults this device compared once with the server for items an
+    /// earlier build re-keyed here and never pushed (docs/plan/51-rekey-push.md §4).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    rekey_checked: BTreeSet<Id>,
 }
 
 /// The device's sharing record for one persona.
@@ -298,6 +320,37 @@ impl SharingState {
     /// Keeps only the grants in `listed`.
     pub fn keep_grants(&mut self, listed: &std::collections::BTreeSet<Id>) {
         self.body.grants_seen.retain(|g, _| listed.contains(g));
+    }
+
+    /// The vaults whose shares wait to be sealed again for new keys.
+    pub fn reseal(&self) -> &BTreeMap<Id, Reseal> {
+        &self.body.reseal
+    }
+
+    /// Marks a vault's shares to be sealed again once its re-keyed items
+    /// are on the server: every one, and the emergency grants covering the
+    /// vault, after a new Vault Key (`rotated`); else those of `items`.
+    /// What is marked stays marked until it is done.
+    pub fn mark_reseal(&mut self, vault_id: Id, rotated: bool, items: &[Id]) {
+        let entry = self.body.reseal.entry(vault_id).or_default();
+        entry.rotated |= rotated;
+        entry.items.extend(items.iter().copied());
+    }
+
+    /// The vault's shares were sealed again.
+    pub fn resealed(&mut self, vault_id: Id) {
+        self.body.reseal.remove(&vault_id);
+    }
+
+    /// Whether this device already compared `vault_id` with the server for
+    /// re-keyed items never pushed.
+    pub fn rekey_checked(&self, vault_id: Id) -> bool {
+        self.body.rekey_checked.contains(&vault_id)
+    }
+
+    /// Records that `vault_id` was compared and anything found pushed.
+    pub fn mark_rekey_checked(&mut self, vault_id: Id) {
+        self.body.rekey_checked.insert(vault_id);
     }
 }
 

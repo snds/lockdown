@@ -724,7 +724,11 @@ impl App {
             if item.kind.hidden() || !matches!(item.state, ItemState::Live | ItemState::Archived) {
                 continue;
             }
-            let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
+            // One that doesn't open here is left out; the rest still list
+            // (docs/plan/51-rekey-push.md §3).
+            let Ok(fields) = vault.open_item(item.item_id) else {
+                continue;
+            };
             let title = text_of(&fields, "title").unwrap_or_default();
             let site = fields
                 .iter()
@@ -757,7 +761,11 @@ impl App {
             if item.kind.hidden() || item.state != ItemState::Live {
                 continue;
             }
-            let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
+            // One that doesn't open here is left out; the rest still list
+            // (docs/plan/51-rekey-push.md §3).
+            let Ok(fields) = vault.open_item(item.item_id) else {
+                continue;
+            };
             let title = text_of(&fields, "title").unwrap_or_default();
             let jewel = item.class == lockdown_vault::ItemClass::CrownJewel;
             let site = fields
