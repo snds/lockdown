@@ -468,7 +468,11 @@ export function commands(world: World): Record<string, Handler> {
     import_commit: () => ({ imported: 24, updated: 0, unchanged: 2, notes: ["Row 14 was left out: no website or title."] }),
     import_cancel: () => undefined,
     import_items: () => ({ imported: 24, updated: 0, unchanged: 2, notes: [] }),
-    export_preview: (a): ExportPreview => ({
+    export_preview: (a): ExportPreview => {
+      // A locked Lockdown backup carries every crown jewel while "Include crown jewels" is on (doc 48).
+      const all = a.format === "lockdown" && a.sealed === true && world.settings.backup?.include_crown_jewels !== false
+      if (all) return { format: "lockdown", items: 42, attachments: 4, crown_jewels_included: 2, crown_jewels_left_out: 0, left_out: [], dropped: [], encrypted: false, crown_jewels_all: true }
+      return {
       format: (a.format as ExportPreview["format"]) ?? "lockdown",
       items: 40,
       attachments: 4,
@@ -480,7 +484,8 @@ export function commands(world: World): Record<string, Handler> {
       ],
       dropped: a.format === "csv" ? ["Passkeys, codes and attachments have no column in a CSV."] : [],
       encrypted: a.format !== "csv",
-    }),
+      }
+    },
     export_choose: (a) => ({ token: 3, path: `/Users/sam/Desktop/lockdown-export.${a.format === "csv" ? "csv" : "ldx"}`, name: `lockdown-export.${a.format === "csv" ? "csv" : "ldx"}` }),
     export_save: (a) => {
       needPassword(a.gate as GateInput | undefined, "Exporting the vault")
@@ -493,11 +498,17 @@ export function commands(world: World): Record<string, Handler> {
       touchItem(item)
       return item.version
     },
-    backup_status: () => backupStatus(world.settings.backup?.enabled ?? false),
+    backup_status: () => backupStatus(world.settings.backup?.enabled ?? false, world.settings.backup?.include_crown_jewels !== false),
     backup_pick_folder: () => ({ token: 4, path: "/Users/sam/Backups/Lockdown", name: "Lockdown" }),
     backup_setup: () => backupStatus(true),
     backup_now: () => ({ ...backupStatus(true), last_success_at: NOW }),
-    backup_off: () => backupStatus(false),
+    backup_off: () => backupStatus(false, world.settings.backup?.include_crown_jewels !== false),
+    backup_crown_jewels: (a) => {
+      needPassword(a.gate as GateInput | undefined, a.on ? "Putting your crown jewels in your locked backups" : "Leaving your crown jewels out of your locked backups")
+      const backup = world.settings.backup ?? { enabled: false, folder: null, interval_hours: 24, keep_last: 10 }
+      world.settings = { ...world.settings, backup: { ...backup, include_crown_jewels: Boolean(a.on) } }
+      return backupStatus(backup.enabled, Boolean(a.on))
+    },
     backup_restore_preview: () => ({
       token: 8,
       format: "lockdown",
