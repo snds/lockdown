@@ -488,7 +488,11 @@ fn backups_are_sealed_kept_to_n_and_restore_on_this_device_without_the_password(
         .unwrap();
     assert!(s.enabled && s.key_set);
     assert_eq!(s.backups.len(), 1, "one written at once");
-    assert_eq!(s.crown_jewels_left_out, 1, "the wallet isn't opted in");
+    assert!(
+        s.include_crown_jewels,
+        "crown jewels go into backups by default"
+    );
+    assert_eq!(s.crown_jewels_left_out, 0, "the wallet is in, sealed");
     assert!(s.last_success_at.is_some() && s.last_error.is_none());
     assert_eq!(
         s.next_due_at,
@@ -524,8 +528,8 @@ fn backups_are_sealed_kept_to_n_and_restore_on_this_device_without_the_password(
     // Restore on this device: the kept key opens it.
     let name = a.backup_status().unwrap().backups[0].name.clone();
     let p = a.backup_restore_preview(&name, None).unwrap();
-    assert_eq!(p.total, 1);
-    assert_eq!(p.unchanged, 1);
+    assert_eq!(p.total, 2);
+    assert_eq!(p.unchanged, 2);
     assert!(a.backup_restore_preview("../../etc/passwd", None).is_err());
     // Elsewhere: the password alone.
     let b = fresh(dir.path(), "b");
@@ -540,7 +544,7 @@ fn backups_are_sealed_kept_to_n_and_restore_on_this_device_without_the_password(
         )
         .unwrap();
     b.import_commit(p.token).unwrap();
-    assert_eq!(b.list().unwrap().len(), 1);
+    assert_eq!(b.list().unwrap().len(), 2);
 
     // Off, and the key forgotten: the files stay.
     let s = a.backup_off(true).unwrap();

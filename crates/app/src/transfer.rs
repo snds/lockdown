@@ -4,19 +4,37 @@
 //! after the `Reveal` gate (D101, D103); a crown jewel leaves only when its
 //! opt-in is on (D121), and turning that on asks first. Scheduled backups
 //! run on the worker's tick while the vault is open.
+//!
+//! **Locked backups carry crown jewels** (D138 as decided by Sean,
+//! 2026-11-04; docs/plan/48-crown-jewel-backups.md): a scheduled backup
+//! and a locked Lockdown export carry every crown jewel, sealed under the
+//! backup's password, while "Include crown jewels" is on (the default).
+//! Off, they take the opted-in ones only, as before. Every plain file,
+//! KDBX and a file to a public key stay as D121 says.
 
 use std::path::PathBuf;
 use std::time::Instant;
 
 use zeroize::Zeroizing;
 
-use crate::session::transfer::{self as session_transfer, write_user_file};
+use crate::session::transfer::{self as session_transfer, CrownJewels, write_user_file};
 use crate::{
     App, AppError, AppResult, ApprovalKind, BackupStatus, Core, ExportDone, ExportPreview,
     GateInput, ImportFormatView, ImportPreview, ImportReport,
 };
 
 impl Core {
+    /// Which crown jewels a file takes: every one for a `sealed` file while
+    /// "Include crown jewels" is on (the session narrows that to a sealed
+    /// Lockdown file), else the opted-in ones.
+    fn locked_backup_crown(&self, sealed: bool) -> CrownJewels {
+        if sealed && self.settings.backup.include_crown_jewels {
+            CrownJewels::All
+        } else {
+            CrownJewels::OptedIn
+        }
+    }
+
     /// Runs a scheduled backup when one is due; quietly, since nobody asked:
     /// the outcome is on the Backups screen. Not activity: it never keeps
     /// the vault awake.
@@ -84,14 +102,28 @@ impl App {
     }
 
     /// What an export in `format` would carry and leave out: every vault,
-    /// or the one `vault` names.
+    /// or the one `vault` names. Counted as a plain file; a locked one is
+    /// [`App::export_preview_for`].
     pub fn export_preview(&self, format: &str, vault: Option<String>) -> AppResult<ExportPreview> {
+        self.export_preview_for(format, vault, false)
+    }
+
+    /// [`App::export_preview`] for a file that is `sealed` under a
+    /// password or not: a locked Lockdown backup carries every crown jewel
+    /// while "Include crown jewels" is on.
+    pub fn export_preview_for(
+        &self,
+        format: &str,
+        vault: Option<String>,
+        sealed: bool,
+    ) -> AppResult<ExportPreview> {
         let format = format.to_string();
         self.call(move |core| {
             core.clock.touch(Instant::now());
             core.refuse_confined()?;
+            let crown = core.locked_backup_crown(sealed);
             core.session()?
-                .export_preview(&format, vault.as_deref())
+                .export_preview_as(&format, vault.as_deref(), crown)
                 .map_err(AppError::refused)
         })
     }
@@ -123,12 +155,14 @@ impl App {
                 ));
             }
             core.approve(ApprovalKind::Reveal, "export the vault", &gate)?;
+            let crown = core.locked_backup_crown(sealed);
             let (bytes, preview) = core
                 .session()?
-                .export_file(
+                .export_file_as(
                     &format,
                     password.as_deref().map(|p| p.as_slice()),
                     vault.as_deref(),
+                    crown,
                 )
                 .map_err(AppError::refused)?;
             write_user_file(&path, &bytes).map_err(AppError::refused)?;
@@ -247,6 +281,33 @@ impl App {
                 session.backup_forget_key();
             }
             Ok(session.backup_status(&cfg))
+        })
+    }
+
+    /// Turns "Include crown jewels" on or off for locked backups (D138 as
+    /// decided). Both ways go through the `Reveal` gate, the one
+    /// [`App::backup_setup`] uses: on lets every crown jewel leave in each
+    /// locked backup; off changes what a restore can bring back. The next
+    /// backup follows it; the files already in the folder stay as they are.
+    pub fn backup_crown_jewels(&self, on: bool, gate: GateInput) -> AppResult<BackupStatus> {
+        self.call(move |core| {
+            core.clock.touch(Instant::now());
+            core.refuse_confined()?;
+            core.session()?;
+            let reason = if on {
+                "put your crown jewels in your locked backups"
+            } else {
+                "leave your crown jewels out of your locked backups"
+            };
+            core.approve(ApprovalKind::Reveal, reason, &gate)?;
+            let mut settings = core.settings.clone();
+            settings.backup.include_crown_jewels = on;
+            settings
+                .save(&core.paths.settings_file())
+                .map_err(AppError::refused)?;
+            core.settings = settings;
+            let cfg = core.settings.backup.clone();
+            Ok(core.session()?.backup_status(&cfg))
         })
     }
 

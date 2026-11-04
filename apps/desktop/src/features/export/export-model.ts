@@ -65,7 +65,12 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 export function carriesLine(p: ExportPreview): string {
   const parts = [plural(p.items, "item")]
   if (p.attachments) parts.push(plural(p.attachments, "attached file"))
-  if (p.crown_jewels_included) parts.push(`${plural(p.crown_jewels_included, "crown jewel")} you chose to include`)
+  if (p.crown_jewels_included)
+    parts.push(
+      p.crown_jewels_all
+        ? `${plural(p.crown_jewels_included, "crown jewel")}, protected by the file's password`
+        : `${plural(p.crown_jewels_included, "crown jewel")} you chose to include`,
+    )
   return `This file will hold ${parts.join(", ")}.`
 }
 

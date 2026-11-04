@@ -345,6 +345,8 @@ export interface BackupSettings {
   folder: string | null
   interval_hours: number
   keep_last: number
+  /** Locked backups carry every crown jewel (D138 as decided, doc 48); absent from an older core reads as on. */
+  include_crown_jewels?: boolean
 }
 
 // --- approvals (D101) ------------------------------------------------------------
@@ -652,6 +654,8 @@ export interface ExportPreview {
   left_out: LeftOutView[]
   dropped: string[]
   encrypted: boolean
+  /** Every crown jewel is in it, opted in or not: a locked Lockdown backup with "Include crown jewels" on (doc 48). */
+  crown_jewels_all?: boolean
 }
 
 export interface ExportDone {
@@ -684,6 +688,10 @@ export interface BackupStatus {
   next_due_at: number | null
   crown_jewels_left_out: number
   backups: BackupFile[]
+  /** "Include crown jewels" for locked backups (doc 48); on by default. */
+  include_crown_jewels?: boolean
+  /** Crown jewels the newest backup lacks and the next one carries; said once, until that backup runs (doc 48). */
+  crown_jewels_waiting?: number
 }
 
 // --- vault depth (docs/plan/21-vault-depth.md) ----------------------------------

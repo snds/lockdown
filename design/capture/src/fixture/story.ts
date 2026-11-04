@@ -306,9 +306,11 @@ export const PLAYBOOKS: Playbook[] = [
   },
 ]
 
-export function backupStatus(on = true): BackupStatus {
+/** Backups as the core says them; `include` is "Include crown jewels" (doc 48), `waiting` the once-only count. */
+export function backupStatus(on = true, include = true, waiting = 0): BackupStatus {
+  const crown = { include_crown_jewels: include, crown_jewels_waiting: include ? waiting : 0 }
   if (!on) {
-    return { enabled: false, folder: null, interval_hours: 24, keep_last: 10, key_set: false, last_success_at: null, last_error: null, next_due_at: null, crown_jewels_left_out: 0, backups: [] }
+    return { enabled: false, folder: null, interval_hours: 24, keep_last: 10, key_set: false, last_success_at: null, last_error: null, next_due_at: null, crown_jewels_left_out: include ? 0 : 2, backups: [], ...crown }
   }
   return {
     enabled: true,
@@ -319,7 +321,8 @@ export function backupStatus(on = true): BackupStatus {
     last_success_at: ago(0.4),
     last_error: null,
     next_due_at: ahead(0.6),
-    crown_jewels_left_out: 2,
+    crown_jewels_left_out: include ? 0 : 2,
+    ...crown,
     backups: [0.4, 1.4, 2.4, 3.4, 5.4, 9.4].map((d, i) => ({ name: `lockdown-backup-${new Date(ago(d) * 1000).toISOString().slice(0, 10)}.ldbak`, bytes: 1_240_000 - i * 9_000, made_at: ago(d) })),
   }
 }

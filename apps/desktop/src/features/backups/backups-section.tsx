@@ -11,8 +11,10 @@ import {
   FieldTitle,
   Icon,
   Input,
+  FieldContent,
   NativeSelect,
   NativeSelectOption,
+  Switch,
 } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
@@ -23,7 +25,18 @@ import { whenLocal } from "@/lib/format"
 import { passwordProblem } from "@/features/export/export-model"
 import { ImportWizard } from "@/features/import/import-wizard"
 
-import { INTERVALS, KEEP, crownLine, sizeWords, statusLine, whenLine } from "./backups-model"
+import {
+  INTERVALS,
+  KEEP,
+  crownLine,
+  crownSwitchHelp,
+  crownSwitchNotice,
+  includesCrownJewels,
+  sizeWords,
+  statusLine,
+  waitingLine,
+  whenLine,
+} from "./backups-model"
 
 interface BackupsSectionProps {
   onChanged: () => void
@@ -36,6 +49,11 @@ interface BackupsSectionProps {
  * password set once. Backups are locked files written by the core while
  * Lockdown is unlocked; never plain text on disk. Each one can be restored
  * from here, or opened on any computer with the password alone.
+ *
+ * "Include crown jewels" (D138 as decided, doc 48), on by default: locked
+ * backups and a locked Lockdown export carry every crown jewel, under the
+ * backup's password. It changes at once, behind the `Reveal` gate both
+ * ways; off brings back the per-item opt-in and the count.
  */
 export function BackupsSection({ onChanged, onNotice }: BackupsSectionProps) {
   const client = useClient()
@@ -124,7 +142,12 @@ export function BackupsSection({ onChanged, onNotice }: BackupsSectionProps) {
     return error ? <p role="alert" className="text-sm text-destructive">{error}</p> : <p className="text-sm text-muted-foreground">Checking backups…</p>
   }
   const crown = crownLine(status)
+  const waiting = waitingLine(status)
+  const includeCrown = includesCrownJewels(status)
   const shownFolder = folder?.path ?? status.folder
+
+  const switchCrown = (next: boolean) =>
+    void run(() => gate.run((g) => client.backupCrownJewels(next, g)), crownSwitchNotice(next))
 
   return (
     <div className="flex flex-col gap-4">
@@ -134,6 +157,15 @@ export function BackupsSection({ onChanged, onNotice }: BackupsSectionProps) {
         {status.last_error && <p className="text-attention-text">The last try didn't work: {status.last_error}</p>}
         {crown && <p className="text-muted-foreground">{crown}</p>}
       </div>
+
+      <Field orientation="horizontal">
+        <FieldContent>
+          <FieldLabel htmlFor="backup-crown-jewels">Include crown jewels</FieldLabel>
+          <FieldDescription>{crownSwitchHelp(includeCrown)}</FieldDescription>
+          {waiting && <FieldDescription role="status">{waiting}</FieldDescription>}
+        </FieldContent>
+        <Switch id="backup-crown-jewels" checked={includeCrown} onCheckedChange={(v) => switchCrown(v)} disabled={busy} />
+      </Field>
 
       <FieldGroup>
         <Field>

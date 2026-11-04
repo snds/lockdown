@@ -63,23 +63,25 @@ export function ExportDialog({ open, onClose, onNotice }: ExportDialogProps) {
   const choice = choices.find((c) => c.id === choiceId) ?? EXPORT_CHOICES[0]
   const toKey = choice.id === AGE_CHOICE.id
   const [countedFor, setCountedFor] = useState("")
-  const preview = counted?.format === choice.format && countedFor === vault ? counted : null
+  // A locked Lockdown backup and a readable one differ in the crown jewels they carry (doc 48).
+  const countKey = `${vault}|${choice.sealed}`
+  const preview = counted?.format === choice.format && countedFor === countKey ? counted : null
 
   useEffect(() => {
     if (!open) return
     let live = true
     client
-      .exportPreview(choice.format, vault || null)
+      .exportPreview(choice.format, vault || null, choice.sealed)
       .then((p) => {
         if (!live) return
         setCounted(p)
-        setCountedFor(vault)
+        setCountedFor(`${vault}|${choice.sealed}`)
       })
       .catch((e) => live && setError(describeError(e)))
     return () => {
       live = false
     }
-  }, [client, open, choice.format, vault])
+  }, [client, open, choice.format, choice.sealed, vault])
 
   const clearPasswords = () => {
     if (first.current) first.current.value = ""
