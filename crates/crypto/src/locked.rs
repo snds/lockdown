@@ -1,40 +1,53 @@
 //! Keeping secret pages out of swap (03-architecture §8 "stay out of swap";
-//! 04-security §14; docs/plan/26-desktop-finish.md §7).
+//! 04-security §14; docs/plan/26-desktop-finish.md §7,
+//! docs/plan/52-identity-adopt.md).
 //!
 //! Every [`crate::Key32`] (vault, item, version and attachment keys, and
-//! every key Lockdown makes) and every [`crate::SecretBytes`] (a decrypted
-//! field, a typed password on its way in) asks for the memory pages it sits
-//! on to be locked into RAM while it lives: `mlock` on Linux and macOS,
-//! `VirtualLock` on Windows. Pages are shared with whatever else the
-//! allocator put beside the secret, so a page is locked once and unlocked
-//! only when the last secret on it is dropped (a count per page; `munlock`
-//! is not counted by the kernel). A lock the system refuses (the
+//! every key Lockdown makes), every [`crate::SecretBytes`] (a decrypted
+//! field, a typed password on its way in) and every
+//! [`crate::pq_sign::PqSigningKey`] asks for the memory pages it sits on to
+//! be locked into RAM while it lives: `mlock` on Linux and macOS,
+//! `VirtualLock` on Windows. A lock the system refuses (the
 //! `RLIMIT_MEMLOCK` limit, typically 8 MiB on Linux and plenty for keys;
 //! Windows' working-set minimum) is counted and the secret works as before:
 //! it is still wiped on drop, it may just reach swap.
 //!
-//! [`harden_process`] turns core dumps off (`RLIMIT_CORE` = 0 on Linux and
-//! macOS), so a crash never writes the heap to disk. It deliberately does
-//! **not** use `PR_SET_DUMPABLE`: that would hide `/proc/<pid>/exe` from
-//! the browser's native host, which checks the app by it (D155).
+//! **One page table per process.** [`PageLock`] is the identity crate's
+//! `ecosystem_identity::memlock::PageLock`, which that crate's own key
+//! types (the root key, persona keys, the App Data Key, the KEM seeds, the
+//! Identity Signing Key) lock through too. Pages are shared with whatever
+//! else the allocator put beside a secret, and the kernel keeps one lock
+//! bit per page, so the table counts the secrets on each page, of either
+//! crate: a page is locked once and unlocked only when the last secret on
+//! it is dropped. Two tables would each unlock a page the other still
+//! needed. [`report`] reads that one table, so Settings counts both.
 //!
-//! What this does not reach: the identity crate's own key types (the root
-//! key, persona keys, the App Data Key) live in that crate (consumed, never
-//! forked, D12), and copies the allocator made before a value became a
-//! secret type. Both are recorded in doc 26 §7. In a build with no such
-//! calls (WASI, the web vault) every lock is a no-op and says so.
+//! [`harden_process`] turns core dumps off (`RLIMIT_CORE` = 0 on Linux and
+//! macOS), so a crash never writes the heap to disk. That is process policy
+//! and stays here, not in the shared crate. It deliberately does **not**
+//! use `PR_SET_DUMPABLE`: that would hide `/proc/<pid>/exe` from the
+//! browser's native host, which checks the app by it (D155).
+//!
+//! What this does not reach: copies the allocator or a move made before a
+//! value became a secret type (doc 26 §7, doc 52 §6). In a build with no
+//! such calls (WASI, the web vault) every lock is a no-op and says so.
 
-use std::collections::BTreeMap;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 
-/// Pages locked now, with how many secrets sit on each.
-static PAGES: Mutex<BTreeMap<usize, u32>> = Mutex::new(BTreeMap::new());
-static REFUSED: AtomicU64 = AtomicU64::new(0);
-static LOCKED_EVER: AtomicU64 = AtomicU64::new(0);
+use ecosystem_identity::memlock;
+
+/// The pages under one secret, locked while this lives: the identity
+/// crate's, so both crates count on one table. `PageLock::of(bytes)` locks
+/// the pages under a slice; `PageLock::of_value(&value)` under a value that
+/// does not move (one behind a `Box`). Each answers `None` when empty,
+/// unsupported, or refused (counted in [`report`]).
+pub use ecosystem_identity::memlock::PageLock;
+
 static DUMPS_OFF: AtomicBool = AtomicBool::new(false);
 
 /// What the process kept out of swap, for Settings and the doc's measure.
+/// The page numbers are the identity crate's one table, so they count
+/// Lockdown's secrets and that crate's keys together.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct MemoryReport {
     /// Whether this build can lock pages at all.
@@ -51,90 +64,26 @@ pub struct MemoryReport {
     pub core_dumps_off: bool,
 }
 
-/// The pages under one secret, locked while this lives.
-#[derive(Debug)]
-pub struct PageLock {
-    first: usize,
-    count: usize,
-}
-
-impl PageLock {
-    /// Locks the pages under `bytes`; `None` when empty, unsupported, or
-    /// refused (counted in [`report`]).
-    pub fn of(bytes: &[u8]) -> Option<Self> {
-        if bytes.is_empty() || !supported() {
-            return None;
-        }
-        let size = page_size();
-        let start = bytes.as_ptr() as usize;
-        let first = start / size;
-        let last = (start + bytes.len() - 1) / size;
-        let mut pages = PAGES.lock().ok()?;
-        let mut taken = Vec::new();
-        for page in first..=last {
-            let n = pages.entry(page).or_insert(0);
-            if *n == 0 {
-                if !os::lock(page * size, size) {
-                    pages.remove(&page);
-                    // Undo what this call took, so no page is counted twice.
-                    for p in taken {
-                        release(&mut pages, p, size);
-                    }
-                    REFUSED.fetch_add(1, Ordering::Relaxed);
-                    return None;
-                }
-                LOCKED_EVER.fetch_add(1, Ordering::Relaxed);
-            }
-            *pages.entry(page).or_insert(0) += 1;
-            taken.push(page);
-        }
-        Some(Self {
-            first,
-            count: last - first + 1,
-        })
-    }
-}
-
-fn release(pages: &mut BTreeMap<usize, u32>, page: usize, size: usize) {
-    if let Some(n) = pages.get_mut(&page) {
-        *n -= 1;
-        if *n == 0 {
-            pages.remove(&page);
-            os::unlock(page * size, size);
-        }
-    }
-}
-
-impl Drop for PageLock {
-    fn drop(&mut self) {
-        let size = page_size();
-        if let Ok(mut pages) = PAGES.lock() {
-            for page in self.first..self.first + self.count {
-                release(&mut pages, page, size);
-            }
-        }
-    }
-}
-
 /// Whether this build can lock pages.
 pub fn supported() -> bool {
-    cfg!(any(unix, windows))
+    memlock::supported()
 }
 
 /// The system's page size.
 pub fn page_size() -> usize {
-    static SIZE: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
-    *SIZE.get_or_init(|| os::page_size().max(1))
+    memlock::page_size()
 }
 
-/// What is locked now and what was refused.
+/// What is locked now and what was refused, across Lockdown's secrets and
+/// the identity crate's keys.
 pub fn report() -> MemoryReport {
+    let shared = memlock::report();
     MemoryReport {
-        supported: supported(),
-        pages_locked: PAGES.lock().map(|p| p.len() as u64).unwrap_or(0),
-        page_size: page_size() as u64,
-        pages_locked_ever: LOCKED_EVER.load(Ordering::Relaxed),
-        refused: REFUSED.load(Ordering::Relaxed),
+        supported: shared.supported,
+        pages_locked: shared.pages_locked,
+        page_size: shared.page_size,
+        pages_locked_ever: shared.pages_locked_ever,
+        refused: shared.refused,
         core_dumps_off: DUMPS_OFF.load(Ordering::Relaxed),
     }
 }
@@ -151,26 +100,6 @@ pub fn harden_process() -> bool {
 
 #[cfg(unix)]
 mod os {
-    pub fn page_size() -> usize {
-        // SAFETY: sysconf reads a constant of the system; no memory is touched.
-        let n = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-        if n > 0 { n as usize } else { 4096 }
-    }
-
-    pub fn lock(addr: usize, len: usize) -> bool {
-        // SAFETY: mlock only changes how the kernel pages this range; the
-        // range is a whole page the caller's live allocation sits on.
-        unsafe { libc::mlock(addr as *const libc::c_void, len) == 0 }
-    }
-
-    pub fn unlock(addr: usize, len: usize) {
-        // SAFETY: as `lock`; unlocking a page that is no longer mapped
-        // fails harmlessly with ENOMEM.
-        unsafe {
-            libc::munlock(addr as *const libc::c_void, len);
-        }
-    }
-
     pub fn no_core_dumps() -> bool {
         let limit = libc::rlimit {
             rlim_cur: 0,
@@ -181,49 +110,10 @@ mod os {
     }
 }
 
-#[cfg(windows)]
+#[cfg(not(unix))]
 mod os {
-    use windows_sys::Win32::System::Memory::{VirtualLock, VirtualUnlock};
-    use windows_sys::Win32::System::SystemInformation::{GetSystemInfo, SYSTEM_INFO};
-
-    pub fn page_size() -> usize {
-        // SAFETY: GetSystemInfo fills the struct passed to it.
-        unsafe {
-            let mut info: SYSTEM_INFO = std::mem::zeroed();
-            GetSystemInfo(&mut info);
-            info.dwPageSize as usize
-        }
-    }
-
-    pub fn lock(addr: usize, len: usize) -> bool {
-        // SAFETY: VirtualLock only pins the committed page the caller's
-        // live allocation sits on into the working set.
-        unsafe { VirtualLock(addr as *const core::ffi::c_void, len) != 0 }
-    }
-
-    pub fn unlock(addr: usize, len: usize) {
-        // SAFETY: as `lock`.
-        unsafe {
-            VirtualUnlock(addr as *const core::ffi::c_void, len);
-        }
-    }
-
     /// Windows writes no core file; crash dumps go through Windows Error
-    /// Reporting, which an installer opts out of (doc 26 §7).
-    pub fn no_core_dumps() -> bool {
-        false
-    }
-}
-
-#[cfg(not(any(unix, windows)))]
-mod os {
-    pub fn page_size() -> usize {
-        65_536
-    }
-    pub fn lock(_addr: usize, _len: usize) -> bool {
-        false
-    }
-    pub fn unlock(_addr: usize, _len: usize) {}
+    /// Reporting, which an installer opts out of (doc 26 §7). WASI has none.
     pub fn no_core_dumps() -> bool {
         false
     }
@@ -233,42 +123,60 @@ mod os {
 mod tests {
     use super::*;
 
-    /// This process's locked memory as the kernel counts it.
+    /// Whether the kernel holds the page at `addr` locked: the `lo` flag on
+    /// the mapping that holds it in `/proc/self/smaps` (a lock splits the
+    /// mapping, so the flag is exact per page).
     #[cfg(target_os = "linux")]
-    fn vm_locked_kb() -> u64 {
-        std::fs::read_to_string("/proc/self/status")
-            .unwrap()
-            .lines()
-            .find_map(|l| l.strip_prefix("VmLck:"))
-            .and_then(|v| v.trim().trim_end_matches("kB").trim().parse().ok())
-            .unwrap()
+    fn kernel_locked(addr: usize) -> bool {
+        let smaps = std::fs::read_to_string("/proc/self/smaps").unwrap();
+        let mut inside = false;
+        for line in smaps.lines() {
+            let first = line.split_whitespace().next().unwrap_or("");
+            if let Some((a, b)) = first.split_once('-')
+                && let (Ok(a), Ok(b)) = (usize::from_str_radix(a, 16), usize::from_str_radix(b, 16))
+            {
+                inside = (a..b).contains(&addr);
+            } else if inside && let Some(flags) = line.strip_prefix("VmFlags:") {
+                return flags.split_whitespace().any(|f| f == "lo");
+            }
+        }
+        panic!("no mapping holds {addr:#x}")
     }
 
     #[test]
     fn pages_are_counted_once_and_released_with_the_last_secret() {
         let size = page_size();
-        // Two secrets on one page, a third across two pages.
-        let page = vec![7u8; size * 3];
-        let at = (size - (page.as_ptr() as usize % size)) % size;
-        let a = PageLock::of(&page[at..at + 16]);
-        let b = PageLock::of(&page[at + 32..at + 48]);
-        let c = PageLock::of(&page[at + size - 8..at + size + 8]);
-        if a.is_none() {
+        // Two secrets on one page, a third across that page and the next.
+        // Both pages lie wholly inside the buffer, so nothing else in the
+        // process shares them.
+        let buf = vec![7u8; size * 3];
+        let at = (size - (buf.as_ptr() as usize % size)) % size;
+        let start = buf.as_ptr() as usize + at;
+        let before = report();
+        let Some(a) = PageLock::of(&buf[at..at + 16]) else {
             // Refused by the system here: counted, and nothing held.
-            assert!(report().refused > 0);
+            assert!(report().refused > before.refused);
             return;
-        }
-        let held = PAGES.lock().unwrap().clone();
-        let first = (page.as_ptr() as usize + at) / size;
-        assert_eq!(held.get(&first), Some(&3));
-        assert_eq!(held.get(&(first + 1)), Some(&1));
+        };
+        let b = PageLock::of(&buf[at + 32..at + 48]).expect("the page is already locked");
+        let Some(c) = PageLock::of(&buf[at + size - 8..at + size + 8]) else {
+            assert!(report().refused > before.refused);
+            return;
+        };
+        assert_eq!((a.pages(), b.pages(), c.pages()), (1, 1, 2));
+        assert!(report().pages_locked_ever >= before.pages_locked_ever + 2);
         #[cfg(target_os = "linux")]
-        assert!(vm_locked_kb() >= (2 * size / 1024) as u64);
+        assert!(kernel_locked(start) && kernel_locked(start + size));
         drop((a, b));
-        assert_eq!(PAGES.lock().unwrap().get(&first), Some(&1));
+        #[cfg(target_os = "linux")]
+        assert!(
+            kernel_locked(start),
+            "the third secret still holds the page"
+        );
         drop(c);
-        let held = PAGES.lock().unwrap().clone();
-        assert!(!held.contains_key(&first) && !held.contains_key(&(first + 1)));
+        #[cfg(target_os = "linux")]
+        assert!(!kernel_locked(start) && !kernel_locked(start + size));
+        let _ = start;
         assert!(PageLock::of(&[]).is_none());
     }
 
