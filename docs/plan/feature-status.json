@@ -1963,7 +1963,7 @@
     "desktop",
     "web"
    ],
-   "left": "Locking Lockdown's Ed25519 signing keys and the server's OPAQUE setup (D605), turning the server's core dumps off (D608), and measuring web engines other than Chromium; secret pages are out of swap with one page table shared with the identity crate (its keys and Lockdown's ML-DSA key included, D601, D603), core dumps are off in the apps, and typed secrets clear on hide and after a minute out of focus.",
+   "left": "Short-lived stack copies the Ed25519 and OPAQUE libraries make by value, the server's pending sign-in states (D617), and measuring web engines other than Chromium; every long-lived key is out of swap on one page table shared with the identity crate (device secrets, Ed25519 and ML-DSA keys, the server's keys and OPAQUE setup, D601–D612), core dumps are off in the apps and the server, and typed secrets clear on hide and after a minute out of focus.",
    "evidence": [
     "crates/app/src/revealed.rs:86 the_buffer_is_zeroed_before_it_is_freed",
     "crates/crypto/src/secret.rs:7 (secrecy SecretBox)",
