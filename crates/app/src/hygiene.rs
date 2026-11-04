@@ -1,6 +1,8 @@
 //! Memory hygiene as a shell sees it (docs/plan/26-desktop-finish.md §7):
 //! what the core keeps out of swap (`lockdown_crypto::locked`), for the
-//! Settings screen and the doc's measurement. Nothing here holds a secret.
+//! Settings screen and the doc's measurement. The page numbers come from the
+//! identity crate's one page table, so they count Lockdown's secrets and
+//! that crate's keys together (doc 52). Nothing here holds a secret.
 
 pub use lockdown_crypto::locked::MemoryReport;
 

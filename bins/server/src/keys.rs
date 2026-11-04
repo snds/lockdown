@@ -169,6 +169,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_post_quantum_log_key_is_locked_out_of_swap_or_counted_as_refused() {
+        // Lives as long as the server; its expanded key is about 64 KiB.
+        let before = lockdown_crypto::locked::report();
+        let keys = ServerKeys::generate().unwrap();
+        if keys.pq_log_key.is_locked() {
+            assert!(keys.pq_log_key.locked_pages() >= 16);
+        } else {
+            assert!(lockdown_crypto::locked::report().refused > before.refused);
+        }
+    }
+
+    #[test]
     fn the_key_file_is_made_once_and_read_back() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("keys").join("server-key.cbor");
