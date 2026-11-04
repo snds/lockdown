@@ -304,7 +304,7 @@ impl Session {
         for vault in self.unverified.vaults() {
             let held: Vec<&Held> = self.unverified.of_vault(vault).collect();
             let names = self.names(held.iter().copied());
-            let open = self.vaults().any(|v| v.context().vault_id == vault);
+            let open = self.is_open(vault);
             if !open {
                 out.push(join_line(&names));
                 continue;

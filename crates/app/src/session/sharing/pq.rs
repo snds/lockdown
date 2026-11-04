@@ -218,7 +218,7 @@ impl Session {
         for account in unready {
             let _ = self.pin(transport, token, sth, Ok(account));
         }
-        if self.vaults().any(|v| v.context().vault_id == vault_id) {
+        if self.is_open(vault_id) {
             self.apply_roster(vault_id)?;
         }
         Ok(())

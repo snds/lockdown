@@ -681,11 +681,25 @@ impl Session {
     }
 
     /// Every open vault of the persona, the first one first, then the
-    /// items others shared with it on their own (read only).
+    /// items others shared with it on their own (read only). For reading
+    /// items; whether a vault is open is [`Self::is_open`].
     pub fn vaults(&self) -> impl Iterator<Item = &Vault> {
-        std::iter::once(&self.opened.vault)
-            .chain(self.more.iter().map(|o| &o.vault))
-            .chain(self.received.iter())
+        self.open_vaults().chain(self.received.iter())
+    }
+
+    /// The vaults open here for real, the first one first: the persona's
+    /// own, the shared ones it joined, those an emergency release opened.
+    /// Not the holders of items shared on their own, which carry the id of
+    /// the vault an item came from while that vault isn't open
+    /// (docs/plan/50-received-vs-open.md).
+    pub(crate) fn open_vaults(&self) -> impl Iterator<Item = &Vault> {
+        std::iter::once(&self.opened.vault).chain(self.more.iter().map(|o| &o.vault))
+    }
+
+    /// Whether `vault_id` is open (or joined) here for real: one of
+    /// [`Self::open_vaults`], never a holder of items shared on their own.
+    pub(crate) fn is_open(&self, vault_id: Id) -> bool {
+        self.open_vaults().any(|v| v.context().vault_id == vault_id)
     }
 
     /// The vault holding `item_id`.
