@@ -1878,7 +1878,15 @@ impl Session {
             .copied()
             .filter(|v| self.unverified.blocks_push(*v))
             .collect();
-        for idx in 0..=self.more.len() {
+        // The owner's items shared on their own: one another person's device
+        // signed last gets a follow version after its vault's round, and
+        // that vault syncs once more (docs/plan/54-share-follows-edits.md).
+        let follow = self.shared_on_their_own(transport, &token);
+        let mut followed: std::collections::BTreeSet<Id> = std::collections::BTreeSet::new();
+        let mut order: Vec<usize> = (0..=self.more.len()).collect();
+        let mut at = 0;
+        while let Some(&idx) = order.get(at) {
+            at += 1;
             if idx == 0 && self.stand_in {
                 continue;
             }
@@ -1962,6 +1970,7 @@ impl Session {
                 &mut self.more[idx - 1]
             };
             let vault_id = open.vault.context().vault_id;
+            let quiet = one.held.is_none();
             if let Some(held) = &one.held {
                 self.unverified.push(quiet::Held {
                     kind: quiet::Kind::Head,
@@ -2023,6 +2032,14 @@ impl Session {
             report.blobs_pushed += one.blobs_pushed;
             report.blobs_pulled += one.blobs_pulled;
             report.rounds = report.rounds.max(one.rounds);
+            if quiet
+                && !blocked.contains(&vault_id)
+                && let Some(items) = follow.get(&vault_id)
+                && followed.insert(vault_id)
+                && self.follow_edits(vault_id, items)?
+            {
+                order.push(idx);
+            }
         }
         if let Some(cfg) = &self.sync {
             cfg.save(&self.paths.sync_file())?;
