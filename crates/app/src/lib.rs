@@ -29,6 +29,10 @@ pub mod discovery;
 pub mod first_run;
 pub mod hygiene;
 mod join_sealed;
+// The old unsealed join, for tests only (docs/plan/56-no-plain-joins.md):
+// never in a build without the `test-support` feature.
+#[cfg(any(test, feature = "test-support"))]
+mod join_plain;
 pub mod key_check;
 pub mod kit_pdf;
 pub mod live;
@@ -142,6 +146,16 @@ impl AppError {
         }
     }
 
+    /// The old unsealed join's refusal on a computer that hasn't joined:
+    /// [`ErrorCode::NotSetUp`] with words that name the sealed join.
+    fn join_unsealed(message: &str) -> Self {
+        Self {
+            code: ErrorCode::NotSetUp,
+            message: message.into(),
+            detail: None,
+        }
+    }
+
     fn approval_needed(route: Route, reason: &str) -> Self {
         let (detail, message) = match route {
             Route::Password => (
@@ -183,6 +197,14 @@ impl From<String> for AppError {
 
 /// The result of every call.
 pub type AppResult<T> = Result<T, AppError>;
+
+/// What [`App::account_login`] says on a computer that hasn't joined yet
+/// (docs/plan/56-no-plain-joins.md): the old unsealed join is gone, and
+/// the words name the sealed one.
+pub const JOIN_SEALED_LOGIN: &str = "This computer hasn't joined your account yet, and a join now always protects it with your master password. Sign in with the sealed join (account_login_sealed, then open_joined).";
+
+/// What [`App::recover`] says on a computer that hasn't joined yet.
+pub const JOIN_SEALED_RECOVER: &str = "This computer hasn't joined your account yet, and a join now always protects it with your master password. Recover with the sealed join (recover_sealed, then open_joined).";
 
 /// How often the worker checks the lock timers when no call arrives.
 #[cfg(not(target_os = "wasi"))]
@@ -1131,8 +1153,11 @@ impl App {
         })
     }
 
-    /// Logs in. On a device that holds the identity: a fresh session. On an
-    /// empty one: enrols this device from the account (then open).
+    /// Logs in on a computer that holds the identity: a fresh session (the
+    /// account dialog's sign-in). On a computer that hasn't joined yet it
+    /// refuses and writes nothing: a join seals the new device's keys under
+    /// the password from the start, through [`App::account_login_sealed`]
+    /// (docs/plan/56-no-plain-joins.md).
     pub fn account_login(
         &self,
         server: &str,
@@ -1147,8 +1172,7 @@ impl App {
         );
         let password = zeroize::Zeroizing::new(password.to_string());
         if !self.probe()?.identity_present {
-            // A new device: the account may want a security key (`devices`).
-            return self.enrol_new_device(&server, &login, &password, secret_key.as_deref());
+            return Err(AppError::join_unsealed(JOIN_SEALED_LOGIN));
         }
         self.call(move |core| {
             core.clock.touch(Instant::now());
@@ -1210,18 +1234,25 @@ impl App {
         self.with_session(move |s| s.renew_session(&server, &login, session))
     }
 
-    /// On a device with nothing on it: the identity back from the server
-    /// with the recovery kit and the account password.
+    /// The recovery with the kit, kept for its IPC shape (D62). It never
+    /// joins: on a computer that hasn't joined yet it refuses, writes
+    /// nothing and points to [`App::recover_sealed`], which seals the new
+    /// device's keys under the password and the kit before the identity
+    /// names them (docs/plan/56-no-plain-joins.md). On a computer that
+    /// holds an identity it refuses as it always did: there is nothing to
+    /// recover onto.
     pub fn recover(
         &self,
-        server: &str,
-        login: &str,
-        password: &str,
-        secret_key: &str,
-        recovery_code: &str,
+        _server: &str,
+        _login: &str,
+        _password: &str,
+        _secret_key: &str,
+        _recovery_code: &str,
     ) -> AppResult<Vec<String>> {
-        // The same wait for a security key as an enrolment (`devices`).
-        self.recover_new_device(server, login, password, secret_key, recovery_code)
+        self.call(|core| {
+            session::check_root_empty(&core.paths).map_err(AppError::refused)?;
+            Err(AppError::join_unsealed(JOIN_SEALED_RECOVER))
+        })
     }
 
     /// Key transparency, then pull, merge, push, head, then key

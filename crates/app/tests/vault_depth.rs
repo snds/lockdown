@@ -121,9 +121,9 @@ fn the_attachment_room_is_the_servers_and_templates_travel() {
     .unwrap();
     a.sync().unwrap();
     let b = device(dir.path(), "b");
-    b.account_login(&url, LOGIN, PASSWORD, Some(&secret_key))
+    b.account_login_sealed(&url, LOGIN, PASSWORD, Some(&secret_key))
         .unwrap();
-    b.open_or_create(true).unwrap();
+    b.open_joined(PASSWORD).unwrap();
     let theirs = b.user_templates().unwrap();
     assert_eq!(theirs.len(), 1);
     assert_eq!(

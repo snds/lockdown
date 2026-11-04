@@ -109,9 +109,9 @@ fn the_first_run_ends_with_the_kit_test_and_the_drill_dates_the_profile() {
     // device recovers with it.
     let fresh = App::start(paths(dir.path(), "fresh"), None, LockPolicy::default());
     fresh
-        .recover(&srv.running.url(), "me@example.com", PASSWORD, &sk, &code)
+        .recover_sealed(&srv.running.url(), "me@example.com", PASSWORD, &sk, &code)
         .unwrap();
-    fresh.open_or_create(true).unwrap();
+    fresh.open_joined(PASSWORD).unwrap();
     let r2 = fresh.reminders().unwrap();
     assert_eq!(
         r2.drill.last_drilled_at,
@@ -150,9 +150,9 @@ fn a_stronger_device_raises_the_accounts_stretching_and_others_follow() {
         .unwrap();
     let phone = App::start(paths(dir.path(), "phone"), None, LockPolicy::default());
     phone
-        .account_login(&srv.running.url(), "me@example.com", PASSWORD, Some(&sk))
+        .account_login_sealed(&srv.running.url(), "me@example.com", PASSWORD, Some(&sk))
         .unwrap();
-    phone.open_or_create(true).unwrap();
+    phone.open_joined(PASSWORD).unwrap();
     assert!(phone.status().unwrap().account.is_some());
 }
 

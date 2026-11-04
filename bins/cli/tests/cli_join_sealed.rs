@@ -392,10 +392,11 @@ fn a_computer_joined_before_this_still_opens_and_password_set_seals_it() {
     let (sk, _) = first_computer(dir.path(), &url);
     let phone = dir.path().join("phone/snds/identity");
 
-    // Joined the way it was before: the plain key file (the desktop's join
-    // still makes it, and seals right after; the old command line didn't).
+    // Joined the way it was before every join was sealed: the plain key
+    // file, through the core's test fixture (docs/plan/56-no-plain-joins.md).
     let app = core(&phone);
-    app.account_login(&url, LOGIN, PASSWORD, Some(&sk)).unwrap();
+    app.account_login_plain(&url, LOGIN, PASSWORD, Some(&sk))
+        .unwrap();
     drop(app);
     let data = data_of(&phone);
     assert!(data.join("device-key.cbor").exists());

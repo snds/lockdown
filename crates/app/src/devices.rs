@@ -36,7 +36,7 @@ use zeroize::Zeroizing;
 
 pub use crate::session::devices_link::{JoinView, LinkView};
 use crate::session::devices_link::{Joining, finish_joined};
-use crate::session::second_factor::{Then, WaitingSignIn, sign_in_new_device};
+use crate::session::second_factor::WaitingSignIn;
 use crate::{App, AppError, AppResult, ApprovalKind, ErrorCode, GateInput, Registered, Status};
 
 /// What a core keeps between a shell's calls for these flows. Dropped with
@@ -317,65 +317,6 @@ impl App {
             transport
                 .security_key_remove(&token, &id)
                 .map_err(|e| AppError::refused(e.to_string()))
-        })
-    }
-
-    /// Signs this empty device in to enrol it (password and Secret Key);
-    /// when the account wants a security key, `approval_needed` with detail
-    /// `security_key`, and the shell opens [`App::second_factor_page`].
-    pub(crate) fn enrol_new_device(
-        &self,
-        server: &str,
-        login: &str,
-        password: &str,
-        secret_key: Option<&str>,
-    ) -> AppResult<Vec<String>> {
-        let (server, login) = (server.to_string(), login.to_string());
-        let password = Zeroizing::new(password.to_string());
-        let secret_key = secret_key.map(|s| Zeroizing::new(s.to_string()));
-        self.call(move |core| {
-            start_waiting(
-                core,
-                sign_in_new_device(
-                    &core.paths,
-                    &server,
-                    &login,
-                    &password,
-                    Then::Enrol { secret_key },
-                    false,
-                ),
-            )
-        })
-    }
-
-    /// The recovery with the kit, with the same wait for a security key.
-    pub(crate) fn recover_new_device(
-        &self,
-        server: &str,
-        login: &str,
-        password: &str,
-        secret_key: &str,
-        recovery_code: &str,
-    ) -> AppResult<Vec<String>> {
-        let (server, login) = (server.to_string(), login.to_string());
-        let password = Zeroizing::new(password.to_string());
-        let secret_key = Zeroizing::new(secret_key.to_string());
-        let recovery_code = Zeroizing::new(recovery_code.to_string());
-        self.call(move |core| {
-            start_waiting(
-                core,
-                sign_in_new_device(
-                    &core.paths,
-                    &server,
-                    &login,
-                    &password,
-                    Then::Recover {
-                        secret_key,
-                        recovery_code,
-                    },
-                    false,
-                ),
-            )
         })
     }
 

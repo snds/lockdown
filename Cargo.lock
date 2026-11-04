@@ -3251,6 +3251,7 @@ version = "0.1.0"
 dependencies = [
  "ciborium",
  "ecosystem-identity",
+ "lockdown-app",
  "lockdown-approval",
  "lockdown-codes",
  "lockdown-crypto",

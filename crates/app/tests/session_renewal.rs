@@ -57,9 +57,9 @@ fn two_devices(dir: &std::path::Path, url: &str) -> (App, App) {
         .unwrap();
     a.sync().unwrap();
     let b = device(dir, "b");
-    b.account_login(url, LOGIN, PASSWORD, Some(&secret_key))
+    b.account_login_sealed(url, LOGIN, PASSWORD, Some(&secret_key))
         .unwrap();
-    b.open_or_create(true).unwrap();
+    b.open_joined(PASSWORD).unwrap();
     b.sync().unwrap();
     (a, b)
 }

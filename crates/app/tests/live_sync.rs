@@ -60,9 +60,9 @@ fn a_change_on_one_device_shows_on_the_other_without_a_sync_and_sessions_end() {
     a.sync().unwrap();
 
     let b = device(dir.path(), "b");
-    b.account_login(&url, LOGIN, PASSWORD, Some(&secret_key))
+    b.account_login_sealed(&url, LOGIN, PASSWORD, Some(&secret_key))
         .unwrap();
-    b.open_or_create(true).unwrap();
+    b.open_joined(PASSWORD).unwrap();
     assert_eq!(b.list().unwrap().len(), 1);
 
     let (tx, rx) = mpsc::channel();

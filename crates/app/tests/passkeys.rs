@@ -527,14 +527,14 @@ fn a_passkey_made_on_one_device_signs_in_on_another_after_a_sync() {
     a.sync().unwrap();
 
     let b = device("b");
-    b.account_login(
+    b.account_login_sealed(
         &url,
         "me@example.com",
         "correct horse battery staple",
         Some(&secret_key),
     )
     .unwrap();
-    b.open_or_create(true).unwrap();
+    b.open_joined("correct horse battery staple").unwrap();
     let opts = b
         .passkey_options(page(site, false), get_req(None))
         .unwrap()
