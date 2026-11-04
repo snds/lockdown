@@ -8,6 +8,8 @@
 //! `ecosystem_identity::memlock::PageLock`, so a shared page stays locked
 //! until both are gone.
 //!
+//! The Ed25519 signing key locks through the same table (doc 53).
+//!
 //! One test function on purpose: this binary runs nothing else, so the
 //! process-wide counts it compares are not moved by another test thread.
 
@@ -160,6 +162,21 @@ fn lockdown_and_the_identity_crate_share_one_page_table() {
     drop(pq);
     assert_eq!(locked::report().pages_locked, before.pages_locked);
 
+    // 3b. The Ed25519 key (doc 53): one or two pages, locked while it
+    // lives, released with it.
+    let before = locked::report();
+    let ed = lockdown_crypto::SigningKey::from_bytes([8; 32]);
+    if ed.is_locked() {
+        assert!((1..=2).contains(&ed.locked_pages()));
+        #[cfg(target_os = "linux")]
+        assert!(kernel_locked(std::ptr::from_ref(ed.inner()) as usize));
+    } else {
+        assert!(locked::report().refused > before.refused);
+    }
+    same_counts();
+    drop(ed);
+    assert_eq!(locked::report().pages_locked, before.pages_locked);
+
     // 4. Refusals stay non-fatal. Lower this process's lock limit to zero
     // (an unprivileged process is then refused every new page; one with
     // CAP_IPC_LOCK is not), and every secret still works and is counted
@@ -184,7 +201,12 @@ fn lockdown_and_the_identity_crate_share_one_page_table() {
         let bytes = lockdown_crypto::SecretBytes::new(b"typed on its way in".to_vec());
         let crate_key = AppDataKey::from_bytes([2; 32]);
         let pq = PqSigningKey::from_seed([3; 32]);
+        let ed = lockdown_crypto::SigningKey::from_bytes([4; 32]);
+        let opaque = lockdown_crypto::auth::OpaqueServer::generate().unwrap();
         let r = locked::report();
+        if !ed.is_locked() || !opaque.is_locked() {
+            assert!(r.refused > before.refused, "a refusal is counted");
+        }
         if !pq.is_locked() {
             assert!(r.refused > before.refused, "a refusal is counted");
         }
@@ -198,8 +220,13 @@ fn lockdown_and_the_identity_crate_share_one_page_table() {
         pq.verifying_key()
             .verify(b"m", b"lockdown/test/v1", &sig, "m")
             .unwrap();
+        let sig = ed.sign(b"m");
+        ed.verifying_key().verify(b"m", &sig, "m").unwrap();
         same_counts();
-        drop((key, bytes, crate_key, pq));
+        assert!(
+            lockdown_crypto::auth::OpaqueServer::from_bytes(opaque.to_bytes().expose()).is_ok()
+        );
+        drop((key, bytes, crate_key, pq, ed, opaque));
         // SAFETY: as above; the soft limit goes back to what it was.
         unsafe {
             assert_eq!(libc::setrlimit(libc::RLIMIT_MEMLOCK, &old), 0);
