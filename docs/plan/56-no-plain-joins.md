@@ -102,7 +102,7 @@ None. No screen, component, token or client interface changed.
 | Crate | Before | After |
 |---|---|---|
 | `lockdown-app` (all targets) | 244 | 249 (5 new in `no_plain_joins.rs`) |
-| `lockdown-cli` | COUNT_CLI | COUNT_CLI (one moved to the fixture) |
+| `lockdown-cli` | 38 | 38 (one moved to the fixture) |
 
 ## 9. Proposed decisions
 
