@@ -275,6 +275,8 @@ export interface Status {
   devices_revoked: number
   identity_seq: number
   account: AccountStatus | null
+  /** For support: records other people made that this device held back because they didn't verify, which record and which check (docs/plan/49-shared-vault-quiet.md). Absent when none. */
+  held_back?: string[]
 }
 
 export interface DeviceInfo {
@@ -497,6 +499,8 @@ export interface VaultView {
   folders: FolderView[]
   /** How it is shared, when it is (docs/plan/18-sharing.md). */
   sharing?: VaultShareBadge
+  /** While some of a shared vault's recent changes couldn't be verified and were left out: the one calm line that says so (docs/plan/49-shared-vault-quiet.md). */
+  unverified?: string | null
 }
 
 /** How a vault is shared, for the sidebar. */

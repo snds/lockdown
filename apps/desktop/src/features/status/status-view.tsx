@@ -166,6 +166,19 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
             <Fact label="Session until" value={whenLocal(account.session_expires_at)} />
             <Fact label="Identity records" value={`manifest seq ${status.identity_seq}`} />
             <Fact label="Transparency log" value={transparencyLine(account.transparency)} tone={account.transparency ? "secure" : "attention"} />
+            {status.held_back && status.held_back.length > 0 && (
+              // For support: which record was held back and which check it failed. The person sees one calm line on the vault (docs/plan/49-shared-vault-quiet.md).
+              <div className="flex flex-col gap-1 text-sm">
+                <span className="text-muted-foreground">Held back until they verify</span>
+                <ul aria-label="Held back until they verify" className="flex flex-col gap-1">
+                  {status.held_back.map((l) => (
+                    <li key={l} className="font-mono text-xs break-all">
+                      {l}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {syncRefusal && (
               <p role="alert" className="text-sm text-attention-text">
                 Sync refused: {syncRefusal}

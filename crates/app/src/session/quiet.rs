@@ -108,7 +108,13 @@ impl Unverified {
             .any(|h| h.vault == Some(vault) && h.kind != Kind::Head)
     }
 
-    /// Whether the emergency grant `record` names was held back.
+    /// Forgets what was held back of one record, before it is checked again.
+    pub(crate) fn forget(&mut self, kind: Kind, record: &str) {
+        self.held
+            .retain(|h| !(h.kind == kind && h.record == record));
+    }
+
+    /// Whether the record of `kind` that `record` names was held back.
     pub(crate) fn has(&self, kind: Kind, record: &str) -> bool {
         self.held
             .iter()

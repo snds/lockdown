@@ -79,6 +79,26 @@ fn right_named(text: &str) -> Result<Right, String> {
 /// Removes everything a vault left in the store (its items and heads); the
 /// record, a few hundred bytes of the Vault Key under this persona's key,
 /// stays and is never opened again.
+/// What a vault key envelope is expected to carry: its purpose, the grant
+/// it belongs to, and whether its sender's post-quantum signature must be
+/// on it whatever the membership chain says (an emergency key whose grant
+/// carried one; docs/plan/49-shared-vault-quiet.md).
+#[derive(Clone, Copy)]
+struct KeyFor {
+    purpose: SharePurpose,
+    grant: Option<Id>,
+    require_pq: bool,
+}
+
+impl KeyFor {
+    /// A shared vault's key, handed over through the membership chain.
+    const VAULT: KeyFor = KeyFor {
+        purpose: SharePurpose::Vault,
+        grant: None,
+        require_pq: false,
+    };
+}
+
 fn clear_vault(store: &mut DeviceStore, vault_id: Id) -> Result<(), String> {
     use lockdown_vault::Store as _;
     for item in store.list_items(vault_id).map_err(|e| e.to_string())? {
@@ -1368,17 +1388,21 @@ impl Session {
     }
 
     /// Opens a Vault Key envelope addressed to this persona for `vault_id`
-    /// at `key_ref`, sent by someone the chain says may manage it.
+    /// at `key_ref`, sent by someone the chain says may manage it, for
+    /// `what` it carries.
     fn open_vault_envelope(
         &self,
         bytes: &[u8],
         vault_id: Id,
         key_ref: Id,
-        purpose: SharePurpose,
-        grant: Option<Id>,
+        what: KeyFor,
         allowed_senders: &dyn Fn(Id) -> bool,
-        require_pq: bool,
     ) -> Result<VaultKey, String> {
+        let KeyFor {
+            purpose,
+            grant,
+            require_pq,
+        } = what;
         let env = ShareEnvelope::from_bytes(bytes).map_err(|e| e.to_string())?;
         let me = self.me()?;
         if !allowed_senders(env.place.from_account) {
@@ -1425,15 +1449,7 @@ impl Session {
         key_ref: Id,
         allowed_senders: &dyn Fn(Id) -> bool,
     ) -> Result<Option<VaultKey>, String> {
-        match self.open_vault_envelope(
-            bytes,
-            vault_id,
-            key_ref,
-            SharePurpose::Vault,
-            None,
-            allowed_senders,
-            false,
-        ) {
+        match self.open_vault_envelope(bytes, vault_id, key_ref, KeyFor::VAULT, allowed_senders) {
             Ok(key) => Ok(Some(key)),
             Err(why) => {
                 let from = ShareEnvelope::from_bytes(bytes)
@@ -2596,6 +2612,8 @@ impl Session {
         let owner_keys = self.device_keys_of(grant.owner.account_id);
         // A grant that doesn't verify is held back: nothing is released,
         // and what this device already opened from it stays (`quiet`).
+        self.unverified
+            .forget(super::quiet::Kind::Emergency, &format!("grant {grant_id}"));
         let hold = |s: &mut Self, why: String| {
             s.hold_unverified(super::quiet::Held {
                 kind: super::quiet::Kind::Emergency,
@@ -2629,10 +2647,12 @@ impl Session {
                 &v.envelope,
                 vault_id,
                 env.place.key_id,
-                SharePurpose::Emergency,
-                Some(grant_id),
+                KeyFor {
+                    purpose: SharePurpose::Emergency,
+                    grant: Some(grant_id),
+                    require_pq: signed,
+                },
                 &|a| a == owner,
-                signed,
             ) {
                 Ok(key) => key,
                 Err(why) => {
