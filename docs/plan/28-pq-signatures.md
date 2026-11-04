@@ -172,7 +172,8 @@ Closed by doc 47 ([47-shared-vault-pq.md](47-shared-vault-pq.md), D550–D559): 
 - **A first-sight device is open to a stripped chain** (§7). Closing it needs a per-vault marker the identity signs ("post-quantum since seq N"), written once when each vault's first post-quantum head is confirmed. That is an identity-record write per vault, left for later.
 - **A restored server key file from before this slice** gains a new post-quantum log key on its next start. Clients that pinned the old one then refuse the server, as they would after a lost Ed25519 log key. Back up the key file after upgrading (`docs/self-host.md` already says to keep it with the database).
 - **The identity crate's own records** (profile, devices) are still signed by the ISK with Ed25519 only. The manifest's ML-DSA signature covers them by hash. ML-DSA on each record would be an identity-crate change.
-- **Secret pages.** The ML-DSA signing key (an expanded key of about 4 KB on the heap, zeroized on drop by `ml-dsa`) isn't under D314's `mlock`. The server's post-quantum log key isn't either.
+- **Secret pages.** The ML-DSA signing key (an expanded key of about 64 KiB on the heap; 4 KB is its encoded size; zeroized on drop by `ml-dsa`) isn't under D314's `mlock`. The server's post-quantum log key isn't either.
+  Closed by doc 52 ([52-identity-adopt.md](52-identity-adopt.md), D600–D609): both are locked out of swap on the process's one page table.
 - **No browser e2e.** The web vault runs the same core, so the rules hold there. The carried pin and memory are covered by the Rust web tests' existing visits, but no Playwright spec looks at a post-quantum head.
 
 **unicron host-contract gaps:** none. This slice adds no UI.
