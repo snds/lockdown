@@ -26,7 +26,11 @@
 //!
 //! [`DeviceKeys`] holds the secrets in memory while the vault is open and
 //! implements the identity crate's [`DeviceKeystore`]; every secret is
-//! wiped when it drops.
+//! wiped when it drops. The three sit in one heap block whose pages are
+//! locked out of swap before anything secret is written into it, on the
+//! process's one page table (docs/plan/53-harden-rest.md). The Ed25519 key
+//! a signature needs is rebuilt from the seed for that one call and wiped
+//! by `ed25519-dalek` when it drops.
 
 use std::path::{Path, PathBuf};
 
@@ -39,6 +43,7 @@ use ecosystem_identity::{Argon2Params, RecoveryKit};
 use lockdown_crypto::Key32;
 use lockdown_crypto::aead::{self, Sealed};
 use lockdown_crypto::cbor::{from_slice, to_canonical};
+use lockdown_crypto::locked::PageLock;
 use lockdown_store::write_private;
 use lockdown_vault::Id;
 use serde::{Deserialize, Serialize};
@@ -144,13 +149,46 @@ struct SealedFile {
     kit: Option<KitSlot>,
 }
 
+impl Secrets {
+    /// An empty set in a heap block of its own, its pages locked before
+    /// `fill` writes anything secret into it. A refused lock is counted in
+    /// `locked::report` and the keys work as before.
+    fn locked(
+        fill: impl FnOnce(&mut Secrets) -> Result<(), String>,
+    ) -> Result<(Box<Secrets>, Option<PageLock>), String> {
+        let mut secrets = Box::new(Secrets {
+            unlock_key: [0; 32],
+            signing_seed: [0; 32],
+            kem_seed: [0; 32],
+        });
+        let pages = PageLock::of_value(&*secrets);
+        if let Err(e) = fill(&mut secrets) {
+            // Wiped while still locked, as on any drop.
+            drop(secrets);
+            drop(pages);
+            return Err(e);
+        }
+        Ok((secrets, pages))
+    }
+
+    /// Copies `other` in, field by field.
+    fn copy_from(&mut self, other: &Secrets) {
+        self.unlock_key = other.unlock_key;
+        self.signing_seed = other.signing_seed;
+        self.kem_seed = other.kem_seed;
+    }
+}
+
 /// The device's keys, open in memory.
 pub struct DeviceKeys {
     device_id: Id,
     kem_alg: KemAlg,
     created_at: Timestamp,
-    secrets: Secrets,
+    secrets: Box<Secrets>,
     platform: Platform,
+    // After `secrets`: fields drop in order, so the secrets are wiped while
+    // their pages are still locked.
+    pages: Option<PageLock>,
 }
 
 impl std::fmt::Debug for DeviceKeys {
@@ -214,20 +252,30 @@ fn read_sealed(data: &Path) -> Result<SealedFile, String> {
 }
 
 impl DeviceKeys {
-    /// Fresh keys, kept nowhere yet.
+    /// Fresh keys, kept nowhere yet. The random bytes are written straight
+    /// into the locked block.
     pub fn generate() -> Result<Self, String> {
-        let r = || lockdown_crypto::rand::random_32().map_err(|e| e.to_string());
+        let (secrets, pages) = Secrets::locked(|s| {
+            for key in [&mut s.unlock_key, &mut s.signing_seed, &mut s.kem_seed] {
+                lockdown_crypto::rand::random_bytes(key).map_err(|e| e.to_string())?;
+            }
+            Ok(())
+        })?;
         Ok(Self {
             device_id: Id::new(),
             kem_alg: DEFAULT_KEM,
             created_at: Timestamp::now(),
-            secrets: Secrets {
-                unlock_key: r()?,
-                signing_seed: r()?,
-                kem_seed: r()?,
-            },
+            secrets,
             platform: Platform::current(),
+            pages,
         })
+    }
+
+    /// Whether the pages under the device's secrets are locked out of swap
+    /// now (`false` when the system refused, counted in Settings, or this
+    /// build cannot lock).
+    pub fn is_locked(&self) -> bool {
+        self.pages.is_some()
     }
 
     fn from_plain(file: &PlainFile) -> Result<Self, String> {
@@ -237,16 +285,19 @@ impl DeviceKeys {
                 file.v
             ));
         }
+        let (secrets, pages) = Secrets::locked(|s| {
+            s.unlock_key = file.unlock_key;
+            s.signing_seed = file.signing_seed;
+            s.kem_seed = file.kem_seed;
+            Ok(())
+        })?;
         Ok(Self {
             device_id: file.device_id,
             kem_alg: file.kem_alg,
             created_at: file.created_at,
-            secrets: Secrets {
-                unlock_key: file.unlock_key,
-                signing_seed: file.signing_seed,
-                kem_seed: file.kem_seed,
-            },
+            secrets,
             platform: Platform::current(),
+            pages,
         })
     }
 
@@ -321,13 +372,19 @@ impl DeviceKeys {
     }
 
     fn from_sealed(file: &SealedFile, opened: &[u8]) -> Result<Self, String> {
-        let secrets: Secrets = from_slice(opened).map_err(|e| e.to_string())?;
+        // The decoded copy is wiped when it drops, at the end of this call.
+        let decoded: Secrets = from_slice(opened).map_err(|e| e.to_string())?;
+        let (secrets, pages) = Secrets::locked(|s| {
+            s.copy_from(&decoded);
+            Ok(())
+        })?;
         let keys = Self {
             device_id: file.device_id,
             kem_alg: file.kem_alg,
             created_at: file.created_at,
             secrets,
             platform: Platform::current(),
+            pages,
         };
         if keys.device_pub().as_slice() != file.device_pub.as_slice() {
             return Err("the sealed device key is damaged: its keys don't match".into());
@@ -346,7 +403,7 @@ impl DeviceKeys {
 
     fn sealed_secrets(&self) -> Result<Zeroizing<Vec<u8>>, String> {
         Ok(Zeroizing::new(
-            to_canonical(&self.secrets).map_err(|e| e.to_string())?,
+            to_canonical(&*self.secrets).map_err(|e| e.to_string())?,
         ))
     }
 
@@ -508,6 +565,34 @@ impl DeviceKeystore for DeviceKeys {
 mod tests {
     use super::*;
     use ecosystem_identity::FileKeystore;
+
+    #[test]
+    fn the_device_secrets_are_locked_out_of_swap_or_counted_as_refused() {
+        // Held for the whole session (docs/plan/53-harden-rest.md), however
+        // the keys were opened: made fresh, from the plain file, or from
+        // the sealed one.
+        let dir = tempfile::tempdir().unwrap();
+        let before = lockdown_crypto::locked::report();
+        let made = DeviceKeys::open_or_create_plain(dir.path()).unwrap();
+        let plain = DeviceKeys::open_plain(dir.path()).unwrap();
+        made.seal(dir.path(), "correct horse battery staple", None)
+            .unwrap();
+        let sealed =
+            DeviceKeys::open_with_password(dir.path(), "correct horse battery staple").unwrap();
+        for keys in [&made, &plain, &sealed] {
+            if keys.is_locked() {
+                assert!(lockdown_crypto::locked::report().pages_locked >= 1);
+            } else {
+                assert!(lockdown_crypto::locked::report().refused > before.refused);
+            }
+            // Locked or refused, the device signs as itself.
+            let sig = keys.sign(b"head").unwrap();
+            lockdown_crypto::VerifyingKey::from_bytes(&made.device_pub())
+                .unwrap()
+                .verify(b"head", &sig, "head")
+                .unwrap();
+        }
+    }
 
     #[test]
     fn a_plain_file_reads_the_same_on_either_side() {
