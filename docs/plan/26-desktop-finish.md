@@ -116,6 +116,7 @@ The clear rule and its timer are unchanged (D85, D119).
 What it doesn't reach:
 
 - the identity crate's own key types (root key, persona keys, App Data Key), which belong to that crate (D12), a proposal for `08-identity-proposal.md`;
+  closed by the crate's `memlock` (D378) and doc 52 ([52-identity-adopt.md](52-identity-adopt.md)), which puts both crates on one page table;
 - copies the allocator made before a value became a secret type;
 - `Revealed` (short-lived);
 - the JSON frame that carries a filled value or a shown code to the extension (as before, D158).

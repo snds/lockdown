@@ -19,12 +19,13 @@
 //! - `registry` (Windows only): the per-user registry value each browser
 //!   finds the host manifest by.
 //!
-//! The identity crate's `PeerIdentity` has no Windows variant (it is
-//! `non_exhaustive` and only the identity crate can add one), so a pipe
-//! channel reports `PeerIdentity::Unknown`, which every identity-crate
-//! verifier refuses, and carries what it learned about its peer beside it
-//! ([`check::PeerProcess`]). [`check::PipeVerifier::bind`] turns that into
-//! a [`PeerVerifier`] for that one channel.
+//! A pipe channel reports `PeerIdentity::Unknown`, which every
+//! identity-crate verifier refuses, and carries what it learned about its
+//! peer beside it ([`check::PeerProcess`]). [`check::PipeVerifier::bind`]
+//! turns that into a [`PeerVerifier`] for that one channel. The identity
+//! crate has had its own `PeerIdentity::Windows` and named pipe since
+//! 35d2a56 (its decision 0003); this channel keeps its own name and
+//! verifier, which its browser host already speaks (doc 52 §4).
 //!
 //! [`PeerTransport`]: ecosystem_identity::handshake::PeerTransport
 //! [`PeerChannel`]: ecosystem_identity::handshake::PeerChannel

@@ -10,6 +10,13 @@
 //! under the same key and context gives the same bytes, and a signature
 //! made for one purpose never verifies for another.
 //!
+//! The expanded key is about 64 KiB (64 polynomials of 256 32-bit
+//! coefficients, the matrix `A_hat` among them; 4032 bytes is only its
+//! encoded size). It sits in one heap block that never moves, and the pages
+//! under that block are locked out of swap while the key lives, on the
+//! process's one page table ([`crate::locked`], doc 52). `ml-dsa` wipes it
+//! on drop, before the pages are unlocked.
+//!
 //! [`HybridSignature`] is the pair Lockdown writes where both apply: an
 //! Ed25519 signature and an ML-DSA-65 signature over the same bytes. A
 //! verifier that has pinned the ML-DSA key requires both, so a forger needs
@@ -21,20 +28,26 @@ use std::fmt;
 use ml_dsa::{EncodedVerifyingKey, ExpandedSigningKey, MlDsa65, Seed, Signature, VerifyingKey};
 use zeroize::Zeroize;
 
+use crate::locked::PageLock;
 use crate::{Error, Result};
 
 /// Bytes in an encoded ML-DSA-65 public key.
 pub const PUBLIC_KEY_LEN: usize = 1952;
+/// Bytes an expanded ML-DSA-65 signing key takes in memory (about 64 KiB),
+/// which is what its page lock covers.
+pub const EXPANDED_KEY_LEN: usize = std::mem::size_of::<ExpandedSigningKey<MlDsa65>>();
 /// Bytes in an encoded ML-DSA-65 signature.
 pub const SIGNATURE_LEN: usize = 3309;
 /// The longest context FIPS 204 allows.
 const MAX_CONTEXT: usize = 255;
 
-/// An ML-DSA-65 signing key. Debug prints nothing of it; the seed is wiped
-/// when it drops.
+/// An ML-DSA-65 signing key. Debug prints nothing of it. Its pages are
+/// locked out of swap while it lives, and it is wiped when it drops.
 pub struct PqSigningKey {
-    seed: [u8; 32],
+    // Field order is drop order: `ml-dsa` wipes the key while its pages are
+    // still locked, and they are unlocked after.
     key: Box<ExpandedSigningKey<MlDsa65>>,
+    pages: Option<PageLock>,
 }
 
 /// An ML-DSA-65 public key.
@@ -43,10 +56,29 @@ pub struct PqVerifyingKey(Vec<u8>);
 
 impl PqSigningKey {
     /// The key for a 32-byte seed (FIPS 204 `ML-DSA.KeyGen_internal(ξ)`).
-    pub fn from_seed(seed: [u8; 32]) -> Self {
-        let xi = Seed::from(seed);
+    /// The seed and its copy are wiped once the key is expanded; the key
+    /// is rebuilt from the key above it, never from a stored seed.
+    pub fn from_seed(mut seed: [u8; 32]) -> Self {
+        let mut xi = Seed::from(seed);
+        seed.zeroize();
         let key = Box::new(ExpandedSigningKey::<MlDsa65>::from_seed(&xi));
-        Self { seed, key }
+        xi.zeroize();
+        let pages = PageLock::of_value(&*key);
+        Self { key, pages }
+    }
+
+    /// Whether the pages under the expanded key are locked out of swap now
+    /// (`false` when the system refused, counted in
+    /// [`crate::locked::report`], or this build cannot lock).
+    pub fn is_locked(&self) -> bool {
+        self.pages.is_some()
+    }
+
+    /// How many pages the lock holds (0 when not locked): at least
+    /// [`EXPANDED_KEY_LEN`] over the page size, rounded up, and at most one
+    /// more, wherever the block starts.
+    pub fn locked_pages(&self) -> usize {
+        self.pages.as_ref().map_or(0, PageLock::pages)
     }
 
     /// The public half.
@@ -63,12 +95,6 @@ impl PqSigningKey {
             .sign_deterministic(message, context)
             .map_err(|_| Error::Invalid("ML-DSA refused the message".into()))?;
         Ok(sig.encode().to_vec())
-    }
-}
-
-impl Drop for PqSigningKey {
-    fn drop(&mut self) {
-        self.seed.zeroize();
     }
 }
 
@@ -222,6 +248,30 @@ mod tests {
         assert!(a.sign(b"m", b"").is_err(), "a context is required");
         assert!(PqVerifyingKey::from_bytes(&[0; 32]).is_err());
         assert_eq!(format!("{a:?}"), "PqSigningKey(…)");
+    }
+
+    #[test]
+    fn the_expanded_key_is_locked_out_of_swap_or_counted_as_refused() {
+        let size = EXPANDED_KEY_LEN;
+        assert!(
+            size >= 64 * 1024,
+            "about 64 KiB in memory, not 4 KB: {size}"
+        );
+        let before = crate::locked::report();
+        let key = PqSigningKey::from_seed([3; 32]);
+        if key.is_locked() {
+            // 17 or 18 pages of 4 KiB; 5 or 6 of 16 KiB (Apple silicon).
+            let least = size.div_ceil(crate::locked::page_size());
+            assert!((least..=least + 1).contains(&key.locked_pages()));
+        } else {
+            assert_eq!(key.locked_pages(), 0);
+            assert!(crate::locked::report().refused > before.refused);
+        }
+        // Locked or refused, it signs the same bytes.
+        let sig = key.sign(b"m", b"lockdown/test/v1").unwrap();
+        key.verifying_key()
+            .verify(b"m", b"lockdown/test/v1", &sig, "m")
+            .unwrap();
     }
 
     #[test]
