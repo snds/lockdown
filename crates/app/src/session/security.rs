@@ -94,7 +94,10 @@ impl Session {
             if item.kind.hidden() || item.state != ItemState::Live {
                 continue;
             }
-            let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
+            // One that doesn't open here is left out (docs/plan/51-rekey-push.md §3).
+            let Ok(fields) = vault.open_item(item.item_id) else {
+                continue;
+            };
             let latest = item.latest().map_err(|e| e.to_string())?;
             let facts = ItemFacts {
                 item_id: item.item_id.to_string(),

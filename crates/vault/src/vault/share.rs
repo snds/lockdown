@@ -4,13 +4,21 @@
 //! fresh keys when a member leaves, and hold items another person shared
 //! on their own.
 //!
-//! **Rotation re-keys, it does not re-encrypt.** Every signature and hash
-//! in an item leaves its key envelopes out (D36), so moving a vault to a
-//! new Vault Key gives each item a fresh Item Key and re-wraps its
-//! Version and Attachment Keys under it, without touching a sealed field
-//! or a signed byte. A removed member who kept the old keys can still read
-//! the versions they could already read; every version saved afterwards
-//! is under a Version Key wrapped by an Item Key they never held.
+//! **Rotation re-keys, then writes one re-key version.** Every signature
+//! and hash in an item leaves its key envelopes out (D36), so moving a
+//! vault to a new Vault Key gives each item a fresh Item Key and re-wraps
+//! its Version and Attachment Keys under it without touching a sealed
+//! field or a signed byte. A change that touches no signed byte is one
+//! sync can't see, though (`Vault::changed_since` compares the versions
+//! the head signed), so the re-keyed item would never reach the server,
+//! and everyone handed the fresh key would hold a key for a copy the
+//! server doesn't serve (docs/plan/51-rekey-push.md). So each re-keyed
+//! item also gets one new version: its newest fields sealed again under a
+//! fresh Version Key wrapped by the fresh Item Key, signed by this device,
+//! keeping the time the fields were saved. It syncs like any edit. A
+//! removed member who kept the old keys can still read the versions they
+//! could already read; the re-key version and every version after it are
+//! under an Item Key they never held.
 
 use super::*;
 use crate::sharing::{Party, ShareEnvelope, SharePlace, SharePurpose};
@@ -179,13 +187,16 @@ impl Vault {
         self.adopt_vault_key(new_id, new_key);
         for (id, old) in opened {
             self.move_item_to_fresh_key(id, &old)?;
+            self.write_rekey_version(id)?;
         }
         self.commit_head()?;
         Ok(new_id)
     }
 
-    /// Gives one item a fresh Item Key (its share to someone was withdrawn)
-    /// and commits a head. Its sealed fields and signatures are untouched.
+    /// Gives one item a fresh Item Key (its share to someone was withdrawn,
+    /// or it is still under an earlier Vault Key generation), writes its
+    /// re-key version and commits a head. Its earlier versions keep every
+    /// sealed field and signature.
     pub fn rekey_item(&mut self, item_id: Id) -> Result<()> {
         let item = self.item(item_id)?;
         if item.class == ItemClass::CrownJewel {
@@ -193,7 +204,99 @@ impl Vault {
         }
         let old = self.item_key(item)?;
         self.move_item_to_fresh_key(item_id, &old)?;
+        self.write_rekey_version(item_id)?;
         self.commit_head()
+    }
+
+    /// Writes the re-key version for an item already moved to its Item Key
+    /// on this device, and commits a head, when one is due: what repairs an
+    /// item whose re-key never reached the server (an earlier build moved
+    /// keys without a version; docs/plan/51-rekey-push.md §4). Answers
+    /// whether a version was written.
+    pub fn reseal_item(&mut self, item_id: Id) -> Result<bool> {
+        let wrote = self.write_rekey_version(item_id)?;
+        if wrote {
+            self.commit_head()?;
+        }
+        Ok(wrote)
+    }
+
+    /// Writes the re-key version of every item an earlier build re-keyed on
+    /// this device and never pushed (docs/plan/51-rekey-push.md §4): one
+    /// the server serves (`served`, each with the revision it is served
+    /// at) at the revision and newest version this device holds, under
+    /// another Item Key envelope than this device's. Commits one head when
+    /// anything was written. Answers the items re-sealed, and whether any
+    /// of them had moved to another Vault Key generation.
+    pub fn reseal_unpushed(&mut self, served: &[Item]) -> Result<(Vec<Id>, bool)> {
+        let mut out = Vec::new();
+        let mut rotated = false;
+        for theirs in served {
+            let Ok(ours) = self.item(theirs.item_id) else {
+                continue;
+            };
+            let (Some(our_key), Some(their_key)) = (&ours.item_key, &theirs.item_key) else {
+                continue;
+            };
+            let same_version = matches!(
+                (ours.latest_hash(), theirs.latest_hash()),
+                (Ok(a), Ok(b)) if a == b
+            );
+            if ours.rev != theirs.rev || !same_version || our_key == their_key {
+                continue;
+            }
+            let moved_generation = our_key.wrapped_by.id != their_key.wrapped_by.id;
+            if self.write_rekey_version(theirs.item_id)? {
+                rotated |= moved_generation;
+                out.push(theirs.item_id);
+            }
+        }
+        if !out.is_empty() {
+            self.commit_head()?;
+        }
+        Ok((out, rotated))
+    }
+
+    /// The re-key version: the newest version's fields and attachments,
+    /// sealed again under a fresh Version Key wrapped by the item's current
+    /// Item Key, signed by this device and stamped with the newest
+    /// version's own `edited_at` (nothing was edited, so the list's order
+    /// and "edited" time stay). Nothing is written for an item with nothing
+    /// left to read (purged, its newest version shredded, or one this
+    /// device can't open): no one can read it under any key. Not committed.
+    fn write_rekey_version(&mut self, item_id: Id) -> Result<bool> {
+        let item = self.item(item_id)?;
+        if item.item_key.is_none() || item.state == ItemState::Tombstone {
+            return Ok(false);
+        }
+        let latest = item.latest()?;
+        if latest.is_shredded() {
+            return Ok(false);
+        }
+        let Ok(fields) = self.open_envelope(item, latest.n) else {
+            return Ok(false);
+        };
+        let item_key = self.item_key(item)?;
+        let header = item.header();
+        let n = latest.n + 1;
+        let parent_hash = latest.hash(&header)?;
+        let attachments = latest.attachments.clone();
+        let edited_at = latest.edited_at;
+        let version = self.make_version_at(
+            &header,
+            &item_key,
+            n,
+            parent_hash,
+            &fields,
+            attachments,
+            edited_at,
+        )?;
+        self.items
+            .get_mut(&item_id)
+            .ok_or_else(|| Error::NotFound(format!("item {item_id}")))?
+            .versions
+            .push(version);
+        Ok(true)
     }
 
     /// The items whose Item Key is still wrapped under an earlier Vault
@@ -252,7 +355,11 @@ impl Vault {
     /// each item under the Item Key its share envelope carried, re-wrapped
     /// under a key that never leaves memory. Never saved or synced; every
     /// version still verifies against the owner's devices (`trusted`)
-    /// before anything opens.
+    /// before anything opens. An item whose newest version a trusted
+    /// device didn't sign, or that its key doesn't open (a share sealed
+    /// with a newer Item Key than the copy the server served, while a
+    /// re-key is on its way; [`received_key_opens`]), is left out on its
+    /// own: the rest are held, and it comes in once both match.
     pub fn received(
         ctx: VaultContext,
         device_id: Id,
@@ -281,16 +388,45 @@ impl Vault {
                 });
             }
             let latest = item.latest()?;
-            let signer_key = vault
-                .key_for(latest.edited_by)
-                .ok_or(Error::UnknownDevice(latest.edited_by))?;
-            latest.verify(&item.header(), &signer_key)?;
+            let Some(signer_key) = vault.key_for(latest.edited_by) else {
+                continue;
+            };
+            if latest.verify(&item.header(), &signer_key).is_err()
+                || !received_key_opens(&ctx, &item, &key)
+            {
+                continue;
+            }
             item.item_key = Some(vault.wrap_item_key(item.item_id, ItemClass::Standard, &key)?);
             vault.items.insert(item.item_id, item);
         }
         vault.commit_head()?;
         Ok(vault)
     }
+}
+
+/// Whether `key` is the Item Key `item`'s newest version was sealed under,
+/// in the vault `ctx` names: its Version Key unwraps under it. An item
+/// shared on its own whose share carries a newer Item Key than the copy
+/// the server served (or an older one) answers false, and the person's
+/// device waits for a copy that matches rather than failing to open it.
+/// A purged item or one whose newest version was shredded answers false.
+pub fn received_key_opens(ctx: &VaultContext, item: &Item, key: &ItemKey) -> bool {
+    let Ok(latest) = item.latest() else {
+        return false;
+    };
+    let Some(env) = latest.version_key.as_ref() else {
+        return false;
+    };
+    let place = KeyPlace {
+        profile_id: ctx.profile_id,
+        persona_id: ctx.persona_id,
+        vault_id: ctx.vault_id,
+        key_id: env.key_id,
+        purpose: KeyPurpose::Version,
+        wrapped_by: WrappedBy::new(WrapperKind::Item, item.item_id),
+        v: WRAP_V,
+    };
+    unwrap_key::<VersionKey, _>(env, key, &place).is_ok()
 }
 
 #[cfg(test)]
@@ -319,7 +455,9 @@ mod tests {
         let (_, blob) = vault.attach(a, "a.txt", "text/plain", b"file").unwrap();
         let before_ik = vault.item(a).unwrap().item_key.clone().unwrap();
         let before_hash = vault.item(a).unwrap().latest_hash().unwrap();
+        let before_n = vault.item(a).unwrap().latest().unwrap().n;
         let old_id = vault.vault_key_id();
+        let seq_before = vault.seq();
 
         let new_id = vault.rotate_vault_key().unwrap();
         assert_ne!(new_id, old_id);
@@ -327,12 +465,32 @@ mod tests {
         let item = vault.item(a).unwrap();
         assert_eq!(item.item_key.as_ref().unwrap().wrapped_by.id, new_id);
         assert_ne!(item.item_key.as_ref().unwrap(), &before_ik);
-        // Nothing signed changed; history and files still open.
-        assert_eq!(item.latest_hash().unwrap(), before_hash);
+        // Earlier versions keep every signed byte; one re-key version on
+        // top carries the same fields and files, and the time they were
+        // saved, so sync sees the item changed and pushes it.
+        let (was_at, was_files) = {
+            let v = item.version(before_n).unwrap();
+            (v.edited_at, v.attachments.len())
+        };
+        assert_eq!(
+            item.version(before_n)
+                .unwrap()
+                .hash(&item.header())
+                .unwrap(),
+            before_hash
+        );
+        let rekey = item.latest().unwrap();
+        assert_eq!(rekey.n, before_n + 1);
+        assert_eq!(rekey.parent_hash, before_hash);
+        assert_eq!(rekey.edited_at, was_at);
+        assert_eq!(rekey.attachments.len(), was_files);
+        assert_ne!(item.latest_hash().unwrap(), before_hash);
+        assert!(vault.changed_since(seq_before).unwrap().contains(&a));
         assert_eq!(
             pw(&vault.open_version(a, 1).unwrap()),
             "correct horse battery staple"
         );
+        assert_eq!(pw(&vault.open_version(a, 2).unwrap()), "second");
         assert_eq!(pw(&vault.open_item(a).unwrap()), "second");
         let blob_bytes = vault.pending_blob(blob).unwrap().to_vec();
         let att = vault.attachments(a).unwrap()[0].att_id;
@@ -395,7 +553,7 @@ mod tests {
             pw(&received.open_item(a).unwrap()),
             "correct horse battery staple"
         );
-        // From a device nobody trusts: refused.
+        // From a device nobody trusts: left out, on its own.
         let stranger = Vault::received(
             *owner.context(),
             Id::new(),
@@ -405,8 +563,9 @@ mod tests {
                 owner.item(a).unwrap().clone(),
                 owner.item_key(owner.item(a).unwrap()).unwrap(),
             )],
-        );
-        assert!(stranger.is_err());
+        )
+        .unwrap();
+        assert!(stranger.item(a).is_err());
         // Another vault's item under this context: refused.
         let mut other = sample_vault();
         let b = other
@@ -425,9 +584,143 @@ mod tests {
         );
 
         // Re-keying one item leaves the old Item Key useless for new versions.
+        let copy_before = owner.item(a).unwrap().clone();
+        let seq = owner.seq();
         owner.rekey_item(a).unwrap();
         let fresh = owner.item_key(owner.item(a).unwrap()).unwrap();
         let old = received.item_key(received.item(a).unwrap()).unwrap();
         assert_ne!(fresh.expose(), old.expose());
+        assert_eq!(owner.changed_since(seq).unwrap(), vec![a]);
+        let copy_after = owner.item(a).unwrap().clone();
+        assert!(received_key_opens(owner.context(), &copy_after, &fresh));
+        assert!(!received_key_opens(owner.context(), &copy_after, &old));
+        assert!(!received_key_opens(owner.context(), &copy_before, &fresh));
+
+        // A share carrying the fresh key beside the copy from before the
+        // re-key: that item waits, and the rest of the owner's items are
+        // held as ever.
+        let b = owner
+            .create_item(ItemKind::Login, ItemClass::Standard, sample_login_fields())
+            .unwrap();
+        let b_key = owner.item_key(owner.item(b).unwrap()).unwrap();
+        let held = Vault::received(
+            *owner.context(),
+            Id::new(),
+            Box::new(SigningKey::generate().unwrap()),
+            &trusted,
+            vec![
+                (copy_before.clone(), fresh.clone()),
+                (owner.item(b).unwrap().clone(), b_key),
+            ],
+        )
+        .unwrap();
+        assert!(held.item(a).is_err());
+        assert!(held.open_item(b).is_ok());
+        // The re-keyed copy arrives: it opens.
+        let held = Vault::received(
+            *owner.context(),
+            Id::new(),
+            Box::new(SigningKey::generate().unwrap()),
+            &trusted,
+            vec![(copy_after, fresh)],
+        )
+        .unwrap();
+        assert_eq!(
+            pw(&held.open_item(a).unwrap()),
+            "correct horse battery staple"
+        );
+    }
+
+    #[test]
+    fn an_item_re_keyed_by_an_earlier_build_is_found_and_re_sealed() {
+        let mut vault = sample_vault();
+        let a = vault
+            .create_item(ItemKind::Login, ItemClass::Standard, sample_login_fields())
+            .unwrap();
+        let b = vault
+            .create_item(ItemKind::Login, ItemClass::Standard, sample_login_fields())
+            .unwrap();
+        let c = vault
+            .create_item(ItemKind::Login, ItemClass::Standard, sample_login_fields())
+            .unwrap();
+        for (id, rev) in [(a, 4), (b, 5), (c, 6)] {
+            vault.set_item_rev(id, rev).unwrap();
+        }
+        let seq = vault.commit().unwrap();
+        // What the server serves: every item as pushed.
+        let served: Vec<Item> = [a, b, c]
+            .iter()
+            .map(|id| vault.item(*id).unwrap().clone())
+            .collect();
+        // An earlier build: a moved key with no version, so nothing to push.
+        let old = vault.item_key(vault.item(a).unwrap()).unwrap();
+        vault.move_item_to_fresh_key(a, &old).unwrap();
+        vault.commit_head().unwrap();
+        assert!(vault.changed_since(seq).unwrap().is_empty());
+        // An item edited here since (pushed as any edit) is left as it is.
+        vault.update_item(c, sample_login_fields()).unwrap();
+        let seq = vault.seq();
+
+        let (found, rotated) = vault.reseal_unpushed(&served).unwrap();
+        assert_eq!(found, vec![a]);
+        assert!(!rotated, "the same Vault Key generation");
+        assert_eq!(vault.seq(), seq + 1, "one head");
+        assert_eq!(vault.item(a).unwrap().versions.len(), 2);
+        assert!(vault.changed_since(seq).unwrap().contains(&a));
+        assert_eq!(
+            pw(&vault.open_item(a).unwrap()),
+            "correct horse battery staple"
+        );
+        // Asked again with the same copies: the item's version moved on, so
+        // it isn't the server's any more; nothing more is written.
+        let seq = vault.seq();
+        assert_eq!(vault.reseal_unpushed(&served).unwrap(), (Vec::new(), false));
+        assert_eq!(vault.seq(), seq);
+
+        // A rotation by an earlier build: another generation, every item.
+        let mut vault = sample_vault();
+        let d = vault
+            .create_item(ItemKind::Login, ItemClass::Standard, sample_login_fields())
+            .unwrap();
+        vault.set_item_rev(d, 2).unwrap();
+        vault.commit().unwrap();
+        let served = vec![vault.item(d).unwrap().clone()];
+        let old = vault.item_key(vault.item(d).unwrap()).unwrap();
+        let new_id = Id::new();
+        vault.adopt_vault_key(
+            new_id,
+            VaultKey::from_bytes(lockdown_crypto::rand::random_32().unwrap()),
+        );
+        vault.move_item_to_fresh_key(d, &old).unwrap();
+        let (found, rotated) = vault.reseal_unpushed(&served).unwrap();
+        assert_eq!(found, vec![d]);
+        assert!(rotated);
+    }
+
+    #[test]
+    fn reseal_writes_a_version_only_when_something_can_still_be_read() {
+        let mut vault = sample_vault();
+        let a = vault
+            .create_item(ItemKind::Login, ItemClass::Standard, sample_login_fields())
+            .unwrap();
+        let seq = vault.seq();
+        assert!(vault.reseal_item(a).unwrap());
+        assert_eq!(vault.seq(), seq + 1);
+        assert_eq!(vault.item(a).unwrap().versions.len(), 2);
+        assert_eq!(
+            pw(&vault.open_item(a).unwrap()),
+            "correct horse battery staple"
+        );
+        // Its newest version shredded: nothing to seal again, nothing written.
+        vault.shred_version(a, 2).unwrap();
+        let seq = vault.seq();
+        assert!(!vault.reseal_item(a).unwrap());
+        assert_eq!(vault.seq(), seq);
+        // Purged: nothing either.
+        let b = vault
+            .create_item(ItemKind::Login, ItemClass::Standard, sample_login_fields())
+            .unwrap();
+        vault.purge_item(b).unwrap();
+        assert!(!vault.reseal_item(b).unwrap());
     }
 }
