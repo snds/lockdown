@@ -51,6 +51,9 @@ pub mod server_checks;
 mod session;
 pub mod settings;
 pub mod sharing;
+/// The line a shared vault shows while some of its recent changes didn't
+/// verify (docs/plan/49-shared-vault-quiet.md), for the command line.
+pub use session::quiet::vault_line as held_back_line;
 pub mod strength;
 mod transfer;
 pub mod types;

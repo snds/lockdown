@@ -253,6 +253,60 @@ pub(crate) fn writer_keys(
     out
 }
 
+/// Step 3 over `waiting`: each vault tried again trusting its writers as
+/// this device pinned them in `sharing`. Answers what opened, in the app's
+/// order, and what still names a signer nobody vouches for.
+pub fn open_with_pins(
+    identity: &Identity,
+    sharing: &SharingState,
+    store: &dyn Store,
+    keystore: &Rc<DeviceKeys>,
+    memory: &HeadMemory,
+    synced: &SyncedIdentity,
+    waiting: Vec<Waiting>,
+) -> Result<(Vec<OpenVault>, Vec<Waiting>), String> {
+    let own = own_device_keys(identity, synced);
+    let mut opened = Vec::new();
+    let mut still = Vec::new();
+    for w in waiting {
+        let writers = pinned_writers(sharing, &own, w.vault_id);
+        if writers.is_empty() {
+            still.push(w);
+            continue;
+        }
+        let (trust, members) = vault_trust(identity, synced, w.vault_id, writers);
+        match open_one(
+            identity, w.vault_id, store, keystore, memory, &trust, &members,
+        )? {
+            Ok(o) => opened.push(o),
+            Err(w) => still.push(w),
+        }
+    }
+    order_vaults(&mut opened);
+    Ok((opened, still))
+}
+
+/// The persona's keys a waiting vault's record names, from the identity:
+/// what opens the sharing record when no vault of the persona opened yet
+/// (docs/plan/49-shared-vault-quiet.md §6).
+pub fn waiting_keys(
+    identity: &Identity,
+    persona_id: Id,
+    store: &dyn Store,
+    waiting: &Waiting,
+) -> Result<lockdown_vault::identity::PersonaKeys, String> {
+    let record = store
+        .get_vault(waiting.vault_id)
+        .map_err(|e| e.to_string())?;
+    lockdown_vault::identity::keys_for(
+        identity,
+        persona_id,
+        record.context.app_data_key_id,
+        record.context.crown_jewel_key_id,
+    )
+    .map_err(|e| e.to_string())
+}
+
 /// Step 3's trust for one vault: its writers' devices as this device
 /// pinned them, from the sharing record. Empty for a vault the record
 /// doesn't share, or whose chain doesn't replay here.

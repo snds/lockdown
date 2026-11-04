@@ -153,7 +153,7 @@ fn from(names: &[String]) -> String {
 pub(crate) const NOTHING_TO_DO: &str = "You don't need to do anything.";
 
 /// The line on a shared vault with something held back.
-pub(crate) fn vault_line(names: &[String]) -> String {
+pub fn vault_line(names: &[String]) -> String {
     format!(
         "Some recent changes{} couldn't be verified, so Lockdown left them out. {NOTHING_TO_DO}",
         from(names)
@@ -198,6 +198,45 @@ pub(crate) fn emergency_line(names: &[String]) -> String {
         "Emergency access{} couldn't be verified, so Lockdown left it out for now. {NOTHING_TO_DO}",
         from(names)
     )
+}
+
+/// What a shared vault that can't open yet says: no vault of the persona
+/// could open at unlock because nothing this device holds vouches for the
+/// people who wrote to it yet (a new device before its first sync). It
+/// opens by itself once the sync meets them (§6).
+pub(crate) const WAITING: &str = "This shared vault opens by itself once Lockdown has checked who changed it, at the next sync. You don't need to do anything.";
+
+/// What such a vault is called until it opens (its name is sealed inside it).
+pub(crate) const WAITING_NAME: &str = "Shared vault";
+
+/// The session's first vault while no vault of the persona could open: an
+/// empty vault in memory, under the persona's own keys and a fresh id. It
+/// holds nothing, is never saved, synced, listed or written to (the
+/// session refuses each), and the first vault that opens takes its place.
+/// Nothing unverified is in it, and no vault is made in the waiting one's
+/// place.
+pub(crate) fn stand_in(
+    identity: &ecosystem_identity::Identity,
+    persona_id: Id,
+    keys: lockdown_vault::identity::PersonaKeys,
+    keystore: &std::rc::Rc<crate::local_unlock::DeviceKeys>,
+) -> Result<lockdown_vault::identity::OpenVault, String> {
+    let ctx = lockdown_vault::VaultContext {
+        profile_id: identity.profile().profile_id,
+        persona_id,
+        vault_id: Id::new(),
+        app_data_key_id: keys.app_data_key_id,
+        crown_jewel_key_id: keys.crown_jewel_key_id,
+    };
+    let mut vault =
+        lockdown_vault::Vault::create(ctx, identity.device_id(), Box::new(keystore.clone()), None)
+            .map_err(|e| e.to_string())?;
+    vault.commit().map_err(|e| e.to_string())?;
+    Ok(lockdown_vault::identity::OpenVault {
+        vault,
+        keys,
+        created: false,
+    })
 }
 
 impl Session {

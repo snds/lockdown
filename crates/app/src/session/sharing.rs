@@ -373,6 +373,10 @@ impl Session {
 
     /// Refuses a change to a vault this persona can only view or fill.
     pub(crate) fn require_edit(&self, vault_id: Id) -> Result<(), String> {
+        // Nothing is written while no vault of the persona could open yet.
+        if self.stand_in && self.opened.vault.context().vault_id == vault_id {
+            return Err(super::quiet::WAITING.into());
+        }
         match self.vault_right(vault_id) {
             Some(r) if !r.can_edit() => Err(format!(
                 "this is shared with you to {}; you can't change it",
@@ -433,7 +437,9 @@ impl Session {
     /// Whether an export or backup takes this vault: not items held for
     /// someone else, not a vault this persona may only fill from.
     pub(crate) fn exportable(&self, vault_id: Id) -> bool {
-        !self.is_received_vault(vault_id) && self.vault_right(vault_id) != Some(Right::FillOnly)
+        !(self.stand_in && self.opened.vault.context().vault_id == vault_id)
+            && !self.is_received_vault(vault_id)
+            && self.vault_right(vault_id) != Some(Right::FillOnly)
     }
 
     /// For every slot of `opened` and `more`, in order, whether this

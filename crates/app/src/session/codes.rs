@@ -262,6 +262,7 @@ impl Session {
                         FieldValue::Text(uri.to_string()),
                     ),
                 ];
+                self.require_edit(self.opened.vault.context().vault_id)?;
                 self.opened
                     .vault
                     .create_item(ItemKind::Code, ItemClass::Standard, fields)

@@ -612,3 +612,84 @@ fn a_share_or_grant_from_someone_who_signed_before_must_carry_it_and_older_ones_
             .all(|l| !l.contains("couldn't be verified"))
     );
 }
+
+#[test]
+fn a_person_whose_only_vault_is_shared_unlocks_and_a_new_device_opens_it_after_a_sync() {
+    let dir = tempfile::tempdir().unwrap();
+    let srv = server_on_disk(dir.path());
+    let url = srv.running.url();
+
+    // Alice's only vault is shared with Bob, and Bob wrote to it last.
+    let alice = app(dir.path(), "alice");
+    let alice_sk = register(&alice, &url, "alice");
+    let bob = app(dir.path(), "bob");
+    register(&bob, &url, "bob");
+    alice
+        .add_login(
+            "https://mail.example.com",
+            "alice",
+            b"pw".to_vec(),
+            Some("Mail"),
+        )
+        .unwrap();
+    alice.sync().unwrap();
+    assert_eq!(alice.vaults().unwrap().len(), 1);
+    let vault = alice.vaults().unwrap()[0].id.clone();
+    alice.lookup_contact("bob@example.com").unwrap();
+    alice
+        .share_vault(&vault, "bob@example.com", "edit", pw())
+        .unwrap();
+    bob.sync().unwrap();
+    bob.add_item_in(&vault, "note", Some("Bob one"), false, Vec::new())
+        .unwrap();
+    bob.sync().unwrap();
+    alice.sync().unwrap();
+    assert!(has(&alice, "Bob one"));
+
+    // Her unlock opens it through Bob's pinned devices, offline.
+    alice.lock().unwrap();
+    alice.unlock().unwrap();
+    assert!(has(&alice, "Bob one") && has(&alice, "Mail"));
+    let views = alice.vaults().unwrap();
+    assert_eq!(views.len(), 1);
+    assert_eq!(views[0].id, vault);
+    assert!(views[0].unverified.is_none());
+
+    // A new device of hers has met nobody yet: it unlocks all the same,
+    // shows the vault with the line, holds nothing and writes nothing.
+    let tablet = App::start(
+        Paths::resolve(Some(dir.path().join("tablet").join("snds/identity")), None).unwrap(),
+        None,
+        LockPolicy::default(),
+    );
+    tablet
+        .account_login(&url, "alice@example.com", PASSWORD, Some(&alice_sk))
+        .unwrap();
+    tablet.open_or_create(true).unwrap();
+    let views = tablet.vaults().unwrap();
+    let waiting = "This shared vault opens by itself once Lockdown has checked who changed it, at the next sync. You don't need to do anything.";
+    assert_eq!(views.len(), 1, "{views:?}");
+    assert_eq!(views[0].id, vault);
+    assert_eq!(views[0].unverified.as_deref(), Some(waiting));
+    assert!(titles(&tablet).is_empty());
+    let refused = tablet
+        .add_login("https://x.example.com", "a", b"pw".to_vec(), None)
+        .unwrap_err();
+    assert_eq!(refused.message, waiting);
+    // The sync meets Bob through the log, and the vault opens in place.
+    tablet.sync().unwrap();
+    assert!(has(&tablet, "Bob one") && has(&tablet, "Mail"));
+    let views = tablet.vaults().unwrap();
+    assert_eq!(views.len(), 1);
+    assert_eq!(views[0].id, vault);
+    assert!(views[0].unverified.is_none());
+    tablet
+        .add_item_in(&vault, "note", Some("From the tablet"), false, Vec::new())
+        .unwrap();
+    tablet.sync().unwrap();
+    tablet.lock().unwrap();
+    tablet.unlock().unwrap();
+    assert!(has(&tablet, "From the tablet"));
+    bob.sync().unwrap();
+    assert!(has(&bob, "From the tablet"));
+}

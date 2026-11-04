@@ -126,6 +126,16 @@ impl Session {
             }
         }
         order_vaults(&mut self.more);
+        // The first vault that opens takes the stand-in's place.
+        if self.stand_in && !self.more.is_empty() {
+            self.opened = self.more.remove(0);
+            self.stand_in = false;
+        }
+        self.waiting = if self.stand_in {
+            waiting.iter().map(|w| w.vault_id).collect()
+        } else {
+            Vec::new()
+        };
         self.remember()?;
         Ok(waiting)
     }
@@ -133,7 +143,24 @@ impl Session {
     /// Every vault of the persona with its name, folders and counts.
     pub fn vault_views(&self) -> Result<Vec<VaultView>, String> {
         let mut out = Vec::new();
+        // On a stand-in, the vaults that wait show instead, each with the
+        // line that says it opens by itself (`quiet::WAITING`).
+        for vault_id in &self.waiting {
+            out.push(VaultView {
+                id: vault_id.to_string(),
+                name: super::quiet::WAITING_NAME.into(),
+                primary: out.is_empty(),
+                items: 0,
+                trash_days: 0,
+                folders: Vec::new(),
+                sharing: None,
+                unverified: Some(super::quiet::WAITING.into()),
+            });
+        }
         for (i, vault) in self.vaults().enumerate() {
+            if i == 0 && self.stand_in {
+                continue;
+            }
             let info = vault.info().map_err(|e| e.to_string())?;
             let mut folders: Vec<FolderView> = info
                 .folders
