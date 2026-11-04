@@ -890,14 +890,16 @@ pub async fn put_identity(
         .storage
         .account(session.account_id)?
         .ok_or_else(|| ApiError::not_found("this account"))?;
-    if manifest.profile_id != account.profile_id {
+    let st = state.storage.identity_state(session.account_id)?;
+    // Another profile is refused here unless a hand-over the account's
+    // pinned key signed moves it there (checked once the set verifies).
+    if manifest.profile_id != account.profile_id && st.isk_pub.is_none() {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
             ErrorCode::WrongVault,
             "the identity manifest is for another profile than this account's",
         ));
     }
-    let st = state.storage.identity_state(session.account_id)?;
     let refused = |code: ErrorCode, message: String| {
         ApiError::head_refused(HeadRefused {
             code,
@@ -990,13 +992,51 @@ pub async fn put_identity(
 
     // Everything signed, under the pinned key when there is one.
     let set = RecordSet { manifest, records };
-    let verified = set.verify(st.isk_pub.as_ref()).map_err(|e| {
+    let verified = set.verify(None).map_err(|e| {
         ApiError::new(
             StatusCode::FORBIDDEN,
             ErrorCode::BadSignature,
             format!("the identity record set didn't check out: {e}"),
         )
     })?;
+    // New keys for the account: only along a hand-over its pinned key
+    // signed (docs/plan/55-member-key-change.md). Everyone else's devices
+    // check it again against their own pins; this keeps the server's pin
+    // from being moved by anyone who merely holds a session.
+    let handed_over_to = match st.isk_pub {
+        Some(pinned)
+            if pinned != verified.profile.isk_pub
+                || verified.manifest.profile_id != account.profile_id =>
+        {
+            let handed = lockdown_vault::key_change::handovers_of(&verified.profile)
+                .unwrap_or_default()
+                .iter()
+                .any(|h| {
+                    h.from.isk_pub == pinned
+                        && h.from.profile_id == account.profile_id
+                        && h.to.isk_pub == verified.profile.isk_pub
+                        && h.to.profile_id == verified.manifest.profile_id
+                        && h.verify().is_ok()
+                });
+            if !handed {
+                return Err(if verified.manifest.profile_id != account.profile_id {
+                    ApiError::new(
+                        StatusCode::BAD_REQUEST,
+                        ErrorCode::WrongVault,
+                        "the identity manifest is for another profile than this account's",
+                    )
+                } else {
+                    ApiError::new(
+                        StatusCode::FORBIDDEN,
+                        ErrorCode::BadSignature,
+                        "the identity record set didn't check out: the identity manifest isn't signed by this account's identity",
+                    )
+                });
+            }
+            Some(verified.manifest.profile_id)
+        }
+        _ => None,
+    };
     let manifest = &verified.manifest;
 
     // The chain's own rules: the writer stands, revocations only grow,
@@ -1022,9 +1062,12 @@ pub async fn put_identity(
                 ),
             ));
         }
-        manifest
-            .revocations_extend(prev)
-            .map_err(|e| ApiError::bad_request(e.to_string()))?;
+        // A hand-over starts a new identity's devices and revocations.
+        if handed_over_to.is_none() {
+            manifest
+                .revocations_extend(prev)
+                .map_err(|e| ApiError::bad_request(e.to_string()))?;
+        }
     }
     if manifest.revocation(manifest.written_by).is_some() {
         return Err(ApiError::bad_request(
@@ -1098,6 +1141,7 @@ pub async fn put_identity(
             isk_pub: &verified.profile.isk_pub,
             revoked: &revoked,
             revocations: &rows,
+            handed_over_to,
         },
     )? {
         Ok(accepted) => {
