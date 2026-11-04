@@ -1,16 +1,16 @@
 # The Lockdown backup format, version 1
 
-_Status: published with Lockdown 0.1, 2026-10-18. This page is the whole format: anyone may write a reader or a writer from it without asking. The reference reader and writer are `crates/cxf/src/archive.rs` (Apache-2.0); the test vectors are `crates/cxf/tests/fixtures/backup-v1.json` and `backup-v1.lockdown`, and `crates/cxf/tests/backup_format.rs` opens them with a decoder written from this page alone._
+_Status: published with Lockdown 0.1, 2026-10-18; version 1.1 (the document's `crown_jewels` member, §2 and §5) added 2026-11-04. This page is the whole format: anyone may write a reader or a writer from it without asking. The reference reader and writer are `crates/cxf/src/archive.rs` (Apache-2.0); the test vectors are `crates/cxf/tests/fixtures/backup-v1.json` and `backup-v1.lockdown` (1.0), and `backup-v1-crown-jewels.json` and `backup-v1-crown-jewels.lockdown` (1.1); `crates/cxf/tests/backup_format.rs` opens them with a decoder written from this page alone._
 
 A Lockdown backup is one file. It is either **plain** (the document of §2, as JSON text) or **sealed** (the document encrypted under a password, §3). Lockdown's exports, its automatic backups and its restores all use this one format. The key words MUST, MUST NOT, SHOULD and MAY are as in RFC 2119.
 
 ## 1. In one paragraph
 
-The document lists every item of a vault with every field (its id, kind, label, section and value), the item's earlier versions, and its attached files inline, plus a list of items that were deliberately left out and why. The sealed file is a short JSON header naming an Argon2id key derivation and an XChaCha20-Poly1305 cipher, then the document in 1 MiB chunks, each sealed in its place, so a reader detects a changed header, a wrong password, and a chunk changed, dropped, added or reordered.
+The document lists every item of a vault with every field (its id, kind, label, section and value), the item's earlier versions, and its attached files inline, plus a list of items that were deliberately left out and why. A locked backup carries every crown jewel and says so (`crown_jewels: "all"`); a plain file carries only the crown jewels the person opted in, one by one. The sealed file is a short JSON header naming an Argon2id key derivation and an XChaCha20-Poly1305 cipher, then the document in 1 MiB chunks, each sealed in its place, so a reader detects a changed header, a wrong password, and a chunk changed, dropped, added or reordered.
 
 ## 2. The document
 
-UTF-8 JSON, one object. Unknown members MUST be ignored by a reader of the same `v`; a writer MUST NOT add members with meaning without raising `v`.
+UTF-8 JSON, one object. Unknown members MUST be ignored by a reader of the same `v`; a writer MUST NOT add members that a reader must understand to read the file correctly without raising `v`. The members added within version 1 (§5) are each safe to ignore: a reader that doesn't know them still reads every item right.
 
 | Member | Type | Meaning |
 |---|---|---|
@@ -21,6 +21,7 @@ UTF-8 JSON, one object. Unknown members MUST be ignored by a reader of the same 
 | `items` | array of item | every item carried |
 | `left_out` | array of left-out | items deliberately kept out (may be empty or absent) |
 | `vaults` | array of vault, optional | the vaults the items came from, with their folders (§2.6) |
+| `crown_jewels` | string, optional (1.1) | `"all"`: every crown jewel is in `items`, whether or not the person opted it in (§2.7). Absent: only the opted-in ones are, and the others are in `left_out`. A reader MUST treat any other value as absent |
 
 ### 2.1 Item
 
@@ -60,7 +61,7 @@ A reader MUST refuse an item whose `kind`, `class` or `state` it doesn't know, a
 
 **Filing.** `org.folder` (`text`: the id of one of the vault's folders, §2.6, or empty), `org.tags` (`text`: one tag per line) and `org.favourite` (`flag`) say where the item is filed. A reader that restores into a vault without the named folder SHOULD file the item nowhere and say so.
 
-**The app's own fields.** `lockdown.export` (`flag`): a crown jewel the person chose to include in exports and backups. `lockdown.security` (`text`, JSON): the security center's dismissals. A reader that is not Lockdown MAY ignore them; a writer MUST NOT set `lockdown.export` on an item the person didn't opt in.
+**The app's own fields.** `lockdown.export` (`flag`): a crown jewel the person chose to include in every export, plain ones too. `lockdown.security` (`text`, JSON): the security center's dismissals. A reader that is not Lockdown MAY ignore them; a writer MUST NOT set `lockdown.export` on an item the person didn't opt in, also in a document marked `crown_jewels: "all"`.
 
 ### 2.3 Version
 
@@ -85,6 +86,15 @@ A reader MUST check `size` and `blake3` and refuse the item when either is wrong
 ### 2.6 Vault
 
 `{ "id", "name" (optional), "folders": [ { "id", "name", "parent" (optional) } ] }`: a vault's id, the name the person gave it, and its folders by id, each under its `parent` folder or at the top. A restore SHOULD bring the folders back with their ids so the items' `org.folder` still names them.
+
+### 2.7 Crown jewels in a locked backup (1.1)
+
+A crown jewel (`class: "crown_jewel"`, `docs/plan/02-model.md` §3) is carried like any other item: its fields in the document, the document sealed as §3 says, under the backup's own file key. There is no second layer: anyone holding the backup password opens every item, crown jewels included, and nobody else opens any.
+
+- A writer MAY carry crown jewels the person didn't opt in only inside a sealed file (§3, or a file sealed to a recipient), and then MUST write `crown_jewels: "all"`. A plain document (§2 as a file) MUST carry only opted-in crown jewels and list the rest in `left_out` (decision D121).
+- A writer MUST NOT add `lockdown.export` to a crown jewel because the backup carries it; the opt-in stays what the person chose.
+- A reader that brings a crown jewel in MUST bring it in as a crown jewel (its class, so under the stronger protection again), with its `lockdown.export` as the file has it, absent meaning not opted in; it MUST NOT land as a standard item. An item already in the vault it restores into keeps the class it has there.
+- A reader that doesn't know `crown_jewels` loses nothing: the items are all in `items`, each with its class.
 
 ## 3. The sealed file
 
@@ -133,7 +143,14 @@ Each sealed chunk is its ciphertext followed by the 16-byte tag, so every frame 
 
 - `crates/cxf/tests/fixtures/backup-v1.json`: a plain document with one vault and one folder; a login filed in that folder with two tags and a star (password, code, passkey key, a base-domain website, one earlier version, one attachment); an opted-in crown-jewel wallet; an archived Wi-Fi network; a trashed note; and one left-out crown jewel.
 - `crates/cxf/tests/fixtures/backup-v1.lockdown`: the same document sealed with the password `correct horse battery staple` at the test cost.
+- `crates/cxf/tests/fixtures/backup-v1-crown-jewels.json` (1.1): a locked backup's document marked `crown_jewels: "all"`: a login, a crown-jewel wallet and an archived crown-jewel document with a file, neither crown jewel opted in, nothing left out.
+- `crates/cxf/tests/fixtures/backup-v1-crown-jewels.lockdown`: the same document sealed with the same password at the test cost. The suite opens it by the spec, reads it with a reader of 1.0 (the members 1.0 listed, no others) to every item and class, and reads the marker with the reference reader.
 
 ## 5. Changes
 
 Version 1 is the first. A change a version-1 reader can't ignore raises `v` (the document) or the sealed-file version byte. Recipient (public-key) sealing, as `age` does it, is a planned addition and will take a new `kdf.alg` and a new version.
+
+| Version | Date | Change |
+|---|---|---|
+| 1.0 | 2026-10-18 | The first. |
+| 1.1 | 2026-11-04 | The document's optional `crown_jewels` member (`"all"`) and §2.7: a locked backup carries every crown jewel, sealed under its file key, opted in or not (decision D138 as decided). `v` stays `1`: a 1.0 reader ignores the member and reads every item, crown jewels as crown jewels. |

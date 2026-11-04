@@ -292,7 +292,9 @@ impl Session {
         vault: Option<&str>,
     ) -> Result<(Vec<u8>, crate::ExportPreview), String> {
         let only = self.vault_choice(vault)?;
-        let (doc, mut preview) = self.backup_document(only)?;
+        // A file to a public key may go to someone else: D121 as before.
+        let (doc, mut preview) =
+            self.backup_document(only, super::transfer::CrownJewels::OptedIn)?;
         let plain = doc.to_bytes().map_err(|e| e.to_string())?;
         let sealed = lockdown_cxf::age_file::seal_to(&plain, recipients)?;
         preview.encrypted = true;

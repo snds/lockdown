@@ -1,0 +1,120 @@
+{
+  "format": "lockdown-backup",
+  "v": 1,
+  "exported_at": 1762214400,
+  "exporter": "Lockdown 0.1.0",
+  "items": [
+    {
+      "id": "00000000-0000-4000-8000-000000000101",
+      "kind": "login",
+      "class": "standard",
+      "state": "live",
+      "created_at": 1700000000,
+      "modified_at": 1700000000,
+      "fields": [
+        {
+          "id": "title",
+          "kind": "text",
+          "label": "title",
+          "value": {
+            "text": "Example Forum"
+          }
+        },
+        {
+          "id": "user",
+          "kind": "text",
+          "label": "Username",
+          "value": {
+            "text": "ada@example.com"
+          }
+        },
+        {
+          "id": "pw",
+          "kind": "hidden",
+          "label": "Password",
+          "value": {
+            "text": "correct horse battery staple"
+          }
+        }
+      ],
+      "history": [],
+      "attachments": [],
+      "vault": "00000000-0000-4000-8000-000000000190"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000102",
+      "kind": "crypto-wallet",
+      "class": "crown_jewel",
+      "state": "live",
+      "created_at": 1700000000,
+      "modified_at": 1700000100,
+      "fields": [
+        {
+          "id": "title",
+          "kind": "text",
+          "label": "title",
+          "value": {
+            "text": "Cold wallet"
+          }
+        },
+        {
+          "id": "seed",
+          "kind": "hidden",
+          "label": "Recovery phrase",
+          "value": {
+            "text": "abandon ability able about above absent absorb abstract absurd abuse access accident"
+          }
+        }
+      ],
+      "history": [],
+      "attachments": [],
+      "vault": "00000000-0000-4000-8000-000000000190"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000103",
+      "kind": "document",
+      "class": "crown_jewel",
+      "state": "archived",
+      "created_at": 1700000000,
+      "modified_at": 1700000200,
+      "fields": [
+        {
+          "id": "title",
+          "kind": "text",
+          "label": "title",
+          "value": {
+            "text": "Exchange recovery codes"
+          }
+        },
+        {
+          "id": "notes",
+          "kind": "text",
+          "label": "Notes",
+          "value": {
+            "text": "8f3k-2m9q 7r4t-1w6z 5c8n-0p3x"
+          }
+        }
+      ],
+      "history": [],
+      "attachments": [
+        {
+          "name": "codes.txt",
+          "mime": "text/plain",
+          "size": 30,
+          "blake3": "9962b2871791ef483726ea30c0c1e74f265bc389dc317a862ca3293bd77d196f",
+          "data": "OGYzay0ybTlxCjdyNHQtMXc2ego1YzhuLTBwM3gK"
+        }
+      ],
+      "vault": "00000000-0000-4000-8000-000000000190"
+    }
+  ],
+  "left_out": [],
+  "vaults": [
+    {
+      "id": "00000000-0000-4000-8000-000000000190",
+      "name": "Personal",
+      "folders": []
+    }
+  ],
+  "crown_jewels": "all"
+}

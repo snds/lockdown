@@ -117,6 +117,14 @@ pub struct BackupSettings {
     /// How many backups to keep, 1 to 100; older ones Lockdown made are
     /// removed from the folder.
     pub keep_last: u32,
+    /// Whether locked backups (scheduled ones and a locked Lockdown
+    /// export) carry every crown jewel, sealed under the backup's password
+    /// ("Include crown jewels", D138 as decided by Sean, 2026-11-04). On by
+    /// default, and on for a settings file written before it existed, so
+    /// the next scheduled backup after the update carries them. Off brings
+    /// back the per-item opt-in (D121). Changed only through
+    /// `backup_crown_jewels`, behind the `Reveal` gate.
+    pub include_crown_jewels: bool,
 }
 
 impl Default for BackupSettings {
@@ -126,6 +134,7 @@ impl Default for BackupSettings {
             folder: None,
             interval_hours: 24,
             keep_last: 10,
+            include_crown_jewels: true,
         }
     }
 }
@@ -377,9 +386,15 @@ mod tests {
             .collect();
         assert_eq!(
             backup,
-            ["enabled", "folder", "interval_hours", "keep_last"]
-                .map(String::from)
-                .into(),
+            [
+                "enabled",
+                "folder",
+                "interval_hours",
+                "keep_last",
+                "include_crown_jewels"
+            ]
+            .map(String::from)
+            .into(),
             "the backup key is never in the settings file"
         );
     }
@@ -408,5 +423,47 @@ mod tests {
         }
         .clamped();
         assert_eq!(blank.breach_endpoint, None);
+    }
+
+    #[test]
+    fn crown_jewels_go_into_backups_by_default_and_for_an_older_file() {
+        assert!(Settings::default().backup.include_crown_jewels);
+        // A file written before the switch existed, with backups on: the
+        // next scheduled backup after the update carries crown jewels.
+        #[derive(serde::Serialize)]
+        struct OlderBackup {
+            enabled: bool,
+            folder: Option<String>,
+            interval_hours: u32,
+            keep_last: u32,
+        }
+        #[derive(serde::Serialize)]
+        struct Older {
+            v: u16,
+            backup: OlderBackup,
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(SETTINGS_FILE);
+        let older = Older {
+            v: 1,
+            backup: OlderBackup {
+                enabled: true,
+                folder: Some("/backups".into()),
+                interval_hours: 6,
+                keep_last: 3,
+            },
+        };
+        std::fs::write(&path, lockdown_crypto::cbor::to_canonical(&older).unwrap()).unwrap();
+        let loaded = Settings::load(&path).unwrap();
+        assert!(loaded.backup.enabled && loaded.backup.include_crown_jewels);
+        assert_eq!(
+            (loaded.backup.interval_hours, loaded.backup.keep_last),
+            (6, 3)
+        );
+        // Off stays off across a save and a load.
+        let mut off = loaded;
+        off.backup.include_crown_jewels = false;
+        off.save(&path).unwrap();
+        assert!(!Settings::load(&path).unwrap().backup.include_crown_jewels);
     }
 }

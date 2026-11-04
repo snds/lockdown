@@ -53,6 +53,20 @@ const EXPORTER_NAME: &str = "Lockdown";
 /// The formats an export writes.
 pub const EXPORT_FORMATS: [&str; 4] = ["lockdown", "cxf", "csv", "kdbx"];
 
+/// Which crown jewels a file carries (D121, D138 as decided).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CrownJewels {
+    /// Only the ones the person opted in, one by one; the rest are listed
+    /// as left out. Every plain file, every format but a locked Lockdown
+    /// backup, and a locked backup with "Include crown jewels" off.
+    OptedIn,
+    /// Every one, opted in or not, inside the sealed file under its
+    /// password: a locked Lockdown backup with "Include crown jewels" on
+    /// (the default). Never a plain file: [`Session::export_file_as`]
+    /// narrows it to [`CrownJewels::OptedIn`] for anything not sealed.
+    All,
+}
+
 /// A parsed file waiting for the person to say yes.
 #[derive(Default)]
 pub struct Pending {
@@ -512,10 +526,19 @@ impl Session {
     }
 
     /// Every visible item as an export takes it: what goes, and what stays
-    /// (crown jewels not opted in, D121). `trashed` takes the Deleted view
-    /// too (the Lockdown format keeps it; the others don't).
-    fn gather(&self, trashed: bool, only: Option<Id>) -> Result<Gathered, String> {
-        let mut out = Gathered::default();
+    /// (crown jewels not opted in, D121, unless `crown` takes them all).
+    /// `trashed` takes the Deleted view too (the Lockdown format keeps it;
+    /// the others don't).
+    fn gather(
+        &self,
+        trashed: bool,
+        only: Option<Id>,
+        crown: CrownJewels,
+    ) -> Result<Gathered, String> {
+        let mut out = Gathered {
+            crown,
+            ..Gathered::default()
+        };
         for vault in self
             .vaults()
             .filter(|v| only.is_none_or(|o| v.context().vault_id == o))
@@ -568,7 +591,10 @@ impl Session {
             }
             let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
             let title = text_of(&fields, "title").unwrap_or_default();
-            if item.class == ItemClass::CrownJewel && !export_opted_in(&fields) {
+            if item.class == ItemClass::CrownJewel
+                && out.crown == CrownJewels::OptedIn
+                && !export_opted_in(&fields)
+            {
                 out.left_out.push(LeftOut {
                     id: item.item_id.to_string(),
                     title,
@@ -636,25 +662,63 @@ impl Session {
     }
 
     /// What an export in `format` would carry and leave, before anything
-    /// is written.
-    pub fn export_preview(
+    /// is written, for a file carrying `crown` (a locked Lockdown backup may
+    /// carry every crown jewel; any other file is counted as
+    /// [`CrownJewels::OptedIn`]).
+    pub fn export_preview_as(
         &self,
         format: &str,
         vault: Option<&str>,
+        crown: CrownJewels,
     ) -> Result<ExportPreview, String> {
         if !EXPORT_FORMATS.contains(&format) {
             return Err(unknown_export(format));
         }
-        let g = self.gather(format == "lockdown", self.vault_choice(vault)?)?;
+        let crown = if format == "lockdown" {
+            crown
+        } else {
+            CrownJewels::OptedIn
+        };
+        let g = self.gather(format == "lockdown", self.vault_choice(vault)?, crown)?;
         Ok(g.preview(format))
     }
 
-    /// The Lockdown document of everything an export or backup may carry.
+    /// The crown jewels a Lockdown backup would take: how many there are,
+    /// and how many of those the person opted in (D121). Opens only the
+    /// crown jewels, never a file.
+    pub(crate) fn crown_jewel_counts(&self) -> Result<(usize, usize), String> {
+        let (mut all, mut opted) = (0, 0);
+        for vault in self
+            .vaults()
+            .filter(|v| self.exportable(v.context().vault_id))
+        {
+            for item in vault.items() {
+                let in_scope = matches!(
+                    item.state,
+                    ItemState::Live | ItemState::Archived | ItemState::Trashed
+                );
+                if item.class != ItemClass::CrownJewel || !in_scope || item.kind.hidden() {
+                    continue;
+                }
+                all += 1;
+                let fields = vault.open_item(item.item_id).map_err(|e| e.to_string())?;
+                if export_opted_in(&fields) {
+                    opted += 1;
+                }
+            }
+        }
+        Ok((all, opted))
+    }
+
+    /// The Lockdown document of everything an export or backup may carry:
+    /// with [`CrownJewels::All`] every crown jewel, said in the document
+    /// (`crown_jewels: "all"`), for a caller that seals it.
     pub(crate) fn backup_document(
         &self,
         only: Option<Id>,
+        crown: CrownJewels,
     ) -> Result<(Document, ExportPreview), String> {
-        let g = self.gather(true, only)?;
+        let g = self.gather(true, only, crown)?;
         let preview = g.preview("lockdown");
         let mut doc = Document::new(
             now_secs().max(0) as u64,
@@ -688,18 +752,35 @@ impl Session {
         }
         doc.left_out = g.left_out.clone();
         doc.vaults = g.vaults.clone();
+        if crown == CrownJewels::All {
+            doc.crown_jewels = Some(archive::CROWN_JEWELS_ALL.into());
+        }
         Ok((doc, preview))
     }
 
     /// The export file's bytes: `lockdown` plain (no password) or sealed
     /// (a password), `cxf` and `csv` plain, `kdbx` sealed (a password is
     /// needed). The bytes carry secrets; the caller writes them once and
-    /// drops them.
+    /// drops them. Crown jewels as D121 says: only the opted-in ones.
     pub fn export_file(
         &self,
         format: &str,
         password: Option<&[u8]>,
         vault: Option<&str>,
+    ) -> Result<(Zeroizing<Vec<u8>>, ExportPreview), String> {
+        self.export_file_as(format, password, vault, CrownJewels::OptedIn)
+    }
+
+    /// [`Self::export_file`] carrying `crown`. [`CrownJewels::All`] holds
+    /// only for a Lockdown file sealed under a password (a locked backup,
+    /// D138 as decided); a plain file or another format takes the opted-in
+    /// crown jewels only, whatever the caller asked (D121, D142).
+    pub fn export_file_as(
+        &self,
+        format: &str,
+        password: Option<&[u8]>,
+        vault: Option<&str>,
+        crown: CrownJewels,
     ) -> Result<(Zeroizing<Vec<u8>>, ExportPreview), String> {
         if !EXPORT_FORMATS.contains(&format) {
             return Err(unknown_export(format));
@@ -707,7 +788,12 @@ impl Session {
         let only = self.vault_choice(vault)?;
         let password = password.filter(|p| !p.is_empty());
         if format == "lockdown" {
-            let (doc, mut preview) = self.backup_document(only)?;
+            let crown = if password.is_some() {
+                crown
+            } else {
+                CrownJewels::OptedIn
+            };
+            let (doc, mut preview) = self.backup_document(only, crown)?;
             let plain = doc.to_bytes().map_err(|e| e.to_string())?;
             let Some(pw) = password else {
                 return Ok((plain, preview));
@@ -719,7 +805,7 @@ impl Session {
             preview.encrypted = true;
             return Ok((Zeroizing::new(sealed), preview));
         }
-        let g = self.gather(false, only)?;
+        let g = self.gather(false, only, CrownJewels::OptedIn)?;
         let mut preview = g.preview(format);
         let items = g.imported_items();
         let bytes = match format {
@@ -783,12 +869,24 @@ pub fn write_user_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
     })
 }
 
-#[derive(Default)]
 struct Gathered {
+    crown: CrownJewels,
     items: Vec<Gathered1>,
     vaults: Vec<DocVault>,
     left_out: Vec<LeftOut>,
     trashed_left: usize,
+}
+
+impl Default for Gathered {
+    fn default() -> Self {
+        Self {
+            crown: CrownJewels::OptedIn,
+            items: Vec::new(),
+            vaults: Vec::new(),
+            left_out: Vec::new(),
+            trashed_left: 0,
+        }
+    }
 }
 
 struct Gathered1 {
@@ -920,6 +1018,7 @@ impl Gathered {
             },
             crown_jewels_included: crown_in,
             crown_jewels_left_out: self.left_out.len(),
+            crown_jewels_all: self.crown == CrownJewels::All,
             left_out: self
                 .left_out
                 .iter()
