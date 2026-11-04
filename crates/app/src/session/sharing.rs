@@ -357,18 +357,21 @@ impl Session {
         None
     }
 
-    /// What this persona may do with an item: `None` for its own.
+    /// What this persona may do with an item: `None` for its own. An item
+    /// shared on its own follows its share while it is held as received;
+    /// once its vault is open here for real, the vault's right answers.
     pub(crate) fn item_right(&self, item_id: Id) -> Option<Right> {
-        if let Some(r) = self
-            .sharing
-            .received()
-            .values()
-            .find(|r| Item::from_bytes(&r.item).is_ok_and(|i| i.item_id == item_id))
+        let vault = self.holding(item_id).ok().map(|v| v.context().vault_id);
+        if vault.is_none_or(|v| self.is_received_vault(v))
+            && let Some(r) = self
+                .sharing
+                .received()
+                .values()
+                .find(|r| Item::from_bytes(&r.item).is_ok_and(|i| i.item_id == item_id))
         {
             return Some(r.right);
         }
-        let vault = self.holding(item_id).ok()?.context().vault_id;
-        self.vault_right(vault)
+        self.vault_right(vault?)
     }
 
     /// Refuses a change to a vault this persona can only view or fill.
@@ -517,7 +520,7 @@ impl Session {
             // An open vault whose chain breaks a post-quantum rule under
             // its members' pinned keys stops the unlock, as one of the
             // identity's own would (doc 28, D338).
-            if self.vaults().any(|v| v.context().vault_id == vault_id) {
+            if self.is_open(vault_id) {
                 self.apply_roster(vault_id)?;
             }
         }
@@ -536,7 +539,7 @@ impl Session {
     /// Opens a vault someone else owns from the store, under this
     /// persona's own keys, trusting the devices this device pinned.
     fn open_shared_vault(&mut self, vault_id: Id) -> Result<(), String> {
-        if self.vaults().any(|v| v.context().vault_id == vault_id) {
+        if self.is_open(vault_id) {
             return Ok(());
         }
         let record =
@@ -582,13 +585,27 @@ impl Session {
             keys,
             created: false,
         });
+        self.drop_received(vault_id);
         Ok(())
     }
 
-    /// Builds the in-memory vaults that hold items shared on their own.
+    /// A vault that just opened for real takes the place of the holder of
+    /// items shared from it on their own: each is listed once, from the
+    /// vault's own copy, under the vault's right. The shares themselves
+    /// stay in the sharing record, so the items come back as received
+    /// when the vault closes again ([`Self::rebuild_received`]).
+    pub(super) fn drop_received(&mut self, vault_id: Id) {
+        self.received.retain(|v| v.context().vault_id != vault_id);
+    }
+
+    /// Builds the in-memory vaults that hold items shared on their own,
+    /// for every vault they came from that isn't open here for real.
     fn rebuild_received(&mut self) -> Result<(), String> {
         let mut by_vault: BTreeMap<Id, Vec<&ReceivedItem>> = BTreeMap::new();
         for r in self.sharing.received().values() {
+            if self.is_open(r.ctx.vault_id) {
+                continue;
+            }
             by_vault.entry(r.ctx.vault_id).or_default().push(r);
         }
         let mut out = Vec::new();
@@ -1243,7 +1260,7 @@ impl Session {
                 continue;
             }
             self.refresh_unready(transport, token, sth, vault_id)?;
-            let open = self.vaults().any(|v| v.context().vault_id == vault_id);
+            let open = self.is_open(vault_id);
             if !open {
                 self.join_shared(transport, token, sth, shared)?;
             }
@@ -1339,7 +1356,7 @@ impl Session {
             return Err("the server listed a shared vault with no membership".into());
         };
         self.rosters.insert(vault_id, roster);
-        if self.vaults().any(|v| v.context().vault_id == vault_id) {
+        if self.is_open(vault_id) {
             self.apply_roster(vault_id)?;
         }
         Ok(())
@@ -1553,10 +1570,12 @@ impl Session {
         vault_id: Id,
         key_ref: Id,
     ) -> Result<(), String> {
-        let Ok(vault) = self.vault_by_id(vault_id) else {
+        // Only a vault open here for real moves to a new key; a holder of
+        // items shared from it on their own has none to move.
+        let Ok(open) = self.open_by_id(vault_id) else {
             return Ok(());
         };
-        if vault.vault_key_id() == key_ref {
+        if open.vault.vault_key_id() == key_ref {
             return Ok(());
         }
         let roster = self
@@ -1646,13 +1665,14 @@ impl Session {
             self.pin(transport, token, sth, Ok(account))?;
         }
         // A vault of this persona not open yet takes the roster as it opens.
-        if self.vaults().any(|v| v.context().vault_id == vault_id) {
+        if self.is_open(vault_id) {
             self.apply_roster(vault_id)?;
         }
         Ok(())
     }
 
-    /// Takes a vault out of this session and the store.
+    /// Takes a vault out of this session and the store. Items still shared
+    /// from it on their own come back as received.
     fn close_vault(&mut self, vault_id: Id) -> Result<(), String> {
         let before = self.more.len();
         self.more.retain(|o| o.vault.context().vault_id != vault_id);
@@ -1662,6 +1682,7 @@ impl Session {
                 cfg.vaults.remove(&vault_id);
                 cfg.save(&self.paths.sync_file())?;
             }
+            self.rebuild_received()?;
         }
         Ok(())
     }
@@ -2666,8 +2687,8 @@ impl Session {
                     return Ok(());
                 }
             };
-            if self.vaults().any(|x| x.context().vault_id == vault_id) {
-                if self.vault_by_id(vault_id)?.vault_key_id() != env.place.key_id {
+            if self.is_open(vault_id) {
+                if self.open_by_id(vault_id)?.vault.vault_key_id() != env.place.key_id {
                     self.vault_slot(vault_id)?
                         .adopt_vault_key(env.place.key_id, key);
                 }

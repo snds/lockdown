@@ -57,8 +57,10 @@ pub(crate) fn crown_jewel_fixed(kind: ItemKind, fields: &[PlainField]) -> bool {
 impl Session {
     // --- the vaults ---------------------------------------------------------
 
+    /// The vaults open here for real (not the holders of items shared on
+    /// their own, whose vault a sync or an unlock may open now).
     fn vault_ids(&self) -> Vec<Id> {
-        self.vaults().map(|v| v.context().vault_id).collect()
+        self.open_vaults().map(|v| v.context().vault_id).collect()
     }
 
     pub(crate) fn vault_by_id(&self, vault_id: Id) -> Result<&Vault, String> {
@@ -118,6 +120,7 @@ impl Session {
             )? {
                 Ok(opened) => {
                     self.more.push(opened);
+                    self.drop_received(vault_id);
                     if self.rosters.contains_key(&vault_id) {
                         self.apply_roster(vault_id)?;
                     }
@@ -207,7 +210,7 @@ impl Session {
     pub fn create_vault(&mut self, name: &str) -> Result<Id, String> {
         let name = lockdown_vault::organization::normalize_name(name, "vault")
             .map_err(|e| e.to_string())?;
-        if self.vaults().count() >= MAX_VAULTS {
+        if self.open_vaults().count() >= MAX_VAULTS {
             return Err(format!("a persona holds at most {MAX_VAULTS} vaults here"));
         }
         let first = self.opened.vault.context();
@@ -236,7 +239,7 @@ impl Session {
             vault.trust_device(*id, key.clone());
         }
         let mut order = 0;
-        for v in self.vaults() {
+        for v in self.open_vaults() {
             order = order.max(v.info().map_err(|e| e.to_string())?.order.unwrap_or(0));
         }
         let info = VaultInfo {
