@@ -162,4 +162,21 @@ describe("the Status screen", () => {
     expect(screen.getByRole("status")).toHaveTextContent("a rollback")
     expect(screen.getByRole("status")).toHaveTextContent("Nothing was changed")
   })
+
+  it("lists what was held back for support, in the check's own words, and nothing when none was", () => {
+    const detail = "Family: head manifest 7 by bob@example.com held back: the vault's history didn't check out at manifest 7: the device signature didn't check out"
+    const { rerender } = render(
+      <ClientProvider value={fakeClient({})}>
+        <StatusView status={{ ...status, held_back: [detail] }} onStatus={() => {}} onNotice={() => {}} />
+      </ClientProvider>,
+    )
+    const list = screen.getByRole("list", { name: "Held back until they verify" })
+    expect(list).toHaveTextContent(detail)
+    rerender(
+      <ClientProvider value={fakeClient({})}>
+        <StatusView status={status} onStatus={() => {}} onNotice={() => {}} />
+      </ClientProvider>,
+    )
+    expect(screen.queryByRole("list", { name: "Held back until they verify" })).not.toBeInTheDocument()
+  })
 })
