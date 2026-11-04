@@ -931,6 +931,7 @@ impl Session {
             Change::Add {
                 member: contact.party(),
                 right,
+                keys: None,
             },
             None,
             me.account_id,

@@ -232,6 +232,74 @@ pub struct Contact {
     /// (`crate::pq`; absent for an identity from before it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pq_isk: Option<serde_bytes::ByteBuf>,
+    /// The keys this contact moved on from, oldest first: a hand-over the
+    /// old keys signed, or the owner of a shared vault letting them back in
+    /// after a reset (docs/plan/55-member-key-change.md). Their devices
+    /// stay in `devices`, marked revoked, so what they signed before still
+    /// verifies; a lookup that shows one of these keys again is refused.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub former: Vec<FormerKeys>,
+}
+
+/// How a pin moved on to new keys.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum KeyMove {
+    /// A hand-over the old keys signed.
+    HandedOver,
+    /// The owner of a shared vault let them back in, naming the new keys
+    /// in a membership change they signed.
+    LetBackIn,
+}
+
+/// Keys a contact used before, kept so what they signed still verifies.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct FormerKeys {
+    /// The profile.
+    pub profile_id: Id,
+    /// Its Identity Signing Key.
+    #[serde(with = "serde_bytes")]
+    pub isk_pub: [u8; 32],
+    /// Its post-quantum key, when one was pinned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_isk: Option<serde_bytes::ByteBuf>,
+    /// The persona shares went to.
+    pub persona_id: Id,
+    /// Its receiving key.
+    pub kem_pub: KemPublicKey,
+    /// The devices of that identity.
+    pub devices: BTreeSet<Id>,
+    /// The identity manifest pinned last: `seq` and hash.
+    pub identity_seq: u64,
+    /// Its hash.
+    pub identity_hash: Hash32,
+    /// When this device moved on from them.
+    pub until: Timestamp,
+    /// How.
+    pub how: KeyMove,
+}
+
+impl FormerKeys {
+    /// Their identity's ML-DSA-65 key, as pinned then.
+    pub fn pq_key(&self) -> Result<Option<lockdown_crypto::pq_sign::PqVerifyingKey>> {
+        Ok(match &self.pq_isk {
+            Some(b) => Some(lockdown_crypto::pq_sign::PqVerifyingKey::from_bytes(b)?),
+            None => None,
+        })
+    }
+}
+
+/// What a fresh lookup of a pinned person comes to
+/// ([`Contact::take_lookup`]).
+#[derive(Clone, Debug)]
+pub enum Lookup {
+    /// The same keys: the pin goes on (devices and the manifest move forward).
+    Continues(Contact),
+    /// New keys something this device trusts vouched for: the pin moved.
+    Moved(Contact, KeyMove),
+    /// New keys nothing vouches for. The pin stays; the fresh lookup is
+    /// only ever named, never trusted.
+    Changed(Contact),
 }
 
 /// A fingerprint, two ways.
@@ -338,7 +406,144 @@ impl Contact {
             verified_at: None,
             pq_isk: crate::pq::published_key(&verified.profile)?
                 .map(|k| serde_bytes::ByteBuf::from(k.as_bytes().to_vec())),
+            former: Vec::new(),
         })
+    }
+
+    /// The keys pinned now.
+    pub fn pinned_keys(&self) -> crate::key_change::PinnedKeys {
+        crate::key_change::PinnedKeys {
+            profile_id: self.profile_id,
+            isk_pub: self.isk_pub,
+            pq_isk: self.pq_isk.clone(),
+            persona_id: self.persona_id,
+            kem_pub: self.kem_pub.clone(),
+        }
+    }
+
+    /// The keys a membership change names for them (`Change::Add.keys`).
+    pub fn member_keys(&self) -> crate::sharing::MemberKeys {
+        crate::sharing::MemberKeys {
+            isk_pub: self.isk_pub,
+            pq_isk: self.pq_isk.clone(),
+            kem_pub: self.kem_pub.clone(),
+        }
+    }
+
+    /// Whether `party` and `keys` name exactly these keys, this account.
+    pub fn is_named_by(&self, party: &Party, keys: &crate::sharing::MemberKeys) -> bool {
+        *party == self.party()
+            && keys.isk_pub == self.isk_pub
+            && keys.kem_pub == self.kem_pub
+            && keys.pq_isk == self.pq_isk
+    }
+
+    /// The former identity a device of theirs belonged to, if it is one.
+    pub fn former_of(&self, device_id: Id) -> Option<&FormerKeys> {
+        self.former
+            .iter()
+            .rev()
+            .find(|f| f.devices.contains(&device_id))
+    }
+
+    /// Whether `fresh` shows keys this contact already moved on from.
+    fn shows_former(&self, fresh: &Contact) -> bool {
+        self.former.iter().any(|f| {
+            f.isk_pub == fresh.isk_pub
+                || f.kem_pub == fresh.kem_pub
+                || (f.profile_id == fresh.profile_id && f.isk_pub == fresh.isk_pub)
+        })
+    }
+
+    /// Takes a fresh lookup of the same account. The same keys continue the
+    /// pin ([`Self::check_continues`]). Other keys move it only when a chain
+    /// of hand-overs the fresh identity publishes walks there from the pin
+    /// (`key_change::walk`), or when `vouched` says a membership change the
+    /// owner of a shared vault signed names exactly them. Anything else is
+    /// [`Lookup::Changed`]: the pin stays. Keys it moved on from before, an
+    /// older identity of the same profile, another account: refused.
+    pub fn take_lookup(
+        &self,
+        fresh: &Contact,
+        handovers: &[crate::key_change::KeyHandover],
+        vouched: &dyn Fn(&Contact) -> bool,
+    ) -> Result<Lookup> {
+        if fresh.account_id != self.account_id {
+            return Err(Error::Transparency(format!(
+                "the server answered for {} with another account's identity",
+                self.login
+            )));
+        }
+        let pinned = self.pinned_keys();
+        let shown = fresh.pinned_keys();
+        if pinned.same_as(&shown) {
+            return Ok(Lookup::Continues(self.check_continues(fresh)?));
+        }
+        if self.shows_former(fresh) {
+            return Err(Error::Transparency(format!(
+                "the server showed keys for {} that this device already moved on from; refused",
+                self.login
+            )));
+        }
+        if fresh.profile_id == self.profile_id && fresh.identity_seq <= self.identity_seq {
+            return Err(Error::Transparency(format!(
+                "the server showed an older identity for {} (manifest {}) than this device already saw ({}); refused",
+                self.login, fresh.identity_seq, self.identity_seq
+            )));
+        }
+        if crate::key_change::walk(&pinned, handovers, &shown).is_some() {
+            return Ok(Lookup::Moved(
+                self.moved_to(fresh, KeyMove::HandedOver),
+                KeyMove::HandedOver,
+            ));
+        }
+        if vouched(fresh) {
+            return Ok(Lookup::Moved(
+                self.moved_to(fresh, KeyMove::LetBackIn),
+                KeyMove::LetBackIn,
+            ));
+        }
+        Ok(Lookup::Changed(fresh.clone()))
+    }
+
+    /// This contact moved on to `fresh`'s keys: the old ones are kept as
+    /// former keys, their devices stay (revoked) so what they signed still
+    /// verifies, and the fingerprint check carries over only along a
+    /// hand-over the compared keys signed.
+    pub fn moved_to(&self, fresh: &Contact, how: KeyMove) -> Contact {
+        let mut out = fresh.clone();
+        out.first_seen = self.first_seen;
+        out.verified_at = match how {
+            KeyMove::HandedOver => self.verified_at,
+            KeyMove::LetBackIn => None,
+        };
+        out.former = self.former.clone();
+        out.former.push(FormerKeys {
+            profile_id: self.profile_id,
+            isk_pub: self.isk_pub,
+            pq_isk: self.pq_isk.clone(),
+            persona_id: self.persona_id,
+            kem_pub: self.kem_pub.clone(),
+            devices: self
+                .devices
+                .keys()
+                .filter(|d| !fresh.devices.contains_key(d))
+                .copied()
+                .collect(),
+            identity_seq: self.identity_seq,
+            identity_hash: self.identity_hash,
+            until: Timestamp::now(),
+            how,
+        });
+        for (id, d) in &self.devices {
+            if fresh.devices.contains_key(id) {
+                continue;
+            }
+            let mut d = d.clone();
+            d.revoked = true;
+            out.devices.insert(*id, d);
+        }
+        out
     }
 
     /// Where shares to this contact go.
@@ -442,6 +647,7 @@ impl Contact {
         let mut out = newer.clone();
         out.first_seen = self.first_seen;
         out.verified_at = self.verified_at;
+        out.former = self.former.clone();
         // A device once revoked stays revoked, whatever a later answer says.
         for (id, d) in &self.devices {
             if d.revoked {
@@ -540,6 +746,133 @@ mod tests {
         let swapped_c = Contact::from_public(&swapped, &swapped_v, None, 9).unwrap();
         assert!(contact.check_continues(&swapped_c).is_err());
         assert_ne!(swapped_c.fingerprint().unwrap(), fp);
+    }
+
+    #[test]
+    fn a_new_key_moves_the_pin_only_along_a_hand_over_or_a_vouch_and_never_back() {
+        use crate::key_change::{HandoverKeys, KeyHandover, publish_handover};
+        let dir = tempfile::tempdir().unwrap();
+        let open = |name: &str| {
+            let keystore =
+                FileKeystore::open_or_create(&dir.path().join(format!("{name}.cbor"))).unwrap();
+            let mut identity =
+                Identity::create(&dir.path().join(name), "lockdown", name, &keystore).unwrap();
+            crate::pq::roll_out(&mut identity, &keystore).unwrap();
+            (identity, keystore)
+        };
+        let account = Id::new();
+        let contact_of = |identity: &Identity, keystore: &FileKeystore| {
+            let mut public = public_of(identity, keystore);
+            public.account_id = account;
+            let pq = crate::pq::identity_pq_key(identity, keystore).unwrap();
+            crate::pq::sign_manifest(&mut public.manifest, &pq).unwrap();
+            let verified = public.verify(None).unwrap();
+            let c = Contact::from_public(&public, &verified, None, 1).unwrap();
+            let h = crate::key_change::handovers_of(&verified.profile).unwrap();
+            (c, h)
+        };
+        let handover = |old: &(Identity, FileKeystore), new: &(Identity, FileKeystore)| {
+            let persona = |i: &Identity| i.personas().next().unwrap().persona_id;
+            let mut h = KeyHandover::new(
+                HandoverKeys::of_identity(&old.0).unwrap(),
+                HandoverKeys::of_identity(&new.0).unwrap(),
+                BTreeMap::from([(persona(&old.0), persona(&new.0))]),
+            );
+            for (i, side) in [(old, true), (new, false)] {
+                let isk = crate::identity::identity_signing_key(&i.0, &i.1).unwrap();
+                let pq = crate::pq::identity_pq_key(&i.0, &i.1).unwrap();
+                if side {
+                    h.sign_from(&isk, Some(&pq)).unwrap();
+                } else {
+                    h.sign_to(&isk, Some(&pq)).unwrap();
+                }
+            }
+            h
+        };
+        let never = |_: &Contact| false;
+        let bob = open("bob");
+        let (mut pinned, _) = contact_of(&bob.0, &bob.1);
+        pinned.verified_at = Some(Timestamp::now());
+
+        // The same keys continue the pin.
+        let (same, none) = contact_of(&bob.0, &bob.1);
+        assert!(matches!(
+            pinned.take_lookup(&same, &none, &never).unwrap(),
+            Lookup::Continues(_)
+        ));
+
+        // New keys with nothing to vouch for them: the pin stays, the
+        // lookup is only named. A plain check refuses it as before.
+        let bob2 = open("bob2");
+        let (reset, none) = contact_of(&bob2.0, &bob2.1);
+        assert!(matches!(
+            pinned.take_lookup(&reset, &none, &never).unwrap(),
+            Lookup::Changed(_)
+        ));
+        assert!(pinned.check_continues(&reset).is_err());
+        // The owner's vouch names exactly these keys: moved, not verified.
+        let named = |c: &Contact| c.is_named_by(&reset.party(), &reset.member_keys());
+        let Lookup::Moved(back_in, KeyMove::LetBackIn) =
+            pinned.take_lookup(&reset, &none, &named).unwrap()
+        else {
+            panic!("the vouch didn't move the pin")
+        };
+        assert!(back_in.verified_at.is_none());
+        // A vouch for other keys doesn't.
+        let mallory = open("mallory");
+        let (fake, none) = contact_of(&mallory.0, &mallory.1);
+        assert!(matches!(
+            pinned.take_lookup(&fake, &none, &named).unwrap(),
+            Lookup::Changed(_)
+        ));
+
+        // A hand-over the old keys signed, published on the new profile:
+        // moved silently, the compared fingerprint carried along it.
+        let mut bob2 = bob2;
+        let to_bob2 = handover(&bob, &bob2);
+        publish_handover(&mut bob2.0, &bob2.1, &to_bob2).unwrap();
+        let (handed, list) = contact_of(&bob2.0, &bob2.1);
+        let Lookup::Moved(moved, KeyMove::HandedOver) =
+            pinned.take_lookup(&handed, &list, &never).unwrap()
+        else {
+            panic!("the hand-over didn't move the pin")
+        };
+        assert_eq!(moved.isk_pub, bob2.0.profile().isk_pub);
+        assert!(moved.verified_at.is_some());
+        assert_eq!(moved.former.len(), 1);
+        assert_eq!(moved.former[0].isk_pub, pinned.isk_pub);
+        // The old devices stay, revoked, for what they signed.
+        let old_device = *pinned.devices.keys().next().unwrap();
+        assert!(moved.devices[&old_device].revoked);
+        assert_eq!(
+            moved.former_of(old_device).unwrap().profile_id,
+            pinned.profile_id
+        );
+        // Moved once: the same lookup again continues it.
+        assert!(matches!(
+            moved.take_lookup(&handed, &list, &never).unwrap(),
+            Lookup::Continues(_)
+        ));
+        // Never backwards: the old keys are refused now, vouched or not.
+        let everything = |_: &Contact| true;
+        assert!(moved.take_lookup(&same, &[], &everything).is_err());
+
+        // A chain: bob2 hands over to bob3, whose profile lists both.
+        let mut bob3 = open("bob3");
+        publish_handover(&mut bob3.0, &bob3.1, &to_bob2).unwrap_err();
+        let mut bob3_list = crate::key_change::handovers_of(bob2.0.profile()).unwrap();
+        let to_bob3 = handover(&bob2, &bob3);
+        bob3_list.push(to_bob3.clone());
+        publish_handover(&mut bob3.0, &bob3.1, &to_bob3).unwrap();
+        let (third, _) = contact_of(&bob3.0, &bob3.1);
+        assert!(matches!(
+            pinned.take_lookup(&third, &bob3_list, &never).unwrap(),
+            Lookup::Moved(_, KeyMove::HandedOver)
+        ));
+        // Another account answering: refused.
+        let mut other = third.clone();
+        other.account_id = Id::new();
+        assert!(pinned.take_lookup(&other, &bob3_list, &everything).is_err());
     }
 
     #[test]

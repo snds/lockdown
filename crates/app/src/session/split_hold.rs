@@ -184,6 +184,7 @@ mod tests {
             Change::Add {
                 member: party(carol),
                 right: Right::Edit,
+                keys: None,
             },
             owner,
         );

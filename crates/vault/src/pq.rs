@@ -464,16 +464,30 @@ pub fn check_events(
     events: &[crate::sharing::MembershipEvent],
     key_of: &dyn Fn(ecosystem_identity::records::Id) -> Option<PqVerifyingKey>,
 ) -> Result<std::collections::BTreeMap<ecosystem_identity::records::Id, u64>> {
+    check_events_by(events, &|e| (e.by_account, key_of(e.by_account)))
+}
+
+/// [`check_events`] with the rule and the key chosen per event: `signer`
+/// answers whose rule an event follows and under which key. A person whose
+/// keys changed (docs/plan/55-member-key-change.md) signed their older
+/// events with their former identity, whose rule and key are its own (the
+/// former profile's id), and their newer ones under their account's.
+pub fn check_events_by(
+    events: &[crate::sharing::MembershipEvent],
+    signer: &dyn Fn(
+        &crate::sharing::MembershipEvent,
+    ) -> (ecosystem_identity::records::Id, Option<PqVerifyingKey>),
+) -> Result<std::collections::BTreeMap<ecosystem_identity::records::Id, u64>> {
     let mut first = std::collections::BTreeMap::new();
     for event in events {
-        let key = key_of(event.by_account);
+        let (whose, key) = signer(event);
         match (&key, &event.pq_sig) {
             (Some(key), Some(_)) => {
                 event.verify_post_quantum(key)?;
-                first.entry(event.by_account).or_insert(event.seq);
+                first.entry(whose).or_insert(event.seq);
             }
             _ => {
-                if first.contains_key(&event.by_account) {
+                if first.contains_key(&whose) {
                     return Err(Error::ChainBroken {
                         seq: event.seq,
                         why: "a membership change lost its post-quantum signature: the same person's changes before it carry one, so every later one must; refusing it".into(),

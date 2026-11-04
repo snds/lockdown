@@ -418,6 +418,7 @@ async fn a_shared_vault_is_read_and_written_by_its_people_by_right() {
         Change::Add {
             member: bob.party,
             right: Right::View,
+            keys: None,
         },
         None,
         &alice,
@@ -448,6 +449,7 @@ async fn a_shared_vault_is_read_and_written_by_its_people_by_right() {
         Change::Add {
             member: carol.party,
             right: Right::Edit,
+            keys: None,
         },
         None,
         &alice,
@@ -512,6 +514,7 @@ async fn a_shared_vault_is_read_and_written_by_its_people_by_right() {
         Change::Add {
             member: dave.party,
             right: Right::View,
+            keys: None,
         },
         None,
         &bob,
@@ -612,6 +615,7 @@ async fn a_head_or_item_under_an_old_generation_is_refused_as_key_rotated() {
         Change::Add {
             member: bob.party,
             right: Right::Edit,
+            keys: None,
         },
         None,
         &alice,

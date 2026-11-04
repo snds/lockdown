@@ -1662,6 +1662,7 @@ async fn a_shared_vaults_heads_membership_changes_and_grants_must_carry_a_good_p
         Change::Add {
             member: bob_party,
             right: Right::Edit,
+            keys: None,
         },
         None,
         alice.account,
