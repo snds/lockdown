@@ -72,6 +72,7 @@ Every flag has an environment variable, so a container needs no command line. `l
 | `--kt-mirror` | `LOCKDOWN_KT_MIRRORS` (comma-separated) | none | A mirror of this server's public log that its clients compare against; up to eight (§12). |
 | `--mirror-of` | `LOCKDOWN_MIRROR_OF` | none | Make this server a mirror of another server's public log (§12). |
 | `--mirror-every-secs`, `--mirror-out` | `LOCKDOWN_MIRROR_EVERY_SECS`, `LOCKDOWN_MIRROR_OUT` | 300, none | How often the mirror copies; a folder to also write its copy to, for a static file host. |
+| `--core-dumps` | `LOCKDOWN_CORE_DUMPS` | `off` | Whether a crash may write a core dump. `on` only to debug a crash (§7). |
 
 **Sign-ups.** The image starts closed. To let someone in, invite their login name on the admin page (Invites) or with `lockdown-server admin invite --login them@example.com`: that one name may register, once, within a week, while sign-ups stay closed. Or set `LOCKDOWN_SIGNUPS=open`, have everyone register, then set it back to `closed` and restart. Signing in keeps working while sign-ups are closed.
 
@@ -182,6 +183,8 @@ Measured on the container image (x86-64 Linux, release build, read-only root, TL
 The image is 53 MB on disk (14 MB compressed). `compose.yaml` caps it at 256 MiB, far above what it uses; the 512 MiB floor in 05-self-host §8 is generous for the server alone.
 
 Disk: the database grows by a few kilobytes per item version; attachments add their own size (with `--blob-dir`, as files beside the database). Give it 10 GB plus your attachments.
+
+**Keys stay out of swap and crash files.** The server keeps its keys (the token key, both log keys and the OPAQUE setup, about 90 KiB) locked in memory, and turns core dumps off when it starts, so neither swap nor a crash file holds them. If the system won't lock that much, the log says so once at start and the server runs anyway; raise the locked-memory limit (`ulimit -l`, `LimitMEMLOCK=` in a systemd unit, `ulimits: memlock` in compose) to 1 MiB or more. To debug a crash with a core dump, start the server once with `--core-dumps on` (it says so in the log), and treat that dump as secret as the server key file: it holds the keys. On Windows the server writes no core file; Windows Error Reporting writes a dump only where an administrator set up `LocalDumps`.
 
 ## 8. Email breach monitoring without a paid key
 

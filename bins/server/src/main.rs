@@ -524,6 +524,12 @@ struct ServeArgs {
     /// address and off on loopback.
     #[arg(long, env = "LOCKDOWN_ANNOUNCE", value_enum, default_value_t = AnnounceFlag::Auto)]
     announce: AnnounceFlag,
+    /// Whether the server may write a core dump when it crashes. Off by
+    /// default, so a crash file never holds the server's keys; `on` leaves
+    /// the limit as the server found it, to debug a crash
+    /// (docs/plan/53-harden-rest.md).
+    #[arg(long, env = "LOCKDOWN_CORE_DUMPS", value_enum, default_value_t = OnOff::Off)]
+    core_dumps: OnOff,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -660,6 +666,9 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
         .map(|b| b.describe())
         .unwrap_or_else(|| "inside the database".into());
     let mut state = AppState::new(Box::new(storage), keys, config);
+    if let Some(line) = lockdown_server::harden::swap_line(&lockdown_crypto::locked::report()) {
+        eprintln!("lockdown-server: {line}");
+    }
     if let Some(url) = &cli.smtp_url {
         let public_url = cli
             .public_url
@@ -1132,6 +1141,13 @@ fn run_security_keys(command: SecurityKeysCommand) -> Result<(), String> {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    // Before any key is read, for every command: no core file of a process
+    // that holds keys (docs/plan/53-harden-rest.md). Only serving takes
+    // `--core-dumps on`.
+    let keep = cli.command.is_none() && cli.serve.core_dumps == OnOff::On;
+    if let Some(line) = lockdown_server::harden::core_dumps(keep).line() {
+        eprintln!("lockdown-server: {line}");
+    }
     let result = match cli.command {
         Some(Command::Backup(b)) => run_backup(b),
         Some(Command::Healthcheck {

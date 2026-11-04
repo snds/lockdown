@@ -399,8 +399,18 @@ impl LoginClient {
 /// The server's OPAQUE setup: the OPRF seed and the server key pair. Made
 /// once, kept secret, and never rotated without re-registering every
 /// account (the password files are bound to it).
+///
+/// The setup lives as long as the server, so it sits in one heap block that
+/// never moves and the pages under it are locked out of swap
+/// ([`crate::locked`], doc 53). `opaque-ke` wipes its OPRF seed and private
+/// key on drop, before the pages are unlocked. The setup is built by value
+/// before it reaches the block (`opaque-ke` has no in-place constructor), so
+/// one short-lived stack copy is left where it was built.
 pub struct OpaqueServer {
-    setup: ServerSetup<Suite>,
+    // Field order is drop order: the setup is wiped while its pages are
+    // still locked.
+    setup: Box<ServerSetup<Suite>>,
+    pages: Option<crate::locked::PageLock>,
 }
 
 impl fmt::Debug for OpaqueServer {
@@ -435,9 +445,19 @@ impl OpaqueServer {
     /// A fresh setup.
     pub fn generate() -> Result<Self> {
         let mut rng = rng()?;
-        Ok(Self {
-            setup: ServerSetup::<Suite>::new(&mut rng),
-        })
+        Ok(Self::locked(Box::new(ServerSetup::<Suite>::new(&mut rng))))
+    }
+
+    fn locked(setup: Box<ServerSetup<Suite>>) -> Self {
+        let pages = crate::locked::PageLock::of_value(&*setup);
+        Self { setup, pages }
+    }
+
+    /// Whether the pages under the setup are locked out of swap now
+    /// (`false` when the system refused, counted in
+    /// [`crate::locked::report`], or this build cannot lock).
+    pub fn is_locked(&self) -> bool {
+        self.pages.is_some()
     }
 
     /// The setup as bytes, to keep in the server's key file.
@@ -447,9 +467,9 @@ impl OpaqueServer {
 
     /// From [`Self::to_bytes`].
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        Ok(Self {
-            setup: ServerSetup::<Suite>::deserialize(bytes).map_err(protocol)?,
-        })
+        Ok(Self::locked(Box::new(
+            ServerSetup::<Suite>::deserialize(bytes).map_err(protocol)?,
+        )))
     }
 
     /// Answers a registration request for `credential_id` (the login name
@@ -1040,6 +1060,21 @@ mod tests {
         };
         assert!(AccountKsf::at(huge).is_err());
         assert!(!ksf_acceptable(&huge) && ksf_acceptable(&ACCOUNT_KSF));
+    }
+
+    #[test]
+    fn the_server_setup_is_locked_out_of_swap_or_counted_as_refused() {
+        // It lives as long as the server (doc 53).
+        let before = crate::locked::report();
+        let made = OpaqueServer::generate().unwrap();
+        let read = OpaqueServer::from_bytes(made.to_bytes().expose()).unwrap();
+        for server in [&made, &read] {
+            if !server.is_locked() {
+                assert!(crate::locked::report().refused > before.refused);
+            }
+        }
+        // Locked or refused, it answers the same.
+        assert_eq!(made.to_bytes().expose(), read.to_bytes().expose());
     }
 
     #[test]

@@ -14,10 +14,12 @@ use lockdown_crypto::auth::OpaqueServer;
 use lockdown_crypto::pq_sign::PqSigningKey;
 use lockdown_crypto::{SigningKey, cbor};
 use serde::{Deserialize, Serialize};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 const KEYS_V: u16 = 1;
 
-#[derive(Serialize, Deserialize)]
+/// The file as read: wiped when it drops, once the keys are made from it.
+#[derive(Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 struct KeyFile {
     v: u16,
     #[serde(with = "serde_bytes")]
@@ -81,6 +83,7 @@ impl ServerKeys {
     pub fn load_or_create(path: &Path) -> Result<Self, KeyError> {
         let mut file = match std::fs::read(path) {
             Ok(bytes) => {
+                let bytes = Zeroizing::new(bytes);
                 let file: KeyFile =
                     cbor::from_slice(&bytes).map_err(|e| KeyError::Decode(e.to_string()))?;
                 if file.v != KEYS_V {
@@ -122,7 +125,9 @@ impl ServerKeys {
             pq_log_key: PqSigningKey::from_seed(seed(&file.pq_log_seed, "post-quantum log")?),
         };
         if changed {
-            let bytes = cbor::to_canonical(&file).map_err(|e| KeyError::Decode(e.to_string()))?;
+            let bytes = Zeroizing::new(
+                cbor::to_canonical(&file).map_err(|e| KeyError::Decode(e.to_string()))?,
+            );
             write_private(path, &bytes)?;
         }
         Ok(keys)
@@ -179,6 +184,32 @@ mod tests {
             assert!(keys.pq_log_key.locked_pages() >= least);
         } else {
             assert!(lockdown_crypto::locked::report().refused > before.refused);
+        }
+    }
+
+    #[test]
+    fn the_token_and_log_keys_and_the_opaque_setup_are_locked_or_counted_as_refused() {
+        // They live as long as the server too (docs/plan/53-harden-rest.md),
+        // made fresh or read from the key file.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("server-key.cbor");
+        let before = lockdown_crypto::locked::report();
+        for keys in [
+            ServerKeys::generate().unwrap(),
+            ServerKeys::load_or_create(&path).unwrap(),
+            ServerKeys::load_or_create(&path).unwrap(),
+        ] {
+            let locked = [
+                keys.token_key.is_locked(),
+                keys.log_key.is_locked(),
+                keys.opaque.is_locked(),
+            ];
+            if locked.contains(&false) {
+                assert!(lockdown_crypto::locked::report().refused > before.refused);
+            }
+            for key in [&keys.token_key, &keys.log_key] {
+                assert_eq!(key.locked_pages() > 0, key.is_locked());
+            }
         }
     }
 
