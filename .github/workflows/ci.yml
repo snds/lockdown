@@ -8,15 +8,14 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
+  # Line tables only: full debug info for every test binary filled the
+  # Linux runner's disk while linking (ld bus errors, PR #38) (and the services job, PR #42).
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
   check:
     name: fmt · clippy · test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # Line tables only: full debug info for every test binary filled the
-    # Linux runner's disk while linking (ld bus errors, PR #38).
-    env:
-      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     strategy:
       fail-fast: false
       matrix:

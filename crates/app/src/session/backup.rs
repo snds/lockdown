@@ -10,6 +10,11 @@
 //! needs no password while the vault is open and the file key is useless
 //! without the vault. Any backup opens anywhere with the password alone,
 //! no account, no device.
+//!
+//! **Crown jewels** (D138 as decided by Sean, 2026-11-04; doc 48): with
+//! "Include crown jewels" on (the default) every crown jewel is in the
+//! document, so it is sealed under the same file key as everything else;
+//! off, only the ones opted in one by one (D121) and the rest are counted.
 
 use std::path::{Path, PathBuf};
 
@@ -20,6 +25,7 @@ use lockdown_cxf::{Limits, build::date_from_unix};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
+use super::transfer::CrownJewels;
 use super::{Session, now_secs};
 use crate::settings::BackupSettings;
 use crate::types::{BackupFile, BackupStatus, ImportPreview};
@@ -49,6 +55,11 @@ pub struct BackupState {
     pub last_attempt_at: Option<i64>,
     /// What went wrong last time.
     pub last_error: Option<String>,
+    /// Whether the last backup written carried every crown jewel. `None`
+    /// for one written before the switch existed (it carried only the
+    /// opted-in ones), so the screen can say once that the next one
+    /// carries them.
+    pub last_carried_crown_jewels: Option<bool>,
 }
 
 /// `YYYYMMDD-HHMMSS` (UTC) for a file name.
@@ -69,6 +80,15 @@ fn is_backup_name(name: &str) -> bool {
                     .bytes()
                     .all(|b| b.is_ascii_digit() || b == b'-' || b == b'n')
         })
+}
+
+/// Which crown jewels a locked backup made under `cfg` carries.
+pub(crate) fn crown_policy(cfg: &BackupSettings) -> CrownJewels {
+    if cfg.include_crown_jewels {
+        CrownJewels::All
+    } else {
+        CrownJewels::OptedIn
+    }
 }
 
 /// The backups in `folder`, newest first.
@@ -96,8 +116,21 @@ pub fn list(folder: &Path) -> Vec<BackupFile> {
             })
         })
         .collect();
-    out.sort_by(|a, b| b.name.cmp(&a.name));
+    out.sort_by_key(|b| std::cmp::Reverse(order_key(&b.name)));
     out
+}
+
+/// A backup name's place in time: its stamp, then its `-nN` (none is the
+/// first of that second), so two written in one second list newest first.
+fn order_key(name: &str) -> (String, u32) {
+    let mid = name
+        .strip_prefix(PREFIX)
+        .and_then(|r| r.strip_suffix(SUFFIX))
+        .unwrap_or(name);
+    match mid.split_once("-n") {
+        Some((stamp, n)) => (stamp.to_string(), n.parse().unwrap_or(u32::MAX)),
+        None => (mid.to_string(), 1),
+    }
 }
 
 impl Session {
@@ -214,6 +247,7 @@ impl Session {
             Ok(_) => {
                 state.last_success_at = Some(now);
                 state.last_error = None;
+                state.last_carried_crown_jewels = Some(cfg.include_crown_jewels);
             }
             Err(e) => state.last_error = Some(e.clone()),
         }
@@ -234,7 +268,7 @@ impl Session {
             ));
         }
         let (kdf, key) = self.backup_key()?;
-        let (doc, _) = self.backup_document(None)?;
+        let (doc, _) = self.backup_document(None, crown_policy(cfg))?;
         let plain = doc.to_bytes().map_err(|e| e.to_string())?;
         let sealed = Zeroizing::new(
             archive::seal(&plain, &key, &kdf, now.max(0) as u64).map_err(|e| e.to_string())?,
@@ -265,10 +299,23 @@ impl Session {
                 .last_success_at
                 .map_or_else(now_secs, |t| t + i64::from(cfg.interval_hours) * 3600)
         });
-        let crown_jewels_left_out = self
-            .export_preview("lockdown", None)
-            .map(|p| p.crown_jewels_left_out)
-            .unwrap_or(0);
+        let (all, opted) = self.crown_jewel_counts().unwrap_or((0, 0));
+        let not_opted = all - opted;
+        let crown_jewels_left_out = if cfg.include_crown_jewels {
+            0
+        } else {
+            not_opted
+        };
+        // Said once: the newest backup lacks crown jewels the next carries.
+        let crown_jewels_waiting = if cfg.include_crown_jewels
+            && next_due_at.is_some()
+            && state.last_success_at.is_some()
+            && state.last_carried_crown_jewels != Some(true)
+        {
+            not_opted
+        } else {
+            0
+        };
         BackupStatus {
             enabled: cfg.enabled,
             folder: cfg.folder.clone(),
@@ -284,6 +331,8 @@ impl Session {
                 .as_deref()
                 .map(|f| list(Path::new(f)))
                 .unwrap_or_default(),
+            include_crown_jewels: cfg.include_crown_jewels,
+            crown_jewels_waiting,
         }
     }
 
@@ -335,6 +384,16 @@ mod tests {
         assert!(is_backup_name(
             "lockdown-backup-20251018-000000-n2.lockdown"
         ));
+        // Two in one second: the later one is listed first.
+        let mut keys = [
+            "lockdown-backup-20251018-000000-n3.lockdown",
+            "lockdown-backup-20251018-000000.lockdown",
+            "lockdown-backup-20251018-000001.lockdown",
+            "lockdown-backup-20251018-000000-n2.lockdown",
+        ]
+        .map(order_key);
+        keys.sort();
+        assert_eq!(keys.map(|k| k.1), [1, 2, 3, 1], "by stamp, then by number");
         for other in [
             "notes.txt",
             "lockdown-backup-../../x.lockdown",
@@ -343,5 +402,26 @@ mod tests {
         ] {
             assert!(!is_backup_name(other), "{other}");
         }
+    }
+
+    #[test]
+    fn a_state_file_from_before_the_switch_reads_as_not_carrying_them() {
+        // Written by an earlier Lockdown: no word on crown jewels, so the
+        // screen says once that the next backup carries them.
+        #[derive(Serialize)]
+        struct Older {
+            last_success_at: Option<i64>,
+            last_attempt_at: Option<i64>,
+            last_error: Option<String>,
+        }
+        let bytes = lockdown_crypto::cbor::to_canonical(&Older {
+            last_success_at: Some(1_760_745_600),
+            last_attempt_at: Some(1_760_745_600),
+            last_error: None,
+        })
+        .unwrap();
+        let state: BackupState = lockdown_crypto::cbor::from_slice(&bytes).unwrap();
+        assert_eq!(state.last_success_at, Some(1_760_745_600));
+        assert_eq!(state.last_carried_crown_jewels, None);
     }
 }

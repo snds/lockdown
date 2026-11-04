@@ -537,7 +537,8 @@ pub struct ExportPreview {
     pub items: usize,
     /// Files it carries.
     pub attachments: usize,
-    /// Crown jewels in it (each opted in by the person, D121).
+    /// Crown jewels in it (each opted in by the person, D121, or every
+    /// one when `crown_jewels_all`).
     pub crown_jewels_included: usize,
     /// Crown jewels left out (not opted in).
     pub crown_jewels_left_out: usize,
@@ -547,6 +548,10 @@ pub struct ExportPreview {
     pub dropped: Vec<String>,
     /// Whether the file is locked with a password.
     pub encrypted: bool,
+    /// Whether the file carries every crown jewel, opted in or not: a
+    /// locked Lockdown backup with "Include crown jewels" on (D138 as
+    /// decided). Added in doc 48 (D62: a new field, old readers ignore it).
+    pub crown_jewels_all: bool,
 }
 
 /// An export written to the place the person chose.
@@ -590,10 +595,20 @@ pub struct BackupStatus {
     pub last_error: Option<String>,
     /// When the next one is due (while the vault is open).
     pub next_due_at: Option<i64>,
-    /// Crown jewels a backup leaves out (not opted in, D121).
+    /// Crown jewels a backup leaves out (not opted in, D121); none while
+    /// `include_crown_jewels` is on.
     pub crown_jewels_left_out: usize,
     /// The backups in the folder, newest first.
     pub backups: Vec<BackupFile>,
+    /// Whether locked backups carry every crown jewel ("Include crown
+    /// jewels", on by default; D138 as decided). Added in doc 48.
+    pub include_crown_jewels: bool,
+    /// Crown jewels the newest backup in the folder lacks and the next one
+    /// will carry: non-zero only while the switch is on, backups run, and
+    /// the last backup was made without them (by an earlier Lockdown, or
+    /// with the switch off). The screen says so once, until that backup
+    /// runs. Added in doc 48.
+    pub crown_jewels_waiting: usize,
 }
 
 /// An item's folder, tags and favourite, as `show` gives them.

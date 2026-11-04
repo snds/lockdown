@@ -4,6 +4,12 @@
 //! inside, and opens what the crate writes again; the crate reads both
 //! fixtures back to the same items.
 //!
+//! Format 1.1 (docs/plan/48-crown-jewel-backups.md) adds the document's
+//! `crown_jewels: "all"`: a second pair of vectors, a locked backup holding
+//! every crown jewel, none opted in. The spec decoder opens it; a reader
+//! of 1.0 (the members 1.0 lists, nothing else) reads every item in it,
+//! crown jewels as crown jewels; the crate reads the marker.
+//!
 //! The vectors are sealed at the test Argon2id cost (256 KiB, 1 pass, 1
 //! lane) so the suite stays fast; a release build refuses that cost, as
 //! the spec says a reader must.
@@ -159,6 +165,117 @@ fn what_the_crate_seals_opens_by_the_spec_and_both_vectors_read_back_the_same() 
     assert!(from_plain.problems[0].contains("1 items were left out"));
     assert_eq!(from_plain.folders.len(), 1);
     assert_eq!(from_plain.folders[0].name, "Online");
+}
+
+#[test]
+fn the_crown_jewel_vector_opens_by_the_spec_and_carries_them_without_an_opt_in() {
+    let plain = fixture("backup-v1-crown-jewels.json");
+    let opened = spec_open(&fixture("backup-v1-crown-jewels.lockdown"), PASSWORD);
+    let a: Value = serde_json::from_slice(&opened).unwrap();
+    let b: Value = serde_json::from_slice(&plain).unwrap();
+    assert_eq!(
+        a, b,
+        "the sealed vector carries the plain vector's document"
+    );
+    // §2: the marker, and every crown jewel in `items` with no opt-in.
+    assert_eq!(b["v"], 1, "an addition within version 1");
+    assert_eq!(b["crown_jewels"], "all");
+    assert_eq!(b["left_out"].as_array().unwrap().len(), 0);
+    let crown: Vec<&Value> = b["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|i| i["class"] == "crown_jewel")
+        .collect();
+    assert_eq!(crown.len(), 2);
+    for item in &crown {
+        assert!(
+            item["fields"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|f| f["id"] != "lockdown.export"),
+            "no opt-in is set on an item the person didn't opt in"
+        );
+    }
+}
+
+/// A reader of format 1.0 as the spec then listed it: these members and
+/// no others, unknown ones ignored (§2).
+#[derive(serde::Deserialize)]
+struct Reader10 {
+    format: String,
+    v: u16,
+    items: Vec<Item10>,
+    #[serde(default)]
+    left_out: Vec<Value>,
+}
+
+#[derive(serde::Deserialize)]
+struct Item10 {
+    id: String,
+    kind: String,
+    class: String,
+    state: String,
+    fields: Vec<Value>,
+}
+
+#[test]
+fn a_reader_of_1_0_reads_every_item_of_the_crown_jewel_vector() {
+    let opened = spec_open(&fixture("backup-v1-crown-jewels.lockdown"), PASSWORD);
+    let doc: Reader10 = serde_json::from_slice(&opened).unwrap();
+    assert_eq!((doc.format.as_str(), doc.v), ("lockdown-backup", 1));
+    assert!(doc.left_out.is_empty());
+    let mut classes: Vec<(&str, &str, &str)> = doc
+        .items
+        .iter()
+        .map(|i| (i.kind.as_str(), i.class.as_str(), i.state.as_str()))
+        .collect();
+    classes.sort_unstable();
+    assert_eq!(
+        classes,
+        [
+            ("crypto-wallet", "crown_jewel", "live"),
+            ("document", "crown_jewel", "archived"),
+            ("login", "standard", "live"),
+        ]
+    );
+    assert!(
+        doc.items
+            .iter()
+            .all(|i| i.id.len() == 36 && !i.fields.is_empty())
+    );
+
+    // The crate: the marker read, the crown jewels kept as crown jewels and
+    // not opted in, nothing reported missing.
+    let parsed = Document::parse(&opened, &Limits::default()).unwrap();
+    assert!(parsed.carries_every_crown_jewel());
+    let read = archive::read(
+        &fixture("backup-v1-crown-jewels.lockdown"),
+        Some(PASSWORD),
+        &Limits::default(),
+    )
+    .unwrap();
+    assert!(read.problems.is_empty(), "{:?}", read.problems);
+    let crown: Vec<_> = read
+        .items
+        .iter()
+        .filter(|i| i.kept.unwrap().class == lockdown_vault::ItemClass::CrownJewel)
+        .collect();
+    assert_eq!(crown.len(), 2);
+    assert!(
+        crown
+            .iter()
+            .all(|i| !lockdown_vault::export_opted_in(&i.fields))
+    );
+
+    // The 1.0 vector carries no marker; an unknown value reads as none.
+    let old = Document::parse(&fixture("backup-v1.json"), &Limits::default()).unwrap();
+    assert!(!old.carries_every_crown_jewel());
+    let mut odd: Value = serde_json::from_slice(&opened).unwrap();
+    odd["crown_jewels"] = Value::String("most".into());
+    let odd = Document::parse(&serde_json::to_vec(&odd).unwrap(), &Limits::default()).unwrap();
+    assert!(!odd.carries_every_crown_jewel());
 }
 
 fn f(field: PlainField) -> DocField {
@@ -321,4 +438,94 @@ fn write_backup_vectors() {
     let key = kdf.derive(PASSWORD).unwrap();
     let sealed = archive::seal(&plain, &key, &kdf, 1_760_000_000).unwrap();
     std::fs::write(dir.join("backup-v1.lockdown"), sealed).unwrap();
+}
+
+/// Writes the format-1.1 vectors: a locked backup with every crown jewel
+/// in it (`crown_jewels: "all"`), none opted in. `cargo test -p
+/// lockdown-cxf --test backup_format -- --ignored` remakes them.
+#[test]
+#[ignore]
+fn write_crown_jewel_vectors() {
+    let id = |n: u8| Id::parse(&format!("00000000-0000-4000-8000-0000000001{n:02}")).unwrap();
+    let mut doc = Document::new(1_762_214_400, "Lockdown 0.1.0");
+    let vault = id(90).to_string();
+    doc.vaults.push(archive::DocVault {
+        id: vault.clone(),
+        name: Some("Personal".into()),
+        folders: vec![],
+    });
+    doc.crown_jewels = Some(archive::CROWN_JEWELS_ALL.into());
+    doc.items.push(DocItem {
+        id: id(1).to_string(),
+        kind: "login".into(),
+        class: "standard".into(),
+        state: "live".into(),
+        created_at: Some(1_700_000_000),
+        modified_at: Some(1_700_000_000),
+        fields: vec![
+            f(PlainField::text("title", "title", "Example Forum")),
+            f(PlainField::text("user", "Username", "ada@example.com")),
+            f(PlainField::hidden(
+                "pw",
+                "Password",
+                "correct horse battery staple",
+            )),
+        ],
+        history: vec![],
+        attachments: vec![],
+        vault: Some(vault.clone()),
+    });
+    doc.items.push(DocItem {
+        id: id(2).to_string(),
+        kind: "crypto-wallet".into(),
+        class: "crown_jewel".into(),
+        state: "live".into(),
+        created_at: Some(1_700_000_000),
+        modified_at: Some(1_700_000_100),
+        fields: vec![
+            f(PlainField::text("title", "title", "Cold wallet")),
+            f(PlainField::hidden(
+                "seed",
+                "Recovery phrase",
+                "abandon ability able about above absent absorb abstract absurd abuse access accident",
+            )),
+        ],
+        history: vec![],
+        attachments: vec![],
+        vault: Some(vault.clone()),
+    });
+    doc.items.push(DocItem {
+        id: id(3).to_string(),
+        kind: "document".into(),
+        class: "crown_jewel".into(),
+        state: "archived".into(),
+        created_at: Some(1_700_000_000),
+        modified_at: Some(1_700_000_200),
+        fields: vec![
+            f(PlainField::text(
+                "title",
+                "title",
+                "Exchange recovery codes",
+            )),
+            f(PlainField::text(
+                "notes",
+                "Notes",
+                "8f3k-2m9q 7r4t-1w6z 5c8n-0p3x",
+            )),
+        ],
+        history: vec![],
+        attachments: vec![DocAttachment::new(
+            "codes.txt",
+            "text/plain",
+            b"8f3k-2m9q\n7r4t-1w6z\n5c8n-0p3x\n",
+        )],
+        vault: Some(vault),
+    });
+    let plain = doc.to_bytes().unwrap();
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    std::fs::write(dir.join("backup-v1-crown-jewels.json"), plain.as_slice()).unwrap();
+    let kdf = archive::Kdf::fresh().unwrap();
+    let key = kdf.derive(PASSWORD).unwrap();
+    let sealed = archive::seal(&plain, &key, &kdf, 1_762_214_400).unwrap();
+    std::fs::write(dir.join("backup-v1-crown-jewels.lockdown"), sealed).unwrap();
 }

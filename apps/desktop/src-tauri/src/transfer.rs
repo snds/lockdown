@@ -194,14 +194,18 @@ pub(crate) mod commands {
         blocking(&app, |a| a.import_cancel()).await
     }
 
-    /// What an export would carry and leave out.
+    /// What an export would carry and leave out. `sealed` (added in doc 48;
+    /// absent is a plain file) counts a locked Lockdown backup, which
+    /// carries every crown jewel while "Include crown jewels" is on.
     #[tauri::command]
     pub(crate) async fn export_preview(
         app: State<'_, App>,
         format: String,
         vault: Option<String>,
+        sealed: Option<bool>,
     ) -> AppResult<ExportPreview> {
-        blocking(&app, move |a| a.export_preview(&format, vault)).await
+        let sealed = sealed.unwrap_or(false);
+        blocking(&app, move |a| a.export_preview_for(&format, vault, sealed)).await
     }
 
     /// Asks where to save, in the OS's own dialog. The path stays here,
@@ -369,6 +373,18 @@ pub(crate) mod commands {
         password: Option<Vec<u8>>,
     ) -> AppResult<ImportPreview> {
         blocking(&app, move |a| a.backup_restore_preview(&name, password)).await
+    }
+
+    /// Turns "Include crown jewels" on or off for locked backups (D138 as
+    /// decided, doc 48), behind the `Reveal` gate both ways.
+    #[tauri::command]
+    pub(crate) async fn backup_crown_jewels(
+        app: State<'_, App>,
+        on: bool,
+        gate: Option<GateInput>,
+    ) -> AppResult<BackupStatus> {
+        let gate = gate.unwrap_or_default();
+        blocking(&app, move |a| a.backup_crown_jewels(on, gate)).await
     }
 }
 

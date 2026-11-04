@@ -295,3 +295,33 @@ test("vault depth in the browser: a variant, a template of your own, generator o
   expect(problems).toEqual([])
   await context.close()
 })
+
+test("a crown jewel's opt-in says plain exports leave it out and locked backups carry it (doc 48)", async ({ browser, baseURL }) => {
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  const { problems, origins } = watch(page)
+  await page.goto("/vault/")
+  await signIn(page, secretKey)
+  await expect(page.getByRole("heading", { name: "All items" })).toBeVisible({ timeout: 90_000 })
+
+  // A wallet is a crown jewel by its kind.
+  await page.getByRole("button", { name: "New item" }).click()
+  await page.getByRole("menuitem", { name: /Crypto wallet$/ }).click()
+  const editor = page.getByRole("dialog")
+  await editor.getByLabel("Title").fill("Cold wallet")
+  await editor.getByLabel("Recovery phrase", { exact: true }).fill("abandon ability able about above absent absorb abstract absurd abuse access accident")
+  await editor.getByRole("button", { name: "Add", exact: true }).click()
+  await expect(editor).toBeHidden()
+  await page.getByRole("button", { name: /Cold wallet/ }).first().click()
+
+  // The shared item view's words: plain exports leave it out unless opted in; locked backups carry it.
+  const optIn = page.getByRole("region", { name: "Exports and backups" })
+  await expect(optIn.getByRole("switch", { name: "Include in exports and backups" })).not.toBeChecked()
+  await expect(optIn).toContainText("Crown jewels stay out of plain exports unless you include them here, one by one.")
+  await expect(optIn).toContainText("Locked backups carry them unless you turn that off in Settings, Backups.")
+  await expect(page.getByText("abandon ability")).toHaveCount(0)
+
+  expect([...origins]).toEqual([new URL(baseURL!).origin])
+  expect(problems).toEqual([])
+  await context.close()
+})

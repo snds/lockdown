@@ -44,6 +44,11 @@ pub const SEALED_V: u8 = 1;
 pub const CHUNK: usize = 1 << 20;
 /// The HKDF label of the file key.
 pub const KEY_INFO: &[u8] = b"lockdown/backup/v1/file-key";
+/// The document's `crown_jewels` value when every crown jewel is in it,
+/// opted in or not (a locked backup, D138 as decided). Absent means only
+/// the crown jewels the person opted in are carried (D121), the rest
+/// listed in `left_out`.
+pub const CROWN_JEWELS_ALL: &str = "all";
 
 const NONCE_PREFIX: usize = 19;
 const TAG: usize = 16;
@@ -74,6 +79,11 @@ pub struct Document {
     /// The vaults the items came from, with their folders.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub vaults: Vec<DocVault>,
+    /// [`CROWN_JEWELS_ALL`] when every crown jewel is carried, opted in or
+    /// not; absent when only the opted-in ones are (format 1.1, an
+    /// addition a 1.0 reader ignores). Written only into a sealed file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crown_jewels: Option<String>,
 }
 
 /// A vault the items came from.
@@ -355,7 +365,14 @@ impl Document {
             items: Vec::new(),
             left_out: Vec::new(),
             vaults: Vec::new(),
+            crown_jewels: None,
         }
+    }
+
+    /// Whether the document says it carries every crown jewel, opted in or
+    /// not. An unknown value reads as absent (format 1.1, §2).
+    pub fn carries_every_crown_jewel(&self) -> bool {
+        self.crown_jewels.as_deref() == Some(CROWN_JEWELS_ALL)
     }
 
     /// The document as JSON bytes (wiped when dropped).

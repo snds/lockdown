@@ -7,7 +7,7 @@ import type { ExportPreview, GateInput } from "@/core/types"
 import { fakeClient } from "@/test/fake-client"
 
 import { ExportDialog } from "./export-dialog"
-import { leftOutLine, passwordProblem } from "./export-model"
+import { carriesLine, leftOutLine, passwordProblem } from "./export-model"
 
 const preview = (format: ExportPreview["format"]): ExportPreview => ({
   format,
@@ -97,10 +97,33 @@ describe("the export dialog", () => {
   })
 })
 
+describe("crown jewels in a locked backup (doc 48)", () => {
+  it("a locked Lockdown backup counts every crown jewel; the readable one still leaves them out", async () => {
+    const exportPreview = vi.fn<Client["exportPreview"]>((f, _vault, sealed) =>
+      Promise.resolve(
+        f === "lockdown" && sealed
+          ? { ...preview("lockdown"), crown_jewels_included: 1, crown_jewels_left_out: 0, left_out: [], crown_jewels_all: true }
+          : preview(f as ExportPreview["format"]),
+      ),
+    )
+    mount({ exportPreview })
+    const user = userEvent.setup()
+    const region = await screen.findByRole("region", { name: "What the file will hold" })
+    await waitFor(() => expect(region).toHaveTextContent("This file will hold 12 items, 2 attached files, 1 crown jewel, protected by the file's password."))
+    expect(region).not.toHaveTextContent("stays out")
+    expect(exportPreview).toHaveBeenCalledWith("lockdown", null, true)
+
+    await user.selectOptions(screen.getByLabelText("Kind of file"), "lockdown-plain")
+    await waitFor(() => expect(region).toHaveTextContent("1 crown jewel stays out: Cold wallet."))
+    expect(exportPreview).toHaveBeenLastCalledWith("lockdown", null, false)
+  })
+})
+
 describe("the export wording", () => {
   it("checks passwords and names what stays out", () => {
     expect(passwordProblem("short", "short")).toMatch(/at least 8/)
     expect(passwordProblem("long enough", "long enough")).toBeNull()
     expect(leftOutLine({ ...preview("cxf"), crown_jewels_left_out: 0, left_out: [] })).toBeNull()
+    expect(carriesLine({ ...preview("cxf"), crown_jewels_included: 2 })).toBe("This file will hold 12 items, 2 crown jewels you chose to include.")
   })
 })

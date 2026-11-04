@@ -7,7 +7,7 @@ import { DeviceApproval } from "@/features/approvals/approval-sheet"
 import { LIVE_EVENT } from "@/features/sessions/live-client"
 
 import { PERSON } from "../fixture/seed"
-import { status } from "../fixture/story"
+import { backupStatus, status } from "../fixture/story"
 import { ago, ahead } from "../fixture/time"
 import type { World } from "../fixture/world"
 import { as, fail, forever } from "../host/core"
@@ -36,6 +36,8 @@ const item = (title: string): Step[] => [{ click: starts(title), within: "main" 
 /** The vaults, folders and tags trees are hidden below the `md` breakpoint, so these states have no phone width. */
 const WIDE = [1280, 900]
 const settings: Step[] = [...open, side("Settings"), { wait: "Density" }]
+/** Settings is taller than a capture: bring Backups (its last section) into the picture. */
+const toBackups: Step = { run: () => document.getElementById("backup-crown-jewels")?.scrollIntoView({ block: "start" }) }
 
 /** The core's words while a split view pauses sharing (crates/app/src/session/split_pause.rs). */
 const SHARING_PAUSED =
@@ -229,6 +231,10 @@ export const DESKTOP_MORE: StateDef[] = [
   d({ id: "desktop-settings-backups-off", screen: "Settings → Backups", state: "Off", brief_row: "Settings → Backups", notes: "Backups are off; the sidebar line says so too.", setup: (w) => {
     w.settings = { ...w.settings, backup: { enabled: false, folder: null, interval_hours: 24, keep_last: 10 } }
   }, steps: settings }),
+  d({ id: "desktop-settings-backups-crown-waiting", screen: "Settings → Backups", state: "Crown jewels: next backup carries them", brief_row: "Settings → Backups", notes: "After the update: the switch is on and the newest backup was made without crown jewels, so one line says the next one carries them (doc 48).", answers: () => ({ backup_status: () => backupStatus(true, true, 2) }), steps: [...settings, { wait: /first to include your 2 crown jewels/ }, toBackups] }),
+  d({ id: "desktop-settings-backups-crown-off", screen: "Settings → Backups", state: "Crown jewels left out", brief_row: "Settings → Backups", notes: "\"Include crown jewels\" off: the per-item opt-in and the count come back (doc 48).", setup: (w) => {
+    w.settings = { ...w.settings, backup: { enabled: true, folder: "/Users/sam/Backups/Lockdown", interval_hours: 24, keep_last: 10, include_crown_jewels: false } }
+  }, steps: [...settings, { wait: /crown jewels aren't in your backups/ }, toBackups] }),
   d({ id: "desktop-settings-browsers-refused", screen: "Settings → Browsers", state: "Host refused", brief_row: "Settings → Browsers", notes: "Every browser host refused (error colour).", answers: () => ({ browser_status: () => ({ ...(as("browser_status")({}) as object), listening: false, problem: "The browser host at /Applications/Lockdown.app/Contents/MacOS/lockdown-native-host isn't signed by this app's developer, so Lockdown refuses it.", peer_check: { by: "refused", detail: "The host's signature didn't match." } }) }), steps: settings }),
 
   // --- approvals and prompts that arrive on their own ------------------------------------------------------------------

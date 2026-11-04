@@ -31,7 +31,8 @@ describe("a crown jewel's export opt-in (D121)", () => {
         </GateProvider>
       </ClientProvider>,
     )
-    expect(screen.getByText(/stay out of exports and backups unless you choose/)).toBeInTheDocument()
+    expect(screen.getByText(/stay out of plain exports unless you include them here/)).toBeInTheDocument()
+    expect(screen.getByText(/Locked backups carry them unless you turn that off in Settings, Backups/)).toBeInTheDocument()
     const user = userEvent.setup()
     await user.click(screen.getByRole("switch", { name: "Include in exports and backups" }))
     await user.click(await screen.findByRole("button", { name: "Confirm" }))

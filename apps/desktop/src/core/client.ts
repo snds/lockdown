@@ -143,8 +143,8 @@ export interface Client {
   /** Keeps the previewed import. */
   importCommit(token: number): Promise<ImportReport>
   importCancel(): Promise<void>
-  /** What an export in `format` would carry and leave out. */
-  exportPreview(format: string, vault?: string | null): Promise<ExportPreview>
+  /** What an export in `format` would carry and leave out; `sealed` counts a file locked with a password (a locked Lockdown backup carries every crown jewel while "Include crown jewels" is on). */
+  exportPreview(format: string, vault?: string | null, sealed?: boolean): Promise<ExportPreview>
   /** The OS's save dialog; the place stays in the shell under the returned number. */
   exportChoose(format: string, sealed: boolean): Promise<Chosen | null>
   /** The core writes the export to the chosen place, after the `Reveal` gate (D101). */
@@ -160,6 +160,8 @@ export interface Client {
   backupOff(forget: boolean): Promise<BackupStatus>
   /** Opens one of the folder's backups for the import preview (the key kept here, or `password`). */
   backupRestorePreview(name: string, password?: number[]): Promise<ImportPreview>
+  /** "Include crown jewels" in locked backups, on or off, behind the `Reveal` gate both ways (doc 48). */
+  backupCrownJewels(on: boolean, gate?: GateInput): Promise<BackupStatus>
 
   // --- organization (docs/plan/15-organization.md) ---------------------------
   /** Every vault of the persona, the first one first, with its folders. */
@@ -320,7 +322,7 @@ export const tauriClient: Client = {
   importPreview: (input) => call("import_preview", input),
   importCommit: (token) => call("import_commit", { token }),
   importCancel: () => call("import_cancel"),
-  exportPreview: (format, vault) => call("export_preview", { format, vault: vault ?? null }),
+  exportPreview: (format, vault, sealed) => call("export_preview", { format, vault: vault ?? null, sealed: sealed ?? false }),
   exportChoose: (format, sealed) => call("export_choose", { format, sealed }),
   exportSave: (input, gate) => call("export_save", { ...input, gate }),
   setExportOptIn: (id, on, gate) => call("set_export_opt_in", { id, on, gate }),
@@ -330,6 +332,7 @@ export const tauriClient: Client = {
   backupNow: () => call("backup_now"),
   backupOff: (forget) => call("backup_off", { forget }),
   backupRestorePreview: (name, password) => call("backup_restore_preview", { name, password }),
+  backupCrownJewels: (on, gate) => call("backup_crown_jewels", { on, gate }),
   vaults: () => call("vaults"),
   createVault: (name) => call("create_vault", { name }),
   renameVault: (vaultId, name) => call("rename_vault", { vaultId, name }),
