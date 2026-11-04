@@ -21,7 +21,11 @@
   "D572": {"verdict": "accepted", "note": "Item edits are safe, so only membership changes pause while something is held back; edits wait on the device like offline edits."},
   "D573": {"verdict": "accepted", "note": "One calm line with nothing to click, naming the person by login, never a device or key; Sean checks the words in the app."},
   "D574": {"verdict": "accepted", "note": "The technical detail lives on Status for support, out of the person's way."},
-  "D577": {"verdict": "accepted", "note": "A persona whose only vault is shared unlocks; a new device opens it after its first sync, and nothing stands in for it on disk."}
+  "D577": {"verdict": "accepted", "note": "A persona whose only vault is shared unlocks; a new device opens it after its first sync, and nothing stands in for it on disk."},
+  "D582": {"verdict": "accepted", "note": "While the whole vault is open the item follows the vault's right, which is the more accurate label; it returns to the share's right when the vault closes."},
+  "D585": {"verdict": "accepted", "note": "An item shared on its own isn't a vault the person keeps, so it shouldn't use up their vault limit."},
+  "D586": {"verdict": "accepted", "note": "A vault the person only has single items from uses the join line, which says what they'd expect."},
+  "D588": {"verdict": "changed", "note": "A real bug on main: removing a member or withdrawing a share breaks other recipients' items. Fixed next, in slice 50."}
  },
  "calls": {
   "D52": {"verdict": "changed", "note": "A signed-in device should renew its own session with its device key, so the account password is asked only on a new device, after a remote sign-out, or after 30 days without use. Today a session lasts 8 hours with no renewal, so a device that syncs all day asks for the password again. Built by slice 32 (#25, D400–D408)."},
@@ -66,7 +70,7 @@
   {"id": "backups", "name": "Backups and export", "ids": "D135-D145,D273,D274,D560-D569"},
   {"id": "browser", "name": "Browser and passkeys", "ids": "D156-D169,D200-D214,D264-D269,D331,D500-D509"},
   {"id": "web", "name": "Web vault", "ids": "D170-D184,D320,D321,D357"},
-  {"id": "sharing", "name": "Sharing and emergency", "ids": "D185-D199,D430-D439"},
+  {"id": "sharing", "name": "Sharing and emergency", "ids": "D185-D199,D430-D439,D580-D589,D590-D599"},
   {"id": "server", "name": "Self-host server", "ids": "D215-D229,D290-D304,D322-D330,D332"},
   {"id": "bridges", "name": "Vendor bridges", "ids": "D258-D260,D262,D263,D271"},
   {"id": "pq", "name": "Post-quantum", "ids": "D335-D349,D365-D374,D550-D559,D570-D579"},
