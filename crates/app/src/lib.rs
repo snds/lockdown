@@ -2051,7 +2051,21 @@ mod tests {
         app.add_code(&steam, None, Some(&login)).unwrap();
         assert!(app.add_code("otpauth://totp/x", None, None).is_err());
 
-        let codes = app.codes().unwrap();
+        // A code read near the end of its 30-second window can roll over
+        // before `code_now` reads it again on a slow runner, so the test
+        // starts well inside a window.
+        let codes = loop {
+            let codes = app.codes().unwrap();
+            let left = codes
+                .iter()
+                .filter_map(|c| c.seconds_left)
+                .min()
+                .unwrap_or(30);
+            if left > 5 {
+                break codes;
+            }
+            std::thread::sleep(std::time::Duration::from_secs(left + 1));
+        };
         assert_eq!(codes.len(), 2);
         let by_item = |id: &str| codes.iter().find(|c| c.item_id == id).unwrap();
         let standalone = by_item(&code_id);
