@@ -277,6 +277,8 @@ export interface Status {
   account: AccountStatus | null
   /** For support: records other people made that this device held back because they didn't verify, which record and which check (docs/plan/49-shared-vault-quiet.md). Absent when none. */
   held_back?: string[]
+  /** No vault of the persona could open yet: its only vault is shared and this device hasn't checked who changed it. The shell syncs once at once, which opens it (docs/plan/49-shared-vault-quiet.md §6). Absent when false. */
+  waiting?: boolean
 }
 
 export interface DeviceInfo {

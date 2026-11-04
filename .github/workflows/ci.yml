@@ -296,6 +296,10 @@ jobs:
       # a developer tool's binary, built on its own like the one above.
       - name: Build the passwordless-install tool
         run: cargo build -p lockdown-devtools --no-default-features --features legacy-install --bin lockdown-legacy-install
+      # Two people and a shared vault, with a hostile server's hand on its
+      # database (docs/plan/49-shared-vault-quiet.md): built on its own too.
+      - name: Build the shared-vault fixture tool
+        run: cargo build -p lockdown-devtools --no-default-features --features shared-fixture --bin lockdown-shared-fixture
       - name: End to end in Chromium
         run: pnpm e2e
       - uses: actions/upload-artifact@v4

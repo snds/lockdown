@@ -420,6 +420,12 @@ pub struct Status {
     /// (docs/plan/49-shared-vault-quiet.md). Added under D62.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub held_back: Vec<String>,
+    /// Whether no vault of the persona could open yet: the persona's only
+    /// vault is shared and this device hasn't checked who changed it. The
+    /// shell syncs once at once, which opens it
+    /// (docs/plan/49-shared-vault-quiet.md §6). Added under D62.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub waiting: bool,
 }
 
 /// One device of the identity.

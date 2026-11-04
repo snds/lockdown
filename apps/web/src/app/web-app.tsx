@@ -172,6 +172,14 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
       })
   }, [client, list])
 
+  // No vault could open yet (the only one is shared and this tab hasn't
+  // checked who changed it): one sync now opens it, rather than waiting for
+  // the next change (docs/plan/49-shared-vault-quiet.md §6).
+  const waiting = status?.waiting === true
+  useEffect(() => {
+    if (waiting) syncThenList()
+  }, [waiting, syncThenList])
+
   useEffect(() => {
     if (!status) return
     list()

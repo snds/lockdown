@@ -4,7 +4,7 @@
 // (`cargo build -p lockdown-server`), found through CARGO_TARGET_DIR or
 // the repository's target/; LOCKDOWN_SERVER_BIN overrides both.
 import { spawn } from "node:child_process"
-import { existsSync, mkdtempSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
@@ -25,6 +25,10 @@ if (!existsSync(path.join(dist, "index.html"))) {
 }
 
 const data = mkdtempSync(path.join(tmpdir(), "lockdown-web-e2e-"))
+// Where it is, for a spec that plays a hostile server on its database
+// (shared-quiet.spec.ts); removed with it.
+const note = path.join(tmpdir(), `lockdown-web-e2e-${port}.data`)
+writeFileSync(note, data)
 // Every page and the CLI reach the server from 127.0.0.1 and reuse a few
 // login names, so the sign-in brake is raised: the suite is one person in
 // a hurry, not an attack (the brake itself is tested in bins/server).
@@ -40,6 +44,7 @@ const stop = () => {
 }
 server.on("exit", (code) => {
   rmSync(data, { recursive: true, force: true })
+  rmSync(note, { force: true })
   process.exit(code ?? 0)
 })
 process.on("SIGINT", stop)

@@ -1155,6 +1155,7 @@ impl Session {
             identity_seq: self.synced.seq(),
             account,
             held_back: self.held_back_details(),
+            waiting: self.stand_in,
         })
     }
 

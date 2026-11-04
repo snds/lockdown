@@ -47,6 +47,11 @@ shell = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:tauri-plugin"]
 # (docs/plan/43-cli-sealed.md). Only the command line's tests and the
 # `lockdown-legacy-install` tool turn it on; never the desktop.
 legacy-install = []
+# Two people and a shared vault on a running server, with a hostile
+# server's hand on its database, for the web vault's spec of what is held
+# back (docs/plan/49-shared-vault-quiet.md). Only the
+# `lockdown-shared-fixture` tool turns it on; never the desktop.
+shared-fixture = ["dep:rusqlite"]
 
 [build-dependencies]
 tauri-plugin = { version = "2.7.2", optional = true, features = ["build"] }
@@ -65,6 +70,7 @@ data-encoding = { workspace = true, optional = true }
 getrandom = { workspace = true, optional = true }
 blake3 = { workspace = true, optional = true }
 zeroize = { workspace = true, optional = true }
+rusqlite = { workspace = true, optional = true }
 keyring = { version = "3.6", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"], optional = true }
 tauri = { version = "2.12.3", optional = true, features = [] }
 tauri-plugin-dialog = { version = "2.8", optional = true }
@@ -97,3 +103,8 @@ required-features = ["demo"]
 name = "lockdown-legacy-install"
 path = "src/bin/lockdown-legacy-install.rs"
 required-features = ["legacy-install"]
+
+[[bin]]
+name = "lockdown-shared-fixture"
+path = "src/bin/lockdown-shared-fixture.rs"
+required-features = ["shared-fixture"]
