@@ -1963,7 +1963,7 @@
     "desktop",
     "web"
    ],
-   "left": "Locking the identity crate's own key types, and measuring web engines other than Chromium; secret pages are out of swap, core dumps are off, and typed secrets clear on hide and after a minute out of focus.",
+   "left": "Locking Lockdown's Ed25519 signing keys and the server's OPAQUE setup (D605), turning the server's core dumps off (D608), and measuring web engines other than Chromium; secret pages are out of swap with one page table shared with the identity crate (its keys and Lockdown's ML-DSA key included, D601, D603), core dumps are off in the apps, and typed secrets clear on hide and after a minute out of focus.",
    "evidence": [
     "crates/app/src/revealed.rs:86 the_buffer_is_zeroed_before_it_is_freed",
     "crates/crypto/src/secret.rs:7 (secrecy SecretBox)",
@@ -1983,7 +1983,7 @@
     "desktop",
     "extension"
    ],
-   "left": "Real signing certificates (releases use the path and SHA-256 check until then), the MSIX package-family check, and a Windows variant of the identity crate's peer type (in snds/ecosystem-identity); signed builds check each other's code signature on macOS and Windows, proven with throwaway CI certificates.",
+   "left": "Real signing certificates (releases use the path and SHA-256 check until then) and the MSIX package-family check; the identity crate's peer type now has a Windows named-pipe variant with a process-identity check (D600), and signed builds check each other's code signature on macOS and Windows, proven with throwaway CI certificates.",
    "evidence": [
     "D33 (process-identity check lives in the identity crate's Linux handshake, unused by Lockdown)",
     "D4"
