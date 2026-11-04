@@ -761,15 +761,24 @@ mod tests {
             (identity, keystore)
         };
         let account = Id::new();
-        let contact_of = |identity: &Identity, keystore: &FileKeystore| {
+        // One identity's answer from the directory. Its manifest carries the
+        // time it was written, so the same identity answered twice is two
+        // manifests at seq 1 unless the very same answer is reused.
+        let public_for = |identity: &Identity, keystore: &FileKeystore| {
             let mut public = public_of(identity, keystore);
             public.account_id = account;
             let pq = crate::pq::identity_pq_key(identity, keystore).unwrap();
             crate::pq::sign_manifest(&mut public.manifest, &pq).unwrap();
+            public
+        };
+        let contact_from = |public: &PublicIdentity| {
             let verified = public.verify(None).unwrap();
-            let c = Contact::from_public(&public, &verified, None, 1).unwrap();
+            let c = Contact::from_public(public, &verified, None, 1).unwrap();
             let h = crate::key_change::handovers_of(&verified.profile).unwrap();
             (c, h)
+        };
+        let contact_of = |identity: &Identity, keystore: &FileKeystore| {
+            contact_from(&public_for(identity, keystore))
         };
         let handover = |old: &(Identity, FileKeystore), new: &(Identity, FileKeystore)| {
             let persona = |i: &Identity| i.personas().next().unwrap().persona_id;
@@ -791,11 +800,12 @@ mod tests {
         };
         let never = |_: &Contact| false;
         let bob = open("bob");
-        let (mut pinned, _) = contact_of(&bob.0, &bob.1);
+        let bob_public = public_for(&bob.0, &bob.1);
+        let (mut pinned, _) = contact_from(&bob_public);
         pinned.verified_at = Some(Timestamp::now());
 
         // The same keys continue the pin.
-        let (same, none) = contact_of(&bob.0, &bob.1);
+        let (same, none) = contact_from(&bob_public);
         assert!(matches!(
             pinned.take_lookup(&same, &none, &never).unwrap(),
             Lookup::Continues(_)
