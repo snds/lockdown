@@ -46,3 +46,5 @@ ciborium.workspace = true
 ecosystem-identity = { workspace = true, features = ["insecure-test-kdf"] }
 lockdown-crypto = { workspace = true, features = ["insecure-test-kdf"] }
 lockdown-app = { path = "../app", version = "0.1.0" }
+# The hostile-server test bends a head in the server's own database.
+rusqlite.workspace = true
