@@ -83,6 +83,7 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
   const paths = useMemo(() => folderPaths(vaults), [vaults])
   const scoped = useMemo(() => (rows && scope ? inScope(rows, scope, vaults) : rows), [rows, scope, vaults])
   const scopeName = scope ? scopeTitle(scope, vaults) : null
+  const unverified = scope?.vault ? vaults.find((v) => v.id === scope.vault)?.unverified : null
   const paneTitle = scopeName ?? VIEW_LABELS[view]
   const [query, setQuery] = useState("")
   const [sort, setSort] = useState<SortKey>(DEFAULT_SORT)
@@ -147,6 +148,12 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
+      {unverified && (
+        // A shared vault some of whose recent changes didn't verify: one calm line, nothing to do (docs/plan/49-shared-vault-quiet.md).
+        <p role="note" className="px-2 text-sm text-muted-foreground">
+          {unverified}
+        </p>
+      )}
       {error && (
         <p role="alert" className="px-2 text-sm text-destructive">
           {error}

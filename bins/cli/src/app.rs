@@ -367,10 +367,25 @@ impl App {
         } = vault_open::open_own_vaults(
             &identity, persona_id, &store, &keystore, &memory, &synced,
         )?;
-        let (opened, more, waiting) = if all.is_empty() {
-            if let Some(w) = waiting.into_iter().next() {
-                return Err(w.why);
+        let (opened, more, waiting) = if all.is_empty() && !waiting.is_empty() {
+            // Every vault waits (the persona's only vault is a shared one
+            // other people wrote to): step 3 runs with the persona's keys
+            // from the identity (docs/plan/49-shared-vault-quiet.md §6).
+            let keys = vault_open::waiting_keys(&identity, persona_id, &store, &waiting[0])?;
+            let sharing = SharingState::open(
+                SharingState::path_in(&paths.data, persona_id),
+                persona_id,
+                &keys.app_data_key,
+            )?;
+            let (mut opened, still) = vault_open::open_with_pins(
+                &identity, &sharing, &store, &keystore, &memory, &synced, waiting,
+            )?;
+            if opened.is_empty() {
+                return Err(NOTHING_VOUCHES.into());
             }
+            let first = opened.remove(0);
+            (first, opened, still)
+        } else if all.is_empty() {
             if mode != Mode::Init {
                 return Err(format!(
                     "this persona has no vault at {} yet; run `lockdown init`",
@@ -390,8 +405,16 @@ impl App {
         } else {
             let opened = all.remove(0);
             let still = open_with_pinned_writers(
-                &identity, persona_id, &paths, &store, &keystore, &memory, &synced, &opened,
-                waiting, &mut all,
+                &identity,
+                persona_id,
+                &paths,
+                &store,
+                &keystore,
+                &memory,
+                &synced,
+                &opened.keys.app_data_key,
+                waiting,
+                &mut all,
             )?;
             (opened, all, still)
         };
@@ -1463,6 +1486,11 @@ impl App {
             device_label: &label,
         };
         let vault_id = self.opened.vault.context().vault_id;
+        // A shared vault's head another person's device signed that doesn't
+        // verify is held back, as the app does (docs/plan/49-shared-vault-quiet.md):
+        // their devices as this device pinned them, by login.
+        let writers = self.pinned_writer_logins(vault_id);
+        let holdable = |d: Id| writers.contains_key(&d);
         let record = self
             .opened
             .vault
@@ -1476,13 +1504,17 @@ impl App {
             .vaults
             .entry(vault_id)
             .or_default();
-        let outcome = lockdown_sync::sync_vault_with(
+        let outcome = lockdown_sync::sync_vault_holding(
             &syncer,
             &mut self.opened.vault,
             &record,
             state,
             &mut self.store,
             Some(&kt),
+            lockdown_sync::Holding {
+                holdable: &holdable,
+                push: true,
+            },
         );
         // Whatever happened on the wire, what is in memory is saved and
         // remembered, so a half-finished round is picked up next time.
@@ -1533,6 +1565,14 @@ impl App {
             .remember(server, view.clone())
             .map_err(|e| e.to_string())?;
         let mut lines = sync_lines(&report);
+        if let Some(held) = &report.held {
+            let names: Vec<String> = writers.get(&held.signer).cloned().into_iter().collect();
+            lines.push(lockdown_app::held_back_line(&names));
+            lines.push(format!(
+                "held back: manifest {} and every one after it ({})",
+                held.seq, held.why
+            ));
+        }
         lines.push(format!(
             "transparency: log of {} entries verified (root {}), your entries audited through {}",
             view.sth.size,
@@ -1540,6 +1580,32 @@ impl App {
             view.audited
         ));
         Ok(lines)
+    }
+
+    /// The devices of the other people who write to `vault_id`, as this
+    /// device pinned them in the persona's sharing record, with each
+    /// person's login. Empty for a vault the record doesn't share.
+    fn pinned_writer_logins(&self, vault_id: Id) -> BTreeMap<Id, String> {
+        let persona_id = self.opened.vault.context().persona_id;
+        let Ok(sharing) = SharingState::open(
+            SharingState::path_in(&self.paths.data, persona_id),
+            persona_id,
+            &self.opened.keys.app_data_key,
+        ) else {
+            return BTreeMap::new();
+        };
+        let own = vault_open::own_device_keys(&self.identity, &self.synced);
+        vault_open::pinned_writers(&sharing, &own, vault_id)
+            .into_keys()
+            .filter(|d| !own.contains_key(d))
+            .filter_map(|d| {
+                sharing
+                    .contacts()
+                    .values()
+                    .find(|c| c.devices.contains_key(&d))
+                    .map(|c| (d, c.login.clone()))
+            })
+            .collect()
     }
 
     // --- the post-quantum status line (docs/plan/30-pq-status-line.md) ------
@@ -2128,6 +2194,11 @@ fn pull_new_vaults(
     Ok(pulled)
 }
 
+/// What the command line says when every vault of the persona is a shared
+/// one this device can't vouch for yet: the app's sync meets their writers,
+/// and the command line has no sharing step of its own (doc 47 §8).
+const NOTHING_VOUCHES: &str = "Your vault is shared, and this device hasn't checked the people who changed it yet, so it can't open here. Open the Lockdown app and let it sync once; the command line opens it after that.";
+
 /// What `status` says about the persona's vaults beside the one in use:
 /// how many more opened, and how many wait for their writers to be met
 /// (`lockdown_app::vault_open`).
@@ -2168,7 +2239,7 @@ fn open_with_pinned_writers(
     keystore: &Rc<DeviceKeys>,
     memory: &HeadMemory,
     synced: &SyncedIdentity,
-    first: &OpenVault,
+    app_data_key: &ecosystem_identity::keys::AppDataKey,
     waiting: Vec<Waiting>,
     more: &mut Vec<OpenVault>,
 ) -> Result<Vec<Waiting>, String> {
@@ -2178,24 +2249,11 @@ fn open_with_pinned_writers(
     let sharing = SharingState::open(
         SharingState::path_in(&paths.data, persona_id),
         persona_id,
-        &first.keys.app_data_key,
+        app_data_key,
     )?;
-    let own = vault_open::own_device_keys(identity, synced);
-    let mut still = Vec::new();
-    for w in waiting {
-        let writers = vault_open::pinned_writers(&sharing, &own, w.vault_id);
-        if writers.is_empty() {
-            still.push(w);
-            continue;
-        }
-        let (trust, members) = vault_open::vault_trust(identity, synced, w.vault_id, writers);
-        match vault_open::open_one(
-            identity, w.vault_id, store, keystore, memory, &trust, &members,
-        )? {
-            Ok(opened) => more.push(opened),
-            Err(w) => still.push(w),
-        }
-    }
+    let (opened, still) =
+        vault_open::open_with_pins(identity, &sharing, store, keystore, memory, synced, waiting)?;
+    more.extend(opened);
     vault_open::order_vaults(more);
     Ok(still)
 }

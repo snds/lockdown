@@ -1075,6 +1075,19 @@ impl Vault {
         if remote.is_empty() {
             return Ok(());
         }
+        let next = self.check_rebase(keep_through, &remote)?;
+        self.heads = next;
+        self.members = self.members()?;
+        Ok(())
+    }
+
+    /// Everything [`Self::rebase`] checks, without changing anything:
+    /// answers the chain it would hold.
+    fn check_rebase(
+        &self,
+        keep_through: u64,
+        remote: &[ManifestHead],
+    ) -> Result<Vec<ManifestHead>> {
         let mut chain: Vec<ManifestHead> = Vec::with_capacity(remote.len() + 1);
         if keep_through > 0 {
             let anchor = self
@@ -1089,18 +1102,63 @@ impl Vault {
         }
         chain.extend(remote.iter().cloned());
         verify_chain(&chain, |id| self.key_for(id), 0)?;
-        check_revocations(&remote, |id| self.revoked_after(id))?;
+        check_revocations(remote, |id| self.revoked_after(id))?;
         let mut next: Vec<ManifestHead> = self
             .heads
             .iter()
             .filter(|h| h.seq <= keep_through)
             .cloned()
             .collect();
-        next.extend(remote);
+        next.extend(remote.iter().cloned());
         self.check_post_quantum(&next)?;
-        self.heads = next;
-        self.members = self.members()?;
-        Ok(())
+        if let Some(newest) = next.last() {
+            self.members_in(newest)?;
+        }
+        Ok(next)
+    }
+
+    /// How much of `remote` (the server's chain after `keep_through`)
+    /// checks out: the number of its heads, from the first, that
+    /// [`Self::rebase`] would take, and when that isn't all of them, the
+    /// first head that failed its check (its index in `remote`) and why.
+    /// Heads chain hash to hash, so a head that fails holds back every
+    /// head after it (docs/plan/49-shared-vault-quiet.md). Changes nothing.
+    pub fn checked_prefix(
+        &self,
+        keep_through: u64,
+        remote: &[ManifestHead],
+    ) -> (usize, Option<(usize, Error)>) {
+        let mut take = remote.len();
+        let mut first: Option<(usize, Error)> = None;
+        while take > 0 {
+            let Err(e) = self.check_rebase(keep_through, &remote[..take]) else {
+                break;
+            };
+            let at = self.failing_head(&remote[..take], &e).min(take - 1);
+            first.get_or_insert((at, e));
+            take = at;
+        }
+        (take, first)
+    }
+
+    /// Which head of `remote` an error from [`Self::check_rebase`] is
+    /// about: the one it names, else the first whose device signature
+    /// doesn't check out, else the newest (the members list it seals).
+    fn failing_head(&self, remote: &[ManifestHead], e: &Error) -> usize {
+        let named = match e {
+            Error::ChainBroken { seq, .. } | Error::RevokedDevice { seq, .. } => Some(*seq),
+            _ => None,
+        };
+        if let Some(i) = named.and_then(|seq| remote.iter().position(|h| h.seq == seq)) {
+            return i;
+        }
+        remote
+            .iter()
+            .position(|h| {
+                self.key_for(h.signer)
+                    .is_none_or(|key| h.verify_signature(&key).is_err())
+            })
+            .unwrap_or(remote.len().saturating_sub(1))
     }
 
     /// Sets the key-transparency tree head every head committed from now
@@ -1455,6 +1513,11 @@ impl Vault {
             .heads
             .last()
             .ok_or_else(|| Error::NotFound("a manifest head".into()))?;
+        self.members_in(head)
+    }
+
+    /// Opens the members list sealed in `head`.
+    fn members_in(&self, head: &ManifestHead) -> Result<Vec<Member>> {
         let plain = open(
             self.vault_key_named(head.vault_key_ref)?,
             &self.members_aad(head.seq),
@@ -2556,6 +2619,28 @@ mod tests {
         assert!(check(&good, members(None, Some(5))).is_err());
         // Bob's heads before he rolled out (3) stay fine: history holds.
         check(&good, members(Some(&bob_pq), Some(5))).unwrap();
+
+        // How far a chain checks out (docs/plan/49-shared-vault-quiet.md):
+        // all of a good one; up to Bob's stripped head and no further, since
+        // every later head chains on it; nothing when the first one fails.
+        assert_eq!(vault.checked_prefix(3, &good[3..]).0, 3);
+        assert!(vault.checked_prefix(3, &good[3..]).1.is_none());
+        let mut late = good.clone();
+        late[5].pq_sig = None;
+        let (take, failed) = vault.checked_prefix(3, &late[3..]);
+        assert_eq!(take, 2, "heads 4 and 5 check out; 6 doesn't");
+        let (at, why) = failed.unwrap();
+        assert_eq!(late[3 + at].seq, 6);
+        assert_eq!(late[3 + at].signer, bob_device);
+        assert!(why.to_string().contains("lost its post-quantum"), "{why}");
+        let mut forged = good.clone();
+        forged[4].sig[3] ^= 1;
+        let (take, failed) = vault.checked_prefix(3, &forged[3..]);
+        assert_eq!(take, 1, "a bent device signature on 5 holds back 5 and 6");
+        assert_eq!(forged[3 + failed.unwrap().0].seq, 5);
+        let (take, failed) = vault.checked_prefix(4, &forged[4..]);
+        assert_eq!((take, failed.map(|(at, _)| at)), (0, Some(0)));
+        assert_eq!(vault.heads, good, "checking changes nothing");
     }
 
     fn vault_of(device: Id) -> Vault {

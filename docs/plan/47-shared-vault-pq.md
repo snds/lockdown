@@ -119,24 +119,20 @@ Measured on this machine (`cargo test -p lockdown-vault --test shared_pq_cost --
 
 ## 8. Gaps
 
-- **Item shares and emergency grants aren't required to carry the signature** (§5). Closing it needs a per-owner memory on every recipient.
+- **Item shares and emergency grants aren't required to carry the signature** (§5). Closing it needs a per-owner memory on every recipient. _Closed by doc 49 §5 (a per-sender memory on each device)._
 - **A first-sight device** (a new member, a fresh install) is open to a chain stripped of every signature by a person it never saw sign, for heads and membership changes alike (doc 28 §7, unchanged in kind).
 - **The command line holds shared vaults' other members to nothing post-quantum.** `bins/cli` opens shared vaults with their pinned writers (`vault_open::pinned_writers`) but has no sharing step, so it never sets `MemberPq`. Its own heads follow doc 28 as before. Moving the CLI onto the session's sharing step (doc 36 gap 3) closes it.
 - **Each pull checks every post-quantum head again.** It does so for members as for this identity (doc 28 §9's gap, now per member). Checking only from the newest post-quantum head per person back would cut it.
 - **Looking members up every sync** while they don't sign post-quantum costs one lookup each (§7). A member who never updates costs that forever. A back-off isn't built.
 - **A member's refused lookup is quiet:** `refresh_unready` keeps the old pin and says nothing. The changed key shows in the contact's next deliberate lookup.
 - **Emergency steps** stay Ed25519 (§5).
-- **Status line:** proposed, not built (§9).
+- **Status line:** dropped by Sean (D558, 2026-11-04); nothing shows other members' rollout (§9).
 
 **unicron host-contract gaps:** none hit; no screen changed.
 
-## 9. The status line: proposed words, not built
+## 9. The status line for other members: dropped
 
-The Security line (D365) speaks for this identity's own devices. A shared vault waiting on another member's device could be told without a new screen, as one more sentence after the explanation when the headline is "on":
-
-> **In Family, changes Bob makes are still signed the older way until Bob's devices update.** (several: "In Family and Trip, changes Bob and Carol make …")
-
-It names the vault and the person (never their devices, which this device shouldn't list for someone else), in the line's existing explanation paragraph. Not built because it changes the line's wire shape. It would add `members_waiting: [{vault, name}]` to `PqStatusView`, its schema file, the desktop's and the web vault's views and `lockdown security`, plus a Playwright spec. And the words need Sean (D558). `Contact::signs_heads_post_quantum` already answers the question.
+Dropped by Sean on 2026-11-04 (D558: "drop D558"). Whether another member has updated isn't something the person can act on, so nothing anywhere shows it, and the Security line speaks only for this identity's own devices (D365). Nothing of it was built; the words this section once proposed are withdrawn.
 
 ## 10. Wire and file additions (D62, additive)
 
@@ -183,5 +179,5 @@ For the coordinator to record. Every row is a security-model choice, so every ro
 | D555 | **The server checks every sharing record's post-quantum signature** (membership change, share envelope of each purpose, emergency grant) against the sending account's published key, as it does heads (D341). It refuses a bad one, or one from an account that publishes none, and requires none. A member's pushed head is checked under the member's own account. Plain version: the server turns away a shared vault change whose new signature is wrong. | Proposed; audit item |
 | D556 | **"The chain already carries one" counts only this identity's own heads** when a device decides to start signing (amends D337's second clause). Another member's post-quantum head no longer starts this identity's signing while one of its own devices can't sign. Plain version: your devices start the stronger signatures when your devices are ready, not because someone you share with is. | Proposed; audit item |
 | D557 | **A membership chain that fails its check isn't kept**, not even in the session's memory. The next pull fetches the same changes and checks them again. Before, a refused change stayed in memory, so the next sync saw nothing new and went on. Plain version: a shared vault change Lockdown refused stays refused. | Accepted by default under D38 (a bug fix); audit item |
-| D558 | **Status line words for a shared vault waiting on someone else** (proposed, not built): after "Quantum-safe signatures: on", add "In Family, changes Bob makes are still signed the older way until Bob's devices update." It names the vault and the person, never their devices. Building it adds a field to `PqStatusView` and its schema, the desktop and web views, `lockdown security`, and a Playwright spec. Plain version: Security could say which shared vault is still waiting, and on whom. | Proposed; **flagged for Sean** (new words on a screen) |
+| D558 | **Status line words for a shared vault waiting on someone else** (proposed, not built): after "Quantum-safe signatures: on", add "In Family, changes Bob makes are still signed the older way until Bob's devices update." It names the vault and the person, never their devices. Building it adds a field to `PqStatusView` and its schema, the desktop and web views, `lockdown security`, and a Playwright spec. Plain version: Security could say which shared vault is still waiting, and on whom. | Proposed; **flagged for Sean** (new words on a screen) · **dropped by Sean 2026-11-04** (§9) |
 | D559 | **Wire and file additions (D62, additive):** §10's fields. No wasm, IPC, route, view or extension schema changed. Plain version: older and newer apps keep understanding each other. | Accepted by default under D38 |

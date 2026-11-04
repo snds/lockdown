@@ -4,7 +4,8 @@ import { GateProvider } from "@/app/gate"
 import { SettingsProvider } from "@/app/settings"
 import { TemplatesProvider } from "@/app/templates"
 import { ClientProvider } from "@/core/client"
-import type { ItemSummary } from "@/core/types"
+import type { ItemSummary, VaultView as VaultInfo } from "@/core/types"
+import { VaultsProvider } from "@/features/organization/vaults-context"
 import { repeatedLandmarks } from "@/test/a11y"
 import { fakeClient } from "@/test/fake-client"
 import { TEMPLATES } from "@/test/templates-fixture"
@@ -65,5 +66,46 @@ describe("the vault list's structure (design review R18)", () => {
     // The item's own "Notes" block is a region named "Notes"; the list's is not.
     expect(screen.queryByRole("region", { name: "Notes" })).not.toBeInTheDocument()
     expect(repeatedLandmarks(container)).toEqual([])
+  })
+})
+
+const LINE = "Some recent changes from bob@example.com couldn't be verified, so Lockdown left them out. You don't need to do anything."
+
+const vault = (id: string, unverified: string | null): VaultInfo => ({ id, name: id === "v1" ? "Family" : "Personal", primary: id !== "v1", items: 1, trash_days: 30, folders: [], unverified })
+
+function mountIn(scope: { vault: string } | undefined, vaults: VaultInfo[]) {
+  return render(
+    <ClientProvider value={fakeClient({ templates: () => Promise.resolve(TEMPLATES) })}>
+      <SettingsProvider>
+        <TemplatesProvider>
+          <GateProvider>
+            <VaultsProvider value={{ vaults, reload: () => {} }}>
+              <VaultView view="all" rows={[row("n1", "note", "Door code")]} error={null} onChanged={() => {}} onNotice={() => {}} selected={null} onSelect={() => {}} onPalette={() => {}} scope={scope} />
+            </VaultsProvider>
+          </GateProvider>
+        </TemplatesProvider>
+      </SettingsProvider>
+    </ClientProvider>,
+  )
+}
+
+describe("a shared vault with changes held back (docs/plan/49-shared-vault-quiet.md)", () => {
+  it("says so in one calm line on that vault, with nothing to click", () => {
+    mountIn({ vault: "v1" }, [vault("v0", null), vault("v1", LINE)])
+    const note = screen.getByRole("note")
+    expect(note).toHaveTextContent(LINE)
+    expect(within(note).queryByRole("button")).not.toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("shows nothing on a vault with nothing held back, or outside a vault", () => {
+    mountIn({ vault: "v0" }, [vault("v0", null), vault("v1", LINE)])
+    expect(screen.queryByText(LINE)).not.toBeInTheDocument()
+  })
+
+  it("shows nothing in All items", () => {
+    mountIn(undefined, [vault("v1", LINE)])
+    expect(screen.queryByText(LINE)).not.toBeInTheDocument()
   })
 })

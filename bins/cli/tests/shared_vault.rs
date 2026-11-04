@@ -181,3 +181,108 @@ fn the_cli_opens_the_personas_own_vault_when_a_shared_vault_others_wrote_to_sort
         "{out}"
     );
 }
+
+#[test]
+fn the_cli_opens_a_persona_whose_only_vault_is_shared_and_holds_back_what_doesnt_verify() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("server.sqlite");
+    let srv = {
+        let storage = lockdown_server::storage::SqliteStorage::open(&db).unwrap();
+        let keys =
+            lockdown_server::keys::ServerKeys::load_or_create(&dir.path().join("k.cbor")).unwrap();
+        let config = Config {
+            session_ttl: std::time::Duration::from_secs(60 * 86_400),
+            ..Config::default()
+        };
+        run_in_background(Arc::new(AppState::new(Box::new(storage), keys, config))).unwrap()
+    };
+    let bob = person(dir.path(), "bob", &srv);
+    let alice = person(dir.path(), "alice", &srv);
+    // Alice's only vault, shared with Bob, who wrote to it last.
+    let only = alice.vaults().unwrap()[0].id.clone();
+    let mail = alice
+        .add_login(
+            "https://mail.example.com",
+            "alice",
+            b"pw".to_vec(),
+            Some("Mail"),
+        )
+        .unwrap();
+    alice.lookup_contact("bob@example.com").unwrap();
+    alice
+        .share_vault(&only, "bob@example.com", "edit", pw())
+        .unwrap();
+    bob.sync().unwrap();
+    let bobs = bob
+        .add_item_in(&only, "note", Some("Bob's note"), false, Vec::new())
+        .unwrap();
+    bob.sync().unwrap();
+    alice.sync().unwrap();
+    alice.lock().unwrap();
+    drop(alice);
+
+    // Every vault waits with this identity's devices alone; the pins the
+    // app made vouch for Bob's, and the vault opens.
+    let root = root_of(dir.path(), "alice");
+    let out = ok(&root, None, &["list"]);
+    assert!(out.contains(&mail) && out.contains(&bobs), "{out}");
+    let out = ok(&root, None, &["status"]);
+    assert!(out.contains(&format!("vault          {only}")), "{out}");
+
+    // Without the pins nothing vouches yet: a plain sentence, no raw refusal.
+    let data = dir.path().join("alice-unmet");
+    copy_without_pins(
+        &dir.path().join("alice").join("snds").join("lockdown"),
+        &data,
+    );
+    let (ok_, out, err) = cli(&root, Some(&data), &["list"]);
+    assert!(!ok_, "{out}");
+    assert!(
+        err.contains(
+            "Your vault is shared, and this device hasn't checked the people who changed it yet, so it can't open here. Open the Lockdown app and let it sync once; the command line opens it after that."
+        ),
+        "{err}"
+    );
+    assert!(!err.contains("didn't check out"), "{err}");
+
+    // Bob writes again and the server bends his head's device signature:
+    // the command line's sync holds it back with the app's line, and takes
+    // it once the server serves it as signed.
+    bob.add_item_in(&only, "note", Some("Bob again"), false, Vec::new())
+        .unwrap();
+    bob.sync().unwrap();
+    let conn = rusqlite::Connection::open(&db).unwrap();
+    let (seq, body): (i64, Vec<u8>) = conn
+        .query_row(
+            "SELECT seq, body FROM heads WHERE vault_id = ?1 ORDER BY seq DESC LIMIT 1",
+            [&only],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    let good = lockdown_vault::ManifestHead::from_bytes(&body).unwrap();
+    let mut bent = good.clone();
+    bent.sig[5] ^= 1;
+    let put = |h: &lockdown_vault::ManifestHead| {
+        conn.execute(
+            "UPDATE heads SET body = ?1 WHERE vault_id = ?2 AND seq = ?3",
+            rusqlite::params![h.to_bytes().unwrap(), &only, seq],
+        )
+        .unwrap();
+    };
+    put(&bent);
+    let out = ok(&root, None, &["sync"]);
+    assert!(
+        out.contains(
+            "Some recent changes from bob@example.com couldn't be verified, so Lockdown left them out. You don't need to do anything."
+        ),
+        "{out}"
+    );
+    assert!(out.contains(&format!("held back: manifest {seq}")), "{out}");
+    let out = ok(&root, None, &["list"]);
+    assert!(!out.contains("Bob again"), "{out}");
+    put(&good);
+    let out = ok(&root, None, &["sync"]);
+    assert!(!out.contains("couldn't be verified"), "{out}");
+    let out = ok(&root, None, &["list"]);
+    assert!(out.contains("Bob again"), "{out}");
+}

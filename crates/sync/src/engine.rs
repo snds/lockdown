@@ -81,6 +81,48 @@ pub struct SyncReport {
     pub chain_rewritten: bool,
     /// How many rounds it took.
     pub rounds: u32,
+    /// Heads this run held back instead of failing ([`sync_vault_holding`]).
+    pub held: Option<HeldHeads>,
+}
+
+/// Heads a run held back (docs/plan/49-shared-vault-quiet.md): the first
+/// one that failed its check and everything after it, which chains on it.
+/// Nothing of them was taken, and nothing was pushed.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct HeldHeads {
+    /// The `seq` of the head that failed (for a rollback or a fork, the
+    /// newest head this device holds that the server no longer shows).
+    pub seq: u64,
+    /// The device that head names as its signer.
+    pub signer: Id,
+    /// Which check failed, in the check's own words (for support, never
+    /// for the person).
+    pub why: String,
+    /// How many of the pulled heads before it were taken.
+    pub taken: usize,
+}
+
+/// What a run may hold back instead of failing, and whether it may push
+/// (docs/plan/49-shared-vault-quiet.md).
+#[derive(Clone, Copy)]
+pub struct Holding<'a> {
+    /// Whether a head that fails its check, signed (by its own word) by
+    /// this device, may be held back: another person's device in a shared
+    /// vault. Every other failure fails the run, as it always did.
+    pub holdable: &'a dyn Fn(Id) -> bool,
+    /// Whether this run may push: false while something else in the vault
+    /// (a membership change, a key grant) is held back, so nothing this
+    /// device writes lands beside a change it couldn't verify. Changes made
+    /// here wait on this device, as offline ones do.
+    pub push: bool,
+}
+
+impl Holding<'_> {
+    /// Holds nothing back and pushes: what [`sync_vault_with`] does.
+    pub const NONE: Holding<'static> = Holding {
+        holdable: &|_| false,
+        push: true,
+    };
 }
 
 /// The most rounds one run tries before reporting a race it cannot settle.
@@ -245,14 +287,55 @@ pub fn sync_vault_with(
     blobs: &mut dyn BlobStore,
     kt: Option<&KtSession<'_>>,
 ) -> Result<SyncReport, SyncError> {
+    sync_vault_holding(syncer, vault, record, state, blobs, kt, Holding::NONE)
+}
+
+/// [`sync_vault_with`] for a shared vault, where a head another person's
+/// device signed may be held back instead of failing the run
+/// (docs/plan/49-shared-vault-quiet.md):
+///
+/// - **What is taken.** The longest run of the pulled heads, from the
+///   first, that checks out and whose items the server still serves as
+///   the newest of them lists. A head that fails holds back every head
+///   after it (each names the one before by hash). Nothing held back is
+///   taken, shown or opened.
+/// - **A rollback or a fork** whose newest head this device holds is
+///   another person's is held back too: the vault stays as it is.
+/// - **Nothing is pushed** while anything is held back (nor when
+///   `holding.push` is false): any head this device wrote would have to
+///   follow the one that failed. What changed here stays on this device
+///   under a head of its own that is never sent, as offline changes do,
+///   and goes out once the chain checks out.
+/// - [`SyncReport::held`] says what was held back. Every run pulls the
+///   same heads again and checks them afresh.
+pub fn sync_vault_holding(
+    syncer: &Syncer<'_>,
+    vault: &mut Vault,
+    record: &[u8],
+    state: &mut VaultSyncState,
+    blobs: &mut dyn BlobStore,
+    kt: Option<&KtSession<'_>>,
+    holding: Holding<'_>,
+) -> Result<SyncReport, SyncError> {
     let vault_id = vault.context().vault_id;
     let t = syncer.transport;
     let token = syncer.token;
     let mut report = SyncReport::default();
     let mut blobs_done: BTreeSet<Hash32> = BTreeSet::new();
-    if state.synced_seq == 0 {
+    if state.synced_seq == 0 && holding.push {
         t.put_vault(token, vault_id, record).map_err(session_or)?;
     }
+    // A held back rollback or fork: the head this device holds at
+    // `synced_seq`, when another person's device signed it.
+    let held_at = |vault: &Vault, state: &VaultSyncState, why: String| {
+        let head = vault.head_at(state.synced_seq)?;
+        (holding.holdable)(head.signer).then_some(HeldHeads {
+            seq: head.seq,
+            signer: head.signer,
+            why,
+            taken: 0,
+        })
+    };
     for round in 1..=MAX_ROUNDS {
         report.rounds = round;
 
@@ -261,12 +344,18 @@ pub fn sync_vault_with(
             .heads_since(token, vault_id, state.synced_seq)
             .map_err(session_or)?;
         if remote.current_seq < state.synced_seq {
-            return Err(SyncError::Rollback {
+            let err = SyncError::Rollback {
                 offered: remote.current_seq,
                 remembered: state.synced_seq,
-            });
+            };
+            if let Some(held) = held_at(vault, state, err.to_string()) {
+                report.held = Some(held);
+                report.head_seq = state.synced_seq;
+                return Ok(report);
+            }
+            return Err(err);
         }
-        let mut remote_heads = Vec::with_capacity(remote.heads.len());
+        let mut remote_heads: Vec<ManifestHead> = Vec::with_capacity(remote.heads.len());
         for bytes in &remote.heads {
             let head = ManifestHead::from_bytes(bytes)?;
             if let (Some(kt), Some(cited)) = (kt, head.sth) {
@@ -289,13 +378,49 @@ pub fn sync_vault_with(
                 None => remote.current_hash == Some(ours),
             };
             if !server_has {
-                return Err(SyncError::Fork {
+                let err = SyncError::Fork {
                     seq: state.synced_seq,
-                });
+                };
+                if let Some(held) = held_at(vault, state, err.to_string()) {
+                    report.held = Some(held);
+                    report.head_seq = state.synced_seq;
+                    return Ok(report);
+                }
+                return Err(err);
             }
         }
 
-        // 2. Merge what the new heads bring.
+        // 2. Merge what the new heads bring: all of them, or as many as
+        // check out when one another person signed doesn't.
+        let mut pulled_items = None;
+        if !remote_heads.is_empty() {
+            let (take, failed) = vault.checked_prefix(state.synced_seq, &remote_heads);
+            if let Some((at, why)) = failed {
+                let head = &remote_heads[at];
+                if !(holding.holdable)(head.signer) {
+                    return Err(why.into());
+                }
+                let pulled = t
+                    .items_since(token, vault_id, state.synced_rev)
+                    .map_err(session_or)?;
+                let take = servable_prefix(
+                    vault,
+                    state.synced_seq,
+                    &remote_heads[..take],
+                    &pulled.items,
+                )?;
+                report.held = Some(HeldHeads {
+                    seq: head.seq,
+                    signer: head.signer,
+                    why: why.to_string(),
+                    taken: take,
+                });
+                remote_heads.truncate(take);
+                pulled_items = Some(pulled);
+            }
+        }
+        let held = report.held.is_some();
+        let mut rebased = false;
         if let Some(newest) = remote_heads.last().cloned() {
             let dirty_before: BTreeSet<Id> =
                 vault.changed_since(state.synced_seq)?.into_iter().collect();
@@ -303,9 +428,13 @@ pub fn sync_vault_with(
                 report.chain_rewritten = true;
             }
             vault.rebase(state.synced_seq, remote_heads)?;
-            let pulled = t
-                .items_since(token, vault_id, state.synced_rev)
-                .map_err(session_or)?;
+            rebased = true;
+            let pulled = match pulled_items.take() {
+                Some(p) => p,
+                None => t
+                    .items_since(token, vault_id, state.synced_rev)
+                    .map_err(session_or)?,
+            };
             for wire_item in pulled.items {
                 let mut theirs = Item::from_bytes(&wire_item.item)?;
                 theirs.rev = wire_item.rev;
@@ -335,13 +464,28 @@ pub fn sync_vault_with(
                 }
             }
             state.synced_seq = newest.seq;
-            state.synced_rev = newest
-                .entries
-                .iter()
-                .map(|e| e.rev)
-                .max()
-                .unwrap_or(state.synced_rev)
-                .max(state.synced_rev);
+            // While heads are held back the revisions stay where they were,
+            // so the next run fetches again every item they changed.
+            if !held {
+                state.synced_rev = newest
+                    .entries
+                    .iter()
+                    .map(|e| e.rev)
+                    .max()
+                    .unwrap_or(state.synced_rev)
+                    .max(state.synced_rev);
+            }
+        }
+
+        // Nothing goes out while something is held back: changes made here
+        // wait on this device under a head that is never sent.
+        if held || !holding.push {
+            if rebased && !vault.changed_since(state.synced_seq)?.is_empty() {
+                vault.truncate_heads_after(state.synced_seq);
+                vault.commit()?;
+            }
+            report.head_seq = state.synced_seq;
+            return Ok(report);
         }
 
         // 3. Push what changed here.
@@ -418,6 +562,51 @@ pub fn sync_vault_with(
         }
     }
     Err(SyncError::Unsettled(MAX_ROUNDS))
+}
+
+/// How many of `heads` (the checked part of a pulled chain) this device
+/// can take with what the server serves: the most, from the first, such
+/// that every entry the newest of them lists is either what this device
+/// already took at `synced_seq` or an item the server sends at exactly
+/// that revision and version. The server keeps only each item's newest
+/// copy, so a later held-back head that changed an item again leaves the
+/// earlier copy unservable, and the heads that listed it wait too.
+fn servable_prefix(
+    vault: &Vault,
+    synced_seq: u64,
+    heads: &[ManifestHead],
+    pulled: &[crate::wire::ItemWire],
+) -> Result<usize, SyncError> {
+    let base: Vec<lockdown_vault::ManifestEntry> = vault
+        .head_at(synced_seq)
+        .map(|h| h.entries.clone())
+        .unwrap_or_default();
+    let mut served = Vec::with_capacity(pulled.len());
+    for w in pulled {
+        let item = Item::from_bytes(&w.item)?;
+        served.push((
+            item.item_id,
+            w.rev,
+            item.latest_hash()?,
+            item.state,
+            item.is_shredded(),
+        ));
+    }
+    let fits = |head: &ManifestHead| {
+        base.iter()
+            .all(|b| head.entries.iter().any(|e| e.item_id == b.item_id))
+            && head.entries.iter().all(|e| {
+                base.contains(e)
+                    || served.iter().any(|(id, rev, hash, st, shredded)| {
+                        *id == e.item_id
+                            && *rev == e.rev
+                            && *hash == e.version_hash
+                            && *st == e.state
+                            && *shredded == e.shredded
+                    })
+            })
+    };
+    Ok(heads.iter().rposition(fits).map_or(0, |i| i + 1))
 }
 
 /// Pulls a vault this device has never held into `store`: the record, the

@@ -56,6 +56,11 @@ pub struct ReceivedItem {
     pub item_key: ByteBuf,
     /// The newest version number seen; an older one is refused.
     pub highest_n: u64,
+    /// The BLAKE3 hash of the share envelope taken, so the same envelope
+    /// keeps opening after its sender is known to sign post-quantum
+    /// (docs/plan/49-shared-vault-quiet.md). Absent in a record from before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub envelope_hash: Option<ByteBuf>,
 }
 
 impl Drop for ReceivedItem {
@@ -98,6 +103,17 @@ struct Body {
     /// Emergency releases, by grant.
     #[serde(default)]
     released: BTreeMap<Id, Released>,
+    /// People whose item shares or emergency grants this device saw carry
+    /// a verified post-quantum signature, by account, with when it first
+    /// saw one: from then on theirs must (docs/plan/49-shared-vault-quiet.md).
+    /// Never forgotten, not even with the contact.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pq_senders: BTreeMap<Id, i64>,
+    /// Emergency grants naming this persona, by grant: the BLAKE3 hash of
+    /// the grant as first seen while its owner wasn't known to sign
+    /// post-quantum, so a grant made before their update still releases.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    grants_seen: BTreeMap<Id, ByteBuf>,
 }
 
 /// The device's sharing record for one persona.
@@ -254,6 +270,34 @@ impl SharingState {
     /// Forgets an emergency release.
     pub fn remove_released(&mut self, grant: Id) -> Option<Released> {
         self.body.released.remove(&grant)
+    }
+
+    /// The people whose shares and grants must carry a post-quantum
+    /// signature, by account, with when this device first saw one.
+    pub fn pq_senders(&self) -> &BTreeMap<Id, i64> {
+        &self.body.pq_senders
+    }
+
+    /// Remembers that `account`'s shares carry a verified post-quantum
+    /// signature, once (it only ever moves on).
+    pub fn mark_pq_sender(&mut self, account: Id, at: i64) {
+        self.body.pq_senders.entry(account).or_insert(at);
+    }
+
+    /// The emergency grants first seen before their owner signed
+    /// post-quantum, by grant, as their hashes.
+    pub fn grants_seen(&self) -> &BTreeMap<Id, ByteBuf> {
+        &self.body.grants_seen
+    }
+
+    /// Remembers an emergency grant as first seen, once.
+    pub fn see_grant(&mut self, grant: Id, hash: ByteBuf) {
+        self.body.grants_seen.entry(grant).or_insert(hash);
+    }
+
+    /// Keeps only the grants in `listed`.
+    pub fn keep_grants(&mut self, listed: &std::collections::BTreeSet<Id>) {
+        self.body.grants_seen.retain(|g, _| listed.contains(g));
     }
 }
 

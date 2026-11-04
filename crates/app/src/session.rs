@@ -72,6 +72,7 @@ mod organize;
 pub(crate) mod passkeys;
 mod pq_status;
 pub(crate) mod quick;
+pub(crate) mod quiet;
 pub(crate) mod recovery;
 pub(crate) mod renewal;
 pub(crate) mod second_factor;
@@ -326,6 +327,14 @@ pub struct Session {
     /// while the server's log is split (`shared_sync`); every sync counts
     /// them again.
     held_items: usize,
+    /// Records other people made that didn't verify, held back instead of
+    /// stopping the sync (`quiet`); every sync works it out again.
+    unverified: quiet::Unverified,
+    /// Whether `opened` is a stand-in: no vault of the persona could open
+    /// yet (`quiet::stand_in`). Never saved, synced or written to.
+    stand_in: bool,
+    /// While on a stand-in, the vaults that wait for their writers.
+    waiting: Vec<Id>,
     /// Items others shared on their own, held in memory only, read only.
     received: Vec<Vault>,
     /// The share link or answer opened last, until the next or the lock.
@@ -485,14 +494,41 @@ impl Session {
         // The command line opens through the same calls (`vault_open`).
         let crate::vault_open::PersonaVaults {
             opened: mut all,
-            waiting,
+            mut waiting,
         } = crate::vault_open::open_own_vaults(
             &identity, persona_id, &store, &keystore, &memory, &synced,
         )?;
+        // Every vault waits (the persona's only vault is a shared one other
+        // people wrote to): step 3 runs before anything else, with the
+        // persona's keys from the identity, trusting each one's writers as
+        // this device pinned them (docs/plan/49-shared-vault-quiet.md §6).
+        if all.is_empty() && !waiting.is_empty() {
+            let keys = crate::vault_open::waiting_keys(&identity, persona_id, &store, &waiting[0])?;
+            let sharing = crate::sharing::SharingState::open(
+                crate::sharing::SharingState::path_in(&paths.data, persona_id),
+                persona_id,
+                &keys.app_data_key,
+            )?;
+            let (opened, still) = crate::vault_open::open_with_pins(
+                &identity, &sharing, &store, &keystore, &memory, &synced, waiting,
+            )?;
+            all = opened;
+            waiting = still;
+        }
+        // Nothing vouches for any of them yet (a new device before its first
+        // sync): the session opens on a stand-in that holds nothing, is
+        // never saved, synced or written to, and gives way to the first
+        // vault that opens (`quiet::WAITING`).
+        let mut stand_in = false;
+        if all.is_empty()
+            && let Some(w) = waiting.first()
+        {
+            let keys = crate::vault_open::waiting_keys(&identity, persona_id, &store, w)?;
+            all.push(quiet::stand_in(&identity, persona_id, keys, &keystore)?);
+            stand_in = true;
+        }
+        let waiting_ids: Vec<Id> = waiting.iter().map(|w| w.vault_id).collect();
         if all.is_empty() {
-            if let Some(w) = waiting.into_iter().next() {
-                return Err(w.why);
-            }
             if mode != Mode::Init {
                 return Err(format!(
                     "this persona has no vault at {} yet",
@@ -544,6 +580,9 @@ impl Session {
             rosters: BTreeMap::new(),
             held_vaults: BTreeMap::new(),
             held_items: 0,
+            unverified: quiet::Unverified::default(),
+            stand_in,
+            waiting: if stand_in { waiting_ids } else { Vec::new() },
             received: Vec::new(),
             opened_send: None,
             link: None,
@@ -562,9 +601,11 @@ impl Session {
 
     /// Writes every vault and records each one's newest head.
     fn save(&mut self) -> Result<(), String> {
-        self.opened
-            .save(&mut self.store)
-            .map_err(|e| e.to_string())?;
+        if !self.stand_in {
+            self.opened
+                .save(&mut self.store)
+                .map_err(|e| e.to_string())?;
+        }
         for o in &mut self.more {
             o.save(&mut self.store).map_err(|e| e.to_string())?;
         }
@@ -580,10 +621,12 @@ impl Session {
     }
 
     fn remember(&mut self) -> Result<(), String> {
-        let head = self.remembered_head()?;
-        self.memory
-            .remember_vault(self.vault().context().vault_id, head)
-            .map_err(|e| e.to_string())?;
+        if !self.stand_in {
+            let head = self.remembered_head()?;
+            self.memory
+                .remember_vault(self.vault().context().vault_id, head)
+                .map_err(|e| e.to_string())?;
+        }
         for o in &self.more {
             let head = o.vault.head().map_err(|e| e.to_string())?;
             let remembered = RememberedHead {
@@ -688,7 +731,7 @@ impl Session {
             base: DeviceExpectations {
                 identity: &self.identity,
                 synced: &self.synced,
-                vault: Some((vault, synced(vault))),
+                vault: (!self.stand_in).then(|| (vault, synced(vault))),
             },
             more: self
                 .more
@@ -1111,6 +1154,8 @@ impl Session {
                 .count(),
             identity_seq: self.synced.seq(),
             account,
+            held_back: self.held_back_details(),
+            waiting: self.stand_in,
         })
     }
 
@@ -1737,7 +1782,23 @@ impl Session {
         }
     }
 
+    /// One sync round. What it holds back is worked out afresh (`quiet`);
+    /// a round that fails keeps what the last one held back.
     fn sync_with(
+        &mut self,
+        transport: &HttpTransport,
+        server: &str,
+        token: &str,
+    ) -> Result<SyncOutcome, String> {
+        let before = std::mem::take(&mut self.unverified);
+        let out = self.sync_round(transport, server, token);
+        if out.is_err() && self.unverified.is_empty() {
+            self.unverified = before;
+        }
+        out
+    }
+
+    fn sync_round(
         &mut self,
         transport: &HttpTransport,
         server: &str,
@@ -1780,7 +1841,24 @@ impl Session {
             device_label: &label,
         };
         let mut report = SyncReport::default();
+        let shared: std::collections::BTreeSet<Id> = self.rosters.keys().copied().collect();
+        let own = self.own_device_keys();
+        let device_owner: BTreeMap<Id, Id> = self
+            .device_table()
+            .into_iter()
+            .filter(|(d, _)| !own.contains_key(d))
+            .map(|(d, (account, _))| (d, account))
+            .collect();
+        let others_devices: std::collections::BTreeSet<Id> = device_owner.keys().copied().collect();
+        let blocked: std::collections::BTreeSet<Id> = shared
+            .iter()
+            .copied()
+            .filter(|v| self.unverified.blocks_push(*v))
+            .collect();
         for idx in 0..=self.more.len() {
+            if idx == 0 && self.stand_in {
+                continue;
+            }
             let mut refreshed = false;
             let one = loop {
                 let cfg = self
@@ -1799,13 +1877,23 @@ impl Session {
                     .and_then(|r| r.to_bytes())
                     .map_err(|e| e.to_string())?;
                 let state = cfg.vaults.entry(vault_id).or_default();
-                let outcome = lockdown_sync::sync_vault_with(
+                // In a shared vault, a head another person's device signed
+                // that doesn't verify is held back, and nothing is sent
+                // while anything of the vault is (`quiet`).
+                let others = &others_devices;
+                let holdable = |signer: Id| shared.contains(&vault_id) && others.contains(&signer);
+                let holding = lockdown_sync::Holding {
+                    holdable: &holdable,
+                    push: !blocked.contains(&vault_id),
+                };
+                let outcome = lockdown_sync::sync_vault_holding(
                     &syncer,
                     &mut open.vault,
                     &record,
                     state,
                     &mut self.store,
                     Some(&kt),
+                    holding,
                 );
                 // Whatever happened on the wire, what is in memory is saved and
                 // remembered, so a half-finished round is picked up next time.
@@ -1851,6 +1939,20 @@ impl Session {
                 &mut self.more[idx - 1]
             };
             let vault_id = open.vault.context().vault_id;
+            if let Some(held) = &one.held {
+                self.unverified.push(quiet::Held {
+                    kind: quiet::Kind::Head,
+                    vault: Some(vault_id),
+                    who: device_owner.get(&held.signer).copied(),
+                    record: format!("manifest {}", held.seq),
+                    why: held.why.clone(),
+                });
+            }
+            let open = if idx == 0 {
+                &mut self.opened
+            } else {
+                &mut self.more[idx - 1]
+            };
             let head = open.vault.head().map_err(|e| e.to_string())?;
             let remembered = RememberedHead {
                 seq: head.seq,
@@ -1929,6 +2031,7 @@ impl Session {
         let mut outcome = sync_outcome(&report, &view);
         outcome.lines.extend(mirrors::lines(&checks));
         outcome.lines.extend(self.held_lines());
+        outcome.lines.extend(self.unverified_lines());
         outcome.transparency.mirrors = checks;
         Ok(outcome)
     }
