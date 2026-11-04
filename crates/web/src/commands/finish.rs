@@ -83,6 +83,12 @@ pub(super) fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult
             web.app().forget_contact(&req::<String>(args, "account")?)?;
             done()
         }
+        // The owner's yes to someone who reset their account, through the
+        // `Approve` gate (docs/plan/55-member-key-change.md).
+        "sharing_let_back_in" => {
+            let account: String = req(args, "account")?;
+            json(web.app().let_back_in(&account, gate(args)?)?)
+        }
         // --- hygiene (§6–§7) --------------------------------------------------------
         "memory_report" => json(web.app().memory_report()),
         "capture_protect" => json(false),

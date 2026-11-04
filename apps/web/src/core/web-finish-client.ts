@@ -63,7 +63,9 @@ export function webHygieneClient(link: Link): HygieneClient {
 /**
  * The contacts screen's part of the desktop's sharing client: look a person
  * up in the key-transparency log, compare (typed, pasted or scanned), and
- * forget. Sharing vaults and items stays the desktop's.
+ * forget, and the owner's answer to someone who reset their account
+ * (docs/plan/55-member-key-change.md). Sharing vaults and items stays the
+ * desktop's.
  */
 export function webSharingClient(link: Link): SharingClient {
   const no = () => notHere("Sharing a vault or an item")
@@ -100,5 +102,6 @@ export function webSharingClient(link: Link): SharingClient {
     emergencyOpen: no,
     copyOpened: no,
     copyLink: no,
+    letBackIn: (account, gate) => link.call("sharing_let_back_in", { account, ...g(gate) }),
   }
 }

@@ -110,6 +110,19 @@ export interface HouseholdView {
   members: MemberView[]
 }
 
+/**
+ * Someone who reset their account and waits on you, as the owner of a
+ * vault they are in or of an item shared with them, to let them back in
+ * (docs/plan/55-member-key-change.md). Named by login, never a device or a key.
+ */
+export interface KeyResetView {
+  account_id: string
+  login: string
+  /** The question, in the core's words: "bob@example.com reset their account. Let them back in?" */
+  words: string
+  seen_at: number
+}
+
 export interface SharingOverview {
   /** While the server's public log disagrees with a mirror: what is paused and why (D328 as changed by D375). */
   paused?: string | null
@@ -123,6 +136,8 @@ export interface SharingOverview {
   received: ReceivedView[]
   emergency: EmergencyView[]
   waiting_on_you: number
+  /** People waiting on you to let them back in after a reset; absent when none. */
+  resets?: KeyResetView[]
 }
 
 export type EmergencyAction = "accept" | "decline" | "request" | "stop" | "revoke"
@@ -172,6 +187,8 @@ export interface SharingClient {
   copyOpened(index: number, clearAfterSecs: number): Promise<Copied>
   /** Copies a link made here on the same path, so it is cleared like a password. */
   copyLink(link: number[], clearAfterSecs: number): Promise<Copied>
+  /** The owner's yes to someone who reset their account, through the `Approve` gate; answers their login. */
+  letBackIn(account: string, gate?: GateInput): Promise<string>
 }
 
 const bytes = async (cmd: string, args?: Record<string, unknown>) => new Uint8Array(await invoke<ArrayBuffer>(cmd, args))
@@ -209,6 +226,7 @@ export const tauriSharingClient: SharingClient = {
   emergencyOpen: (grant) => invoke("emergency_open", { grant }),
   copyOpened: (index, clearAfterSecs) => invoke("opened_copy", { index, clearAfterSecs }),
   copyLink: (link, clearAfterSecs) => invoke("link_copy", { link, clearAfterSecs }),
+  letBackIn: (account, gate) => invoke("sharing_let_back_in", { account, gate }),
 }
 
 const SharingClientContext = createContext<SharingClient>(tauriSharingClient)

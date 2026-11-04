@@ -9,6 +9,7 @@ import { useVaults } from "@/features/organization/vaults-context"
 import { whenLocal } from "@/lib/format"
 
 import { EmergencySection } from "./emergency-section"
+import { KeyResets } from "./key-resets"
 import { RequestLinksSection, ShareLinksSection } from "./links-section"
 import { PeopleSection } from "./people-section"
 import { SharingPaused } from "./sharing-paused"
@@ -98,6 +99,7 @@ export function SharingView({ rows, onOpenItem, onChanged, onNotice }: SharingVi
                 : `${overview.waiting_on_you} people asked for emergency access to your vaults. Stop it below if you didn't expect it.`}
             </p>
           )}
+          <KeyResets resets={overview.resets ?? []} online={overview.online} onChanged={changed} onNotice={onNotice} />
           {overview.fingerprint && (
             <section aria-labelledby="sharing-you" className="flex flex-col gap-1">
               <h2 id="sharing-you" className="text-base font-semibold">

@@ -1662,6 +1662,7 @@ async fn a_shared_vaults_heads_membership_changes_and_grants_must_carry_a_good_p
         Change::Add {
             member: bob_party,
             right: Right::Edit,
+            keys: None,
         },
         None,
         alice.account,
@@ -1806,4 +1807,110 @@ async fn a_shared_vaults_heads_membership_changes_and_grants_must_carry_a_good_p
             .0,
         StatusCode::CREATED
     );
+}
+
+/// docs/plan/55-member-key-change.md: an account's identity moves to new
+/// keys (another profile, another signing key) only when the new profile
+/// lists a hand-over the account's pinned key signed; without one, or with
+/// a forged one, the push is refused as before, and once moved the old
+/// key's pushes are refused.
+#[tokio::test]
+async fn an_account_moves_to_new_keys_only_along_a_hand_over_its_pinned_key_signed() {
+    use lockdown_vault::key_change::{HANDOVER_FIELD, HandoverKeys, KeyHandover, publish_handover};
+    let dir = tempfile::tempdir().unwrap();
+    let ks1 = FileKeystore::open_or_create(&dir.path().join("k1.cbor")).unwrap();
+    let old = Identity::create(&dir.path().join("old"), "lockdown", "laptop", &ks1).unwrap();
+    let isk1 = identity_signing_key(&old, &ks1).unwrap();
+    let h = harness(Config::default());
+    h.register(
+        "bob@example.com",
+        "correct horse battery staple",
+        old.profile().profile_id,
+    )
+    .await;
+    let a = Device::new();
+    let token = h
+        .login("bob@example.com", "correct horse battery staple", &a)
+        .await
+        .unwrap()
+        .token;
+    let first = set_with(
+        &old,
+        &[device_record(&old, &a, "laptop", &isk1)],
+        None,
+        Vec::new(),
+        &isk1,
+    );
+    let paths: Vec<&str> = first.records.keys().map(String::as_str).collect();
+    put_identity(&h, &token, &first, &paths).await.unwrap();
+
+    // A new identity, continuing the account's chain, with nothing to
+    // vouch for it: another profile, refused.
+    let ks2 = FileKeystore::open_or_create(&dir.path().join("k2.cbor")).unwrap();
+    let mut new = Identity::create(&dir.path().join("new"), "lockdown", "tablet", &ks2).unwrap();
+    let isk2 = identity_signing_key(&new, &ks2).unwrap();
+    let push_new = |identity: &Identity, isk: &lockdown_crypto::SigningKey| {
+        set_with(identity, &[], Some(&first.manifest), Vec::new(), isk)
+    };
+    let all = |set: &RecordSet| set.records.keys().cloned().collect::<Vec<String>>();
+    let attempt = push_new(&new, &isk2);
+    let refs = all(&attempt);
+    let refs: Vec<&str> = refs.iter().map(String::as_str).collect();
+    let err = put_identity(&h, &token, &attempt, &refs).await.unwrap_err();
+    assert_eq!(err.1, ErrorCode::WrongVault, "{}", err.2);
+
+    let persona = |i: &Identity| i.personas().next().unwrap().persona_id;
+    let mut handover = KeyHandover::new(
+        HandoverKeys::of_identity(&old).unwrap(),
+        HandoverKeys::of_identity(&new).unwrap(),
+        std::collections::BTreeMap::from([(persona(&old), persona(&new))]),
+    );
+    handover.sign_to(&isk2, None).unwrap();
+    // Forged: the new key signed both sides.
+    let mut forged = handover.clone();
+    forged.from_sig = forged.to_sig.clone();
+    lockdown_vault::handover::set_profile_extra(
+        &mut new,
+        &ks2,
+        &[(
+            HANDOVER_FIELD,
+            Some(ciborium::Value::Array(vec![ciborium::Value::Bytes(
+                forged.to_bytes().unwrap(),
+            )])),
+        )],
+    )
+    .unwrap();
+    let attempt = push_new(&new, &isk2);
+    let refs = all(&attempt);
+    let refs: Vec<&str> = refs.iter().map(String::as_str).collect();
+    let err = put_identity(&h, &token, &attempt, &refs).await.unwrap_err();
+    assert_eq!(err.1, ErrorCode::WrongVault, "{}", err.2);
+
+    // The real one: the old key signed it too. Accepted, and the account
+    // is now pinned to the new key and profile.
+    handover.sign_from(&isk1, None).unwrap();
+    lockdown_vault::handover::set_profile_extra(&mut new, &ks2, &[(HANDOVER_FIELD, None)]).unwrap();
+    publish_handover(&mut new, &ks2, &handover).unwrap();
+    let moved = push_new(&new, &isk2);
+    let refs = all(&moved);
+    let refs: Vec<&str> = refs.iter().map(String::as_str).collect();
+    let accepted = put_identity(&h, &token, &moved, &refs).await.unwrap();
+    assert_eq!(accepted.seq, 2);
+    let account = h
+        .state
+        .storage
+        .account_by_login("bob@example.com")
+        .unwrap()
+        .unwrap();
+    assert_eq!(account.profile_id, new.profile().profile_id);
+    // The old key can't write the account's identity any more.
+    let stale = set_with(
+        &old,
+        &[device_record(&old, &a, "laptop", &isk1)],
+        Some(&moved.manifest),
+        Vec::new(),
+        &isk1,
+    );
+    let err = put_identity(&h, &token, &stale, &[]).await.unwrap_err();
+    assert_eq!(err.1, ErrorCode::WrongVault, "{}", err.2);
 }

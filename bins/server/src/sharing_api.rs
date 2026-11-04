@@ -424,14 +424,28 @@ pub async fn members_since(
     let events = store.membership_events(vault_id, since.since)?;
     let current_seq = store.shared_vault(vault_id)?.map(|s| s.seq).unwrap_or(0);
     let mut logins = std::collections::BTreeMap::new();
+    let mut identity_heads = std::collections::BTreeMap::new();
+    let mut current = vec![row.account_id];
     logins.insert(row.account_id, login_of(&state, row.account_id));
     for m in store.members(vault_id)? {
         logins.insert(m.party.account_id, login_of(&state, m.party.account_id));
+        if m.active {
+            current.push(m.party.account_id);
+        }
+    }
+    // Each current member's newest identity manifest: the hint that has a
+    // member's device look them up again (docs/plan/55-member-key-change.md).
+    for account in current {
+        let st = state.storage.identity_state(account)?;
+        if let Some(hash) = st.hash {
+            identity_heads.insert(account, (st.seq, hash));
+        }
     }
     Ok(Cbor(MembershipSince {
         events: events.into_iter().map(ByteBuf::from).collect(),
         current_seq,
         logins,
+        identity_heads,
     }))
 }
 

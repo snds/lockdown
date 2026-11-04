@@ -57,4 +57,15 @@ describe("docs/plan/26-desktop-finish.md over the worker", () => {
     await expect(sharing.shareVault("v", "bob", "view")).rejects.toMatchObject({ code: "refused" })
     expect(await webHygieneClient(link).protect(true)).toBe(false)
   })
+
+  it("answers the owner's question about someone who reset their account through the core and its gate", async () => {
+    const { link, calls } = fakeLink({ sharing_let_back_in: "bob@example.com" })
+    const sharing = webSharingClient(link)
+    expect(await sharing.letBackIn("acc-bob", { password: "pw" })).toBe("bob@example.com")
+    await sharing.letBackIn("acc-bob")
+    expect(calls).toEqual([
+      { cmd: "sharing_let_back_in", args: { account: "acc-bob", gate: { password: "pw" } } },
+      { cmd: "sharing_let_back_in", args: { account: "acc-bob" } },
+    ])
+  })
 })

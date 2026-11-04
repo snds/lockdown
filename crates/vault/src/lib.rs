@@ -59,6 +59,7 @@ pub mod handover;
 pub mod identity;
 pub mod identity_set;
 pub mod item;
+pub mod key_change;
 pub mod keys;
 pub mod manifest;
 pub mod organization;

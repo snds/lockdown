@@ -114,6 +114,7 @@ fn what_post_quantum_signatures_add_to_a_ten_thousand_item_shared_vault() {
             Change::Add {
                 member: party(),
                 right: Right::View,
+                keys: None,
             },
             None,
             alice.account_id,

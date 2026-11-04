@@ -45,6 +45,7 @@ use crate::sharing::{
 use lockdown_vault::identity::keys_for;
 
 pub(crate) mod follow;
+pub(crate) mod key_change;
 pub(crate) mod phrase;
 pub(crate) mod pq;
 pub(crate) mod rekey;
@@ -214,7 +215,11 @@ impl Session {
     }
 
     /// Looks a person up, checks their keys against the log, and pins them
-    /// (or checks they continue the pin). `account` or `login` names them.
+    /// (or checks they continue the pin, or moves it along a hand-over or
+    /// an owner's vouch: `key_change`). `account` or `login` names them.
+    /// Keys that changed with nothing to vouch for them are refused here,
+    /// for the deliberate steps (looking someone up, sharing with them);
+    /// a sync's lookups use [`Self::pin_quiet`].
     fn pin(
         &mut self,
         transport: &HttpTransport,
@@ -222,19 +227,24 @@ impl Session {
         sth: &SignedTreeHead,
         who: Result<Id, &str>,
     ) -> Result<Contact, String> {
-        let entry: DirectoryEntry = match who {
-            Ok(account) => transport.directory_account(token, account),
-            Err(login) => transport.directory(token, login),
+        let looked = self.look_up(transport, token, sth, who)?;
+        if looked.changed {
+            return Err(self.changed_words(&looked.contact));
         }
-        .map_err(|e| e.to_string())?;
-        let pinned = self.sharing.contact(entry.account_id).cloned();
-        let contact = verify_directory_entry(transport, sth, &entry, pinned.as_ref(), None)
-            .map_err(transparency_err)?;
-        if Some(&contact) != pinned.as_ref() {
-            self.sharing.put_contact(contact.clone());
-            self.save_sharing()?;
-        }
-        Ok(contact)
+        Ok(looked.contact)
+    }
+
+    /// [`Self::pin`] for a sync: keys that changed with nothing to vouch
+    /// for them leave the pin as it was and answer it, so the sync goes on
+    /// and what they signed is held back with the quiet line (`quiet`).
+    pub(super) fn pin_quiet(
+        &mut self,
+        transport: &HttpTransport,
+        token: &str,
+        sth: &SignedTreeHead,
+        account: Id,
+    ) -> Result<Contact, String> {
+        Ok(self.look_up(transport, token, sth, Ok(account))?.contact)
     }
 
     /// Pins every account in `accounts` this device doesn't know yet.
@@ -931,6 +941,7 @@ impl Session {
             Change::Add {
                 member: contact.party(),
                 right,
+                keys: None,
             },
             None,
             me.account_id,
@@ -1230,8 +1241,9 @@ impl Session {
         let since = transport
             .members_since(token, vault_id, have)
             .map_err(|e| e.to_string())?;
+        let hints = since.identity_heads.clone();
         if since.events.is_empty() && self.rosters.contains_key(&vault_id) {
-            return Ok(());
+            return self.follow_keys(transport, token, sth, vault_id, &hints);
         }
         let events = since
             .events
@@ -1257,7 +1269,7 @@ impl Session {
         // A pinned member who signed with a device this device doesn't know
         // is looked up again, and must continue the pin.
         for account in &take.refresh {
-            self.pin(transport, token, sth, Ok(*account))?;
+            self.pin_quiet(transport, token, sth, *account)?;
         }
         let lockdown_sync::sharing::MembershipSince {
             events: mut taken,
@@ -1290,7 +1302,7 @@ impl Session {
         if self.is_open(vault_id) {
             self.apply_roster(vault_id)?;
         }
-        Ok(())
+        self.follow_keys(transport, token, sth, vault_id, &hints)
     }
 
     /// After the chain with the newly pulled changes (those after `before`)
@@ -1385,8 +1397,12 @@ impl Session {
         let required = require_pq
             || (purpose == SharePurpose::Vault
                 && self.envelope_needs_pq(vault_id, key_ref, env.place.from_account));
-        env.check_post_quantum(self.pq_key_of(env.place.from_account).as_ref(), required)
-            .map_err(|e| e.to_string())?;
+        env.check_post_quantum(
+            self.pq_key_by(env.place.from_account, env.by_device)
+                .as_ref(),
+            required,
+        )
+        .map_err(|e| e.to_string())?;
         env.open::<VaultKey>(&self.kem_secret()?, &expected, &key)
             .map_err(|e| e.to_string())
     }
@@ -1600,7 +1616,7 @@ impl Session {
         };
         let me = self.sharing.account_id();
         for account in roster.writers.iter().copied().filter(|a| Some(*a) != me) {
-            self.pin(transport, token, sth, Ok(account))?;
+            self.pin_quiet(transport, token, sth, account)?;
         }
         // A vault of this persona not open yet takes the roster as it opens.
         if self.is_open(vault_id) {
@@ -1677,7 +1693,7 @@ impl Session {
                 .map(|((o, _), _)| *o),
         )?;
         for account in &take.refresh {
-            self.pin(transport, token, sth, Ok(*account))?;
+            self.pin_quiet(transport, token, sth, *account)?;
         }
         let me = self.me()?;
         let kem = self.kem_secret()?;
@@ -1784,7 +1800,7 @@ impl Session {
         // owner's pinned key. One that isn't there is refused once the
         // owner's shares carried one, unless this device took this very
         // envelope before.
-        let pq_key = self.pq_key_of(r.owner.account_id);
+        let pq_key = self.pq_key_by(r.owner.account_id, env.by_device);
         env.check_post_quantum(pq_key.as_ref(), false)
             .map_err(|e| e.to_string())?;
         let signed = pq_key.is_some() && env.pq_sig.is_some();
@@ -2674,7 +2690,7 @@ impl Session {
             .ok_or("the grant was signed by a device its owner's identity doesn't list")?;
         grant.verify(signer).map_err(|e| e.to_string())?;
         let owner = grant.owner.account_id;
-        let pq_key = self.pq_key_of(owner);
+        let pq_key = self.pq_key_by(owner, grant.by_device);
         grant
             .check_post_quantum(pq_key.as_ref())
             .map_err(|e| e.to_string())?;
@@ -2708,7 +2724,7 @@ impl Session {
             };
             listed.insert(grant.grant_id);
             let owner = grant.owner.account_id;
-            if let Some(key) = self.pq_key_of(owner)
+            if let Some(key) = self.pq_key_by(owner, grant.by_device)
                 && grant.pq_sig.is_some()
                 && grant.check_post_quantum(Some(&key)).is_ok()
             {
@@ -2770,6 +2786,7 @@ impl Session {
             received: self.received_views(),
             emergency,
             waiting_on_you,
+            resets: self.key_resets(),
         })
     }
 }

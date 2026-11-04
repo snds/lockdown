@@ -181,6 +181,11 @@ pub struct IdentityAccept<'a> {
     pub revoked: &'a [Id],
     /// Every revocation boundary.
     pub revocations: &'a [RevocationRow],
+    /// The identity's new profile, when a key hand-over the pinned key
+    /// signed moves the account to new keys (docs/plan/55-member-key-change.md):
+    /// the pin moves to `isk_pub` and the account to this profile. The
+    /// caller checked the hand-over; `None` keeps the pin.
+    pub handed_over_to: Option<Id>,
 }
 
 /// One log leaf as stored.
@@ -1104,6 +1109,7 @@ impl Storage for SqlStorage {
             isk_pub,
             revoked,
             revocations,
+            handed_over_to,
         } = accept;
         let tx = self.begin()?;
         let state = Self::identity_state_in(&tx, account_id)?;
@@ -1115,6 +1121,7 @@ impl Storage for SqlStorage {
         };
         if let Some(pinned) = state.isk_pub
             && pinned != *isk_pub
+            && handed_over_to.is_none()
         {
             return Ok(Err(refuse(
                 ErrorCode::BadSignature,
@@ -1186,6 +1193,12 @@ impl Storage for SqlStorage {
             "UPDATE accounts SET identity_seq = ?2, identity_hash = ?3, isk_pub = ?4 WHERE account_id = ?1",
             params![account_id.to_string(), seq, &hash.0[..], &isk_pub[..]],
         )?;
+        if let Some(profile_id) = handed_over_to {
+            tx.execute(
+                "UPDATE accounts SET profile_id = ?2 WHERE account_id = ?1",
+                params![account_id.to_string(), profile_id.to_string()],
+            )?;
+        }
         tx.execute(
             "DELETE FROM revoked_devices WHERE account_id = ?1",
             params![account_id.to_string()],

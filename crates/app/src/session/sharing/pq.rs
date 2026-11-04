@@ -95,6 +95,21 @@ impl Session {
         self.sharing.contact(account)?.pq_key().ok().flatten()
     }
 
+    /// The post-quantum key a record `account`'s `device` signed is checked
+    /// under: the key of the identity that device belonged to. A person
+    /// whose keys changed signed their older records with their former
+    /// identity (docs/plan/55-member-key-change.md).
+    pub(super) fn pq_key_by(&self, account: Id, device: Id) -> Option<PqVerifyingKey> {
+        match self
+            .sharing
+            .contact(account)
+            .and_then(|c| c.former_of(device))
+        {
+            Some(former) => former.pq_key().ok().flatten(),
+            None => self.pq_key_of(account),
+        }
+    }
+
     /// Checks a shared vault's membership chain, as the sharing record
     /// holds it, against each maker's post-quantum key (`pq::check_events`).
     pub(super) fn check_membership_pq(&self, vault_id: Id) -> Result<(), String> {
@@ -107,9 +122,18 @@ impl Session {
             .map(|b| MembershipEvent::from_bytes(b))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?;
-        lockdown_vault::pq::check_events(&events, &|a| self.pq_key_of(a))
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+        // Each identity follows its own rule: a person's former identity
+        // (its devices) under its own key and its profile's id.
+        lockdown_vault::pq::check_events_by(&events, &|e| match self
+            .sharing
+            .contact(e.by_account)
+            .and_then(|c| c.former_of(e.by_device))
+        {
+            Some(former) => (former.profile_id, former.pq_key().ok().flatten()),
+            None => (e.by_account, self.pq_key_of(e.by_account)),
+        })
+        .map(|_| ())
+        .map_err(|e| e.to_string())
     }
 
     /// Whether the vault key envelope for `key_ref` that `from` sent this
@@ -150,21 +174,45 @@ impl Session {
             .writers
             .iter()
             .filter(|a| Some(**a) != me)
-            .filter_map(|account| {
-                let contact = self.sharing.contact(*account)?;
-                Some((
-                    *account,
+            .filter_map(|account| self.sharing.contact(*account).map(|c| (*account, c)))
+            .flat_map(|(account, contact)| {
+                // Their current identity's devices under their pinned key;
+                // each former identity's under its own key and its
+                // profile's id (docs/plan/55-member-key-change.md).
+                let former: BTreeSet<Id> = contact
+                    .former
+                    .iter()
+                    .flat_map(|f| f.devices.iter().copied())
+                    .collect();
+                let current = (
+                    account,
                     MemberPq {
                         devices: contact
                             .devices
                             .keys()
-                            .filter(|d| !own.contains_key(d))
+                            .filter(|d| !own.contains_key(d) && !former.contains(d))
                             .copied()
                             .collect(),
                         key: contact.pq_key().ok().flatten(),
-                        since: remembered.get(account).copied(),
+                        since: remembered.get(&account).copied(),
                     },
-                ))
+                );
+                let before = contact.former.iter().map(|f| {
+                    (
+                        f.profile_id,
+                        MemberPq {
+                            devices: f
+                                .devices
+                                .iter()
+                                .filter(|d| !own.contains_key(d))
+                                .copied()
+                                .collect(),
+                            key: f.pq_key().ok().flatten(),
+                            since: remembered.get(&f.profile_id).copied(),
+                        },
+                    )
+                });
+                std::iter::once(current).chain(before).collect::<Vec<_>>()
             })
             .collect()
     }
@@ -216,7 +264,7 @@ impl Session {
             return Ok(());
         }
         for account in unready {
-            let _ = self.pin(transport, token, sth, Ok(account));
+            let _ = self.pin_quiet(transport, token, sth, account);
         }
         if self.is_open(vault_id) {
             self.apply_roster(vault_id)?;

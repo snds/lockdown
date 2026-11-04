@@ -87,6 +87,27 @@ pub fn verify_directory_entry(
     pinned: Option<&Contact>,
     persona: Option<Id>,
 ) -> std::result::Result<Contact, SyncError> {
+    let persona = persona.or(pinned.map(|p| p.persona_id));
+    let (fresh, _) = verify_directory_entry_unpinned(transport, sth, entry, persona)?;
+    match pinned {
+        Some(p) => Ok(p.check_continues(&fresh)?),
+        None => Ok(fresh),
+    }
+}
+
+/// The checks of [`verify_directory_entry`] but the pin's: the entry is in
+/// the log the caller verified and its records verify under the profile's
+/// own key. Answers the identity as a contact (for `persona`, or the
+/// receiving one by the default rule when the identity has no such
+/// persona: a new identity has new personas) and the key hand-overs its
+/// profile lists, so the caller decides against its pin
+/// (`Contact::take_lookup`, docs/plan/55-member-key-change.md).
+pub fn verify_directory_entry_unpinned(
+    transport: &dyn Transport,
+    sth: &SignedTreeHead,
+    entry: &DirectoryEntry,
+    persona: Option<Id>,
+) -> std::result::Result<(Contact, Vec<lockdown_vault::key_change::KeyHandover>), SyncError> {
     let refuse = |msg: String| SyncError::Vault(lockdown_vault::Error::Transparency(msg));
     let manifest = IdentityManifest::from_bytes(&entry.manifest)?;
     let leaf = LogLeaf::from_bytes(&entry.leaf)?;
@@ -140,13 +161,11 @@ pub fn verify_directory_entry(
             .map(|r| (r.path.clone(), r.body.clone()))
             .collect::<BTreeMap<_, _>>(),
     };
-    let verified = public.verify(pinned.map(|p| &p.isk_pub))?;
-    let persona = persona.or(pinned.map(|p| p.persona_id));
+    let verified = public.verify(None)?;
+    let persona = persona.filter(|id| verified.personas.iter().any(|p| p.persona_id == *id));
     let fresh = Contact::from_public(&public, &verified, persona, entry.log_index)?;
-    match pinned {
-        Some(p) => Ok(p.check_continues(&fresh)?),
-        None => Ok(fresh),
-    }
+    let handovers = lockdown_vault::key_change::handovers_of(&verified.profile)?;
+    Ok((fresh, handovers))
 }
 
 // --- shared vaults ---------------------------------------------------------------
@@ -202,6 +221,14 @@ pub struct MembershipSince {
     pub current_seq: u64,
     /// The login name of every account the chain names, for display.
     pub logins: BTreeMap<Id, String>,
+    /// Each current member's newest identity manifest on the server, `seq`
+    /// and hash (the owner's included): a hint to look a member up again
+    /// when it moved past their pin, so a hand-over or a reset is noticed
+    /// before they write (docs/plan/55-member-key-change.md). Only a hint:
+    /// the lookup that follows is checked against the log like any other.
+    /// Absent from an older server (D62).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub identity_heads: BTreeMap<Id, (u64, Hash32)>,
 }
 
 /// `POST /v1/vaults/{vault}/members`: the next membership event and the

@@ -351,6 +351,19 @@ pub mod commands {
     ) -> AppResult<Vec<EmergencyView>> {
         blocking(&app, move |a| a.emergency_open(&grant)).await
     }
+
+    /// The owner's yes to someone who reset their account
+    /// (docs/plan/55-member-key-change.md), through the `Approve` gate.
+    /// Answers their login.
+    #[tauri::command]
+    pub async fn sharing_let_back_in(
+        app: State<'_, App>,
+        account: String,
+        gate: Option<GateInput>,
+    ) -> AppResult<String> {
+        let gate = gate.unwrap_or_default();
+        blocking(&app, move |a| a.let_back_in(&account, gate)).await
+    }
 }
 
 #[cfg(test)]

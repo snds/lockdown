@@ -163,12 +163,20 @@ pub enum Change {
         /// A group or a household.
         kind: VaultKind,
     },
-    /// A member joins with a right.
+    /// A member joins with a right. With `keys`, the owner lets a member
+    /// who is in the vault already back in under new keys, after a reset
+    /// nothing else vouches for (docs/plan/55-member-key-change.md).
     Add {
         /// Who.
         member: Party,
         /// What they may do.
         right: Right,
+        /// The new keys the owner vouches for: only on letting a member
+        /// back in, only by the owner. Absent on every other addition (an
+        /// older build drops it, so it can't check that change's signature
+        /// and holds it back).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        keys: Option<MemberKeys>,
     },
     /// A member's right changes.
     SetRight {
@@ -183,6 +191,21 @@ pub enum Change {
         /// Who.
         account_id: Id,
     },
+}
+
+/// The keys a membership change names for a member the owner lets back
+/// in: what every other member's device moves its pin to, once that change
+/// checks out (docs/plan/55-member-key-change.md).
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct MemberKeys {
+    /// Their Identity Signing Key.
+    #[serde(with = "serde_bytes")]
+    pub isk_pub: [u8; 32],
+    /// Their identity's ML-DSA-65 key, when they publish one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_isk: Option<serde_bytes::ByteBuf>,
+    /// The receiving key of the persona the vault goes to.
+    pub kem_pub: KemPublicKey,
 }
 
 /// One signed event in a shared vault's membership chain.
@@ -305,7 +328,16 @@ impl MembershipEvent {
                     format!("{} made this the household vault", name(self.by_account))
                 }
             },
-            Change::Add { member, right } => format!(
+            Change::Add {
+                member,
+                keys: Some(_),
+                ..
+            } => format!(
+                "{} let {} back in after they reset their account",
+                name(self.by_account),
+                name(member.account_id)
+            ),
+            Change::Add { member, right, .. } => format!(
                 "{} added {} ({})",
                 name(self.by_account),
                 name(member.account_id),
@@ -362,6 +394,9 @@ pub struct Roster {
     pub seq: u64,
     /// The newest event's hash.
     pub head: Hash32,
+    /// Members the owner let back in under new keys, by account: the party
+    /// and keys the newest such change named, and its `seq`.
+    pub readmitted: BTreeMap<Id, (Party, MemberKeys, u64)>,
 }
 
 /// Finds the account and public key of a device: the device lookup a
@@ -450,6 +485,7 @@ impl Roster {
             writers: std::collections::BTreeSet::from([owner.account_id]),
             seq: 1,
             head: first.hash()?,
+            readmitted: BTreeMap::new(),
         };
         for event in &events[1..] {
             match devices {
@@ -522,6 +558,30 @@ impl Roster {
         }
         match &event.change {
             Change::Create { .. } => Err(broken("the vault was shared twice".into())),
+            Change::Add {
+                member,
+                right,
+                keys: Some(_),
+            } => {
+                // Letting a member back in under new keys: only the owner,
+                // whose signature the other members' devices root their
+                // trust in, and only someone in the vault now, with the
+                // right they have.
+                if event.by_account != self.owner.account_id {
+                    return Err(broken(
+                        "only the vault's owner can let someone back in under new keys".into(),
+                    ));
+                }
+                let Some(now) = self.members.get(&member.account_id) else {
+                    return Err(broken("someone who isn't a member was let back in".into()));
+                };
+                if now.right != *right {
+                    return Err(broken(
+                        "letting someone back in doesn't change what they may do".into(),
+                    ));
+                }
+                self.same_key(event)
+            }
             Change::Add { member, .. } => {
                 if member.account_id == self.owner.account_id
                     || self.members.contains_key(&member.account_id)
@@ -570,7 +630,19 @@ impl Roster {
     fn apply_checked(&mut self, event: &MembershipEvent) -> Result<()> {
         match &event.change {
             Change::Create { .. } => {}
-            Change::Add { member, right } => {
+            Change::Add {
+                member,
+                right,
+                keys: Some(keys),
+            } => {
+                if let Some(m) = self.members.get_mut(&member.account_id) {
+                    m.party = *member;
+                    m.right = *right;
+                }
+                self.readmitted
+                    .insert(member.account_id, (*member, keys.clone(), event.seq));
+            }
+            Change::Add { member, right, .. } => {
                 if right.can_edit() {
                     self.writers.insert(member.account_id);
                 }
@@ -1170,6 +1242,138 @@ mod tests {
     }
 
     #[test]
+    fn only_the_owner_lets_a_member_back_in_under_new_keys_and_the_roster_names_them() {
+        let (alice, bob, carol) = (person(), person(), person());
+        let vault = Id::new();
+        let k1 = Id::new();
+        let devices = lookup(&[&alice, &bob, &carol]);
+        let mut events = vec![signed(
+            Roster::genesis(vault, alice.party, VaultKind::Shared, k1, alice.device),
+            &alice,
+        )];
+        for (who, right) in [(&bob, Right::Edit), (&carol, Right::Manage)] {
+            let roster = Roster::replay(&events, &devices).unwrap();
+            events.push(signed(
+                roster.propose(
+                    Change::Add {
+                        member: who.party,
+                        right,
+                        keys: None,
+                    },
+                    None,
+                    alice.party.account_id,
+                    alice.device,
+                ),
+                &alice,
+            ));
+        }
+        let roster = Roster::replay(&events, &devices).unwrap();
+        let (_, kem) =
+            ecosystem_identity::kem::generate(ecosystem_identity::kem::KemAlg::X25519MlKem768)
+                .unwrap();
+        let new_bob = Party {
+            account_id: bob.party.account_id,
+            profile_id: Id::new(),
+            persona_id: Id::new(),
+        };
+        let keys = MemberKeys {
+            isk_pub: [7; 32],
+            pq_isk: None,
+            kem_pub: kem,
+        };
+        let back_in = |right: Right| Change::Add {
+            member: new_bob,
+            right,
+            keys: Some(keys.clone()),
+        };
+        // Carol manages, but only the owner's signature vouches for new keys.
+        let by_carol = signed(
+            roster.propose(
+                back_in(Right::Edit),
+                None,
+                carol.party.account_id,
+                carol.device,
+            ),
+            &carol,
+        );
+        let err = roster.check_next(&by_carol).unwrap_err().to_string();
+        assert!(err.contains("only the vault's owner"), "{err}");
+        // Not a way to change a right, nor to move the key.
+        let wider = roster.propose(
+            back_in(Right::Manage),
+            None,
+            alice.party.account_id,
+            alice.device,
+        );
+        assert!(roster.check_next(&wider).is_err());
+        let moved = roster.propose(
+            back_in(Right::Edit),
+            Some(Id::new()),
+            alice.party.account_id,
+            alice.device,
+        );
+        assert!(roster.check_next(&moved).is_err());
+        // Not for someone outside the vault.
+        let stranger = person();
+        let outside = roster.propose(
+            Change::Add {
+                member: stranger.party,
+                right: Right::View,
+                keys: Some(keys.clone()),
+            },
+            None,
+            alice.party.account_id,
+            alice.device,
+        );
+        assert!(roster.check_next(&outside).is_err());
+        // Without new keys, adding Bob again is still refused.
+        let again = roster.propose(
+            Change::Add {
+                member: new_bob,
+                right: Right::Edit,
+                keys: None,
+            },
+            None,
+            alice.party.account_id,
+            alice.device,
+        );
+        assert!(roster.check_next(&again).is_err());
+
+        // The owner's: Bob's party moves, his right and writer status stay,
+        // and the roster names the keys for everyone else to follow.
+        let event = signed(
+            roster.propose(
+                back_in(Right::Edit),
+                None,
+                alice.party.account_id,
+                alice.device,
+            ),
+            &alice,
+        );
+        assert!(event.describe(&|_| "x".into()).contains("let x back in"));
+        events.push(event);
+        let roster = Roster::replay(&events, &devices).unwrap();
+        assert_eq!(roster.members[&bob.party.account_id].party, new_bob);
+        assert_eq!(roster.right_of(bob.party.account_id), Some(Right::Edit));
+        assert!(roster.ever_wrote(bob.party.account_id));
+        assert_eq!(roster.key_ref, k1);
+        let (party, named, seq) = &roster.readmitted[&bob.party.account_id];
+        assert_eq!((party, named, *seq), (&new_bob, &keys, 4));
+        // The server replays it the same way.
+        assert_eq!(Roster::replay_trusted(&events).unwrap(), roster);
+        // An older build drops `keys` when it decodes the change, so the
+        // signature it checks no longer covers the same bytes: it can't
+        // take the change, and holds it back.
+        let last = events.last().unwrap();
+        let mut older = last.clone();
+        if let Change::Add { keys, .. } = &mut older.change {
+            *keys = None;
+        }
+        assert!(older.verify(&alice.key.verifying_key()).is_err());
+        last.verify(&alice.key.verifying_key()).unwrap();
+    }
+
+    #[test]
     fn a_roster_follows_its_signed_chain_and_refuses_what_rights_forbid() {
         let (alice, bob, carol) = (person(), person(), person());
         let vault = Id::new();
@@ -1185,6 +1389,7 @@ mod tests {
                 Change::Add {
                     member: bob.party,
                     right: Right::View,
+                    keys: None,
                 },
                 None,
                 alice.party.account_id,
@@ -1203,6 +1408,7 @@ mod tests {
                 Change::Add {
                     member: carol.party,
                     right: Right::Edit,
+                    keys: None,
                 },
                 None,
                 bob.party.account_id,
@@ -1217,6 +1423,7 @@ mod tests {
                 Change::Add {
                     member: carol.party,
                     right: Right::Edit,
+                    keys: None,
                 },
                 None,
                 alice.party.account_id,
@@ -1266,6 +1473,7 @@ mod tests {
                 Change::Add {
                     member: bob.party,
                     right: Right::View,
+                    keys: None,
                 },
                 Some(k1),
                 alice.party.account_id,
@@ -1283,6 +1491,7 @@ mod tests {
         bent[1].change = Change::Add {
             member: bob.party,
             right: Right::Manage,
+            keys: None,
         };
         assert!(Roster::replay(&bent, &devices).is_err());
         // A chain that doesn't start with its owner sharing it.
@@ -1448,6 +1657,7 @@ mod tests {
                 Change::Add {
                     member: bob.party,
                     right: Right::Manage,
+                    keys: None,
                 },
                 &alice,
             ),
@@ -1461,6 +1671,7 @@ mod tests {
                 Change::Add {
                     member: carol.party,
                     right: Right::View,
+                    keys: None,
                 },
                 &bob,
             ),
