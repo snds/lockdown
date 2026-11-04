@@ -753,7 +753,12 @@ mod tests {
         let seq = vault.seq();
 
         // Signed last by this device, an owner's: nothing to follow.
-        assert!(vault.follow_edits(&[a, b], &|d| d == me).unwrap().is_empty());
+        assert!(
+            vault
+                .follow_edits(&[a, b], &|d| d == me)
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(vault.seq(), seq);
 
         // Signed last by a device that isn't the owner's (here, as if
@@ -788,7 +793,12 @@ mod tests {
             .create_item(ItemKind::CryptoWallet, ItemClass::CrownJewel, Vec::new())
             .unwrap();
         let seq = vault.seq();
-        assert!(vault.follow_edits(&[a, jewel], &|_| false).unwrap().is_empty());
+        assert!(
+            vault
+                .follow_edits(&[a, jewel], &|_| false)
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(vault.seq(), seq);
     }
 
