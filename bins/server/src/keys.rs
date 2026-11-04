@@ -174,7 +174,9 @@ mod tests {
         let before = lockdown_crypto::locked::report();
         let keys = ServerKeys::generate().unwrap();
         if keys.pq_log_key.is_locked() {
-            assert!(keys.pq_log_key.locked_pages() >= 16);
+            let least = lockdown_crypto::pq_sign::EXPANDED_KEY_LEN
+                .div_ceil(lockdown_crypto::locked::page_size());
+            assert!(keys.pq_log_key.locked_pages() >= least);
         } else {
             assert!(lockdown_crypto::locked::report().refused > before.refused);
         }

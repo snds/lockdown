@@ -15,7 +15,7 @@ use ecosystem_identity::memlock;
 use ecosystem_identity::{AppDataKey, SymmetricKey};
 use lockdown_crypto::Key32;
 use lockdown_crypto::locked::{self, PageLock};
-use lockdown_crypto::pq_sign::PqSigningKey;
+use lockdown_crypto::pq_sign::{self, PqSigningKey};
 
 /// Whether the kernel holds the page at `addr` locked: the `lo` flag on the
 /// mapping that holds it in `/proc/self/smaps` (a lock splits the mapping,
@@ -140,7 +140,8 @@ fn lockdown_and_the_identity_crate_share_one_page_table() {
     assert_eq!(locked::report().pages_locked, before.pages_locked);
     same_counts();
 
-    // 3. The ML-DSA expanded key: about 64 KiB, so 16 pages or more, all
+    // 3. The ML-DSA expanded key: about 64 KiB, so 17 or 18 pages of 4 KiB
+    // or 5 or 6 of 16 KiB (Apple silicon), all
     // locked while it lives, and counted in the report Settings reads.
     let before = locked::report();
     let pq = PqSigningKey::from_seed([9; 32]);
@@ -149,8 +150,9 @@ fn lockdown_and_the_identity_crate_share_one_page_table() {
         .verify(b"head", b"lockdown/test/v1", &sig, "head")
         .unwrap();
     if pq.is_locked() {
-        assert!(pq.locked_pages() >= 16);
-        assert!(locked::report().pages_locked >= before.pages_locked + 16);
+        let least = pq_sign::EXPANDED_KEY_LEN.div_ceil(size);
+        assert!((least..=least + 1).contains(&pq.locked_pages()));
+        assert!(locked::report().pages_locked >= before.pages_locked + least as u64);
     } else {
         assert!(locked::report().refused > before.refused);
     }

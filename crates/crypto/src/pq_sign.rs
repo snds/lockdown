@@ -33,6 +33,9 @@ use crate::{Error, Result};
 
 /// Bytes in an encoded ML-DSA-65 public key.
 pub const PUBLIC_KEY_LEN: usize = 1952;
+/// Bytes an expanded ML-DSA-65 signing key takes in memory (about 64 KiB),
+/// which is what its page lock covers.
+pub const EXPANDED_KEY_LEN: usize = std::mem::size_of::<ExpandedSigningKey<MlDsa65>>();
 /// Bytes in an encoded ML-DSA-65 signature.
 pub const SIGNATURE_LEN: usize = 3309;
 /// The longest context FIPS 204 allows.
@@ -71,7 +74,9 @@ impl PqSigningKey {
         self.pages.is_some()
     }
 
-    /// How many pages the lock holds (0 when not locked).
+    /// How many pages the lock holds (0 when not locked): at least
+    /// [`EXPANDED_KEY_LEN`] over the page size, rounded up, and at most one
+    /// more, wherever the block starts.
     pub fn locked_pages(&self) -> usize {
         self.pages.as_ref().map_or(0, PageLock::pages)
     }
@@ -247,7 +252,7 @@ mod tests {
 
     #[test]
     fn the_expanded_key_is_locked_out_of_swap_or_counted_as_refused() {
-        let size = std::mem::size_of::<ExpandedSigningKey<MlDsa65>>();
+        let size = EXPANDED_KEY_LEN;
         assert!(
             size >= 64 * 1024,
             "about 64 KiB in memory, not 4 KB: {size}"
@@ -255,7 +260,9 @@ mod tests {
         let before = crate::locked::report();
         let key = PqSigningKey::from_seed([3; 32]);
         if key.is_locked() {
-            assert!(key.locked_pages() >= size / crate::locked::page_size());
+            // 17 or 18 pages of 4 KiB; 5 or 6 of 16 KiB (Apple silicon).
+            let least = size.div_ceil(crate::locked::page_size());
+            assert!((least..=least + 1).contains(&key.locked_pages()));
         } else {
             assert_eq!(key.locked_pages(), 0);
             assert!(crate::locked::report().refused > before.refused);
