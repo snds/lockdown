@@ -8,7 +8,10 @@
 //! - `backup keygen | create | verify | restore` round-trips a live
 //!   server's data, and a server started on the restored directory has the
 //!   same accounts and the same key-transparency log key; a wrong Backup Key
-//!   or a changed byte is refused.
+//!   or a changed byte is refused;
+//! - the server turns its core dumps off at start unless `--core-dumps on`
+//!   says not to, and a zero locked-memory limit is logged once and never
+//!   stops it (docs/plan/53-harden-rest.md).
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
@@ -446,4 +449,119 @@ fn a_short_session_ttl_runs_out_and_the_device_key_renews_it_unless_renewal_is_o
         renew(&HttpTransport::new(&off.url).unwrap(), &token, &sign),
         Err(RenewError::SignIn(SignInReason::NotRenewable))
     );
+}
+
+/// Starts `cmd` (the binary, or a shell that execs it) and waits for its
+/// "listening on" line; answers the server and the lines before it.
+fn start_logged(mut cmd: Command) -> (Server, Vec<String>) {
+    let mut child = cmd
+        .env_remove("LOCKDOWN_LISTEN")
+        .env_remove("LOCKDOWN_CORE_DUMPS")
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut lines = BufReader::new(child.stderr.take().unwrap()).lines();
+    let mut before = Vec::new();
+    let url = loop {
+        let line = lines.next().expect("the server printed something").unwrap();
+        if let Some(rest) = line.split("listening on ").nth(1) {
+            break rest.split_whitespace().next().unwrap().to_string();
+        }
+        before.push(line);
+    };
+    std::thread::spawn(move || for _ in lines {});
+    (Server { child, url }, before)
+}
+
+/// The core limit (soft, hard) in a `/proc/<pid>/limits`.
+#[cfg(target_os = "linux")]
+fn core_limit(pid: u32) -> (String, String) {
+    let limits = std::fs::read_to_string(format!("/proc/{pid}/limits")).unwrap();
+    let line = limits
+        .lines()
+        .find(|l| l.starts_with("Max core file size"))
+        .unwrap();
+    let mut words = line["Max core file size".len()..].split_whitespace();
+    (
+        words.next().unwrap().to_string(),
+        words.next().unwrap().to_string(),
+    )
+}
+
+#[test]
+fn the_server_turns_its_core_dumps_off_at_start_unless_asked_not_to() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut cmd = Command::new(BIN);
+    cmd.args(["--listen", "127.0.0.1:0", "--data"])
+        .arg(dir.path().join("a"));
+    let (off, lines) = start_logged(cmd);
+    assert!(
+        !lines.iter().any(|l| l.contains("core dumps")),
+        "nothing to say when they are off: {lines:?}"
+    );
+    #[cfg(target_os = "linux")]
+    assert_eq!(core_limit(off.child.id()), ("0".into(), "0".into()));
+    signed_in(&off.url);
+
+    // `--core-dumps on`: the limit is left as it was, and said once.
+    let mut cmd = Command::new(BIN);
+    cmd.args(["--listen", "127.0.0.1:0", "--core-dumps", "on", "--data"])
+        .arg(dir.path().join("b"));
+    let (on, lines) = start_logged(cmd);
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|l| l.contains("core dumps left on"))
+            .count(),
+        1,
+        "{lines:?}"
+    );
+    #[cfg(target_os = "linux")]
+    assert_eq!(
+        core_limit(on.child.id()),
+        core_limit(std::process::id()),
+        "inherited, untouched"
+    );
+    let _ = on;
+}
+
+/// Whether this process holds `CAP_IPC_LOCK`, which ignores the
+/// locked-memory limit (bit 14 of the effective set).
+#[cfg(target_os = "linux")]
+fn can_lock_past_the_limit() -> bool {
+    std::fs::read_to_string("/proc/self/status")
+        .unwrap()
+        .lines()
+        .find_map(|l| l.strip_prefix("CapEff:"))
+        .and_then(|v| u64::from_str_radix(v.trim(), 16).ok())
+        .is_some_and(|caps| caps & (1 << 14) != 0)
+}
+
+#[cfg(unix)]
+#[test]
+fn a_zero_locked_memory_limit_is_logged_once_and_the_server_still_serves() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut cmd = Command::new("sh");
+    cmd.args(["-c", "ulimit -l 0 && exec \"$0\" \"$@\"", BIN])
+        .args(["--listen", "127.0.0.1:0", "--data"])
+        .arg(dir.path());
+    let (s, lines) = start_logged(cmd);
+    let refused: Vec<_> = lines.iter().filter(|l| l.contains("out of swap")).collect();
+    assert!(refused.len() <= 1, "logged once: {lines:?}");
+    #[cfg(target_os = "linux")]
+    if !can_lock_past_the_limit() {
+        assert_eq!(
+            refused.len(),
+            1,
+            "an unprivileged server is refused: {lines:?}"
+        );
+    }
+    if let Some(line) = refused.first() {
+        assert!(line.contains("they work, and may reach swap"), "{line}");
+    }
+    // The keys work unlocked: an account registers and signs in.
+    signed_in(&s.url);
+    #[cfg(target_os = "linux")]
+    assert_eq!(core_limit(s.child.id()), ("0".into(), "0".into()));
 }
