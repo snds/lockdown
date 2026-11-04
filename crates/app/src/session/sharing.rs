@@ -44,6 +44,7 @@ use crate::sharing::{
 };
 use lockdown_vault::identity::keys_for;
 
+pub(crate) mod follow;
 pub(crate) mod phrase;
 pub(crate) mod pq;
 pub(crate) mod rekey;
@@ -1636,6 +1637,10 @@ impl Session {
         // waits unapplied; outside one, owners are looked up, checked
         // against the log and pinned as ever, and a pinned owner with a new
         // device is looked up again and must continue the pin (`shared_sync`).
+        // The devices are the envelope's and the newest version's, the only
+        // ones checked here: an earlier version another member signed (one
+        // the owner's device has since followed) names no device of the
+        // owner's (docs/plan/54-share-follows-edits.md).
         let signers: Vec<(Id, Vec<Id>)> = got
             .items
             .iter()
@@ -1643,8 +1648,11 @@ impl Session {
                 let mut devices: Vec<Id> = ShareEnvelope::from_bytes(&r.envelope)
                     .map(|e| vec![e.by_device])
                     .unwrap_or_default();
-                if let Ok(item) = Item::from_bytes(&r.item.item) {
-                    devices.extend(item.versions.iter().map(|v| v.edited_by));
+                if let Some(latest) = Item::from_bytes(&r.item.item)
+                    .ok()
+                    .and_then(|i| i.latest().ok().map(|v| v.edited_by))
+                {
+                    devices.push(latest);
                 }
                 (r.owner.account_id, devices)
             })

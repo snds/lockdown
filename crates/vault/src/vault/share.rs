@@ -221,6 +221,45 @@ impl Vault {
         Ok(wrote)
     }
 
+    /// Signs again, as this device, each of `items` (the owner's items
+    /// shared on their own) whose newest version none of the owner's own
+    /// devices signed (`own` answers which are): a member's edit, or the
+    /// re-key versions of a rotation a manager ran. A person holding such
+    /// an item trusts only the owner's devices (docs/plan/18-sharing.md), so
+    /// this follow version is what lets their copy follow the edit
+    /// (docs/plan/54-share-follows-edits.md). It is a re-key version under
+    /// the item's current Item Key: the newest fields and files, sealed
+    /// again, with the newest version's `edited_at`. Only what this vault
+    /// already took is signed, and taking a version means it verified
+    /// under a writer's pinned key. An item not here, a crown jewel, or one
+    /// with nothing left to read is passed over. Commits one head when
+    /// anything was written, and answers the items written, in `items`'
+    /// order.
+    pub fn follow_edits(&mut self, items: &[Id], own: &dyn Fn(Id) -> bool) -> Result<Vec<Id>> {
+        let mut out = Vec::new();
+        for id in items {
+            let Ok(item) = self.item(*id) else {
+                continue;
+            };
+            if item.class != ItemClass::Standard || out.contains(id) {
+                continue;
+            }
+            let Ok(latest) = item.latest() else {
+                continue;
+            };
+            if own(latest.edited_by) {
+                continue;
+            }
+            if self.write_rekey_version(*id)? {
+                out.push(*id);
+            }
+        }
+        if !out.is_empty() {
+            self.commit_head()?;
+        }
+        Ok(out)
+    }
+
     /// Writes the re-key version of every item an earlier build re-keyed on
     /// this device and never pushed (docs/plan/51-rekey-push.md §4): one
     /// the server serves (`served`, each with the revision it is served
@@ -695,6 +734,72 @@ mod tests {
         let (found, rotated) = vault.reseal_unpushed(&served).unwrap();
         assert_eq!(found, vec![d]);
         assert!(rotated);
+    }
+
+    #[test]
+    fn follow_edits_signs_again_only_what_another_device_signed_last() {
+        let mut vault = sample_vault();
+        let me = vault.device_id();
+        let a = vault
+            .create_item(ItemKind::Login, ItemClass::Standard, sample_login_fields())
+            .unwrap();
+        let b = vault
+            .create_item(ItemKind::Login, ItemClass::Standard, sample_login_fields())
+            .unwrap();
+        let mut second = sample_login_fields();
+        second[3] = PlainField::hidden("pw", "password", "second");
+        vault.update_item(b, second).unwrap();
+        let was = vault.item(b).unwrap().latest().unwrap().clone();
+        let seq = vault.seq();
+
+        // Signed last by this device, an owner's: nothing to follow.
+        assert!(
+            vault
+                .follow_edits(&[a, b], &|d| d == me)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(vault.seq(), seq);
+
+        // Signed last by a device that isn't the owner's (here, as if
+        // this device weren't one): a follow version on top, the same
+        // fields, files and time, signed by this device, in one head.
+        let missing = Id::new();
+        assert_eq!(
+            vault.follow_edits(&[b, missing, b], &|_| false).unwrap(),
+            vec![b]
+        );
+        assert_eq!(vault.seq(), seq + 1);
+        let item = vault.item(b).unwrap();
+        let follow = item.latest().unwrap();
+        assert_eq!(follow.n, was.n + 1);
+        assert_eq!(follow.edited_by, me);
+        assert_eq!(follow.edited_at, was.edited_at);
+        assert_eq!(follow.parent_hash, was.hash(&item.header()).unwrap());
+        assert!(vault.changed_since(seq).unwrap().contains(&b));
+        assert_eq!(pw(&vault.open_item(b).unwrap()), "second");
+        // It opens for a person holding the item under its Item Key.
+        let key = vault.item_key(item).unwrap();
+        assert!(received_key_opens(vault.context(), item, &key));
+        vault.verify(0).unwrap();
+
+        // Once an owner's device signed it, asking again writes nothing.
+        let seq = vault.seq();
+        assert!(vault.follow_edits(&[b], &|d| d == me).unwrap().is_empty());
+        assert_eq!(vault.seq(), seq);
+        // Purged, or a crown jewel: passed over.
+        vault.purge_item(a).unwrap();
+        let jewel = vault
+            .create_item(ItemKind::CryptoWallet, ItemClass::CrownJewel, Vec::new())
+            .unwrap();
+        let seq = vault.seq();
+        assert!(
+            vault
+                .follow_edits(&[a, jewel], &|_| false)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(vault.seq(), seq);
     }
 
     #[test]
