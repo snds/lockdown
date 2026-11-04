@@ -10,6 +10,7 @@ import { VaultsProvider } from "@/features/organization/vaults-context"
 import { fakeClient } from "@/test/fake-client"
 import { fakeSharing } from "@/test/fake-sharing"
 
+import { RESET_HINT, letBackInNotice } from "./key-resets"
 import { SharingClientProvider, emergencyActions, type ContactView, type EmergencyView, type SharingClient, type SharingOverview, type VaultSharingView } from "./sharing-client"
 import { SharingView } from "./sharing-view"
 
@@ -82,6 +83,50 @@ describe("the Sharing screen", () => {
     const alert = await screen.findByText(/^Sharing is paused/)
     expect(alert.closest("[role=alert]")).toHaveTextContent("This server's public log doesn't match a mirror")
     expect(alert).toHaveTextContent("name an emergency contact")
+  })
+
+  it("asks the owner about someone who reset their account, in a row with no dialog, until it is answered", async () => {
+    const reset = { account_id: "acc-bob", login: "bob@example.com", words: "bob@example.com reset their account. Let them back in?", seen_at: 0 }
+    const letBackIn = vi.fn(() => Promise.resolve("bob@example.com"))
+    const notices: string[] = []
+    const client = fakeClient({ clipboardClear: () => Promise.resolve(true), clipboardHolds: () => Promise.resolve(true) })
+    const sharing = fakeSharing({ ...empty, overview: () => Promise.resolve(overview({ resets: [reset] })), letBackIn })
+    const view = () => (
+      <ClientProvider value={client}>
+        <SettingsProvider>
+          <GateProvider>
+            <VaultsProvider value={{ vaults: [personal], reload: () => {} }}>
+              <SharingClientProvider value={sharing}>
+                <SharingView rows={[]} onOpenItem={() => {}} onChanged={() => {}} onNotice={(t) => notices.push(t)} />
+              </SharingClientProvider>
+            </VaultsProvider>
+          </GateProvider>
+        </SettingsProvider>
+      </ClientProvider>
+    )
+    const { unmount } = render(view())
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    const rows = await screen.findByRole("list", { name: "Waiting on you" })
+    expect(within(rows).getByText("bob@example.com reset their account. Let them back in?")).toBeInTheDocument()
+    expect(within(rows).getByText(RESET_HINT)).toBeInTheDocument()
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    // Not now: the row goes from this screen, and nothing is answered.
+    await user.click(within(rows).getByRole("button", { name: "Not now" }))
+    expect(screen.queryByRole("list", { name: "Waiting on you" })).not.toBeInTheDocument()
+    expect(letBackIn).not.toHaveBeenCalled()
+    // Opened again, it asks again; yes goes through the gate.
+    unmount()
+    render(view())
+    const again = await screen.findByRole("list", { name: "Waiting on you" })
+    await user.click(within(again).getByRole("button", { name: "Let them back in" }))
+    await waitFor(() => expect(letBackIn).toHaveBeenCalledWith("acc-bob", {}))
+    await waitFor(() => expect(notices).toContain(letBackInNotice("bob@example.com")))
+  })
+
+  it("nobody waiting: no row", async () => {
+    mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview()) }))
+    expect(await screen.findByText("11111 22222 33333 44444 55555 66666")).toBeInTheDocument()
+    expect(screen.queryByRole("list", { name: "Waiting on you" })).not.toBeInTheDocument()
   })
 
   it("no split: no pause banner", async () => {

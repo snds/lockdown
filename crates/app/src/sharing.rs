@@ -136,6 +136,25 @@ struct Body {
     /// earlier build re-keyed here and never pushed (docs/plan/51-rekey-push.md §4).
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     rekey_checked: BTreeSet<Id>,
+    /// People whose keys changed with nothing to vouch for them, in
+    /// something this persona owns (a shared vault they are in, an item
+    /// shared with them on its own), by account: what the owner is asked
+    /// about until they answer (docs/plan/55-member-key-change.md).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    key_resets: BTreeMap<Id, KeyReset>,
+}
+
+/// Someone whose keys changed with nothing to vouch for them, waiting on
+/// this persona, as the owner, to let them back in.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyReset {
+    /// Their login name, as pinned.
+    pub login: String,
+    /// The new keys, as the server's log showed them (checked against the
+    /// log, never trusted until the owner says yes).
+    pub fresh: Contact,
+    /// When this device first saw the change (seconds since the epoch).
+    pub seen_at: i64,
 }
 
 /// The device's sharing record for one persona.
@@ -351,6 +370,37 @@ impl SharingState {
     /// Records that `vault_id` was compared and anything found pushed.
     pub fn mark_rekey_checked(&mut self, vault_id: Id) {
         self.body.rekey_checked.insert(vault_id);
+    }
+
+    /// The people waiting on this persona to let them back in, by account.
+    pub fn key_resets(&self) -> &BTreeMap<Id, KeyReset> {
+        &self.body.key_resets
+    }
+
+    /// Records (or refreshes) someone waiting to be let back in. The first
+    /// sighting's time stays while the keys stay the same. Answers whether
+    /// anything changed.
+    pub fn put_key_reset(&mut self, account: Id, login: String, fresh: Contact, now: i64) -> bool {
+        match self.body.key_resets.get(&account) {
+            Some(r) if r.fresh.pinned_keys() == fresh.pinned_keys() => false,
+            _ => {
+                self.body.key_resets.insert(
+                    account,
+                    KeyReset {
+                        login,
+                        fresh,
+                        seen_at: now,
+                    },
+                );
+                true
+            }
+        }
+    }
+
+    /// Someone is no longer waiting (let back in, or their keys went back
+    /// to the pinned ones). Answers whether they were.
+    pub fn clear_key_reset(&mut self, account: Id) -> bool {
+        self.body.key_resets.remove(&account).is_some()
     }
 }
 
@@ -601,6 +651,30 @@ pub struct SharingOverview {
     pub emergency: Vec<EmergencyView>,
     /// Emergency requests waiting on this person to stop them, if they want.
     pub waiting_on_you: usize,
+    /// People who reset their account and wait on this person, as an
+    /// owner, to let them back in (docs/plan/55-member-key-change.md).
+    /// Added under D62; absent when none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub resets: Vec<KeyResetView>,
+}
+
+/// Someone waiting to be let back in, as a shell draws them: the person by
+/// login, and the words to ask with. Never a device or a key.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct KeyResetView {
+    /// Their account, to answer with.
+    pub account_id: String,
+    /// Their login name.
+    pub login: String,
+    /// The question, in words.
+    pub words: String,
+    /// When this device first saw it (seconds since the epoch).
+    pub seen_at: i64,
+}
+
+/// The question an owner is asked about someone who reset their account.
+pub fn reset_question(login: &str) -> String {
+    format!("{login} reset their account. Let them back in?")
 }
 
 /// An item shared with this persona on its own.
@@ -654,6 +728,29 @@ impl App {
     pub fn forget_contact(&self, account: &str) -> AppResult<()> {
         let account = account.to_string();
         self.with_session(move |s| s.forget_contact(&account))
+    }
+
+    /// The people who reset their account and wait on this persona, as an
+    /// owner, to let them back in (docs/plan/55-member-key-change.md).
+    pub fn key_resets(&self) -> AppResult<Vec<KeyResetView>> {
+        self.with_session(|s| Ok(s.key_resets()))
+    }
+
+    /// The owner's yes: lets someone who reset their account back into
+    /// every vault this persona owns that they are in, and shares again
+    /// each item shared with them on its own. Handing the vault key to new
+    /// keys goes through the `Approve` gate, as sharing a vault does.
+    /// Answers their login.
+    pub fn let_back_in(&self, account: &str, gate: GateInput) -> AppResult<String> {
+        let account = account.to_string();
+        self.call(move |core| {
+            core.clock.touch(std::time::Instant::now());
+            paused(core, Paused::ShareVault)?;
+            core.approve(ApprovalKind::Approve, "let them back in", &gate)?;
+            core.session()?
+                .let_back_in(&account)
+                .map_err(AppError::refused)
+        })
     }
 
     /// One vault's sharing.

@@ -121,7 +121,7 @@ impl Unverified {
             .any(|h| h.kind == kind && h.record == record)
     }
 
-    fn of_vault(&self, vault: Id) -> impl Iterator<Item = &Held> {
+    pub(crate) fn of_vault(&self, vault: Id) -> impl Iterator<Item = &Held> {
         self.held.iter().filter(move |h| h.vault == Some(vault))
     }
 

@@ -330,6 +330,11 @@ pub struct Session {
     /// Records other people made that didn't verify, held back instead of
     /// stopping the sync (`quiet`); every sync works it out again.
     unverified: quiet::Unverified,
+    /// People whose keys the server's log shows changed with nothing to
+    /// vouch for them, by account: the fresh lookup, never trusted, only
+    /// used to hold back what those keys signed and to name the person
+    /// (docs/plan/55-member-key-change.md). Per session, like `unverified`.
+    changed_keys: BTreeMap<Id, lockdown_vault::contact::Contact>,
     /// Whether `opened` is a stand-in: no vault of the persona could open
     /// yet (`quiet::stand_in`). Never saved, synced or written to.
     stand_in: bool,
@@ -581,6 +586,7 @@ impl Session {
             held_vaults: BTreeMap::new(),
             held_items: 0,
             unverified: quiet::Unverified::default(),
+            changed_keys: BTreeMap::new(),
             stand_in,
             waiting: if stand_in { waiting_ids } else { Vec::new() },
             received: Vec::new(),
@@ -1866,13 +1872,19 @@ impl Session {
         let mut report = SyncReport::default();
         let shared: std::collections::BTreeSet<Id> = self.rosters.keys().copied().collect();
         let own = self.own_device_keys();
-        let device_owner: BTreeMap<Id, Id> = self
+        let mut device_owner: BTreeMap<Id, Id> = self
             .device_table()
             .into_iter()
             .filter(|(d, _)| !own.contains_key(d))
             .map(|(d, (account, _))| (d, account))
             .collect();
-        let others_devices: std::collections::BTreeSet<Id> = device_owner.keys().copied().collect();
+        // Devices of new keys nothing vouches for yet: what they sign is
+        // held back and named (docs/plan/55-member-key-change.md).
+        for (d, account) in self.changed_devices() {
+            device_owner.entry(d).or_insert(account);
+        }
+        let mut others_devices: std::collections::BTreeSet<Id> =
+            device_owner.keys().copied().collect();
         let blocked: std::collections::BTreeSet<Id> = shared
             .iter()
             .copied()
@@ -1950,6 +1962,16 @@ impl Session {
                             if !refreshed {
                                 refreshed = true;
                                 self.refresh_writers(transport, &token, kt.sth(), vault_id)?;
+                                let own = self.own_device_keys();
+                                let met = self
+                                    .device_table()
+                                    .into_iter()
+                                    .filter(|(d, _)| !own.contains_key(d))
+                                    .map(|(d, (account, _))| (d, account));
+                                for (d, account) in met.chain(self.changed_devices()) {
+                                    device_owner.entry(d).or_insert(account);
+                                    others_devices.insert(d);
+                                }
                                 continue;
                             }
                         }

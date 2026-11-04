@@ -972,5 +972,6 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         crate::first_run::commands::recover_sealed,
         crate::first_run::commands::open_joined,
         crate::transfer::commands::backup_crown_jewels,
+        crate::sharing::commands::sharing_let_back_in,
     ]
 }

@@ -203,6 +203,32 @@ enum Command {
         #[command(subcommand)]
         what: PasswordWhat,
     },
+    /// Sharing: who waits on you to let them back in after they reset
+    /// their account, and your answer. Syncs first. Without a subcommand,
+    /// lists them.
+    Sharing {
+        #[command(subcommand)]
+        what: Option<SharingWhat>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum SharingWhat {
+    /// List who reset their account and waits on you, as the owner of a
+    /// shared vault they are in or of an item shared with them, to let
+    /// them back in (the default).
+    Resets,
+    /// Let someone who reset their account back in: every vault you own
+    /// that they are in, and every item you shared with them on its own,
+    /// goes to their new keys. Asks for the account password (on a vault
+    /// with a master password, that one), as sharing a vault does.
+    LetBackIn {
+        /// Their login name, as `lockdown sharing` prints it.
+        login: String,
+        /// Read the account password from stdin.
+        #[arg(long)]
+        password_stdin: bool,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -803,6 +829,74 @@ fn run(cli: Cli) -> Result<Vec<String>, String> {
         Command::Password { what } => {
             let paths = Paths::resolve(cli.root, cli.data)?;
             password_command(&paths, what)
+        }
+        Command::Sharing { what } => {
+            let paths = Paths::resolve(cli.root, cli.data)?;
+            sharing_command(&paths, what.unwrap_or(SharingWhat::Resets))
+        }
+    }
+}
+
+/// `lockdown sharing` (docs/plan/55-member-key-change.md): the app's own
+/// core, unlocked and synced, lists who waits on this person to let them
+/// back in, or answers yes for one of them through the `Approve` gate.
+fn sharing_command(paths: &Paths, what: SharingWhat) -> Result<Vec<String>, String> {
+    let core = core_app(paths);
+    let master = if sealed::is_sealed(&paths.data) {
+        let password = master::master_password(&paths.data)?;
+        core.unlock_with_password(&password)
+            .map_err(|e| e.message)?;
+        Some(password)
+    } else {
+        core.unlock().map_err(|e| e.message)?;
+        None
+    };
+    core.sync().map_err(|e| e.message)?;
+    let waiting = core.key_resets().map_err(|e| e.message)?;
+    match what {
+        SharingWhat::Resets => {
+            if waiting.is_empty() {
+                return Ok(vec!["nobody is waiting on you to let them back in".into()]);
+            }
+            Ok(waiting
+                .iter()
+                .flat_map(|r| {
+                    [
+                        r.words.clone(),
+                        format!(
+                            "  to let them back in: lockdown sharing let-back-in {}",
+                            r.login
+                        ),
+                    ]
+                })
+                .collect())
+        }
+        SharingWhat::LetBackIn {
+            login,
+            password_stdin,
+        } => {
+            let Some(r) = waiting.iter().find(|r| r.login == login.trim()) else {
+                return Err(format!(
+                    "{} isn't waiting on you to let them back in",
+                    login.trim()
+                ));
+            };
+            let password = match master {
+                Some(p) => p.to_string(),
+                None => Secrets::read(password_stdin)?.password(password_stdin)?,
+            };
+            let login = core
+                .let_back_in(
+                    &r.account_id,
+                    lockdown_app::GateInput {
+                        password: Some(password),
+                        confirmed: false,
+                    },
+                )
+                .map_err(|e| e.message)?;
+            Ok(vec![format!(
+                "{login} can open what you share with them again"
+            )])
         }
     }
 }

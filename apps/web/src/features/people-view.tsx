@@ -4,6 +4,7 @@ import { Spinner } from "@unicron/ui"
 
 import { PaneHeader } from "@/components/master-detail"
 import { describeError } from "@/core/client"
+import { KeyResets } from "@/features/sharing/key-resets"
 import { PeopleSection } from "@/features/sharing/people-section"
 import { SharingClientProvider, type SharingOverview } from "@/features/sharing/sharing-client"
 import { SharingPaused } from "@/features/sharing/sharing-paused"
@@ -17,7 +18,9 @@ import { webSharingClient } from "../core/web-finish-client"
  * the server's key-transparency log and pinned; comparing fingerprints
  * takes the digits read out, the code under their QR pasted, or their QR
  * code scanned with this tab's camera (the core reads the frames). Your
- * own fingerprint shows here for them to compare.
+ * own fingerprint shows here for them to compare. Someone who reset their
+ * account and waits on you to let them back in is asked about at the top
+ * (docs/plan/55-member-key-change.md).
  */
 export function PeopleView({ link, onNotice }: { link: Link; onNotice: (text: string) => void }) {
   const sharing = useMemo(() => webSharingClient(link), [link])
@@ -53,6 +56,7 @@ export function PeopleView({ link, onNotice }: { link: Link; onNotice: (text: st
               Or give them your code to paste: <code aria-label="Your code">{overview.fingerprint_qr}</code>
             </p>
             <SharingClientProvider value={sharing}>
+              <KeyResets resets={overview.resets ?? []} online={overview.online} onChanged={reload} onNotice={onNotice} />
               <PeopleSection contacts={overview.contacts} online={overview.online} onChanged={reload} onNotice={onNotice} />
             </SharingClientProvider>
           </>

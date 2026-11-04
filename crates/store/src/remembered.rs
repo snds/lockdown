@@ -180,6 +180,23 @@ impl HeadMemory {
         self.write()
     }
 
+    /// A member's keys changed and this device moved its pin
+    /// (docs/plan/55-member-key-change.md): in every vault, what it
+    /// remembered for `account` now holds for their former identity, under
+    /// `former` (its profile id), and their new keys start with nothing
+    /// remembered. Writes the file when anything moved.
+    pub fn retire_member_pq_since(&mut self, account: Id, former: Id) -> StoreResult<()> {
+        let mut moved = false;
+        for seen in self.file.member_pq_since.values_mut() {
+            if let Some(seq) = seen.remove(&account) {
+                let at = seen.entry(former).or_insert(seq);
+                *at = (*at).min(seq);
+                moved = true;
+            }
+        }
+        if moved { self.write() } else { Ok(()) }
+    }
+
     /// The identity store head this device last accepted, for
     /// `Identity::attach`.
     pub fn identity(&self) -> Option<Head> {
@@ -320,6 +337,22 @@ mod tests {
         let memory = HeadMemory::open(&path).unwrap();
         assert_eq!(memory.pq_since(vault), Some(4));
         assert_eq!(memory.pq_since(other), None);
+    }
+
+    #[test]
+    fn a_members_memory_moves_to_their_former_keys_when_their_keys_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("remembered.cbor");
+        let (vault, bob, former) = (Id::new(), Id::new(), Id::new());
+        let mut memory = HeadMemory::open(&path).unwrap();
+        memory.remember_member_pq_since(vault, bob, 4).unwrap();
+        memory.retire_member_pq_since(bob, former).unwrap();
+        let again = HeadMemory::open(&path).unwrap();
+        assert_eq!(again.member_pq_since(vault), BTreeMap::from([(former, 4)]));
+        // Nothing to move: nothing written, nothing changed.
+        let mut again = again;
+        again.retire_member_pq_since(Id::new(), Id::new()).unwrap();
+        assert_eq!(again.member_pq_since(vault).len(), 1);
     }
 
     #[test]
