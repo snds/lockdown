@@ -10,7 +10,7 @@ import { VaultsProvider } from "@/features/organization/vaults-context"
 import { fakeClient } from "@/test/fake-client"
 import { fakeSharing } from "@/test/fake-sharing"
 
-import { RESET_HINT, letBackInNotice } from "./key-resets"
+import { RESET_HINT, letBackInNotice } from "./key-resets-words"
 import { SharingClientProvider, emergencyActions, type ContactView, type EmergencyView, type SharingClient, type SharingOverview, type VaultSharingView } from "./sharing-client"
 import { SharingView } from "./sharing-view"
 
