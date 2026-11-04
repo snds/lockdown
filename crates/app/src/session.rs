@@ -72,6 +72,7 @@ mod organize;
 pub(crate) mod passkeys;
 mod pq_status;
 pub(crate) mod quick;
+pub(crate) mod quiet;
 pub(crate) mod recovery;
 pub(crate) mod renewal;
 pub(crate) mod second_factor;
@@ -326,6 +327,9 @@ pub struct Session {
     /// while the server's log is split (`shared_sync`); every sync counts
     /// them again.
     held_items: usize,
+    /// Records other people made that didn't verify, held back instead of
+    /// stopping the sync (`quiet`); every sync works it out again.
+    unverified: quiet::Unverified,
     /// Items others shared on their own, held in memory only, read only.
     received: Vec<Vault>,
     /// The share link or answer opened last, until the next or the lock.
@@ -544,6 +548,7 @@ impl Session {
             rosters: BTreeMap::new(),
             held_vaults: BTreeMap::new(),
             held_items: 0,
+            unverified: quiet::Unverified::default(),
             received: Vec::new(),
             opened_send: None,
             link: None,
@@ -1111,6 +1116,7 @@ impl Session {
                 .count(),
             identity_seq: self.synced.seq(),
             account,
+            held_back: self.held_back_details(),
         })
     }
 
@@ -1737,7 +1743,23 @@ impl Session {
         }
     }
 
+    /// One sync round. What it holds back is worked out afresh (`quiet`);
+    /// a round that fails keeps what the last one held back.
     fn sync_with(
+        &mut self,
+        transport: &HttpTransport,
+        server: &str,
+        token: &str,
+    ) -> Result<SyncOutcome, String> {
+        let before = std::mem::take(&mut self.unverified);
+        let out = self.sync_round(transport, server, token);
+        if out.is_err() && self.unverified.is_empty() {
+            self.unverified = before;
+        }
+        out
+    }
+
+    fn sync_round(
         &mut self,
         transport: &HttpTransport,
         server: &str,
@@ -1780,6 +1802,20 @@ impl Session {
             device_label: &label,
         };
         let mut report = SyncReport::default();
+        let shared: std::collections::BTreeSet<Id> = self.rosters.keys().copied().collect();
+        let own = self.own_device_keys();
+        let device_owner: BTreeMap<Id, Id> = self
+            .device_table()
+            .into_iter()
+            .filter(|(d, _)| !own.contains_key(d))
+            .map(|(d, (account, _))| (d, account))
+            .collect();
+        let others_devices: std::collections::BTreeSet<Id> = device_owner.keys().copied().collect();
+        let blocked: std::collections::BTreeSet<Id> = shared
+            .iter()
+            .copied()
+            .filter(|v| self.unverified.blocks_push(*v))
+            .collect();
         for idx in 0..=self.more.len() {
             let mut refreshed = false;
             let one = loop {
@@ -1799,13 +1835,23 @@ impl Session {
                     .and_then(|r| r.to_bytes())
                     .map_err(|e| e.to_string())?;
                 let state = cfg.vaults.entry(vault_id).or_default();
-                let outcome = lockdown_sync::sync_vault_with(
+                // In a shared vault, a head another person's device signed
+                // that doesn't verify is held back, and nothing is sent
+                // while anything of the vault is (`quiet`).
+                let others = &others_devices;
+                let holdable = |signer: Id| shared.contains(&vault_id) && others.contains(&signer);
+                let holding = lockdown_sync::Holding {
+                    holdable: &holdable,
+                    push: !blocked.contains(&vault_id),
+                };
+                let outcome = lockdown_sync::sync_vault_holding(
                     &syncer,
                     &mut open.vault,
                     &record,
                     state,
                     &mut self.store,
                     Some(&kt),
+                    holding,
                 );
                 // Whatever happened on the wire, what is in memory is saved and
                 // remembered, so a half-finished round is picked up next time.
@@ -1851,6 +1897,20 @@ impl Session {
                 &mut self.more[idx - 1]
             };
             let vault_id = open.vault.context().vault_id;
+            if let Some(held) = &one.held {
+                self.unverified.push(quiet::Held {
+                    kind: quiet::Kind::Head,
+                    vault: Some(vault_id),
+                    who: device_owner.get(&held.signer).copied(),
+                    record: format!("manifest {}", held.seq),
+                    why: held.why.clone(),
+                });
+            }
+            let open = if idx == 0 {
+                &mut self.opened
+            } else {
+                &mut self.more[idx - 1]
+            };
             let head = open.vault.head().map_err(|e| e.to_string())?;
             let remembered = RememberedHead {
                 seq: head.seq,
@@ -1929,6 +1989,7 @@ impl Session {
         let mut outcome = sync_outcome(&report, &view);
         outcome.lines.extend(mirrors::lines(&checks));
         outcome.lines.extend(self.held_lines());
+        outcome.lines.extend(self.unverified_lines());
         outcome.transparency.mirrors = checks;
         Ok(outcome)
     }

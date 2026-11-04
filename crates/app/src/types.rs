@@ -415,6 +415,11 @@ pub struct Status {
     pub devices_revoked: usize,
     pub identity_seq: u64,
     pub account: Option<AccountStatus>,
+    /// For support: each record other people made that this device held
+    /// back because it didn't verify, which record and which check
+    /// (docs/plan/49-shared-vault-quiet.md). Added under D62.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub held_back: Vec<String>,
 }
 
 /// One device of the identity.
@@ -652,6 +657,11 @@ pub struct VaultView {
     /// How it is shared, when it is (docs/plan/18-sharing.md).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sharing: Option<VaultShareBadge>,
+    /// While some of a shared vault's recent changes couldn't be verified
+    /// and were left out: the one calm line that says so
+    /// (docs/plan/49-shared-vault-quiet.md). Added under D62.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unverified: Option<String>,
 }
 
 /// How a vault is shared, for the sidebar.

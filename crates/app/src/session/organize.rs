@@ -169,6 +169,7 @@ impl Session {
                 trash_days: info.trash_days(),
                 folders,
                 sharing: self.share_badge(vault.context().vault_id),
+                unverified: self.unverified_line(vault.context().vault_id),
             });
         }
         Ok(out)

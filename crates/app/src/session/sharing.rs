@@ -236,7 +236,7 @@ impl Session {
     // --- whose devices sign what ----------------------------------------------
 
     /// This identity's own devices: its records and the synced set.
-    fn own_device_keys(&self) -> BTreeMap<Id, VerifyingKey> {
+    pub(super) fn own_device_keys(&self) -> BTreeMap<Id, VerifyingKey> {
         crate::vault_open::own_device_keys(&self.identity, &self.synced)
     }
 
@@ -766,16 +766,23 @@ impl Session {
                     .collect()
             })
             .unwrap_or_default();
+        // While something of the vault is held back, who is in it can't be
+        // changed here, and the panel says so in the vault's line (`quiet`).
+        let held_back = if right.can_manage() {
+            self.unverified_read_only_line(vault_id)
+        } else {
+            self.unverified_line(vault_id)
+        };
         Ok(VaultSharingView {
             vault_id: vault_id.to_string(),
             shared: true,
             kind: roster.kind.as_str().into(),
             right: right.as_str().into(),
-            can_manage: right.can_manage(),
+            can_manage: right.can_manage() && held_back.is_none(),
             members,
             history,
             blocked,
-            held: self.held_words(vault_id),
+            held: held_back.or_else(|| self.held_words(vault_id)),
         })
     }
 
@@ -847,6 +854,7 @@ impl Session {
         };
         // Everything the vault holds must be on the server first.
         self.sync()?;
+        self.refuse_while_unverified(vault_id)?;
         let me = self.me()?;
         if !self.rosters.contains_key(&vault_id) {
             let key_ref = self.vault_by_id(vault_id)?.vault_key_id();
@@ -898,6 +906,7 @@ impl Session {
         let vault_id = parse_vault_id(vault_id)?;
         let account = parse_id(account)?;
         let right = right_named(right)?;
+        self.refuse_while_unverified(vault_id)?;
         let (transport, token, _) = self.online()?;
         let me = self.me()?;
         let roster = self
@@ -931,6 +940,7 @@ impl Session {
         let (transport, token, server) = self.online()?;
         // Pull everything first, so nothing lands under the old key after.
         self.sync()?;
+        self.refuse_while_unverified(vault_id)?;
         let sth = self.verified_sth(&transport, &token, &server)?;
         let me = self.me()?;
         let roster = self
@@ -1184,7 +1194,9 @@ impl Session {
             listed.insert(own.vault_id);
             self.sharing.vault_mut(own.vault_id).owned = true;
             self.pull_membership(transport, token, sth, own.vault_id)?;
-            if self.held_vaults.contains_key(&own.vault_id) {
+            if self.held_vaults.contains_key(&own.vault_id)
+                || self.unverified.blocks_push(own.vault_id)
+            {
                 continue;
             }
             self.refresh_unready(transport, token, sth, own.vault_id)?;
@@ -1201,7 +1213,7 @@ impl Session {
             self.pull_membership(transport, token, sth, vault_id)?;
             // Changes from someone this device hasn't met wait during a
             // split: the vault isn't joined yet and its key doesn't move.
-            if self.held_vaults.contains_key(&vault_id) {
+            if self.held_vaults.contains_key(&vault_id) || self.unverified.blocks_push(vault_id) {
                 continue;
             }
             self.refresh_unready(transport, token, sth, vault_id)?;
@@ -1287,15 +1299,15 @@ impl Session {
             .extend(logins.into_iter().filter(|(a, _)| accounts.contains(a)));
         // A chain that doesn't check out isn't kept, even in memory: the
         // next pull fetches the same changes again and checks them afresh.
+        // Another person's change that fails is held back with every change
+        // after it, and the changes before it are taken (`quiet`); one of
+        // this identity's own fails the sync as it always did.
         let replayed = match self.replay(vault_id) {
             Ok(r) => r,
-            Err(e) => {
-                self.sharing.vault_mut(vault_id).events.truncate(before);
-                return Err(e);
-            }
+            Err(e) => self.replay_held_back(vault_id, before, e)?,
         };
         let Some(roster) = replayed else {
-            if self.held_vaults.contains_key(&vault_id) {
+            if self.held_vaults.contains_key(&vault_id) || self.unverified.vault_held(vault_id) {
                 return Ok(());
             }
             return Err("the server listed a shared vault with no membership".into());
@@ -1305,6 +1317,54 @@ impl Session {
             self.apply_roster(vault_id)?;
         }
         Ok(())
+    }
+
+    /// After the chain with the newly pulled changes (those after `before`)
+    /// failed its check with `e`: keeps the longest run of them that checks
+    /// out and holds the rest back, when the first that fails is another
+    /// person's. Answers the roster of what was kept. One of this
+    /// identity's own changes fails the sync with `e`, as it always did.
+    fn replay_held_back(
+        &mut self,
+        vault_id: Id,
+        before: usize,
+        e: String,
+    ) -> Result<Option<Roster>, String> {
+        let pulled: Vec<ByteBuf> = self.sharing.vault_mut(vault_id).events.split_off(before);
+        let mut keep = pulled.len();
+        let mut why = e.clone();
+        let replayed = loop {
+            if keep == 0 {
+                break self.replay(vault_id).ok().flatten();
+            }
+            keep -= 1;
+            let share = self.sharing.vault_mut(vault_id);
+            share.events.truncate(before);
+            share.events.extend(pulled[..keep].iter().cloned());
+            match self.replay(vault_id) {
+                Ok(r) => break r,
+                Err(next) => why = next,
+            }
+        };
+        // `keep` changes check out; the one after them is the first that doesn't.
+        let failed = MembershipEvent::from_bytes(&pulled[keep]).ok();
+        let me = self.sharing.account_id();
+        if failed.as_ref().is_none_or(|f| Some(f.by_account) == me) {
+            self.sharing.vault_mut(vault_id).events.truncate(before);
+            return Err(e);
+        }
+        let failed = failed.expect("checked above");
+        // The first error names the change that broke the whole chain; when
+        // a shorter run failed too, that one is what the change hit.
+        let why = if keep + 1 == pulled.len() { e } else { why };
+        self.hold_unverified(super::quiet::Held {
+            kind: super::quiet::Kind::Membership,
+            vault: Some(vault_id),
+            who: self.known_other(failed.by_account),
+            record: format!("membership change {}", failed.seq),
+            why,
+        });
+        Ok(replayed)
     }
 
     /// Opens a Vault Key envelope addressed to this persona for `vault_id`
@@ -1317,6 +1377,7 @@ impl Session {
         purpose: SharePurpose,
         grant: Option<Id>,
         allowed_senders: &dyn Fn(Id) -> bool,
+        require_pq: bool,
     ) -> Result<VaultKey, String> {
         let env = ShareEnvelope::from_bytes(bytes).map_err(|e| e.to_string())?;
         let me = self.me()?;
@@ -1343,12 +1404,54 @@ impl Session {
         // Its sender's post-quantum signature: checked when this device
         // knows their key, required when the membership change that handed
         // it over carries one (docs/plan/47-shared-vault-pq.md).
-        let required = purpose == SharePurpose::Vault
-            && self.envelope_needs_pq(vault_id, key_ref, env.place.from_account);
+        let required = require_pq
+            || (purpose == SharePurpose::Vault
+                && self.envelope_needs_pq(vault_id, key_ref, env.place.from_account));
         env.check_post_quantum(self.pq_key_of(env.place.from_account).as_ref(), required)
             .map_err(|e| e.to_string())?;
         env.open::<VaultKey>(&self.kem_secret()?, &expected, &key)
             .map_err(|e| e.to_string())
+    }
+
+    /// [`Self::open_vault_envelope`] for a shared vault's key: a grant
+    /// another person sent that doesn't verify is held back (`quiet`) and
+    /// answers `None`, so the vault stays where it was (not joined yet, or
+    /// at the key it has). One from this identity's own account fails as
+    /// it always did.
+    fn vault_key_or_hold(
+        &mut self,
+        bytes: &[u8],
+        vault_id: Id,
+        key_ref: Id,
+        allowed_senders: &dyn Fn(Id) -> bool,
+    ) -> Result<Option<VaultKey>, String> {
+        match self.open_vault_envelope(
+            bytes,
+            vault_id,
+            key_ref,
+            SharePurpose::Vault,
+            None,
+            allowed_senders,
+            false,
+        ) {
+            Ok(key) => Ok(Some(key)),
+            Err(why) => {
+                let from = ShareEnvelope::from_bytes(bytes)
+                    .ok()
+                    .map(|e| e.place.from_account);
+                if from.is_some() && from == self.sharing.account_id() {
+                    return Err(why);
+                }
+                self.hold_unverified(super::quiet::Held {
+                    kind: super::quiet::Kind::Grant,
+                    vault: Some(vault_id),
+                    who: from.and_then(|a| self.known_other(a)),
+                    record: format!("key grant for generation {key_ref}"),
+                    why,
+                });
+                Ok(None)
+            }
+        }
     }
 
     fn join_shared(
@@ -1368,14 +1471,11 @@ impl Session {
             .vault_envelope(token, vault_id)
             .map_err(|e| e.to_string())?;
         let managers = |a: Id| roster.right_of(a).is_some_and(Right::can_manage);
-        let key = self.open_vault_envelope(
-            &env.envelope,
-            vault_id,
-            roster.key_ref,
-            SharePurpose::Vault,
-            None,
-            &managers,
-        )?;
+        let Some(key) =
+            self.vault_key_or_hold(&env.envelope, vault_id, roster.key_ref, &managers)?
+        else {
+            return Ok(());
+        };
         self.bootstrap_member_vault(transport, token, sth, &shared.summary, roster.key_ref, &key)?;
         self.apply_roster(vault_id)
     }
@@ -1479,14 +1579,10 @@ impl Session {
                         .vault_envelope(token, vault_id)
                         .map_err(|e| e.to_string())?;
                     let managers = |a: Id| roster.right_of(a).is_some_and(Right::can_manage);
-                    self.open_vault_envelope(
-                        &env.envelope,
-                        vault_id,
-                        key_ref,
-                        SharePurpose::Vault,
-                        None,
-                        &managers,
-                    )?
+                    match self.vault_key_or_hold(&env.envelope, vault_id, key_ref, &managers)? {
+                        Some(k) => k,
+                        None => return Ok(()),
+                    }
                 }
             }
         } else {
@@ -1494,14 +1590,10 @@ impl Session {
                 .vault_envelope(token, vault_id)
                 .map_err(|e| e.to_string())?;
             let managers = |a: Id| roster.right_of(a).is_some_and(Right::can_manage);
-            self.open_vault_envelope(
-                &env.envelope,
-                vault_id,
-                key_ref,
-                SharePurpose::Vault,
-                None,
-                &managers,
-            )?
+            match self.vault_key_or_hold(&env.envelope, vault_id, key_ref, &managers)? {
+                Some(k) => k,
+                None => return Ok(()),
+            }
         };
         let can_edit = roster.right_of(me.account_id).is_some_and(Right::can_edit);
         let vault = self.vault_slot(vault_id)?;
@@ -1602,6 +1694,8 @@ impl Session {
         let me = self.me()?;
         let kem = self.kem_secret()?;
         let table = self.device_table();
+        let marked: BTreeSet<Id> = self.sharing.pq_senders().keys().copied().collect();
+        let mut newly_marked: BTreeSet<Id> = BTreeSet::new();
         let mut out = BTreeMap::new();
         for (r, taken) in got.items.iter().zip(&take.take) {
             if !taken {
@@ -1611,71 +1705,121 @@ impl Session {
                 }
                 continue;
             }
-            let Ok(env) = ShareEnvelope::from_bytes(&r.envelope) else {
-                continue;
-            };
-            let Ok(mut item) = Item::from_bytes(&r.item.item) else {
-                continue;
-            };
-            item.rev = r.item.rev;
-            let Ok(record) = VaultRecord::from_bytes(&r.record) else {
-                continue;
-            };
-            let expected = SharePlace {
-                purpose: SharePurpose::Item,
-                vault_id: record.context.vault_id,
-                item_id: Some(item.item_id),
-                key_id: item.item_id,
-                to: me,
-                from_account: r.owner.account_id,
-                grant_id: Some(r.share_id),
-            };
-            let Some((account, sender)) = table.get(&env.by_device).cloned() else {
-                continue;
-            };
-            if account != r.owner.account_id || item.vault_id != record.context.vault_id {
-                continue;
+            // One that doesn't verify is held back, and what this device
+            // already had of it stays as it was (`quiet`).
+            match self.take_received(r, me, &kem, &table, &marked) {
+                Ok((taken, signed)) => {
+                    if signed {
+                        newly_marked.insert(r.owner.account_id);
+                    }
+                    out.insert(r.share_id, taken);
+                }
+                Err(why) => {
+                    self.hold_unverified(super::quiet::Held {
+                        kind: super::quiet::Kind::ItemShare,
+                        vault: None,
+                        who: self.known_other(r.owner.account_id),
+                        record: format!("share {}", r.share_id),
+                        why,
+                    });
+                    if let Some(had) = self.sharing.received().get(&r.share_id) {
+                        out.insert(r.share_id, had.clone());
+                    }
+                }
             }
-            // No chain pins an item share, so a missing post-quantum
-            // signature can't be told from one never made; one that is
-            // there must check out under the owner's pinned key.
-            if env
-                .check_post_quantum(self.pq_key_of(r.owner.account_id).as_ref(), false)
-                .is_err()
-            {
-                continue;
-            }
-            let Ok(key) = env.open::<ItemKey>(&kem, &expected, &sender) else {
-                continue;
-            };
-            let n = item.latest().map(|v| v.n).unwrap_or(0);
-            let highest = self
-                .sharing
-                .received()
-                .get(&r.share_id)
-                .map(|p| p.highest_n)
-                .unwrap_or(0);
-            if n < highest {
-                return Err(format!(
-                    "Rollback attempt blocked: the server offered an older copy of an item {} shared with you",
-                    r.owner_login
-                ));
-            }
-            out.insert(
-                r.share_id,
-                ReceivedItem {
-                    owner: r.owner,
-                    owner_login: r.owner_login.clone(),
-                    right: r.right,
-                    ctx: record.context,
-                    item: ByteBuf::from(item.to_bytes().map_err(|e| e.to_string())?),
-                    item_key: ByteBuf::from(key.expose().to_vec()),
-                    highest_n: n,
-                },
-            );
         }
         self.sharing.set_received(out);
+        // Senders seen signing post-quantum are held to it from the next
+        // sync on, so a share made before their update, seen in this same
+        // sync, still arrives.
+        let now = lockdown_vault::Timestamp::now().0;
+        for account in newly_marked {
+            self.sharing.mark_pq_sender(account, now);
+        }
         self.rebuild_received()
+    }
+
+    /// Checks one item shared on its own and opens its key. Answers the
+    /// item to keep and whether its envelope carried a post-quantum
+    /// signature that verified under the owner's pinned key. Refused, with
+    /// the check's words, when anything doesn't verify, when the server
+    /// offers an older copy than this device took, or when its owner is in
+    /// `marked` (their shares carried a verified post-quantum signature
+    /// before) and this one carries none, unless it is the very envelope
+    /// this device took before (D554 closed; docs/plan/49-shared-vault-quiet.md).
+    fn take_received(
+        &self,
+        r: &lockdown_sync::sharing::ReceivedItemWire,
+        me: Party,
+        kem: &KemSecretKey,
+        table: &BTreeMap<Id, (Id, VerifyingKey)>,
+        marked: &BTreeSet<Id>,
+    ) -> Result<(ReceivedItem, bool), String> {
+        let env = ShareEnvelope::from_bytes(&r.envelope).map_err(|e| e.to_string())?;
+        let mut item = Item::from_bytes(&r.item.item).map_err(|e| e.to_string())?;
+        item.rev = r.item.rev;
+        let record = VaultRecord::from_bytes(&r.record).map_err(|e| e.to_string())?;
+        let expected = SharePlace {
+            purpose: SharePurpose::Item,
+            vault_id: record.context.vault_id,
+            item_id: Some(item.item_id),
+            key_id: item.item_id,
+            to: me,
+            from_account: r.owner.account_id,
+            grant_id: Some(r.share_id),
+        };
+        let (account, sender) = table
+            .get(&env.by_device)
+            .cloned()
+            .ok_or("the share was signed by a device this device doesn't know")?;
+        if account != r.owner.account_id {
+            return Err("the share was signed by a device of someone else".into());
+        }
+        if item.vault_id != record.context.vault_id {
+            return Err("the shared item names another vault than its record".into());
+        }
+        // A post-quantum signature that is there must check out under the
+        // owner's pinned key. One that isn't there is refused once the
+        // owner's shares carried one, unless this device took this very
+        // envelope before.
+        let pq_key = self.pq_key_of(r.owner.account_id);
+        env.check_post_quantum(pq_key.as_ref(), false)
+            .map_err(|e| e.to_string())?;
+        let signed = pq_key.is_some() && env.pq_sig.is_some();
+        let hash = ByteBuf::from(lockdown_crypto::hash::hash(&r.envelope).as_bytes().to_vec());
+        let had = self.sharing.received().get(&r.share_id);
+        if !signed
+            && marked.contains(&r.owner.account_id)
+            && had.and_then(|p| p.envelope_hash.as_ref()) != Some(&hash)
+        {
+            return Err(
+                "the share carries no post-quantum signature, though this person's shares before it did"
+                    .into(),
+            );
+        }
+        let key = env
+            .open::<ItemKey>(kem, &expected, &sender)
+            .map_err(|e| e.to_string())?;
+        let n = item.latest().map(|v| v.n).unwrap_or(0);
+        let highest = had.map(|p| p.highest_n).unwrap_or(0);
+        if n < highest {
+            return Err(format!(
+                "the server offered version {n} of the item, older than version {highest} this device already took"
+            ));
+        }
+        Ok((
+            ReceivedItem {
+                owner: r.owner,
+                owner_login: r.owner_login.clone(),
+                right: r.right,
+                ctx: record.context,
+                item: ByteBuf::from(item.to_bytes().map_err(|e| e.to_string())?),
+                item_key: ByteBuf::from(key.expose().to_vec()),
+                highest_n: n,
+                envelope_hash: Some(hash),
+            },
+            signed,
+        ))
     }
 
     fn sync_released(
@@ -1684,10 +1828,16 @@ impl Session {
         token: &str,
         sth: &SignedTreeHead,
     ) -> Result<(), String> {
-        if self.sharing.released().is_empty() {
-            return Ok(());
-        }
-        let list = transport.emergency(token).map_err(|e| e.to_string())?;
+        // Every grant naming this persona is looked at each sync, so one made
+        // before its owner signed post-quantum is known as such when it is
+        // released later (`see_grants`). Without a release to take again, a
+        // failed fetch only waits for the next sync.
+        let list = match transport.emergency(token) {
+            Ok(list) => list,
+            Err(_) if self.sharing.released().is_empty() => return Ok(()),
+            Err(e) => return Err(e.to_string()),
+        };
+        self.see_grants(&list.as_contact);
         let grants: Vec<Id> = self.sharing.released().keys().copied().collect();
         for grant_id in grants {
             let still = list.as_contact.iter().any(|w| {
@@ -2418,6 +2568,12 @@ impl Session {
         self.learn_account(&transport, &token, &sth)?;
         self.take_release(&transport, &token, &sth, grant)?;
         self.save_sharing()?;
+        if self
+            .unverified
+            .has(super::quiet::Kind::Emergency, &format!("grant {grant}"))
+        {
+            return Err(self.unverified_lines().pop().unwrap_or_default());
+        }
         self.sync()?;
         self.emergency()
     }
@@ -2438,13 +2594,24 @@ impl Session {
         let grant = EmergencyGrant::from_bytes(&w.grant).map_err(|e| e.to_string())?;
         self.pin_all(transport, token, sth, [grant.owner.account_id])?;
         let owner_keys = self.device_keys_of(grant.owner.account_id);
-        let signer = owner_keys
-            .get(&grant.by_device)
-            .ok_or("the grant was signed by a device its owner's identity doesn't list")?;
-        grant.verify(signer).map_err(|e| e.to_string())?;
-        grant
-            .check_post_quantum(self.pq_key_of(grant.owner.account_id).as_ref())
-            .map_err(|e| e.to_string())?;
+        // A grant that doesn't verify is held back: nothing is released,
+        // and what this device already opened from it stays (`quiet`).
+        let hold = |s: &mut Self, why: String| {
+            s.hold_unverified(super::quiet::Held {
+                kind: super::quiet::Kind::Emergency,
+                vault: None,
+                who: s.known_other(grant.owner.account_id),
+                record: format!("grant {grant_id}"),
+                why,
+            });
+        };
+        let signed = match self.check_grant(&w.grant, &grant, &owner_keys) {
+            Ok(signed) => signed,
+            Err(why) => {
+                hold(self, why);
+                return Ok(());
+            }
+        };
         let release = transport
             .emergency_release(token, grant_id)
             .map_err(|e| e.to_string())?;
@@ -2456,14 +2623,23 @@ impl Session {
             }
             let env = ShareEnvelope::from_bytes(&v.envelope).map_err(|e| e.to_string())?;
             let owner = grant.owner.account_id;
-            let key = self.open_vault_envelope(
+            // The keys a grant releases carry its owner's post-quantum
+            // signature when the grant does.
+            let key = match self.open_vault_envelope(
                 &v.envelope,
                 vault_id,
                 env.place.key_id,
                 SharePurpose::Emergency,
                 Some(grant_id),
                 &|a| a == owner,
-            )?;
+                signed,
+            ) {
+                Ok(key) => key,
+                Err(why) => {
+                    hold(self, why);
+                    return Ok(());
+                }
+            };
             if self.vaults().any(|x| x.context().vault_id == vault_id) {
                 if self.vault_by_id(vault_id)?.vault_key_id() != env.place.key_id {
                     self.vault_slot(vault_id)?
@@ -2486,6 +2662,10 @@ impl Session {
             }
             opened.push(vault_id);
         }
+        if signed {
+            self.sharing
+                .mark_pq_sender(grant.owner.account_id, lockdown_vault::Timestamp::now().0);
+        }
         let owner_login = w.owner_login.clone();
         // The crown jewels the owner opted in come with the release (`legacy`).
         self.take_released_items(transport, token, &grant, &opened)?;
@@ -2498,6 +2678,76 @@ impl Session {
             },
         );
         Ok(())
+    }
+
+    /// Checks an emergency grant (`bytes`, as the server holds it) under
+    /// its owner's devices and post-quantum key. Answers whether it carried
+    /// a post-quantum signature that verified. Refused when anything
+    /// doesn't verify, or when its owner's shares or grants carried a
+    /// verified post-quantum signature before and this one carries none,
+    /// unless this device saw this very grant before that (D554 closed;
+    /// docs/plan/49-shared-vault-quiet.md).
+    fn check_grant(
+        &self,
+        bytes: &[u8],
+        grant: &EmergencyGrant,
+        owner_keys: &BTreeMap<Id, VerifyingKey>,
+    ) -> Result<bool, String> {
+        let signer = owner_keys
+            .get(&grant.by_device)
+            .ok_or("the grant was signed by a device its owner's identity doesn't list")?;
+        grant.verify(signer).map_err(|e| e.to_string())?;
+        let owner = grant.owner.account_id;
+        let pq_key = self.pq_key_of(owner);
+        grant
+            .check_post_quantum(pq_key.as_ref())
+            .map_err(|e| e.to_string())?;
+        let signed = pq_key.is_some() && grant.pq_sig.is_some();
+        let hash = ByteBuf::from(lockdown_crypto::hash::hash(bytes).as_bytes().to_vec());
+        if !signed
+            && self.sharing.pq_senders().contains_key(&owner)
+            && self.sharing.grants_seen().get(&grant.grant_id) != Some(&hash)
+        {
+            return Err(
+                "the grant carries no post-quantum signature, though this person's shares or grants before it did"
+                    .into(),
+            );
+        }
+        Ok(signed)
+    }
+
+    /// Notes each emergency grant naming this persona the first time this
+    /// device sees it: while its owner isn't known to sign post-quantum, as
+    /// one that may be released without it later; with a post-quantum
+    /// signature that verifies under the owner's pinned key, its owner is
+    /// held to one from the next sync on. Grants no longer listed are
+    /// forgotten.
+    fn see_grants(&mut self, as_contact: &[EmergencyWire]) {
+        let marked: BTreeSet<Id> = self.sharing.pq_senders().keys().copied().collect();
+        let mut listed = BTreeSet::new();
+        let mut signed = BTreeSet::new();
+        for w in as_contact {
+            let Ok(grant) = EmergencyGrant::from_bytes(&w.grant) else {
+                continue;
+            };
+            listed.insert(grant.grant_id);
+            let owner = grant.owner.account_id;
+            if let Some(key) = self.pq_key_of(owner)
+                && grant.pq_sig.is_some()
+                && grant.check_post_quantum(Some(&key)).is_ok()
+            {
+                signed.insert(owner);
+            }
+            if !marked.contains(&owner) {
+                let hash = ByteBuf::from(lockdown_crypto::hash::hash(&w.grant).as_bytes().to_vec());
+                self.sharing.see_grant(grant.grant_id, hash);
+            }
+        }
+        self.sharing.keep_grants(&listed);
+        let now = lockdown_vault::Timestamp::now().0;
+        for owner in signed {
+            self.sharing.mark_pq_sender(owner, now);
+        }
     }
 
     // --- the Sharing screen ----------------------------------------------------------

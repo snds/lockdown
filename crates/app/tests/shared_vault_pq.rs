@@ -4,10 +4,11 @@
 //! has a device from an older build and so publishes no key yet, writes
 //! Ed25519 only and nothing breaks. Once his device updates, his heads
 //! carry ML-DSA too, Alice pins his key at her next sync and remembers his
-//! first post-quantum head, and from then on a server that bends, forges
-//! or strips his signature (on a head, a membership change or a vault key
-//! grant) is refused. An item shared on its own whose signature was bent
-//! doesn't arrive.
+//! first post-quantum head, and from then on what a server bends, forges
+//! or strips (a head, a membership change or a vault key grant) is held
+//! back with one calm line, and taken once the server serves it as signed
+//! (docs/plan/49-shared-vault-quiet.md). An item shared on its own whose
+//! signature was bent doesn't arrive.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -194,7 +195,7 @@ fn titles(app: &App) -> Vec<String> {
 }
 
 #[test]
-fn a_shared_vault_goes_post_quantum_side_by_side_and_a_server_that_bends_or_strips_it_is_refused() {
+fn a_shared_vault_goes_post_quantum_side_by_side_and_what_a_server_bends_or_strips_is_held_back() {
     let dir = tempfile::tempdir().unwrap();
     let (_state, running) = server_on_disk(dir.path());
     let url = running.url();
@@ -283,42 +284,49 @@ fn a_shared_vault_goes_post_quantum_side_by_side_and_a_server_that_bends_or_stri
     );
 
     // Bob writes again. The server bends that head's ML-DSA signature,
-    // forges it under another key, or strips it: Alice refuses each.
+    // forges it under another key, or strips it: Alice holds it back each
+    // time (docs/plan/49-shared-vault-quiet.md), and takes it once the
+    // server serves the good one.
     bob.add_item_in(&vault, "note", Some("Bob three"), false, Vec::new())
         .unwrap();
     bob.sync().unwrap();
     let good = db.newest_head(&vault);
+    let held = |app: &App, why: &str| {
+        let out = app.sync().unwrap();
+        assert!(
+            out.lines
+                .iter()
+                .any(|l| l.contains("couldn't be verified") && l.contains("bob@example.com")),
+            "{:?}",
+            out.lines
+        );
+        let detail = app.status().unwrap().held_back.join("\n");
+        assert!(detail.contains(why), "{detail}");
+        assert!(!titles(app).contains(&"Bob three".to_string()));
+    };
     let mut bad = good.clone();
     bad.pq_sig = bent(&good.pq_sig);
     db.put_head(&vault, &bad);
-    let err = alice.sync().unwrap_err();
-    assert!(
-        err.message
-            .contains("post-quantum signature didn't check out"),
-        "{}",
-        err.message
-    );
+    held(&alice, "post-quantum signature didn't check out");
     let mut forged = good.clone();
     forged
         .sign_post_quantum(&lockdown_crypto::pq_sign::PqSigningKey::from_seed([5; 32]))
         .unwrap();
     db.put_head(&vault, &forged);
-    assert!(alice.sync().is_err(), "signed under a key that isn't Bob's");
+    held(&alice, "post-quantum signature didn't check out");
     let mut stripped = good.clone();
     stripped.pq_sig = None;
     db.put_head(&vault, &stripped);
-    let err = alice.sync().unwrap_err();
-    assert!(
-        err.message.contains("lost its post-quantum signature"),
-        "{}",
-        err.message
-    );
+    held(&alice, "lost its post-quantum signature");
     db.put_head(&vault, &good);
-    alice.sync().unwrap();
+    let out = alice.sync().unwrap();
+    assert!(!out.lines.iter().any(|l| l.contains("couldn't be verified")));
     assert!(titles(&alice).contains(&"Bob three".to_string()));
+    assert!(alice.status().unwrap().held_back.is_empty());
 
     // A membership change: Alice adds Carol. The server bends or strips
-    // the event's post-quantum signature before Bob pulls it: refused.
+    // the event's post-quantum signature before Bob pulls it: held back,
+    // and taken once it is put back.
     let carol = app(dir.path(), "carol");
     register(&carol, &url, "carol");
     let c = alice.lookup_contact("carol@example.com").unwrap();
@@ -326,36 +334,61 @@ fn a_shared_vault_goes_post_quantum_side_by_side_and_a_server_that_bends_or_stri
         .share_vault(&vault, "carol@example.com", "view", pw())
         .unwrap();
     let event = db.newest_event(&vault);
+    let carol_in = |app: &App| {
+        app.vault_sharing(&vault)
+            .unwrap()
+            .members
+            .iter()
+            .any(|m| m.login == "carol@example.com")
+    };
     let mut bad = event.clone();
     bad.pq_sig = bent(&event.pq_sig);
     db.put_event(&bad);
-    let err = bob.sync().unwrap_err();
-    assert!(err.message.contains("didn't check out"), "{}", err.message);
+    let out = bob.sync().unwrap();
+    assert!(
+        out.lines
+            .iter()
+            .any(|l| l.contains("couldn't be verified") && l.contains("alice@example.com")),
+        "{:?}",
+        out.lines
+    );
+    assert!(!carol_in(&bob));
     let mut stripped = event.clone();
     stripped.pq_sig = None;
     db.put_event(&stripped);
-    let err = bob.sync().unwrap_err();
+    bob.sync().unwrap();
+    let detail = bob.status().unwrap().held_back.join("\n");
     assert!(
-        err.message.contains("lost its post-quantum signature"),
-        "{}",
-        err.message
+        detail.contains("lost its post-quantum signature"),
+        "{detail}"
     );
+    assert!(!carol_in(&bob));
     db.put_event(&event);
     bob.sync().unwrap();
+    assert!(carol_in(&bob));
+    assert!(bob.status().unwrap().held_back.is_empty());
 
     // The vault key grant to Carol, stripped: the change that handed it
-    // over carries a post-quantum signature, so it must too. Refused, and
-    // she joins once it is put back.
+    // over carries a post-quantum signature, so it must too. Held back:
+    // she isn't in yet, and joins once it is put back.
     let grant = db.envelope(&vault, &c.account_id);
     let mut stripped = grant.clone();
     stripped.pq_sig = None;
     db.put_envelope(&vault, &c.account_id, &stripped);
-    let err = carol.sync().unwrap_err();
-    assert!(err.message.contains("post-quantum"), "{}", err.message);
+    let out = carol.sync().unwrap();
+    assert!(
+        out.lines
+            .iter()
+            .any(|l| l.starts_with("A shared vault from alice@example.com")),
+        "{:?}",
+        out.lines
+    );
+    assert!(!titles(&carol).contains(&"Bob three".to_string()));
     let mut bad = grant.clone();
     bad.pq_sig = bent(&grant.pq_sig);
     db.put_envelope(&vault, &c.account_id, &bad);
-    assert!(carol.sync().is_err());
+    carol.sync().unwrap();
+    assert!(!titles(&carol).contains(&"Bob three".to_string()));
     db.put_envelope(&vault, &c.account_id, &grant);
     carol.sync().unwrap();
     assert!(titles(&carol).contains(&"Bob three".to_string()));
@@ -389,8 +422,15 @@ fn a_shared_vault_goes_post_quantum_side_by_side_and_a_server_that_bends_or_stri
     let mut bad = env.clone();
     bad.pq_sig = bent(&env.pq_sig);
     db.put_item_share(&share, &bad);
-    carol_alone.sync().unwrap();
+    let out = carol_alone.sync().unwrap();
     assert!(!titles(&carol_alone).contains(&"Solo".to_string()));
+    assert!(
+        out.lines
+            .iter()
+            .any(|l| l.starts_with("A shared item from alice@example.com")),
+        "{:?}",
+        out.lines
+    );
     db.put_item_share(&share, &env);
     carol_alone.sync().unwrap();
     assert!(titles(&carol_alone).contains(&"Solo".to_string()));
