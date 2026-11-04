@@ -32,7 +32,10 @@
   "D604": {"verdict": "accepted", "note": "The pages-locked number grows because it now counts every key, which is the truth; no words change."},
   "D608": {"verdict": "changed", "note": "A server crash dump shouldn't hold its keys; turning core dumps off there is the apps' rule applied to the server. Queued with D605."},
   "D613": {"verdict": "accepted", "note": "Off by default is the safe side, matching the apps; a refusal is logged and never stops the server."},
-  "D614": {"verdict": "accepted", "note": "An operator debugging a crash can turn dumps back on deliberately; the server says so once."}
+  "D614": {"verdict": "accepted", "note": "An operator debugging a crash can turn dumps back on deliberately; the server says so once."},
+  "D621": {"verdict": "accepted", "note": "Same as slice 50's re-key version: one honest history entry that keeps the edit time."},
+  "D625": {"verdict": "accepted", "note": "An out-of-date copy that catches up on its own needs no line; the person can still use it."},
+  "D629": {"verdict": "accepted", "note": "The person who holds the item now sees the item's real latest content, which is what they'd expect."}
  },
  "calls": {
   "D52": {"verdict": "changed", "note": "A signed-in device should renew its own session with its device key, so the account password is asked only on a new device, after a remote sign-out, or after 30 days without use. Today a session lasts 8 hours with no renewal, so a device that syncs all day asks for the password again. Built by slice 32 (#25, D400–D408)."},
@@ -77,7 +80,7 @@
   {"id": "backups", "name": "Backups and export", "ids": "D135-D145,D273,D274,D560-D569"},
   {"id": "browser", "name": "Browser and passkeys", "ids": "D156-D169,D200-D214,D264-D269,D331,D500-D509"},
   {"id": "web", "name": "Web vault", "ids": "D170-D184,D320,D321,D357"},
-  {"id": "sharing", "name": "Sharing and emergency", "ids": "D185-D199,D430-D439,D580-D589,D590-D599"},
+  {"id": "sharing", "name": "Sharing and emergency", "ids": "D185-D199,D430-D439,D580-D589,D590-D599,D620-D629"},
   {"id": "server", "name": "Self-host server", "ids": "D215-D229,D290-D304,D322-D330,D332"},
   {"id": "bridges", "name": "Vendor bridges", "ids": "D258-D260,D262,D263,D271"},
   {"id": "pq", "name": "Post-quantum", "ids": "D335-D349,D365-D374,D550-D559,D570-D579"},

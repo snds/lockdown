@@ -14,7 +14,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**582 decisions, fifty-two build slices, no release yet (2026-10-29).** Of the 122 features committed to v1, 83 are done, 15 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
+**592 decisions, fifty-three build slices, no release yet (2026-10-29).** Of the 122 features committed to v1, 83 are done, 15 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
 
 | Slice | What it delivered |
 |---|---|
@@ -71,6 +71,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 | **50 · Removing someone no longer breaks other people's shared items** ✅ | Removing a member or withdrawing one share now writes a re-key version for each re-keyed item and pushes it before the new keys go out, so every remaining member and recipient keeps opening their items. One item that can't be opened yet is left out instead of failing the whole list, and copies broken by an earlier build are repaired once per device. [Doc 51](docs/plan/51-rekey-push.md), D590–D598. |
 | **51 · Lockdown takes the identity crate's new version** ✅ | Lockdown pins the crate with its Windows handshake and its key types locked out of swap, and shares one page table with it, so neither can unlock a page the other still needs. Lockdown's quantum-safe signing key (about 64 KiB in memory) is locked too, and Settings counts every locked page. [Doc 52](docs/plan/52-identity-adopt.md), D600–D609. |
 | **52 · The rest of the keys out of swap; no server crash dumps** ✅ | The device's own secrets, the Ed25519 signing keys, and the server's sign-in setup and key file are now locked out of swap on the one page table, and the self-host server turns crash dumps off at start (`--core-dumps on` for debugging). [Doc 53](docs/plan/53-harden-rest.md), D610–D619. |
+| **53 · A single shared item follows everyone's edits** ✅ | When a member other than the owner edits an item that's also shared on its own, or a manager re-keys the vault, the owner's device signs a follow version in the same sync, so the person who holds just that item gets the edit at their next sync, still trusting only the owner. [Doc 54](docs/plan/54-share-follows-edits.md), D620–D629. |
 | **Next** | Browser extension (fill, save, passkeys), mobile apps, sharing and family, breach monitoring, packaged and signed releases |
 
 | Real (with tests) | Skeleton (types, traits, one real rule each) |
