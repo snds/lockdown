@@ -95,7 +95,7 @@ None. No screen, component, token or client interface changed. The e2e spec driv
 |---|---|---|
 | `lockdown-app` (all targets) | 249 | 249 (`only_dev_dependencies_turn_on_the_fixture` widened) |
 | `lockdown-web` (native) | 24 | 24 |
-| `apps/web` e2e | see PR | +1 (`device-link.spec.ts`) |
+| `apps/web` e2e (Chromium) | 12 | 13 (`device-link.spec.ts`) |
 
 ## 10. Proposed decisions
 
