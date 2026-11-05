@@ -14,7 +14,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**614 decisions, fifty-six build slices, no release yet (2026-10-29).** Of the 122 features committed to v1, 83 are done, 15 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
+**624 decisions, fifty-seven build slices, no release yet (2026-10-29).** Of the 122 features committed to v1, 83 are done, 15 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
 
 | Slice | What it delivered |
 |---|---|
@@ -75,6 +75,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 | **54 · A member's key change resolves without them** ✅ | A planned key change signed by the old key (a hand-over on the new profile) moves everyone's pin silently and clears what was held back. A key change nothing vouches for leaves the pin where it was, and only the vault's owner sees "bob@example.com reset their account. Let them back in?" at the top of Sharing; the owner's yes re-admits them and everyone else follows. A key that only the server or the log shows is never taken. [Doc 55](docs/plan/55-member-key-change.md), D630–D639. |
 | **55 · No shipped path makes an unprotected computer** ✅ | The core's old sign-in and recovery joins now refuse on a computer that hasn't joined and point to the sealed join; the old unsealed join survives only as a test fixture behind `test-support`, which a test and a CI step prove no desktop, server or command-line build turns on. [Doc 56](docs/plan/56-no-plain-joins.md), D640–D645. |
 | **56 · The browser's way of joining stays in the browser** ✅ | The web vault's device-link join, which leaves the key file unprotected outside a browser tab, now compiles only for the web vault and for tests; a symbol check and a CI step prove no desktop build contains it, and a new end-to-end test drives the browser join. [Doc 57](docs/plan/57-fence-web-join.md), D650–D655. |
+| **57 · No leftover key copies in temporary memory** ✅ | Keys the crypto libraries build by value (Ed25519, ML-DSA-65, the server's sign-in setup), every signature, and the key each device signature rebuilds now run on a private stack that is locked out of swap, guarded against overflow and wiped after each call; the web vault scrubs its stack instead. [Doc 58](docs/plan/58-stack-wipe.md), D660–D669; closes D606 and D617's stack copies. |
 | **Next** | Browser extension (fill, save, passkeys), mobile apps, sharing and family, breach monitoring, packaged and signed releases |
 
 | Real (with tests) | Skeleton (types, traits, one real rule each) |
