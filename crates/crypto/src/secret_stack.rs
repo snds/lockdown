@@ -99,7 +99,9 @@ thread_local! {
     #[cfg(any(unix, windows))]
     static MINE: std::cell::RefCell<[Option<os::Stack>; 2]> =
         const { std::cell::RefCell::new([None, None]) };
-    /// Set by `testing::unwiped`: leave the block as the call left it.
+    /// Set by `testing::unwiped`, in this crate's own tests only: leave the
+    /// block as the call left it. No other build has the switch.
+    #[cfg(test)]
     static SKIP_WIPE: Cell<bool> = const { Cell::new(false) };
     /// How deep this thread's last call on a block reached.
     static LAST: Cell<usize> = const { Cell::new(0) };
@@ -290,6 +292,7 @@ unsafe fn measure_and_wipe(low: usize, high: usize, top: usize) {
     let from = low + first;
     LAST.with(|l| l.set(top - from));
     DEEPEST.fetch_max(top - from, Ordering::Relaxed);
+    #[cfg(test)]
     if SKIP_WIPE.with(Cell::get) {
         return;
     }
@@ -709,10 +712,13 @@ mod os {
 }
 
 /// For tests (here and in the crates that wrap their keys): look into a
-/// block between calls, and run calls that leave it unwiped.
-#[cfg(any(test, feature = "test-support"))]
+/// block between calls, and measure how deep a call reached. Nothing here
+/// can turn the wipe off: the control that does (`unwiped`) exists only in
+/// this crate's own test build.
 pub mod testing {
-    use super::{Cell, LAST, PIN, SKIP_WIPE};
+    #[cfg(test)]
+    use super::SKIP_WIPE;
+    use super::{Cell, LAST, PIN};
 
     /// Runs `f` with this thread keeping blocks of its own instead of the
     /// pools', so [`holds`] looks at the blocks this thread's calls used.
@@ -754,8 +760,9 @@ pub mod testing {
 
     /// Runs `f` with every call on this thread leaving its block as the
     /// call left it: the control a wipe test compares against. Call
-    /// [`wipe`] after looking.
-    pub fn unwiped<R>(f: impl FnOnce() -> R) -> R {
+    /// [`wipe`] after looking. This crate's tests only.
+    #[cfg(test)]
+    pub(crate) fn unwiped<R>(f: impl FnOnce() -> R) -> R {
         SKIP_WIPE.with(|s| s.set(true));
         let out = f();
         SKIP_WIPE.with(|s| s.set(false));

@@ -29,8 +29,11 @@
 //! wiped when it drops. The three sit in one heap block whose pages are
 //! locked out of swap before anything secret is written into it, on the
 //! process's one page table (docs/plan/53-harden-rest.md). The Ed25519 key
-//! a signature needs is rebuilt from the seed for that one call and wiped
-//! by `ed25519-dalek` when it drops.
+//! a signature needs is rebuilt from the seed for that one call, on the
+//! crypto crate's secret stack (docs/plan/58-stack-wipe.md): locked pages,
+//! wiped before the call returns, so the key and the signature's working
+//! values never sit on an ordinary stack page. The receiving key's
+//! rebuilds and the decoded copies of the secrets run there too.
 
 use std::path::{Path, PathBuf};
 
@@ -44,6 +47,7 @@ use lockdown_crypto::Key32;
 use lockdown_crypto::aead::{self, Sealed};
 use lockdown_crypto::cbor::{from_slice, to_canonical};
 use lockdown_crypto::locked::PageLock;
+use lockdown_crypto::secret_stack;
 use lockdown_store::write_private;
 use lockdown_vault::Id;
 use serde::{Deserialize, Serialize};
@@ -311,8 +315,11 @@ impl DeviceKeys {
         let bytes = Zeroizing::new(
             std::fs::read(&path).map_err(|e| format!("couldn't read {}: {e}", path.display()))?,
         );
-        let file: PlainFile = from_slice(&bytes).map_err(|e| e.to_string())?;
-        Self::from_plain(&file)
+        // Decoded on the secret stack, like the sealed secrets.
+        secret_stack::run(|| {
+            let file: PlainFile = from_slice(&bytes).map_err(|e| e.to_string())?;
+            Self::from_plain(&file)
+        })
     }
 
     /// Opens the plain key file in `data`, or makes one with fresh keys:
@@ -372,11 +379,14 @@ impl DeviceKeys {
     }
 
     fn from_sealed(file: &SealedFile, opened: &[u8]) -> Result<Self, String> {
-        // The decoded copy is wiped when it drops, at the end of this call.
-        let decoded: Secrets = from_slice(opened).map_err(|e| e.to_string())?;
-        let (secrets, pages) = Secrets::locked(|s| {
-            s.copy_from(&decoded);
-            Ok(())
+        // Decoded on the secret stack; the decoded copy is wiped when it
+        // drops, and the decoder's working copies with the stack.
+        let (secrets, pages) = secret_stack::run(|| {
+            let decoded: Secrets = from_slice(opened).map_err(|e| e.to_string())?;
+            Secrets::locked(|s| {
+                s.copy_from(&decoded);
+                Ok(())
+            })
         })?;
         let keys = Self {
             device_id: file.device_id,
@@ -499,6 +509,8 @@ impl DeviceKeys {
         write_private(&data.join(SEALED_FILE), &bytes).map_err(|e| e.to_string())
     }
 
+    /// The Ed25519 key, rebuilt from the seed. Call it only inside
+    /// `secret_stack::run`, so the rebuilt key lands on the secret stack.
     fn signing_key(&self) -> SigningKey {
         SigningKey::from_bytes(&self.secrets.signing_seed)
     }
@@ -531,25 +543,33 @@ impl DeviceKeystore for DeviceKeys {
     }
 
     fn device_pub(&self) -> [u8; 32] {
-        self.signing_key().verifying_key().to_bytes()
+        secret_stack::run(|| self.signing_key().verifying_key().to_bytes())
     }
 
     fn sign(&self, message: &[u8]) -> ecosystem_identity::Result<[u8; 64]> {
-        Ok(self.signing_key().sign(message).to_bytes())
+        Ok(secret_stack::run(|| {
+            self.signing_key().sign(message).to_bytes()
+        }))
     }
 
     fn kem_pub(&self) -> KemPublicKey {
-        kem::kem(self.kem_alg)
-            .keypair(self.secrets.kem_seed)
-            .map(|(_, public)| public)
-            .unwrap_or(KemPublicKey {
-                alg: self.kem_alg,
-                bytes: Vec::new(),
-            })
+        // The hybrid key's expansion (ML-KEM-768) goes deeper than an
+        // Ed25519 call.
+        secret_stack::run_deep(|| {
+            kem::kem(self.kem_alg)
+                .keypair(self.secrets.kem_seed)
+                .map(|(_, public)| public)
+        })
+        .unwrap_or(KemPublicKey {
+            alg: self.kem_alg,
+            bytes: Vec::new(),
+        })
     }
 
     fn kem_secret(&self) -> ecosystem_identity::Result<KemSecretKey> {
-        Ok(KemSecretKey::from_seed(self.kem_alg, self.secrets.kem_seed))
+        Ok(secret_stack::run(|| {
+            KemSecretKey::from_seed(self.kem_alg, self.secrets.kem_seed)
+        }))
     }
 
     fn attestation(&self) -> Option<Vec<u8>> {
@@ -557,7 +577,9 @@ impl DeviceKeystore for DeviceKeys {
     }
 
     fn unlock(&self) -> ecosystem_identity::Result<DeviceUnlockKey> {
-        Ok(DeviceUnlockKey::from_bytes(self.secrets.unlock_key))
+        Ok(secret_stack::run(|| {
+            DeviceUnlockKey::from_bytes(self.secrets.unlock_key)
+        }))
     }
 }
 
@@ -592,6 +614,58 @@ mod tests {
                 .verify(b"head", &sig, "head")
                 .unwrap();
         }
+    }
+
+    #[test]
+    fn a_device_signature_leaves_nothing_on_the_secret_stack() {
+        // The per-signature Ed25519 rebuild (D617): the seed and the
+        // expanded key exist only on the secret stack, which is wiped.
+        use lockdown_crypto::secret_stack::testing::{holds, last_depth, pinned};
+        use lockdown_crypto::secret_stack::{Tier, size};
+        use sha2_010::Digest;
+        pinned(|| {
+            let keys = DeviceKeys::generate().unwrap();
+            let seed = keys.secrets.signing_seed;
+            let prefix = sha2_010::Sha512::digest(seed)[32..].to_vec();
+            let message = b"a vault head";
+            keys.sign(message).unwrap();
+            let light = last_depth();
+            assert_eq!(holds(&seed), Some(false));
+            assert_eq!(holds(&prefix), Some(false));
+            keys.device_pub();
+            assert_eq!(holds(&seed), Some(false));
+            keys.kem_pub();
+            let deep = last_depth();
+            assert_eq!(holds(&keys.secrets.kem_seed), Some(false));
+            keys.unlock().unwrap();
+            assert_eq!(holds(&keys.secrets.unlock_key), Some(false));
+            println!("secret stack: device signature (Light): {light} bytes");
+            println!("secret stack: device kem_pub (Deep): {deep} bytes");
+            assert!(light > 0 && light * 4 <= size(Tier::Light) * 3);
+            assert!(deep > 0 && deep * 4 <= size(Tier::Deep) * 3);
+
+            // The plain and sealed files are decoded there too. (The
+            // control, the same scans finding the seed and the expanded key
+            // with the wipe off, is the crypto crate's own test: no other
+            // build can turn the wipe off.)
+            let dir = tempfile::tempdir().unwrap();
+            keys.write_plain(dir.path()).unwrap();
+            DeviceKeys::open_plain(dir.path()).unwrap();
+            let plain = last_depth();
+            assert_eq!(holds(&seed), Some(false));
+            keys.seal(dir.path(), "correct horse battery staple", None)
+                .unwrap();
+            DeviceKeys::open_with_password(dir.path(), "correct horse battery staple").unwrap();
+            let sealed = last_depth();
+            assert_eq!(holds(&seed), Some(false));
+            println!("secret stack: open plain file (Light): {plain} bytes");
+            println!("secret stack: open sealed secrets (Light): {sealed} bytes");
+            for depth in [plain, sealed] {
+                assert!(depth > 0 && depth * 4 <= size(Tier::Light) * 3);
+            }
+            assert_eq!(holds(&seed), Some(false));
+            assert_eq!(holds(&prefix), Some(false));
+        });
     }
 
     #[test]

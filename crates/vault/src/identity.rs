@@ -252,30 +252,34 @@ pub fn device_keys(identity: &Identity) -> BTreeMap<Id, VerifyingKey> {
 /// few record changes the crate has no call for yet (revoking or renaming
 /// a device, merging records from another machine, signing the identity
 /// manifest; `08-identity-proposal.md` §8) and dropped as soon as the
-/// operation is done (D72).
+/// operation is done (D72). The whole derivation runs on the secret stack
+/// (docs/plan/58-stack-wipe.md): the root key's and the ISK's by-value
+/// copies sit on locked pages, wiped before this returns.
 pub fn identity_signing_key(
     identity: &Identity,
     keystore: &dyn DeviceKeystore,
 ) -> Result<SigningKey> {
-    let profile = identity.profile();
-    let device_ref = KeyRef::new(KeyRefKind::Device, keystore.device_id());
-    let envelope = identity
-        .envelopes()
-        .find(|e| e.purpose == Purpose::Irk && e.wrapped_by == device_ref)
-        .ok_or_else(|| Error::NotFound("this device's wrap of the root key".into()))?;
-    let unlock = keystore.unlock()?;
-    let irk: Irk = ecosystem_identity::keys::unwrap_key(
-        envelope,
-        &unlock,
-        &ecosystem_identity::keys::aad(profile.profile_id, None, envelope.key_id, Purpose::Irk),
-    )?;
-    let isk = ecosystem_identity::signing_key(&irk)?;
-    if isk.verifying_key().to_bytes() != profile.isk_pub {
-        return Err(Error::Invalid(
-            "the root key this device holds doesn't derive the profile's signing key".into(),
-        ));
-    }
-    Ok(SigningKey::from(isk))
+    lockdown_crypto::secret_stack::run_deep(|| {
+        let profile = identity.profile();
+        let device_ref = KeyRef::new(KeyRefKind::Device, keystore.device_id());
+        let envelope = identity
+            .envelopes()
+            .find(|e| e.purpose == Purpose::Irk && e.wrapped_by == device_ref)
+            .ok_or_else(|| Error::NotFound("this device's wrap of the root key".into()))?;
+        let unlock = keystore.unlock()?;
+        let irk: Irk = ecosystem_identity::keys::unwrap_key(
+            envelope,
+            &unlock,
+            &ecosystem_identity::keys::aad(profile.profile_id, None, envelope.key_id, Purpose::Irk),
+        )?;
+        let isk = ecosystem_identity::signing_key(&irk)?;
+        if isk.verifying_key().to_bytes() != profile.isk_pub {
+            return Err(Error::Invalid(
+                "the root key this device holds doesn't derive the profile's signing key".into(),
+            ));
+        }
+        Ok(SigningKey::from(isk))
+    })
 }
 
 /// Reads the identity store at `identity`'s root, lets `edit` change the
@@ -797,6 +801,35 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let keystore = FileKeystore::open_or_create(&dir.path().join("device-key.cbor")).unwrap();
         (dir, keystore)
+    }
+
+    #[test]
+    fn the_identity_keys_leave_nothing_on_the_secret_stack() {
+        use lockdown_crypto::secret_stack::testing::{holds, last_depth, pinned, wipe};
+        use lockdown_crypto::secret_stack::{Tier, size};
+        let (dir, keystore) = fresh();
+        let root = dir.path().join("identity");
+        let identity = open_or_create_identity(&root, "Laptop", &keystore, None).unwrap();
+        pinned(|| {
+            let isk = identity_signing_key(&identity, &keystore).unwrap();
+            let isk_depth = last_depth();
+            let seed = isk.inner().to_bytes();
+            assert_eq!(holds(&seed), Some(false));
+            crate::pq::identity_pq_key(&identity, &keystore).unwrap();
+            let deep = last_depth();
+            assert_eq!(holds(&seed), Some(false));
+            println!("secret stack: identity signing key (Deep): {isk_depth} bytes");
+            println!("secret stack: identity ML-DSA-65 key (Deep): {deep} bytes");
+            assert!(isk_depth > 0 && isk_depth * 4 <= size(Tier::Deep) * 3);
+            assert!(deep > 0 && deep * 4 <= size(Tier::Deep) * 3);
+
+            // Signing a record with it stays there too. (The control with
+            // the wipe off is the crypto crate's own test: no other build
+            // can turn the wipe off.)
+            isk.sign(b"a record");
+            wipe();
+            assert_eq!(holds(&seed), Some(false));
+        });
     }
 
     #[test]

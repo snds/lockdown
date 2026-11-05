@@ -45,11 +45,7 @@ windows-sys = { version = "0.61", features = ["Win32_System_Threading", "Win32_S
 # Forwards to the identity crate's feature of the same name. Never enable it
 # in an app; the crate's own tests turn it on through the self dev-dependency.
 insecure-test-kdf = ["ecosystem-identity/insecure-test-kdf"]
-# `secret_stack::testing`: look into a thread's secret stack and run calls
-# that leave it unwiped, for the wipe tests here and in the crates that wrap
-# their keys. Never enable it in an app.
-test-support = []
 
 [dev-dependencies.lockdown-crypto]
 path = "."
-features = ["insecure-test-kdf", "test-support"]
+features = ["insecure-test-kdf"]
