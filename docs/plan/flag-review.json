@@ -88,7 +88,7 @@
   {"id": "server", "name": "Self-host server", "ids": "D215-D229,D290-D304,D322-D330,D332"},
   {"id": "bridges", "name": "Vendor bridges", "ids": "D258-D260,D262,D263,D271"},
   {"id": "pq", "name": "Post-quantum", "ids": "D335-D349,D365-D374,D550-D559,D570-D579"},
-  {"id": "release", "name": "Release and packaging", "ids": "D90-D99,D275-D289,D350-D356,D358-D364,D450,D480-D499,D510-D519,D520-D529,D530-D539,D540-D549,D600-D609,D610-D619,D640-D649"},
+  {"id": "release", "name": "Release and packaging", "ids": "D90-D99,D275-D289,D350-D356,D358-D364,D450,D480-D499,D510-D519,D520-D529,D530-D539,D540-D549,D600-D609,D610-D619,D640-D649,D650-D659"},
   {"id": "plans", "name": "Plans and pricing", "ids": "D375-D378"},
   {"id": "small-calls", "name": "Follow-ups to the review", "ids": "D410-D429,D440-D449"},
   {"id": "design", "name": "Design and accessibility", "ids": "D380-D398,D451-D459"}
