@@ -139,7 +139,17 @@ From `/home/user/ld-wws`:
 - `cargo test -p lockdown-desktop --features shell`
 - In `apps/desktop`: `pnpm typecheck`, `lint`, `test`, `build`, and `ds:ratchet` (baseline 4)
 
-CI's `fmt · clippy · test (windows-latest)` job is the real Windows test.
+CI's `fmt · clippy · test (windows-latest)` job is the real Windows test. On the first push it passed (all 19 CI jobs green), with these lines:
+
+```text
+     Running tests\win_working_set.rs
+test lockdown_makes_room_in_its_working_set_so_its_locks_succeed ... ok
+     Running tests\memory_report.rs
+test the_settings_report_counts_the_identity_crates_keys_too ... ok
+     Running tests\one_page_table.rs
+test lockdown_and_the_identity_crate_share_one_page_table ... ok
+test secret_stack::tests::a_call_runs_on_a_locked_block_and_leaves_it_zeroed ... ok
+```
 
 ## 8. Proposed decisions
 
