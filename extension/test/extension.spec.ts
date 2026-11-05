@@ -275,8 +275,11 @@ test("a one-time code fills after the second action, single field and split boxe
   await menu.getByRole("button", { name: /Local site/ }).click();
   await expect(menu.locator("body")).toContainText("deliberate");
   await expect(page.locator("#code")).toHaveValue("");
-  await menu.getByRole("button", { name: "Fill code" }).click();
+  // Read the code before the fill: the fill then gets this window's code or,
+  // if the 30-second window rolls over in between, the next one. Read after
+  // the fill, a rollover would leave the filled code in neither.
   const code = await desktop.ask(`code ${items.local}`, "code");
+  await menu.getByRole("button", { name: "Fill code" }).click();
   // The fill lands after the endpoint answers; wait for it rather than read at once.
   await expect(page.locator("#code")).not.toHaveValue("");
   const filled = await page.locator("#code").inputValue();
