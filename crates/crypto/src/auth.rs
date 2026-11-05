@@ -405,7 +405,10 @@ impl LoginClient {
 /// ([`crate::locked`], doc 53). `opaque-ke` wipes its OPRF seed and private
 /// key on drop, before the pages are unlocked. The setup is built by value
 /// before it reaches the block (`opaque-ke` has no in-place constructor), so
-/// one short-lived stack copy is left where it was built.
+/// it is built on the thread's secret stack ([`crate::secret_stack`], doc
+/// 58), whose pages are locked and wiped before the constructor returns.
+/// The registration and login answers run there too: each derives the
+/// account's OPRF key from a copy of the seed.
 pub struct OpaqueServer {
     // Field order is drop order: the setup is wiped while its pages are
     // still locked.
@@ -445,7 +448,9 @@ impl OpaqueServer {
     /// A fresh setup.
     pub fn generate() -> Result<Self> {
         let mut rng = rng()?;
-        Ok(Self::locked(Box::new(ServerSetup::<Suite>::new(&mut rng))))
+        Ok(Self::locked(crate::secret_stack::run_deep(|| {
+            Box::new(ServerSetup::<Suite>::new(&mut rng))
+        })))
     }
 
     fn locked(setup: Box<ServerSetup<Suite>>) -> Self {
@@ -467,19 +472,22 @@ impl OpaqueServer {
 
     /// From [`Self::to_bytes`].
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        Ok(Self::locked(Box::new(
-            ServerSetup::<Suite>::deserialize(bytes).map_err(protocol)?,
-        )))
+        let setup = crate::secret_stack::run_deep(|| {
+            ServerSetup::<Suite>::deserialize(bytes).map(Box::new)
+        });
+        Ok(Self::locked(setup.map_err(protocol)?))
     }
 
     /// Answers a registration request for `credential_id` (the login name
-    /// the account is filed under). Stateless: the finish only needs the
-    /// upload.
+    /// the account is filed under), on the secret stack. Stateless: the
+    /// finish only needs the upload.
     pub fn registration_response(&self, credential_id: &[u8], request: &[u8]) -> Result<Vec<u8>> {
-        let request = RegistrationRequest::<Suite>::deserialize(request).map_err(protocol)?;
-        let started = ServerRegistration::<Suite>::start(&self.setup, request, credential_id)
-            .map_err(protocol)?;
-        Ok(started.message.serialize().to_vec())
+        crate::secret_stack::run_deep(|| {
+            let request = RegistrationRequest::<Suite>::deserialize(request).map_err(protocol)?;
+            let started = ServerRegistration::<Suite>::start(&self.setup, request, credential_id)
+                .map_err(protocol)?;
+            Ok(started.message.serialize().to_vec())
+        })
     }
 
     /// Turns the client's upload into the password file to store for the
@@ -491,8 +499,8 @@ impl OpaqueServer {
             .to_vec())
     }
 
-    /// Answers a login request. With no password file (an unknown login)
-    /// the answer is a decoy that fails on the client exactly like a wrong
+    /// Answers a login request, on the secret stack. With no password file
+    /// (an unknown login) the answer is a decoy that fails on the client exactly like a wrong
     /// password, so the request learns nothing. Returns the response and
     /// the state to keep for [`Self::login_finish`].
     pub fn login_response(
@@ -501,40 +509,47 @@ impl OpaqueServer {
         password_file: Option<&[u8]>,
         request: &[u8],
     ) -> Result<(Vec<u8>, LoginServerState)> {
-        let mut rng = rng()?;
-        let request = CredentialRequest::<Suite>::deserialize(request).map_err(protocol)?;
-        let file = match password_file {
-            Some(bytes) => Some(ServerRegistration::<Suite>::deserialize(bytes).map_err(protocol)?),
-            None => None,
-        };
-        let started = ServerLogin::<Suite>::start(
-            &mut rng,
-            &self.setup,
-            file,
-            request,
-            credential_id,
-            ServerLoginParameters::default(),
-        )
-        .map_err(protocol)?;
-        Ok((
-            started.message.serialize().to_vec(),
-            LoginServerState(started.state.serialize().to_vec()),
-        ))
+        crate::secret_stack::run_deep(|| {
+            let mut rng = rng()?;
+            let request = CredentialRequest::<Suite>::deserialize(request).map_err(protocol)?;
+            let file = match password_file {
+                Some(bytes) => {
+                    Some(ServerRegistration::<Suite>::deserialize(bytes).map_err(protocol)?)
+                }
+                None => None,
+            };
+            let started = ServerLogin::<Suite>::start(
+                &mut rng,
+                &self.setup,
+                file,
+                request,
+                credential_id,
+                ServerLoginParameters::default(),
+            )
+            .map_err(protocol)?;
+            Ok((
+                started.message.serialize().to_vec(),
+                LoginServerState(started.state.serialize().to_vec()),
+            ))
+        })
     }
 
     /// Checks the client's finalization and returns the session key (64
-    /// bytes). A forged or replayed message is [`Error::LoginFailed`].
+    /// bytes), on the secret stack. A forged or replayed message is
+    /// [`Error::LoginFailed`].
     pub fn login_finish(state: &LoginServerState, finalization: &[u8]) -> Result<SecretBytes> {
-        let state = ServerLogin::<Suite>::deserialize(&state.0).map_err(protocol)?;
-        let message =
-            CredentialFinalization::<Suite>::deserialize(finalization).map_err(protocol)?;
-        let finished = state
-            .finish(message, ServerLoginParameters::default())
-            .map_err(protocol)?;
-        let mut key = finished.session_key;
-        let out = SecretBytes::new(key.to_vec());
-        key.as_mut_slice().zeroize();
-        Ok(out)
+        crate::secret_stack::run_deep(|| {
+            let state = ServerLogin::<Suite>::deserialize(&state.0).map_err(protocol)?;
+            let message =
+                CredentialFinalization::<Suite>::deserialize(finalization).map_err(protocol)?;
+            let finished = state
+                .finish(message, ServerLoginParameters::default())
+                .map_err(protocol)?;
+            let mut key = finished.session_key;
+            let out = SecretBytes::new(key.to_vec());
+            key.as_mut_slice().zeroize();
+            Ok(out)
+        })
     }
 }
 
@@ -1075,6 +1090,50 @@ mod tests {
         }
         // Locked or refused, it answers the same.
         assert_eq!(made.to_bytes().expose(), read.to_bytes().expose());
+    }
+
+    #[test]
+    fn the_server_setup_leaves_nothing_on_the_secret_stack() {
+        use crate::secret_stack::testing::{holds, pinned, unwiped, wipe};
+        pinned(|| {
+            // Its serialization starts with the OPRF seed (64 bytes) and
+            // the server's private key (32).
+            let made = OpaqueServer::generate().unwrap();
+            let bytes = made.to_bytes();
+            let (seed, private) = (&bytes.expose()[..64], &bytes.expose()[64..96]);
+            assert_eq!(holds(seed), Some(false));
+            assert_eq!(holds(private), Some(false));
+            let read = OpaqueServer::from_bytes(bytes.expose()).unwrap();
+            assert_eq!(holds(seed), Some(false));
+            assert_eq!(holds(private), Some(false));
+            read.registration_response(
+                b"me@example.com",
+                &RegistrationClient::start("a long password").unwrap().1,
+            )
+            .unwrap();
+            assert_eq!(holds(seed), Some(false));
+
+            // The control: with the wipe off, both are there after either
+            // constructor.
+            let again = unwiped(OpaqueServer::generate).unwrap();
+            let again_bytes = again.to_bytes();
+            assert_eq!(
+                holds(&again_bytes.expose()[..64]),
+                Some(true),
+                "new: the seed"
+            );
+            assert_eq!(
+                holds(&again_bytes.expose()[64..96]),
+                Some(true),
+                "new: the key"
+            );
+            wipe();
+            let _ = unwiped(|| OpaqueServer::from_bytes(bytes.expose())).unwrap();
+            assert_eq!(holds(seed), Some(true), "deserialize: the seed");
+            assert_eq!(holds(private), Some(true), "deserialize: the key");
+            wipe();
+            assert_eq!(holds(seed), Some(false));
+        });
     }
 
     #[test]

@@ -66,14 +66,18 @@ pub fn require_hybrid(key: &KemPublicKey, whose: &str) -> Result<()> {
 // (`Contact::check_continues`). Device signatures, vault heads and the
 // key-transparency log stay Ed25519 (docs/plan/22-security-depth.md §6).
 
-/// The identity's ML-DSA-65 signing key, derived from the root key.
+/// The identity's ML-DSA-65 signing key, derived from the root key, on the
+/// secret stack: the root key's copies and the seed sit on locked pages,
+/// wiped before this returns.
 pub fn identity_pq_key<K: DeviceKeystore + ?Sized>(
     identity: &Identity,
     keystore: &K,
 ) -> Result<PqSigningKey> {
-    let (irk, _) = crate::handover::root_key(identity, keystore)?;
-    let seed = ecosystem_identity::kdf::subkey(irk.expose(), PQ_ISK_INFO)?;
-    Ok(PqSigningKey::from_seed(*seed))
+    lockdown_crypto::secret_stack::run_deep(|| {
+        let (irk, _) = crate::handover::root_key(identity, keystore)?;
+        let seed = ecosystem_identity::kdf::subkey(irk.expose(), PQ_ISK_INFO)?;
+        Ok(PqSigningKey::from_seed(*seed))
+    })
 }
 
 /// The ML-DSA-65 key a profile publishes, if any. A malformed one is an

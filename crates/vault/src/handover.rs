@@ -31,30 +31,34 @@ use crate::identity::{check_manager, write_identity_store};
 use crate::{Error, Id, Result};
 
 /// The root key and its key id, opened through this device's keystore and
-/// checked against the profile's signing key. Drop it as soon as it is used.
+/// checked against the profile's signing key, on the (large) secret stack
+/// (the ISK it rebuilds to check is a by-value copy). Drop it as soon as it is
+/// used.
 pub fn root_key<K: DeviceKeystore + ?Sized>(
     identity: &Identity,
     keystore: &K,
 ) -> Result<(Irk, Id)> {
-    let profile = identity.profile();
-    let device_ref = KeyRef::new(KeyRefKind::Device, keystore.device_id());
-    let envelope = identity
-        .envelopes()
-        .find(|e| e.purpose == Purpose::Irk && e.wrapped_by == device_ref)
-        .ok_or_else(|| Error::NotFound("this device's wrap of the root key".into()))?;
-    let unlock = keystore.unlock()?;
-    let irk: Irk = ecosystem_identity::keys::unwrap_key(
-        envelope,
-        &unlock,
-        &ecosystem_identity::keys::aad(profile.profile_id, None, envelope.key_id, Purpose::Irk),
-    )?;
-    let isk = ecosystem_identity::signing_key(&irk)?;
-    if isk.verifying_key().to_bytes() != profile.isk_pub {
-        return Err(Error::Invalid(
-            "the root key this device holds doesn't derive the profile's signing key".into(),
-        ));
-    }
-    Ok((irk, envelope.key_id))
+    lockdown_crypto::secret_stack::run_deep(|| {
+        let profile = identity.profile();
+        let device_ref = KeyRef::new(KeyRefKind::Device, keystore.device_id());
+        let envelope = identity
+            .envelopes()
+            .find(|e| e.purpose == Purpose::Irk && e.wrapped_by == device_ref)
+            .ok_or_else(|| Error::NotFound("this device's wrap of the root key".into()))?;
+        let unlock = keystore.unlock()?;
+        let irk: Irk = ecosystem_identity::keys::unwrap_key(
+            envelope,
+            &unlock,
+            &ecosystem_identity::keys::aad(profile.profile_id, None, envelope.key_id, Purpose::Irk),
+        )?;
+        let isk = ecosystem_identity::signing_key(&irk)?;
+        if isk.verifying_key().to_bytes() != profile.isk_pub {
+            return Err(Error::Invalid(
+                "the root key this device holds doesn't derive the profile's signing key".into(),
+            ));
+        }
+        Ok((irk, envelope.key_id))
+    })
 }
 
 /// Checks a device record another device proposes for itself, as the

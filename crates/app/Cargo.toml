@@ -75,3 +75,5 @@ rusqlite.workspace = true
 # creates an identity in milliseconds. Never enabled in an app build.
 ecosystem-identity = { workspace = true, features = ["insecure-test-kdf"] }
 lockdown-crypto = { workspace = true, features = ["insecure-test-kdf"] }
+# The Ed25519 nonce prefix (SHA-512 of the seed) a wipe test looks for.
+sha2_010.workspace = true

@@ -29,6 +29,7 @@ use ml_dsa::{EncodedVerifyingKey, ExpandedSigningKey, MlDsa65, Seed, Signature, 
 use zeroize::Zeroize;
 
 use crate::locked::PageLock;
+use crate::secret_stack;
 use crate::{Error, Result};
 
 /// Bytes in an encoded ML-DSA-65 public key.
@@ -56,13 +57,19 @@ pub struct PqVerifyingKey(Vec<u8>);
 
 impl PqSigningKey {
     /// The key for a 32-byte seed (FIPS 204 `ML-DSA.KeyGen_internal(ξ)`).
-    /// The seed and its copy are wiped once the key is expanded; the key
-    /// is rebuilt from the key above it, never from a stored seed.
+    /// The key is expanded on the secret stack (its 64 KiB by-value copy
+    /// and the expansion's working values sit on locked pages, wiped before
+    /// this returns; doc 58, D606). The seed and its copy are wiped once
+    /// the key is expanded; the key is rebuilt from the key above it, never
+    /// from a stored seed.
     pub fn from_seed(mut seed: [u8; 32]) -> Self {
-        let mut xi = Seed::from(seed);
+        let key = secret_stack::run_deep(|| {
+            let mut xi = Seed::from(seed);
+            let key = Box::new(ExpandedSigningKey::<MlDsa65>::from_seed(&xi));
+            xi.zeroize();
+            key
+        });
         seed.zeroize();
-        let key = Box::new(ExpandedSigningKey::<MlDsa65>::from_seed(&xi));
-        xi.zeroize();
         let pages = PageLock::of_value(&*key);
         Self { key, pages }
     }
@@ -87,14 +94,16 @@ impl PqSigningKey {
     }
 
     /// Signs `message` under `context` (at most 255 bytes, never empty in
-    /// Lockdown: every use names itself). 3309 bytes out.
+    /// Lockdown: every use names itself), on the secret stack: the
+    /// signature's working values come from the secret key. 3309 bytes out.
     pub fn sign(&self, message: &[u8], context: &[u8]) -> Result<Vec<u8>> {
         check_context(context)?;
-        let sig = self
-            .key
-            .sign_deterministic(message, context)
-            .map_err(|_| Error::Invalid("ML-DSA refused the message".into()))?;
-        Ok(sig.encode().to_vec())
+        let sig = secret_stack::run_deep(|| {
+            self.key
+                .sign_deterministic(message, context)
+                .map(|sig| sig.encode().to_vec())
+        });
+        sig.map_err(|_| Error::Invalid("ML-DSA refused the message".into()))
     }
 }
 
@@ -314,5 +323,45 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    /// A known slice of the expanded key: 64 bytes from its middle, as it
+    /// sits in its box.
+    fn middle(key: &PqSigningKey) -> Vec<u8> {
+        // SAFETY: reads the boxed key's own bytes, as plain bytes.
+        let bytes = unsafe {
+            std::slice::from_raw_parts(std::ptr::from_ref(&*key.key).cast::<u8>(), EXPANDED_KEY_LEN)
+        };
+        let at = EXPANDED_KEY_LEN / 2;
+        let slice = bytes[at..at + 64].to_vec();
+        let mut seen = slice.clone();
+        seen.sort_unstable();
+        seen.dedup();
+        assert!(seen.len() > 16, "a slice with something in it");
+        slice
+    }
+
+    #[test]
+    fn the_expanded_key_leaves_nothing_on_the_secret_stack() {
+        use crate::secret_stack::testing::{holds, pinned, unwiped, wipe};
+        const SEED: [u8; 32] = *b"an ml-dsa-65 seed for wipe tests";
+        pinned(|| {
+            let key = PqSigningKey::from_seed(SEED);
+            let slice = middle(&key);
+            assert_eq!(holds(&SEED), Some(false));
+            assert_eq!(holds(&slice), Some(false));
+            key.sign(b"a vault head", b"lockdown/test/v1").unwrap();
+            assert_eq!(holds(&slice), Some(false));
+
+            // The control: with the wipe off, the 64 KiB copy (D606) and
+            // the seed are there.
+            let again = unwiped(|| PqSigningKey::from_seed(SEED));
+            assert_eq!(middle(&again), slice);
+            assert_eq!(holds(&slice), Some(true), "the by-value copy");
+            assert_eq!(holds(&SEED), Some(true), "the seed");
+            wipe();
+            assert_eq!(holds(&slice), Some(false));
+            assert_eq!(holds(&SEED), Some(false));
+        });
     }
 }

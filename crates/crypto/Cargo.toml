@@ -28,6 +28,18 @@ thiserror.workspace = true
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# The secret stack (src/secret_stack.rs, docs/plan/58-stack-wipe.md). On
+# Unix, `psm` (the stack-switching core of `stacker`, which rustc uses)
+# moves the stack pointer onto a locked block for a key's constructor; no
+# assembly of Lockdown's own.
+psm = "0.1.32"
+
+# On Windows the secret stack is a fiber (psm has no stack switching there):
+# CreateFiberEx and SwitchToFiber, through the windows-sys line already in
+# the lock file (the identity crate's).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Threading", "Win32_System_Memory"] }
+
 [features]
 # Lowers the Argon2id floor so a debug-mode test finishes in milliseconds.
 # Forwards to the identity crate's feature of the same name. Never enable it
