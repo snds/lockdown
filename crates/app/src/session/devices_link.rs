@@ -417,7 +417,12 @@ impl Joining {
     /// With [`LinkKeys::Sealed`], the keys stay in memory until
     /// [`Joining::finish_sealed`] seals them; with `LinkKeys::Plain` (the
     /// web vault), they start as the plain key file.
-    pub fn start(paths: &Paths, server: &str, invite: &str, keys: LinkKeys) -> Result<Self, String> {
+    pub fn start(
+        paths: &Paths,
+        server: &str,
+        invite: &str,
+        keys: LinkKeys,
+    ) -> Result<Self, String> {
         check_root_empty(paths)?;
         let invite = LinkInvite::parse(invite).map_err(|e| e.to_string())?;
         let server = match &invite.server {

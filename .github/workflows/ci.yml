@@ -222,6 +222,15 @@ jobs:
             fi
           done
           echo "no shipped binary turns on lockdown-app's test-support"
+      # The web vault's plain device-link join (`App::join_start`,
+      # `App::join_finish_signed_in`) is compiled only for wasm and with
+      # `test-support` (docs/plan/57-fence-web-join.md). The script reads
+      # the symbols of lockdown-app's native library with the feature (they
+      # must be there) and without it (they must not, and the sealed join
+      # must be).
+      - name: A native lockdown-app has no plain device-link join
+        working-directory: .
+        run: packaging/plain-join/check.sh
       - name: Clippy, the shell feature only
         run: cargo clippy -p lockdown-desktop --all-targets --features shell -- -D warnings
       - name: Shell unit tests, the shell feature only

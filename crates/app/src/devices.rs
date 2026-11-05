@@ -38,9 +38,9 @@ pub use lockdown_sync::account_security::{SecurityKeyInfo, SecurityKeyList};
 use serde::Serialize;
 use zeroize::Zeroizing;
 
-pub use crate::session::devices_link::{JoinView, LinkView};
 #[cfg(any(target_os = "wasi", feature = "test-support"))]
 use crate::session::devices_link::finish_joined;
+pub use crate::session::devices_link::{JoinView, LinkView};
 use crate::session::devices_link::{Joining, LinkKeys};
 use crate::session::second_factor::WaitingSignIn;
 use crate::{App, AppError, AppResult, ApprovalKind, ErrorCode, GateInput, Registered, Status};
