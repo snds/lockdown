@@ -14,7 +14,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**602 decisions, fifty-four build slices, no release yet (2026-10-29).** Of the 122 features committed to v1, 83 are done, 15 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
+**608 decisions, fifty-five build slices, no release yet (2026-10-29).** Of the 122 features committed to v1, 83 are done, 15 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
 
 | Slice | What it delivered |
 |---|---|
@@ -73,6 +73,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 | **52 · The rest of the keys out of swap; no server crash dumps** ✅ | The device's own secrets, the Ed25519 signing keys, and the server's sign-in setup and key file are now locked out of swap on the one page table, and the self-host server turns crash dumps off at start (`--core-dumps on` for debugging). [Doc 53](docs/plan/53-harden-rest.md), D610–D619. |
 | **53 · A single shared item follows everyone's edits** ✅ | When a member other than the owner edits an item that's also shared on its own, or a manager re-keys the vault, the owner's device signs a follow version in the same sync, so the person who holds just that item gets the edit at their next sync, still trusting only the owner. [Doc 54](docs/plan/54-share-follows-edits.md), D620–D629. |
 | **54 · A member's key change resolves without them** ✅ | A planned key change signed by the old key (a hand-over on the new profile) moves everyone's pin silently and clears what was held back. A key change nothing vouches for leaves the pin where it was, and only the vault's owner sees "bob@example.com reset their account. Let them back in?" at the top of Sharing; the owner's yes re-admits them and everyone else follows. A key that only the server or the log shows is never taken. [Doc 55](docs/plan/55-member-key-change.md), D630–D639. |
+| **55 · No shipped path makes an unprotected computer** ✅ | The core's old sign-in and recovery joins now refuse on a computer that hasn't joined and point to the sealed join; the old unsealed join survives only as a test fixture behind `test-support`, which a test and a CI step prove no desktop, server or command-line build turns on. [Doc 56](docs/plan/56-no-plain-joins.md), D640–D645. |
 | **Next** | Browser extension (fill, save, passkeys), mobile apps, sharing and family, breach monitoring, packaged and signed releases |
 
 | Real (with tests) | Skeleton (types, traits, one real rule each) |
