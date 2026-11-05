@@ -36,9 +36,11 @@ psm = "0.1.32"
 
 # On Windows the secret stack is a fiber (psm has no stack switching there):
 # CreateFiberEx and SwitchToFiber, through the windows-sys line already in
-# the lock file (the identity crate's).
+# the lock file (the identity crate's). The same line raises the process's
+# working-set limits so those locks succeed (src/locked/working_set.rs,
+# docs/plan/59-win-working-set.md).
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Threading", "Win32_System_Memory"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_System_Memory"] }
 
 [features]
 # Lowers the Argon2id floor so a debug-mode test finishes in milliseconds.
