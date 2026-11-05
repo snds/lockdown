@@ -3743,6 +3743,7 @@ dependencies = [
  "lockdown-store",
  "lockdown-sync",
  "lockdown-vault",
+ "lockdown-web",
  "rusqlite",
  "serde",
  "serde_bytes",

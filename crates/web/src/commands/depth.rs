@@ -89,8 +89,12 @@ pub(super) fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult
             json(web.sign_in_answer(answer)?)
         }
         "web_sign_in_continue" => json(web.sign_in_continue()?),
+        // The plain device-link join: the wasm build, and the native tests
+        // with `test-support` (docs/plan/57-fence-web-join.md).
+        #[cfg(any(target_os = "wasi", feature = "test-support"))]
         "web_join_start" => json(web.join_start(&secret_text(args, "invite")?)?),
         "web_join_poll" => json(web.join_poll()?),
+        #[cfg(any(target_os = "wasi", feature = "test-support"))]
         "web_join_finish" => {
             let login: String = req(args, "login")?;
             json(web.join_finish(&login, &secret_text(args, "password")?)?)

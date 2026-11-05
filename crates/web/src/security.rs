@@ -38,7 +38,9 @@ use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 use zeroize::Zeroizing;
 
-use crate::host::{SealedDevice, WebVault, sign_in_round, trimmed};
+use crate::host::{SealedDevice, WebVault};
+#[cfg(any(target_os = "wasi", feature = "test-support"))]
+use crate::host::{sign_in_round, trimmed};
 
 fn refused(message: impl Into<String>) -> AppError {
     AppError::refused(message)
@@ -306,7 +308,10 @@ impl WebVault {
     }
 
     /// Joins a link another device opened (the code typed, or the QR code
-    /// read with the camera), on this page's own server only.
+    /// read with the camera), on this page's own server only. The core's
+    /// plain device-link join, so only in the wasm build and with this
+    /// crate's `test-support` feature (docs/plan/57-fence-web-join.md).
+    #[cfg(any(target_os = "wasi", feature = "test-support"))]
     pub fn join_start(&mut self, invite: &str) -> AppResult<serde_json::Value> {
         let origin = trimmed(self.origin_for_join()?);
         self.start_empty(true)?;
@@ -322,6 +327,8 @@ impl WebVault {
 
     /// Finishes an approved join: a sign-in with the account password,
     /// whose export key seals this tab's device key, then the vault opens.
+    /// Fenced as [`WebVault::join_start`] is.
+    #[cfg(any(target_os = "wasi", feature = "test-support"))]
     pub fn join_finish(&mut self, login: &str, password: &str) -> AppResult<Status> {
         let server = trimmed(self.origin_for_join()?);
         let (export_key, session, sealed) =
@@ -336,6 +343,7 @@ impl WebVault {
         self.opened(&server, login, sealed)
     }
 
+    #[cfg(any(target_os = "wasi", feature = "test-support"))]
     fn origin_for_join(&self) -> AppResult<&str> {
         self.serving_origin()
             .ok_or_else(|| refused("the web vault doesn't know which server it came from"))
