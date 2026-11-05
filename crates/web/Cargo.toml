@@ -34,6 +34,15 @@ zeroize.workspace = true
 # builds are unaffected (the feature only exists for wasm32).
 zxcvbn = { workspace = true, features = ["custom_wasm_env"] }
 
+[features]
+# The core's plain device-link join (`App::join_start`,
+# `App::join_finish_signed_in`) and this crate's `web_join_start` and
+# `web_join_finish`, in a native build. The wasm build has them without
+# it; a native one only for this crate's own tests, whose
+# `[dev-dependencies]` turn it on (docs/plan/57-fence-web-join.md).
+# Nothing that ships turns it on.
+test-support = ["lockdown-app/test-support"]
+
 [dev-dependencies]
 tempfile.workspace = true
 lockdown-server.workspace = true
@@ -46,5 +55,8 @@ ciborium.workspace = true
 ecosystem-identity = { workspace = true, features = ["insecure-test-kdf"] }
 lockdown-crypto = { workspace = true, features = ["insecure-test-kdf"] }
 lockdown-app = { path = "../app", version = "0.1.0" }
+# The native tests run the web vault's device-link join, which a native
+# build has only with `test-support` (docs/plan/57-fence-web-join.md).
+lockdown-web = { path = ".", features = ["test-support"] }
 # The hostile-server test bends a head in the server's own database.
 rusqlite.workspace = true

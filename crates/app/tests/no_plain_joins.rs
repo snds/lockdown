@@ -12,7 +12,9 @@
 //!   always did;
 //! - the old unsealed join exists only as the test fixtures
 //!   `account_login_plain` and `recover_plain`, behind the `test-support`
-//!   feature, which only `[dev-dependencies]` in the workspace turn on.
+//!   feature, which only `[dev-dependencies]` in the workspace turn on;
+//!   so is the web vault's plain device-link join in a native build
+//!   (docs/plan/57-fence-web-join.md).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -258,6 +260,17 @@ fn member_manifests(root: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// A manifest's path from the workspace root, joined with `/` on every
+/// platform, so Windows paths compare too.
+fn relative(root: &Path, manifest: &Path) -> String {
+    let rel = manifest.strip_prefix(root).unwrap();
+    let parts: Vec<String> = rel
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    parts.join("/")
+}
+
 #[test]
 fn only_dev_dependencies_turn_on_the_fixture() {
     let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -270,46 +283,55 @@ fn only_dev_dependencies_turn_on_the_fixture() {
         "{manifests:?}"
     );
 
-    // lockdown-app's own features: `test-support` is off by default and no
-    // other feature turns it on.
-    let own = std::fs::read_to_string(crate_dir.join("Cargo.toml")).unwrap();
-    let features = sections(&own)
-        .into_iter()
-        .find(|(name, _)| name == "features")
-        .unwrap()
-        .1;
-    assert!(features.iter().any(|l| l.starts_with("test-support = []")));
-    for line in &features {
-        if !line.starts_with("test-support") {
-            assert!(!line.contains("test-support"), "{line}");
-        }
-    }
-
-    // Every manifest that names `test-support` on lockdown-app does so
-    // only under `[dev-dependencies]`: a build of the desktop, the command
-    // line or the server never has the fixture.
+    // Two crates have a `test-support` feature: lockdown-app's (the old
+    // unsealed join, doc 56, and the web vault's plain device-link join,
+    // doc 57) and lockdown-web's, which only passes it on to lockdown-app
+    // for the web vault's native tests. In every manifest, only a feature
+    // of that same name may mention it: it is off by default and no other
+    // feature turns it on.
+    let mut own = Vec::new();
+    // Every other line that mentions `test-support` (a dependency turning
+    // it on) is under `[dev-dependencies]`: a build of the desktop, the
+    // command line or the server never has the fixture or the plain join.
     let mut dev = Vec::new();
     for manifest in &manifests {
         let text = std::fs::read_to_string(manifest).unwrap();
+        let rel = relative(root, manifest);
         for (section, lines) in sections(&text) {
-            for line in lines {
-                if line.starts_with("lockdown-app") && line.contains("test-support") {
+            for line in lines.iter().filter(|l| l.contains("test-support")) {
+                if section == "features" {
                     assert!(
-                        section == "dev-dependencies" || section.ends_with(".dev-dependencies"),
-                        "{} turns on test-support under [{section}]",
-                        manifest.display()
+                        line.starts_with("test-support ="),
+                        "{rel}: a feature other than test-support names it: {line}"
                     );
-                    // Joined with `/` on every platform, so Windows paths compare too.
-                    let rel = manifest.strip_prefix(root).unwrap();
-                    let parts: Vec<String> = rel
-                        .components()
-                        .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                        .collect();
-                    dev.push(parts.join("/"));
+                    own.push(format!("{rel}: {line}"));
+                } else {
+                    assert!(
+                        section == "dev-dependencies"
+                            || section.ends_with(".dev-dependencies")
+                            || section.starts_with("dev-dependencies."),
+                        "{rel} turns on test-support under [{section}]: {line}"
+                    );
+                    dev.push(rel.clone());
                 }
             }
         }
     }
+    own.sort();
+    assert_eq!(
+        own,
+        [
+            "crates/app/Cargo.toml: test-support = []",
+            "crates/web/Cargo.toml: test-support = [\"lockdown-app/test-support\"]",
+        ]
+    );
     dev.sort();
-    assert_eq!(dev, ["bins/cli/Cargo.toml", "crates/app/Cargo.toml"]);
+    assert_eq!(
+        dev,
+        [
+            "bins/cli/Cargo.toml",
+            "crates/app/Cargo.toml",
+            "crates/web/Cargo.toml"
+        ]
+    );
 }

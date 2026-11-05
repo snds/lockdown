@@ -7,12 +7,16 @@
 //!   `Approve` gate (D99: the platform check confirms, the digits are the
 //!   check), [`App::link_decline`] writes nothing.
 //! - **Join from another device** (this one empty): [`App::join_start_sealed`]
-//!   (the desktop) or [`App::join_start`] (the web vault) with the typed
+//!   (the desktop) or `App::join_start` (the web vault) with the typed
 //!   code or the scanned payload, [`App::join_poll`] until the digits and
 //!   then the approval, [`App::join_finish`] with the account password (the
 //!   desktop: the keys are sealed under it before the identity is written,
-//!   docs/plan/45-desktop-join-sealed.md) or [`App::join_finish_signed_in`]
-//!   (the web vault). No kit is typed.
+//!   docs/plan/45-desktop-join-sealed.md) or `App::join_finish_signed_in`
+//!   (the web vault). No kit is typed. The web vault's two calls write the
+//!   plain key file, which only its tab seals, so they are compiled only
+//!   for its target (`wasi`) and with the `test-support` feature, which
+//!   only `[dev-dependencies]` turn on: no native release has them
+//!   (docs/plan/57-fence-web-join.md).
 //! - **The Secret Key**: [`App::secret_key_status`] says whether this
 //!   device keeps it (so it can hand it on); [`App::account_register_opted_out`]
 //!   is the documented opt-out, refused until the person confirms the
@@ -35,7 +39,9 @@ use serde::Serialize;
 use zeroize::Zeroizing;
 
 pub use crate::session::devices_link::{JoinView, LinkView};
-use crate::session::devices_link::{Joining, finish_joined};
+#[cfg(any(target_os = "wasi", feature = "test-support"))]
+use crate::session::devices_link::finish_joined;
+use crate::session::devices_link::{Joining, LinkKeys};
 use crate::session::second_factor::WaitingSignIn;
 use crate::{App, AppError, AppResult, ApprovalKind, ErrorCode, GateInput, Registered, Status};
 
@@ -129,27 +135,30 @@ impl App {
     /// typed code, or the QR payload, which also names the server and pins
     /// the other device's key). The keys start as the plain key file, which
     /// the web vault seals under its sign-in's export key itself; it
-    /// finishes with [`App::join_finish_signed_in`].
+    /// finishes with [`App::join_finish_signed_in`]. Only in the web vault's
+    /// build (`wasi`) and with `test-support` (docs/plan/57-fence-web-join.md):
+    /// a native release joins sealed only, with [`App::join_start_sealed`].
+    #[cfg(any(target_os = "wasi", feature = "test-support"))]
     pub fn join_start(&self, server: &str, invite: &str) -> AppResult<JoinView> {
-        self.join_start_as(server, invite, false)
+        self.join_start_as(server, invite, LinkKeys::Plain)
     }
 
-    /// [`App::join_start`] sealed (the desktop): the new device's keys stay
+    /// The device-link join, sealed (the desktop): the new device's keys stay
     /// in memory, and the identity waits beside them, until
     /// [`App::join_finish`] has the password, seals the keys under it and
     /// only then restores the identity. Nothing is written before.
     pub fn join_start_sealed(&self, server: &str, invite: &str) -> AppResult<JoinView> {
-        self.join_start_as(server, invite, true)
+        self.join_start_as(server, invite, LinkKeys::Sealed)
     }
 
-    fn join_start_as(&self, server: &str, invite: &str, sealed: bool) -> AppResult<JoinView> {
+    fn join_start_as(&self, server: &str, invite: &str, keys: LinkKeys) -> AppResult<JoinView> {
         let (server, invite) = (server.to_string(), Zeroizing::new(invite.to_string()));
         self.call(move |core| {
-            if sealed {
+            if keys == LinkKeys::Sealed {
                 core.refuse_confined()?;
             }
             let joining =
-                Joining::start(&core.paths, &server, &invite, sealed).map_err(AppError::refused)?;
+                Joining::start(&core.paths, &server, &invite, keys).map_err(AppError::refused)?;
             let view = joining.view();
             core.depth.joining = Some(joining);
             Ok(view)
@@ -201,7 +210,8 @@ impl App {
     /// Finishes an approved plain join ([`App::join_start`]) after a
     /// sign-in the shell ran itself with this device's keystore (the web
     /// vault, which seals its device key with the export key). Does not
-    /// open the vault; the shell does.
+    /// open the vault; the shell does. Fenced as [`App::join_start`] is.
+    #[cfg(any(target_os = "wasi", feature = "test-support"))]
     pub fn join_finish_signed_in(
         &self,
         login: &str,
@@ -211,7 +221,7 @@ impl App {
         let login = login.to_string();
         self.call(move |core| {
             let (server, sk) = match core.depth.joining.as_ref() {
-                Some(j) if j.is_sealed() => {
+                Some(j) if j.keys() == LinkKeys::Sealed => {
                     return Err(AppError::refused(
                         "this join seals its keys under the password; finish it with join_finish",
                     ));

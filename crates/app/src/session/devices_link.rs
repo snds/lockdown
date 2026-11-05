@@ -25,8 +25,10 @@
 //! - **Plain** (the web vault, whose tab seals its key file under the
 //!   sign-in's export key itself): the keys start as the plain file, the
 //!   identity is restored the moment the Welcome checks out, and
-//!   [`finish_joined`] takes the sign-in the tab ran with the account
-//!   password.
+//!   `finish_joined` takes the sign-in the tab ran with the account
+//!   password. Compiled only for the web vault's target (`wasi`) and with
+//!   the `test-support` feature (docs/plan/57-fence-web-join.md): a native
+//!   build without it has no `LinkKeys::Plain`, so it can't make one.
 //!
 //! Either way the finish brings the records in step, keeps the session,
 //! and keeps the Secret Key once it has opened the account slot.
@@ -363,11 +365,25 @@ pub struct Joining {
     state: &'static str,
     secret_key: Option<[u8; 16]>,
     secret_key_state: Option<&'static str>,
-    /// A sealed join: the keys are only in memory until the finish.
-    sealed: bool,
+    /// How the keys are kept until the finish.
+    keys: LinkKeys,
     /// What the Welcome carried, on a sealed join, until the finish
     /// restores the identity from it.
     handed: Option<Box<HandedOver>>,
+}
+
+/// How a device-link join keeps the new device's keys until the finish.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LinkKeys {
+    /// Only in memory, until [`Joining::finish_sealed`] seals them under the
+    /// account password (the desktop). Nothing is written before.
+    Sealed,
+    /// The plain key file from the start, which the web vault's tab seals
+    /// under its sign-in's export key itself. Only in the web vault's build
+    /// (`wasi`) and with the `test-support` feature: no native release has
+    /// this variant (docs/plan/57-fence-web-join.md).
+    #[cfg(any(target_os = "wasi", feature = "test-support"))]
+    Plain,
 }
 
 /// The keys a sealed device-link join starts with: fresh ones kept only in
@@ -398,9 +414,10 @@ impl std::fmt::Debug for Joining {
 impl Joining {
     /// Joins the link `invite` names (a scanned QR payload or a typed code)
     /// on `server` (the QR's, when it names one; it must then be the same).
-    /// With `sealed`, the keys stay in memory until [`Joining::finish_sealed`]
-    /// seals them; without, they start as the plain key file (the web vault).
-    pub fn start(paths: &Paths, server: &str, invite: &str, sealed: bool) -> Result<Self, String> {
+    /// With [`LinkKeys::Sealed`], the keys stay in memory until
+    /// [`Joining::finish_sealed`] seals them; with `LinkKeys::Plain` (the
+    /// web vault), they start as the plain key file.
+    pub fn start(paths: &Paths, server: &str, invite: &str, keys: LinkKeys) -> Result<Self, String> {
         check_root_empty(paths)?;
         let invite = LinkInvite::parse(invite).map_err(|e| e.to_string())?;
         let server = match &invite.server {
@@ -418,10 +435,10 @@ impl Joining {
             }
             None => server.trim().trim_end_matches('/').to_string(),
         };
-        let keystore = Rc::new(if sealed {
-            sealed_link_keys(&paths.data)?
-        } else {
-            DeviceKeys::open_or_create_plain(&paths.data)?
+        let keystore = Rc::new(match keys {
+            LinkKeys::Sealed => sealed_link_keys(&paths.data)?,
+            #[cfg(any(target_os = "wasi", feature = "test-support"))]
+            LinkKeys::Plain => DeviceKeys::open_or_create_plain(&paths.data)?,
         });
         let transport = HttpTransport::new(&server).map_err(|e| e.to_string())?;
         let joined = transport
@@ -452,7 +469,7 @@ impl Joining {
             state: "waiting",
             secret_key: None,
             secret_key_state: None,
-            sealed,
+            keys,
             handed: None,
         })
     }
@@ -500,21 +517,23 @@ impl Joining {
                 JoinStep::Done(handed) => {
                     self.secret_key = handed.secret_key;
                     self.secret_key_state = Some(handed.secret_key_state);
-                    if self.sealed {
+                    match self.keys {
                         // The identity would name keys that are only in
                         // memory: it waits for the finish, after the seal.
-                        self.handed = Some(handed);
-                    } else {
-                        let handed = *handed;
-                        lockdown_vault::handover::restore_from_root_key(
-                            &self.paths.root,
-                            APP,
-                            self.keystore.as_ref(),
-                            handed.irk,
-                            handed.irk_id,
-                            &handed.backup,
-                        )
-                        .map_err(|e| e.to_string())?;
+                        LinkKeys::Sealed => self.handed = Some(handed),
+                        #[cfg(any(target_os = "wasi", feature = "test-support"))]
+                        LinkKeys::Plain => {
+                            let handed = *handed;
+                            lockdown_vault::handover::restore_from_root_key(
+                                &self.paths.root,
+                                APP,
+                                self.keystore.as_ref(),
+                                handed.irk,
+                                handed.irk_id,
+                                &handed.backup,
+                            )
+                            .map_err(|e| e.to_string())?;
+                        }
                     }
                     self.state = "approved";
                     return Ok(self.view());
@@ -528,24 +547,27 @@ impl Joining {
     }
 
     /// The server this join is on.
+    #[cfg(any(target_os = "wasi", feature = "test-support"))]
     pub fn server(&self) -> &str {
         &self.server
     }
 
     /// The Secret Key that came, if any.
+    #[cfg(any(target_os = "wasi", feature = "test-support"))]
     pub fn secret_key(&self) -> Option<[u8; 16]> {
         self.secret_key
     }
 
-    /// Whether this is a sealed join (keys in memory until the finish).
-    pub fn is_sealed(&self) -> bool {
-        self.sealed
+    /// How this join keeps its keys until the finish.
+    #[cfg(any(target_os = "wasi", feature = "test-support"))]
+    pub fn keys(&self) -> LinkKeys {
+        self.keys
     }
 
     /// Finishes an approved sealed join: signs in with the account
     /// password, seals the keys under it, restores the identity from the
     /// root key, then brings the records in step and keeps the session as
-    /// [`finish_joined`] does. The password is this computer's master
+    /// the web vault's plain finish (`finish_joined`) does. The password is this computer's master
     /// password from then on.
     ///
     /// A wrong password writes nothing and the join stays, so the person
@@ -553,7 +575,7 @@ impl Joining {
     /// sealed before anything else is written (D522: the server's log
     /// already recorded this device).
     pub fn finish_sealed(&mut self, login: &str, password: &str) -> Result<Vec<String>, String> {
-        if !self.sealed {
+        if self.keys != LinkKeys::Sealed {
             return Err("this join keeps its keys the web vault's way; finish it there".into());
         }
         if self.state != "approved" || self.handed.is_none() {
@@ -628,7 +650,9 @@ impl Drop for Joining {
 /// yet), with a sign-in the shell ran itself with this device's keystore
 /// (the web vault, which needs the export key to seal its device key):
 /// brings the records in step, keeps the session, and keeps the Secret Key
-/// once it opened the account slot.
+/// once it opened the account slot. Only in the web vault's build and with
+/// `test-support`, as [`LinkKeys::Plain`] is.
+#[cfg(any(target_os = "wasi", feature = "test-support"))]
 pub fn finish_joined(
     paths: &Paths,
     server: &str,
