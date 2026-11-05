@@ -10,10 +10,12 @@
 //! `ed25519-dalek` wipes the key on drop (its `zeroize` feature is on),
 //! before the pages are unlocked.
 //!
-//! What this does not reach: the key is built by value before it reaches
-//! its block (`ed25519_dalek::SigningKey::from_bytes` has no in-place
-//! form), so one short-lived stack copy of it is left where it was built
-//! (doc 53 §5).
+//! The key is built by value before it reaches its block
+//! (`ed25519_dalek::SigningKey::from_bytes` has no in-place form), so it is
+//! built on the thread's secret stack ([`crate::secret_stack`], doc 58):
+//! locked pages that are wiped before the constructor returns. Each
+//! signature runs there too, so the expanded secret and the nonce it
+//! computes never sit on an ordinary stack page.
 
 use std::fmt;
 
@@ -21,6 +23,7 @@ use ed25519_dalek::{Signer, Verifier};
 use zeroize::Zeroize;
 
 use crate::locked::PageLock;
+use crate::secret_stack;
 use crate::{Error, Result};
 
 /// An Ed25519 signing key. Debug prints nothing of the key. Its pages are
@@ -42,10 +45,10 @@ impl SigningKey {
         Ok(Self::from_bytes(crate::rand::random_32()?))
     }
 
-    /// The key for a 32-byte seed. The seed is wiped once the key is
-    /// made.
+    /// The key for a 32-byte seed, built on the secret stack. The seed is
+    /// wiped once the key is made.
     pub fn from_bytes(mut seed: [u8; 32]) -> Self {
-        let key = Box::new(ed25519_dalek::SigningKey::from_bytes(&seed));
+        let key = secret_stack::run(|| Box::new(ed25519_dalek::SigningKey::from_bytes(&seed)));
         seed.zeroize();
         Self::locked(key)
     }
@@ -73,9 +76,9 @@ impl SigningKey {
         VerifyingKey(self.key.verifying_key())
     }
 
-    /// Signs `message`. Sixty-four bytes out.
+    /// Signs `message`, on the secret stack. Sixty-four bytes out.
     pub fn sign(&self, message: &[u8]) -> [u8; 64] {
-        self.key.sign(message).to_bytes()
+        secret_stack::run(|| self.key.sign(message).to_bytes())
     }
 
     /// The underlying key, for the identity crate's record signing.
@@ -86,11 +89,11 @@ impl SigningKey {
 
 impl From<ed25519_dalek::SigningKey> for SigningKey {
     /// Takes a key the identity crate made (the Identity Signing Key). The
-    /// copy goes into the locked block, and the key passed in is dropped,
-    /// which wipes it where the caller passed it; a plain move would leave
-    /// it there.
+    /// copy is made on the secret stack and goes into the locked block, and
+    /// the key passed in is dropped, which wipes it where the caller passed
+    /// it; a plain move would leave it there.
     fn from(k: ed25519_dalek::SigningKey) -> Self {
-        let key = Box::new(k.clone());
+        let key = secret_stack::run(|| Box::new(k.clone()));
         drop(k);
         Self::locked(key)
     }
@@ -171,5 +174,49 @@ mod tests {
             .verifying_key()
             .verify(b"m", &taken.sign(b"m"), "m")
             .unwrap();
+    }
+
+    /// A seed whose bytes appear nowhere by chance.
+    const SEED: [u8; 32] = *b"an ed25519 seed for a wipe test.";
+
+    /// The half of SHA-512(seed) that Ed25519 signs with (RFC 8032 §5.1.6,
+    /// the nonce's prefix): a known slice of the expanded key.
+    fn prefix(seed: &[u8; 32]) -> Vec<u8> {
+        use sha2_010::Digest;
+        sha2_010::Sha512::digest(seed)[32..].to_vec()
+    }
+
+    #[test]
+    fn the_key_and_each_signature_leave_nothing_on_the_secret_stack() {
+        use crate::secret_stack::testing::{holds, pinned, unwiped, wipe};
+        pinned(|| {
+            let prefix = prefix(&SEED);
+            // Made, taken from the identity crate, and signed with: the
+            // block holds neither the seed nor the expanded key after.
+            let key = SigningKey::from_bytes(SEED);
+            assert_eq!(holds(&SEED), Some(false));
+            let taken = SigningKey::from(ed25519_dalek::SigningKey::from_bytes(&SEED));
+            assert_eq!(holds(&SEED), Some(false));
+            assert_eq!(key.sign(b"a vault head"), taken.sign(b"a vault head"));
+            assert_eq!(holds(&SEED), Some(false));
+            assert_eq!(holds(&prefix), Some(false));
+
+            // The control: the same calls with the wipe off leave both.
+            let again = unwiped(|| SigningKey::from_bytes(SEED));
+            assert_eq!(holds(&SEED), Some(true), "the constructor left the seed");
+            wipe();
+            let _ = unwiped(|| SigningKey::from(ed25519_dalek::SigningKey::from_bytes(&SEED)));
+            assert_eq!(holds(&SEED), Some(true), "the clone left the key");
+            wipe();
+            unwiped(|| again.sign(b"a vault head"));
+            assert_eq!(
+                holds(&prefix),
+                Some(true),
+                "a signature left the expanded key"
+            );
+            wipe();
+            assert_eq!(holds(&SEED), Some(false));
+            assert_eq!(holds(&prefix), Some(false));
+        });
     }
 }

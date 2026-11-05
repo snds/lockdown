@@ -86,6 +86,10 @@ criteria = "safe-to-deploy"
 version = "1.0.104"
 criteria = "safe-to-deploy"
 
+[[exemptions.ar_archive_writer]]
+version = "0.5.3"
+criteria = "safe-to-deploy"
+
 [[exemptions.arboard]]
 version = "3.7.0"
 criteria = "safe-to-deploy"
@@ -1210,6 +1214,10 @@ criteria = "safe-to-deploy"
 version = "0.3.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.object]]
+version = "0.39.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.oid-registry]]
 version = "0.8.1"
 criteria = "safe-to-deploy"
@@ -1384,6 +1392,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.psl-types]]
 version = "2.0.11"
+criteria = "safe-to-deploy"
+
+[[exemptions.psm]]
+version = "0.1.32"
 criteria = "safe-to-deploy"
 
 [[exemptions.pxfm]]

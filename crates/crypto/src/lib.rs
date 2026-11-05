@@ -23,6 +23,7 @@
 //! - [`generator`] — the password generator: uniform draws from that source under a rule
 //! - [`secret`] — key and plaintext types that zero their memory on drop
 //! - [`locked`] — the pages under those types kept out of swap; core dumps off
+//! - [`secret_stack`] — a locked, wiped stack for a key's short-lived copies
 //! - [`auth`] — account login: OPAQUE (RFC 9807) as a pure state machine, behind [`AccountAuth`]
 //! - [`cbor`] — canonical CBOR, the encoding every piece of associated data uses
 
@@ -38,6 +39,7 @@ pub mod merkle;
 pub mod pq_sign;
 pub mod rand;
 pub mod secret;
+pub mod secret_stack;
 pub mod sign;
 
 /// The identity crate itself, for callers that need a type this crate does

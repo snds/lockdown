@@ -58,6 +58,11 @@ fn page_of(p: &[u8]) -> usize {
 fn lockdown_and_the_identity_crate_share_one_page_table() {
     let size = locked::page_size();
     assert!(locked::supported());
+    // The secret stacks (doc 58) are made on first use and kept in their
+    // pools, their pages locked for the process's life: make them first,
+    // so the counts below see only the secrets each step makes.
+    lockdown_crypto::secret_stack::run(|| ());
+    lockdown_crypto::secret_stack::run_deep(|| ());
     same_counts();
     let start = locked::report();
 
