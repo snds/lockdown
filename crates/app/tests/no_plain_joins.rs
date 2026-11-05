@@ -299,7 +299,13 @@ fn only_dev_dependencies_turn_on_the_fixture() {
                         "{} turns on test-support under [{section}]",
                         manifest.display()
                     );
-                    dev.push(manifest.strip_prefix(root).unwrap().display().to_string());
+                    // Joined with `/` on every platform, so Windows paths compare too.
+                    let rel = manifest.strip_prefix(root).unwrap();
+                    let parts: Vec<String> = rel
+                        .components()
+                        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                        .collect();
+                    dev.push(parts.join("/"));
                 }
             }
         }
