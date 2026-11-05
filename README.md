@@ -14,7 +14,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 
 ## Status
 
-**624 decisions, fifty-seven build slices, no release yet (2026-10-29).** Of the 122 features committed to v1, 83 are done, 15 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
+**632 decisions, fifty-eight build slices, no release yet (2026-10-29).** Of the 122 features committed to v1, 83 are done, 15 are partial, 14 are not started, and 10 are not code (audits, a licence call, a bug bounty). Every feature, with what is left and the evidence for its status, is in the **[v1 feature checklist](docs/plan/12-feature-status.md)**. The core, the desktop app, the CLI, the self-host server, a web vault it serves, and a browser extension (Chromium and Firefox, through the desktop app) exist; the mobile apps do not yet.
 
 | Slice | What it delivered |
 |---|---|
@@ -76,6 +76,7 @@ Lockdown is one of three apps in an ecosystem (with Mailbird and Synapse) that e
 | **55 · No shipped path makes an unprotected computer** ✅ | The core's old sign-in and recovery joins now refuse on a computer that hasn't joined and point to the sealed join; the old unsealed join survives only as a test fixture behind `test-support`, which a test and a CI step prove no desktop, server or command-line build turns on. [Doc 56](docs/plan/56-no-plain-joins.md), D640–D645. |
 | **56 · The browser's way of joining stays in the browser** ✅ | The web vault's device-link join, which leaves the key file unprotected outside a browser tab, now compiles only for the web vault and for tests; a symbol check and a CI step prove no desktop build contains it, and a new end-to-end test drives the browser join. [Doc 57](docs/plan/57-fence-web-join.md), D650–D655. |
 | **57 · No leftover key copies in temporary memory** ✅ | Keys the crypto libraries build by value (Ed25519, ML-DSA-65, the server's sign-in setup), every signature, and the key each device signature rebuilds now run on a private stack that is locked out of swap, guarded against overflow and wiped after each call; the web vault scrubs its stack instead. [Doc 58](docs/plan/58-stack-wipe.md), D660–D669; closes D606 and D617's stack copies. |
+| **58 · Windows locks the large key block too** ✅ | On Windows, Lockdown raises its own working-set limits before each memory lock, up to 32 MiB of extra room and with no admin rights, and gives the room back on release, so the post-quantum key's block is locked out of swap and Settings no longer shows a refusal. [Doc 59](docs/plan/59-win-working-set.md), D670–D677; closes D664's open question. |
 | **Next** | Browser extension (fill, save, passkeys), mobile apps, sharing and family, breach monitoring, packaged and signed releases |
 
 | Real (with tests) | Skeleton (types, traits, one real rule each) |
