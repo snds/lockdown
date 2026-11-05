@@ -12,7 +12,15 @@
 //! Windows' working-set minimum) is counted and the secret works as before:
 //! it is still wiped on drop, it may just reach swap.
 //!
-//! **One page table per process.** [`PageLock`] is the identity crate's
+//! **Windows makes room first.** `VirtualLock` lets a process lock only
+//! about as many pages as its minimum working set holds, about 42 by
+//! default. On Windows every [`PageLock`] raises the process's own
+//! working-set limits before it locks, when the lock needs the room, and
+//! lowers them again as locks are released, within a bound
+//! (`WORKING_SET_BOUND`). See `working_set` and
+//! docs/plan/59-win-working-set.md. Elsewhere nothing changes.
+//!
+//! **One page table per process.** [`PageLock`] holds the identity crate's
 //! `ecosystem_identity::memlock::PageLock`, which that crate's own key
 //! types (the root key, persona keys, the App Data Key, the KEM seeds, the
 //! Identity Signing Key) lock through too. Pages are shared with whatever
@@ -36,12 +44,90 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use ecosystem_identity::memlock;
 
+#[cfg(windows)]
+mod working_set;
+
+/// The most working-set room Lockdown adds on Windows above the minimum
+/// the process started with, for its locks: 32 MiB. A lock that would need
+/// more is left to the system, which refuses it (counted, never fatal).
+#[cfg(windows)]
+pub const WORKING_SET_BOUND: usize = working_set::BOUND;
+
+/// The working-set room Lockdown has added on Windows now, in bytes, above
+/// the minimum the process started with (0 before the first lock).
+#[cfg(windows)]
+pub fn working_set_room() -> usize {
+    working_set::room()
+}
+
 /// The pages under one secret, locked while this lives: the identity
-/// crate's, so both crates count on one table. `PageLock::of(bytes)` locks
-/// the pages under a slice; `PageLock::of_value(&value)` under a value that
-/// does not move (one behind a `Box`). Each answers `None` when empty,
-/// unsupported, or refused (counted in [`report`]).
-pub use ecosystem_identity::memlock::PageLock;
+/// crate's lock inside, so both crates count on one table.
+/// `PageLock::of(bytes)` locks the pages under a slice;
+/// `PageLock::of_value(&value)` under a value that does not move (one
+/// behind a `Box`). Each answers `None` when empty, unsupported, or refused
+/// (counted in [`report`]). On Windows each first makes room in the
+/// process's working set for the pages it spans, and its release gives the
+/// room back (`working_set`).
+#[derive(Debug)]
+pub struct PageLock {
+    // `Some` while it lives; taken on drop, inside the working-set lock on
+    // Windows.
+    inner: Option<memlock::PageLock>,
+}
+
+impl PageLock {
+    /// Locks the pages under `bytes`.
+    pub fn of(bytes: &[u8]) -> Option<Self> {
+        Self::make(bytes.as_ptr() as usize, bytes.len(), || {
+            memlock::PageLock::of(bytes)
+        })
+    }
+
+    /// Locks the pages under `value`, wherever it lives. Use it on a value
+    /// that does not move while the lock is held: one behind a `Box`, say.
+    pub fn of_value<T: ?Sized>(value: &T) -> Option<Self> {
+        Self::make(
+            std::ptr::from_ref(value).cast::<u8>() as usize,
+            std::mem::size_of_val(value),
+            || memlock::PageLock::of_value(value),
+        )
+    }
+
+    fn make(
+        start: usize,
+        len: usize,
+        lock: impl FnOnce() -> Option<memlock::PageLock>,
+    ) -> Option<Self> {
+        if len == 0 {
+            return None;
+        }
+        #[cfg(windows)]
+        let inner = {
+            let page = page_size();
+            let spans = (start + len - 1) / page - start / page + 1;
+            working_set::locking(spans.saturating_mul(page), lock)
+        };
+        #[cfg(not(windows))]
+        let inner = {
+            let _ = start;
+            lock()
+        };
+        inner.map(|l| Self { inner: Some(l) })
+    }
+
+    /// How many pages this lock holds.
+    pub fn pages(&self) -> usize {
+        self.inner.as_ref().map_or(0, memlock::PageLock::pages)
+    }
+}
+
+#[cfg(windows)]
+impl Drop for PageLock {
+    fn drop(&mut self) {
+        let inner = &mut self.inner;
+        working_set::unlocking(|| drop(inner.take()));
+    }
+}
 
 static DUMPS_OFF: AtomicBool = AtomicBool::new(false);
 

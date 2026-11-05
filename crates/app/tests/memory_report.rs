@@ -32,6 +32,15 @@ fn the_settings_report_counts_the_identity_crates_keys_too() {
     let r2 = app.memory_report();
     assert!(r2.pages_locked_ever > r1.pages_locked_ever || r2.refused > r1.refused);
 
+    // On Windows Lockdown makes room in its working set before each lock
+    // (doc 59), so after opening, and after a deep secret-stack call (its
+    // 1 MiB block), Settings shows no refusal.
+    #[cfg(windows)]
+    {
+        lockdown_crypto::secret_stack::run_deep(|| ());
+        assert_eq!(app.memory_report().refused, 0, "Settings shows no refusal");
+    }
+
     // The numbers are the crate's table; Lockdown adds only the dump flag.
     let shared = memlock::report();
     assert_eq!(shared.page_size, r2.page_size);
