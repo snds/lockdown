@@ -369,9 +369,9 @@ fn a_local_vault_moves_to_a_real_server_and_another_device_finds_it_there() {
     let other = tempfile::tempdir().unwrap();
     let paths = Paths::resolve(Some(other.path().join("snds/identity")), None).unwrap();
     let b = App::start(paths, None, LockPolicy::default());
-    b.recover(&url, "me@example.com", PASSWORD, &sk, &rc)
+    b.recover_sealed(&url, "me@example.com", PASSWORD, &sk, &rc)
         .unwrap();
-    b.open_or_create(true).unwrap();
+    b.open_joined(PASSWORD).unwrap();
     assert_eq!(titles(&b), ["Alpha", "Beta"]);
 
     // A move that fails (the login is taken there) leaves the vault on its

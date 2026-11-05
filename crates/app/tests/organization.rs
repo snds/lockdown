@@ -427,14 +427,14 @@ fn a_second_vault_its_folders_and_the_archive_reach_another_device() {
 
     // B joins and finds both vaults, the name, the folder and the filing.
     let b = device(dir.path(), "b");
-    b.account_login(
+    b.account_login_sealed(
         &url,
         "me@example.com",
         "correct horse battery staple",
         Some(&secret_key),
     )
     .unwrap();
-    b.open_or_create(true).unwrap();
+    b.open_joined("correct horse battery staple").unwrap();
     b.sync().unwrap();
     let vaults = b.vaults().unwrap();
     assert_eq!(vaults.len(), 2, "{vaults:?}");

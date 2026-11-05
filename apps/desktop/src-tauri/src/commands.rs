@@ -431,6 +431,10 @@ async fn account_register(
     Ok(Response::new(body))
 }
 
+/// The account dialog's sign-in on a computer that holds the identity: a
+/// fresh session. Its shape stays (D62); on a computer that hasn't joined,
+/// the core answers `not_set_up` and writes nothing, and screen J joins
+/// through `account_login_sealed` (docs/plan/56-no-plain-joins.md).
 #[tauri::command]
 async fn account_login(
     app: State<'_, App>,
@@ -452,6 +456,9 @@ async fn account_login(
     .await
 }
 
+/// Kept for its shape (D62). It never joins: on a computer that hasn't
+/// joined, the core answers `not_set_up` and writes nothing, and screen J
+/// recovers through `recover_sealed` (docs/plan/56-no-plain-joins.md).
 #[tauri::command]
 async fn recover(
     app: State<'_, App>,

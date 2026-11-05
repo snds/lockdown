@@ -204,6 +204,24 @@ jobs:
           if cargo tree -p lockdown-desktop --features shell -e normal,build --prefix none | grep -q '^lockdown-devtools '; then
             echo "::error::lockdown-desktop pulls in lockdown-devtools with only the shell feature"; exit 1
           fi
+      # The core's old unsealed join (`account_login_plain`, `recover_plain`)
+      # is compiled only with lockdown-app's `test-support` feature
+      # (docs/plan/56-no-plain-joins.md). With dev-dependencies the check
+      # must see it, proving it looks; without, no shipped binary may have it.
+      - name: No shipped binary has the core's old unsealed join
+        working-directory: .
+        run: |
+          needle='lockdown-app feature "test-support"'
+          if ! cargo tree -p lockdown-cli -e normal,build,dev,features --prefix none | grep -qF "$needle"; then
+            echo "::error::the dry run didn't see test-support through the CLI's dev-dependencies, so the check would see nothing either"; exit 1
+          fi
+          for target in "lockdown-desktop --features shell" lockdown-server lockdown-cli; do
+            # shellcheck disable=SC2086
+            if cargo tree -p $target -e normal,build,features --prefix none | grep -qF "$needle"; then
+              echo "::error::$target turns on lockdown-app's test-support"; exit 1
+            fi
+          done
+          echo "no shipped binary turns on lockdown-app's test-support"
       - name: Clippy, the shell feature only
         run: cargo clippy -p lockdown-desktop --all-targets --features shell -- -D warnings
       - name: Shell unit tests, the shell feature only

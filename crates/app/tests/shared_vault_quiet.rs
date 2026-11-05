@@ -445,9 +445,9 @@ fn a_shared_vault_holds_back_what_doesnt_verify_keeps_its_own_changes_and_clears
         LockPolicy::default(),
     );
     tablet
-        .account_login(&url, "alice@example.com", PASSWORD, Some(&alice_sk))
+        .account_login_sealed(&url, "alice@example.com", PASSWORD, Some(&alice_sk))
         .unwrap();
-    tablet.open_or_create(true).unwrap();
+    tablet.open_joined(PASSWORD).unwrap();
     tablet.sync().unwrap();
     alice
         .add_item_in(&vault, "note", Some("Alice laptop"), false, Vec::new())
@@ -663,7 +663,7 @@ fn a_person_whose_only_vault_is_shared_unlocks_and_a_new_device_opens_it_after_a
         LockPolicy::default(),
     );
     tablet
-        .account_login(&url, "alice@example.com", PASSWORD, Some(&alice_sk))
+        .account_login_plain(&url, "alice@example.com", PASSWORD, Some(&alice_sk))
         .unwrap();
     tablet.open_or_create(true).unwrap();
     let views = tablet.vaults().unwrap();

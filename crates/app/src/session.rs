@@ -2415,7 +2415,7 @@ pub(crate) fn recover_signed_in(
     )])
 }
 
-fn check_root_empty(paths: &Paths) -> Result<(), String> {
+pub(crate) fn check_root_empty(paths: &Paths) -> Result<(), String> {
     match ecosystem_identity::Store::at(&paths.root)
         .probe()
         .map_err(|e| e.to_string())?

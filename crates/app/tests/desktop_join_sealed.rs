@@ -175,7 +175,8 @@ fn an_install_joined_the_old_way_still_opens_and_is_sealed_later() {
     let (_laptop, item, sk, _) = laptop(dir.path(), &url);
     // The unsealed join the desktop made before: a plain key file.
     let old = App::start(paths(dir.path(), "old"), None, LockPolicy::default());
-    old.account_login(&url, LOGIN, PASSWORD, Some(&sk)).unwrap();
+    old.account_login_plain(&url, LOGIN, PASSWORD, Some(&sk))
+        .unwrap();
     assert_eq!(local_unlock::key_file(&data_of(&old)), KeyFile::Plain);
     old.open_or_create(true).unwrap();
     assert!(old.list().unwrap().iter().any(|i| i.id == item));

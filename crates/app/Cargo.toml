@@ -49,9 +49,17 @@ default = ["native"]
 # where the vault lives in the tab's memory and the browser makes every
 # request (the host installs `lockdown_sync::install_http_hook`).
 native = ["lockdown-store/sqlite", "lockdown-sync/http", "lockdown-security/http"]
+# The old unsealed join (`App::account_login_plain`, `App::recover_plain`),
+# for tests that need an install joined before every join was sealed
+# (docs/plan/56-no-plain-joins.md). Only `[dev-dependencies]` turn it on;
+# nothing that ships does.
+test-support = []
 
 [dev-dependencies]
 tempfile.workspace = true
+# This crate's own integration tests make old-style joined installs
+# (`test-support`, docs/plan/56-no-plain-joins.md).
+lockdown-app = { workspace = true, features = ["test-support"] }
 # The browser host's data directory beside the app's, in the `paths`
 # example the macOS CI job runs (docs/plan/41-mac-paths.md).
 lockdown-native-messaging.workspace = true

@@ -50,3 +50,7 @@ lockdown-native-messaging.workspace = true
 # master password, for the tests that check such an install still opens
 # (docs/plan/43-cli-sealed.md). Never in the binary itself.
 lockdown-devtools = { workspace = true, default-features = false, features = ["legacy-install"] }
+# A computer joined the old way, unsealed, for the test that checks such an
+# install keeps opening (`test-support`, docs/plan/56-no-plain-joins.md).
+# Never in the binary itself.
+lockdown-app = { workspace = true, features = ["test-support"] }

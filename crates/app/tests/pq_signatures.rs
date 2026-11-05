@@ -107,9 +107,9 @@ fn both_devices_sign_heads_post_quantum_and_a_server_that_bends_or_strips_one_is
     // Device B joins, pulls the vault under both signatures, and signs its
     // own heads with both: the chain already carries them.
     let b = device(dir.path(), "b");
-    b.account_login(&url, LOGIN, PASSWORD, Some(&secret_key))
+    b.account_login_sealed(&url, LOGIN, PASSWORD, Some(&secret_key))
         .unwrap();
-    assert_eq!(b.open_or_create(true).unwrap().live_items, 1);
+    assert_eq!(b.open_joined(PASSWORD).unwrap().live_items, 1);
     b.add_login("https://example.org", "me", b"pw2".to_vec(), None)
         .unwrap();
     b.sync().unwrap();

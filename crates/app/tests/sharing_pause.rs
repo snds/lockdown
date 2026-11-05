@@ -417,9 +417,9 @@ fn during_a_split_new_members_wait_and_known_members_items_still_sync() {
         LockPolicy::default(),
     );
     alice2
-        .account_login(&url, "alice@example.com", PASSWORD, Some(&secret_key))
+        .account_login_sealed(&url, "alice@example.com", PASSWORD, Some(&secret_key))
         .unwrap();
-    alice2.open_or_create(true).unwrap();
+    alice2.open_joined(PASSWORD).unwrap();
     alice2.sync().unwrap();
     let alices = alice2
         .add_item_in(&family, "note", Some("From the tablet"), false, Vec::new())
@@ -506,7 +506,7 @@ fn alices_new_device(dir: &std::path::Path, name: &str, url: &str, secret_key: &
         None,
         LockPolicy::default(),
     );
-    app.account_login(url, "alice@example.com", PASSWORD, Some(secret_key))
+    app.account_login_plain(url, "alice@example.com", PASSWORD, Some(secret_key))
         .unwrap();
     app.open_or_create(true).unwrap();
     app

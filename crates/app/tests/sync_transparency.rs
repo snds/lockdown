@@ -101,9 +101,9 @@ fn a_sync_audits_the_log_before_and_after_and_remembers_the_view() {
     // Device B joins from the account: its first pull goes through the
     // same check and leaves a view behind before anything else happens.
     let b = device(dir.path(), "b");
-    b.account_login(&url, LOGIN, PASSWORD, Some(&secret_key))
+    b.account_login_sealed(&url, LOGIN, PASSWORD, Some(&secret_key))
         .unwrap();
-    let status = b.open_or_create(true).unwrap();
+    let status = b.open_joined(PASSWORD).unwrap();
     assert_eq!(status.live_items, 1, "A's vault was pulled");
     let shown = status.account.unwrap().transparency.unwrap();
     // A's device, the manifest, A's head, B's device, the manifest that lists B.

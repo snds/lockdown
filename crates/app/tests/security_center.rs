@@ -553,14 +553,14 @@ fn a_new_device_on_the_account_is_a_finding_on_the_others_until_dismissed() {
     assert!(report.findings.iter().all(|f| f.kind != "new_sign_in"));
 
     let b = device("b");
-    b.account_login(
+    b.account_login_sealed(
         &url,
         "me@example.com",
         "correct horse battery staple",
         Some(&secret_key),
     )
     .unwrap();
-    b.open_or_create(true).unwrap();
+    b.open_joined("correct horse battery staple").unwrap();
     a.sync().unwrap();
     let report = a.security_check().unwrap();
     let alert = report
