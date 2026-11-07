@@ -103,9 +103,13 @@ expect "B deletes its own item, dialogs off" deleted "$out/adhoc-b" raw-delete "
 
 echo "2. the stable self-signed identity, made as Sean makes it"
 idpass=$($openssl rand -hex 16)
-LOCKDOWN_IDENTITY_PASSWORD="$idpass" sh "$here/packaging/macos/make-self-signed-identity.sh" "$out/identity" | tee "$out/identity.txt"
-grep -q "gh secret set MACOS_SELFSIGNED_CERTIFICATE --repo snds/lockdown" "$out/identity.txt" || fail "the script didn't say which secrets to add"
-grep -q "gh secret set MACOS_SELFSIGNED_CERTIFICATE_PASSWORD --repo snds/lockdown" "$out/identity.txt" || fail "the script didn't name the password secret"
+LOCKDOWN_IDENTITY_PASSWORD="$idpass" sh "$here/packaging/macos/make-self-signed-identity.sh" "$out/identity" >"$out/identity.txt" \
+  || { cat "$out/identity.txt"; fail "make-self-signed-identity.sh failed"; }
+cat "$out/identity.txt"
+for secret in MACOS_SELFSIGNED_CERTIFICATE MACOS_SELFSIGNED_CERTIFICATE_PASSWORD; do
+  grep -q "^  $secret " "$out/identity.txt" || fail "the script didn't name the secret $secret in plain words"
+  grep -q "gh secret set $secret --repo snds/lockdown" "$out/identity.txt" || fail "the script didn't give the command for $secret"
+done
 [ -s "$out/identity/lockdown-self-signed.p12.b64" ] || fail "no base64 .p12"
 # Imported from the base64 secret's form, as release.yml's macos job does.
 base64 -D -i "$out/identity/lockdown-self-signed.p12.b64" -o "$out/secret.p12"

@@ -66,13 +66,12 @@ O = Lockdown
 basicConstraints = critical, CA:false
 keyUsage = critical, digitalSignature
 extendedKeyUsage = critical, codeSigning
-subjectKeyIdentifier = hash
 CNF
-"$openssl" req -x509 -newkey rsa:3072 -sha256 -nodes -days 3650 -config "$work/req.cnf" \
-  -keyout "$work/key.pem" -out "$out/lockdown-self-signed.crt" 2>/dev/null
+"$openssl" req -x509 -newkey rsa:3072 -nodes -days 3650 -config "$work/req.cnf" \
+  -keyout "$work/key.pem" -out "$out/lockdown-self-signed.crt"
 # 3DES and SHA-1 MAC: the .p12 form macOS's `security import` reads.
 "$openssl" pkcs12 -export -inkey "$work/key.pem" -in "$out/lockdown-self-signed.crt" \
-  -name "$name" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 \
+  -name "$name" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES \
   -passout env:LOCKDOWN_IDENTITY_PASSWORD -out "$p12"
 rm -f "$work/key.pem"
 
@@ -86,7 +85,7 @@ kcpass=$("$openssl" rand -hex 16)
 "$security" set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kcpass" "$kc" >/dev/null
 sha1=$("$openssl" x509 -noout -fingerprint -sha1 -in "$out/lockdown-self-signed.crt" | sed 's/.*=//; s/://g')
 printf 'lockdown signing check\n' >"$work/probe"
-codesign --force --sign "$sha1" --keychain "$kc" --identifier design.snds.lockdown "$work/probe" 2>/dev/null
+codesign --force --sign "$sha1" --keychain "$kc" --identifier design.snds.lockdown "$work/probe"
 codesign -dvvv "$work/probe" 2>&1 | grep -q "Authority=$name" || { echo "make-self-signed-identity: the identity didn't sign" >&2; exit 1; }
 "$security" delete-keychain "$kc"
 
@@ -99,7 +98,11 @@ Made the signing identity "$name"
   certificate SHA-1: $sha1
   valid for 10 years, in $out
 
-Add two secrets to the repository (Settings > Secrets and variables > Actions),
+Add two secrets to the repository (Settings > Secrets and variables > Actions):
+
+  MACOS_SELFSIGNED_CERTIFICATE           the contents of $p12.b64
+  MACOS_SELFSIGNED_CERTIFICATE_PASSWORD  the password you just chose
+
 or with the GitHub CLI:
 
   gh secret set MACOS_SELFSIGNED_CERTIFICATE --repo snds/lockdown < "$p12.b64"
