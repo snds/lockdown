@@ -10,8 +10,10 @@
 # 2. A latest.json naming B, with B's signature, is served on 127.0.0.1.
 # 3. A is installed: the .app copied to a folder this account owns (macOS);
 #    the NSIS installer run silently, per user (Windows).
-# 4. A starts with the test-only endpoint and key, the vault's password and
-#    the restart-when-ready hook; its report and then B's go to report.txt.
+# 4. A starts. The test-only endpoint and key, the vault's password, the
+#    report file and the restart-when-ready hook are in update-test.json in
+#    the data directory, where B finds them too (on Windows the installer
+#    starts B through Explorer, so no environment carries over).
 # 5. Passes when B reports it started and opened the vault with its one
 #    item; the CLI then lists the item again from the same vault.
 set -euo pipefail
@@ -27,18 +29,25 @@ cli="$out/lockdown"
 report="$out/report.txt"
 : >"$report"
 
-# The app reads LOCKDOWN_ROOT; the CLI takes the same place as --root. Both
-# put the data directory beside it.
-export LOCKDOWN_ROOT="$out/home/snds/identity"
-mkdir -p "$LOCKDOWN_ROOT"
+# The run uses this account's default places, as an installed app does:
+# Windows' installer starts the new build through Explorer, so nothing set
+# in this shell reaches it. The run's settings go in update-test.json in
+# the data directory instead (only an update-test build reads it).
 export LOCKDOWN_MASTER_PASSWORD="$pw"
-lockdown() { "$cli" --root "$LOCKDOWN_ROOT" "$@"; }
+lockdown() { "$cli" "$@"; }
 
 echo "1. a vault"
 lockdown init --name "Update e2e" >/dev/null
 printf 'item-password-e2e\n' | lockdown add login --site https://example.org --username e2e --password-stdin --title "Before the update"
 lockdown list
-ls "$out/home/snds"
+case "$(uname -s)" in
+  Darwin) places=("$HOME/Library/Application Support") ;;
+  *) places=("$APPDATA" "$LOCALAPPDATA") ;;
+esac
+key=$(find "${places[@]}" -maxdepth 4 -name device-key.sealed.cbor 2>/dev/null | head -n 1)
+[ -n "$key" ] || { echo "::error::the CLI's vault isn't in this account's default places"; exit 1; }
+data=$(dirname "$key")
+echo "the vault's data directory: $data"
 
 echo "2. B, served"
 mkdir -p "$out/serve"
@@ -71,12 +80,13 @@ fi
 echo "A is at $app"
 
 echo "4. A, started"
-LOCKDOWN_UPDATE_TEST_ENDPOINT="http://127.0.0.1:$port/latest.json" \
-LOCKDOWN_UPDATE_TEST_PUBKEY="$(cat "$out/key.pub")" \
-LOCKDOWN_UPDATE_TEST_REPORT="$report" \
-LOCKDOWN_UPDATE_TEST_AUTORESTART=1 \
-LOCKDOWN_UPDATE_TEST_PASSWORD="$pw" \
-  "$app" >"$out/app.log" 2>&1 &
+"$py" - "$data/update-test.json" "http://127.0.0.1:$port/latest.json" "$out/key.pub" "$report" "$pw" <<'PY'
+import json, sys
+from pathlib import Path
+out, endpoint, pub, report, pw = sys.argv[1:]
+Path(out).write_text(json.dumps({"endpoint": endpoint, "pubkey": Path(pub).read_text().strip(), "report": report, "autorestart": "1", "password": pw}))
+PY
+"$app" >"$out/app.log" 2>&1 &
 
 stop() {
   if [ "$os" = mac ]; then pkill -f "Lockdown.app/Contents/MacOS/lockdown-desktop" || true
@@ -91,6 +101,10 @@ for _ in $(seq 1 180); do
   sleep 2
 done
 echo "--- report"; cat "$report"; echo "---"
+if [ "$os" = win ]; then
+  tasklist //FI "IMAGENAME eq lockdown-desktop.exe" || true
+  powershell -NoProfile -Command "(Get-Item '$app').VersionInfo | Format-List ProductVersion,FileVersion; Get-Item '$app' | Format-List LastWriteTime" || true
+fi
 grep -q "^started $A enabled=true install=InPlace" "$report" || { echo "::error::A didn't start as an updatable build"; exit 1; }
 grep -q "^opened $A items=1" "$report" || { echo "::error::A didn't open the vault"; exit 1; }
 grep -q "^state $A Ready offered=$B" "$report" || { echo "::error::A never had B downloaded and checked"; exit 1; }
@@ -101,6 +115,7 @@ grep -q "^state $B UpToDate" "$report" || echo "note: B hadn't finished its own 
 stop
 trap - EXIT
 sleep 3
+rm -f "$data/update-test.json"
 
 echo "6. the vault, read again by the CLI"
 lockdown list | tee "$out/after.txt"

@@ -88,7 +88,13 @@ fn emit(handle: &AppHandle, updates: &Updates) {
 /// automatic check at launch and every six hours.
 pub fn start(handle: &AppHandle, core: &App) {
     let version = handle.package_info().version.clone();
-    let source = plan(&version, built_in_key(), TestSource::from_env());
+    let test = TestSource::from_env();
+    // The end-to-end run's settings also come from a file in the data
+    // directory: Windows' installer starts the new build through Explorer,
+    // with Explorer's environment, not the old build's.
+    #[cfg(feature = "update-test")]
+    let test = test.or_else(|| e2e::source(core));
+    let source = plan(&version, built_in_key(), test);
     let auto = core.settings().map(|s| s.update_auto_check).unwrap_or(true);
     let updates = Arc::new(Updates {
         install: install_mode(),
@@ -510,10 +516,48 @@ mod e2e {
     /// run sees each build open the vault before it moves on.
     static OPENED: AtomicBool = AtomicBool::new(true);
 
-    use super::{App, AppHandle, Install, UpdateState, UpdateStatus};
+    use super::{App, AppHandle, Install, TestSource, UpdateState, UpdateStatus};
+
+    /// `update-test.json` in the data directory (the run writes it), read
+    /// once: `endpoint`, `pubkey`, `report`, `autorestart`, `password`.
+    static FILE: std::sync::OnceLock<serde_json::Value> = std::sync::OnceLock::new();
+
+    fn load(core: &App) {
+        let value = core
+            .probe()
+            .ok()
+            .and_then(|p| {
+                std::fs::read(std::path::Path::new(&p.data).join("update-test.json")).ok()
+            })
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or(serde_json::Value::Null);
+        let _ = FILE.set(value);
+    }
+
+    /// A run setting: the environment's `LOCKDOWN_UPDATE_TEST_<NAME>`, else
+    /// the file's `<name>`.
+    fn setting(name: &str) -> Option<String> {
+        std::env::var(format!("LOCKDOWN_UPDATE_TEST_{}", name.to_uppercase()))
+            .ok()
+            .or_else(|| {
+                FILE.get()
+                    .and_then(|f| f.get(name))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            })
+    }
+
+    /// The test source from the file, when the environment had none.
+    pub fn source(core: &App) -> Option<TestSource> {
+        load(core);
+        Some(TestSource {
+            endpoint: setting("endpoint")?,
+            pubkey: setting("pubkey")?,
+        })
+    }
 
     fn report(line: &str) {
-        let Some(path) = std::env::var_os("LOCKDOWN_UPDATE_TEST_REPORT") else {
+        let Some(path) = setting("report") else {
             return;
         };
         if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -527,11 +571,14 @@ mod e2e {
 
     pub fn started(status: &UpdateStatus, install: Install, core: &App) {
         std::hint::black_box(super::super::TEST_MARKER);
+        if FILE.get().is_none() {
+            load(core);
+        }
         report(&format!(
             "started {} enabled={} install={install:?}",
             status.version, status.enabled
         ));
-        let Ok(password) = std::env::var("LOCKDOWN_UPDATE_TEST_PASSWORD") else {
+        let Some(password) = setting("password") else {
             return;
         };
         let core = core.clone();
@@ -557,9 +604,7 @@ mod e2e {
             status.offered.as_deref().unwrap_or("-"),
             status.error.as_deref().unwrap_or("-")
         ));
-        if status.state == UpdateState::Ready
-            && std::env::var("LOCKDOWN_UPDATE_TEST_AUTORESTART").as_deref() == Ok("1")
-        {
+        if status.state == UpdateState::Ready && setting("autorestart").as_deref() == Some("1") {
             let handle = handle.clone();
             std::thread::spawn(move || {
                 for _ in 0..600 {
