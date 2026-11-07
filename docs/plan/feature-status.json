@@ -2263,7 +2263,7 @@
    "review": false,
    "status": "partial",
    "surfaces": [],
-   "left": "Signing certificates and a first tag; the tag-only workflow, SBOMs, checksums, Sigstore provenance, the verification guide and cargo-vet (632 crates still exempted) are built.",
+   "left": "Signing certificates (Developer ID, Authenticode) and a first tag; the tag-only workflow, SBOMs, checksums, Sigstore provenance, the verification guide, cargo-vet (635 crates still exempted), and signed automatic updates for the desktop app from a rolling main-build pre-release published on every merge (D680–D689; macOS builds signed with a stable self-signed identity until there is a Developer ID) are built.",
    "evidence": [
     ".github/workflows/ci.yml:33 (cargo-deny job)",
     "deny.toml (bans, licences, sources)",

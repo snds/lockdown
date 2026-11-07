@@ -190,7 +190,7 @@ No mobile apps exist (no Swift or Kotlin; crates/ffi is a skeleton). The shipped
 ## Trust & transparency
 
 - [ ] **Reproducible builds**: Partial · extension, server, cli, desktop. Windows executables (linker version, PE time stamp, PDB GUID), the dmg and the .flatpak bundle file, Android builds, and an independent rebuilder; the extension zips, server and CLI binaries, server image, deb, rpm, the Flatpak's OSTree commit and the unsigned macOS app are byte-identical across two runner images.
-- [ ] **Signed releases and SBOMs**: Partial · nowhere yet. Signing certificates and a first tag; the tag-only workflow, SBOMs, checksums, Sigstore provenance, the verification guide and cargo-vet (632 crates still exempted) are built.
+- [ ] **Signed releases and SBOMs**: Partial · nowhere yet. Signing certificates (Developer ID, Authenticode) and a first tag; the tag-only workflow, SBOMs, checksums, Sigstore provenance, the verification guide, cargo-vet (635 crates still exempted), and signed automatic updates for the desktop app from a rolling main-build pre-release published on every merge (D680–D689; macOS builds signed with a stable self-signed identity until there is a Developer ID) are built.
 - [ ] **Open-source clients**: Not code yet · nowhere yet. Needs the licence choice: the plan says GPL-3.0 but the code is Apache-2.0 today; and a public repository. Licence settled as Apache-2.0 for now (D120).
 - [ ] **Open-source server**: Not code yet · nowhere yet. Needs the licence choice: the plan says AGPL but the server is Apache-2.0 today. Licence settled as Apache-2.0 for now (D120).
 - [ ] **Published independent audits**: Not code yet · nowhere yet. Needs firms engaged and reports published, plus SOC 2.
