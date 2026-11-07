@@ -14,15 +14,6 @@ pub trait SecretStore: Send + Sync {
     fn set(&self, key: &str, value: &str) -> Result<(), String>;
     /// Forgets `key`.
     fn delete(&self, key: &str);
-    /// Whether values are kept here. A store that answers `false` is only
-    /// read (a token an older build left), and the token stays in
-    /// `sync.cbor` as it does with no store at all: the desktop on a Mac
-    /// whose own signature changes with every build, where a keychain item
-    /// written by one build would make the next ask for the person's
-    /// permission (docs/plan/60-auto-update.md §3).
-    fn keeps_values(&self) -> bool {
-        true
-    }
 }
 
 static STORE: OnceLock<Box<dyn SecretStore>> = OnceLock::new();

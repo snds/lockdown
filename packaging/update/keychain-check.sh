@@ -1,37 +1,42 @@
 #!/bin/sh
-# What macOS does with the session token's keychain item across two builds
-# whose code identities differ, as two updates in a row would
-# (docs/plan/60-auto-update.md §3). For ci.yml's `keychain-macos` job.
+# What the session token's keychain items do across updates on a Mac
+# (docs/plan/60-auto-update.md §3, D684), for ci.yml's `keychain-macos` job.
 #
 #   packaging/update/keychain-check.sh <out dir> <probe built as A> <probe built as B>
 #
-# The probes are the same program built twice (LOCKDOWN_PROBE_BUILD=a and
-# =b), so their bytes and code hashes differ. Everything happens in a
-# keychain made here and set as the default for the job; the runner's own
-# keychains are put back at the end. Every read is made with the keychain's
-# dialogs switched off, so a read macOS would have asked about shows as
-# "refused <code>" instead of hanging the job.
+# The probes are the same program built twice (LOCKDOWN_PROBE_BUILD=a and =b
+# baked in at compile time), so their bytes and code hashes differ, as two
+# merges' builds do. They go through the app's own keychain store. Everything
+# happens in a keychain made here and set as the default for the job; the
+# runner's own keychains are put back at the end. Every call runs with the
+# keychain's dialogs switched off, so anything macOS would have asked about
+# shows as a refusal instead of hanging the job, and the run fails if
+# errSecInteractionNotAllowed (-25308) appears anywhere.
 #
-# What it proves, in order:
-#   1. Ad hoc (D450): build A writes the item; A reads it back; B, a
-#      different ad-hoc build, is refused: a person would see the dialog.
-#   2. The fix: both ad-hoc builds run in read-only mode, and B's read
-#      through the app's own store says "absent" (sign in again), with no
-#      dialog and no hang.
-#   3. A stable identity (one throwaway self-signed certificate, both
-#      builds): B reads what A wrote, without a dialog. This is the
-#      Developer ID path (D493) in miniature: the access list names the
-#      certificate, which every build shares.
+# 1. Ad hoc (D450), two builds:
+#    - A saves its token and reads it back;
+#    - B's read of A's item is refused, silently (B signs in again);
+#    - B saves its own token, with A's item still there, and reads it back;
+#    - an item from before identity tags (the bare key) is the same: refused
+#      silently to B, and B's own save beside it works;
+#    - whether B can delete A's stale item without a dialog (reported).
+# 2. The stable self-signed identity, made by
+#    packaging/macos/make-self-signed-identity.sh exactly as Sean runs it:
+#    both builds signed with it; B reads A's token, with no sign-in.
+# 3. packaging/macos/check-signature.sh accepts each build's state.
 set -eu
 
 out=$(mkdir -p "$1" && cd "$1" && pwd)
 probe_a=$2
 probe_b=$3
+here=$(cd "$(dirname "$0")/../.." && pwd)
 openssl=/usr/bin/openssl
 pass=$($openssl rand -hex 16)
 kc="$out/probe.keychain-db"
 old_default=$(security default-keychain -d user | tr -d ' "')
 old_list=$(security list-keychains -d user | tr -d '"')
+log="$out/answers.txt"
+: >"$log"
 
 restore() {
   security default-keychain -d user -s "$old_default" || true
@@ -49,64 +54,97 @@ security list-keychains -d user -s "$kc" $old_list
 security default-keychain -d user -s "$kc"
 
 fail() { echo "::error::$*"; exit 1; }
-expect() { # <what> <expected> <actual>
-  echo "  $1: $3"
-  case "$3" in $2) ;; *) fail "$1: expected $2, got $3" ;; esac
+# Runs a probe, keeps its answer, and checks it against a pattern.
+expect() { # <what> <pattern> <probe> <args>...
+  what=$1 pattern=$2
+  shift 2
+  got=$("$@")
+  echo "$what: $got" | tee -a "$log"
+  case "$got" in $pattern) ;; *) fail "$what: expected $pattern, got $got" ;; esac
 }
+cdhash() { codesign -dvvv "$1" 2>&1 | sed -n 's/^CDHash=//p' | head -n 1; }
+
+key="session:probe@https://server.example"
+legacy="session:legacy@https://server.example"
 
 cp "$probe_a" "$out/adhoc-a"
 cp "$probe_b" "$out/adhoc-b"
 codesign --force --sign - --identifier design.snds.lockdown "$out/adhoc-a"
 codesign --force --sign - --identifier design.snds.lockdown "$out/adhoc-b"
-# The builds differ the way two merges do: LOCKDOWN_PROBE_BUILD is baked in
-# at compile time (`option_env!`), so the bytes and the code hash differ.
-# codesign prints CDHash only at -vvv, on stderr.
-cdhash() { codesign -dvvv "$1" 2>&1 | sed -n 's/^CDHash=//p' | head -n 1; }
 ha=$(cdhash "$out/adhoc-a")
 hb=$(cdhash "$out/adhoc-b")
 echo "ad hoc: A $ha ($("$out/adhoc-a" build)), B $hb ($("$out/adhoc-b" build))"
 [ -n "$ha" ] && [ -n "$hb" ] || fail "codesign named no code hash, so this proves nothing"
 [ "$ha" != "$hb" ] || fail "the two builds have the same code hash, so this proves nothing"
-codesign --verify --strict "$out/adhoc-a" && codesign --verify --strict "$out/adhoc-b"
+ta=$("$out/adhoc-a" tag)
+tb=$("$out/adhoc-b" tag)
+echo "identity tags: A $ta, B $tb"
+case "$ta" in build-*) ;; *) fail "an ad-hoc build should be tagged by its code, got $ta" ;; esac
+[ "$ta" != "$tb" ] || fail "two ad-hoc builds share a tag"
 
-echo "1. an item an ad-hoc build wrote, read by the next ad-hoc build"
-expect "A writes" written "$("$out/adhoc-a" write session:probe@adhoc token-a)"
-expect "A reads, dialogs off" found "$("$out/adhoc-a" quiet-read session:probe@adhoc)"
-expect "B reads, dialogs off" "refused *" "$("$out/adhoc-b" quiet-read session:probe@adhoc)"
-echo "  so with dialogs on, B would have asked the person: the prompt this slice removes"
+echo "1. two ad-hoc builds, one after the other"
+expect "A saves its token" written "$out/adhoc-a" store-write "$key" token-a
+expect "A reads it back" "found token-a" "$out/adhoc-a" store-read "$key"
+expect "B reads A's item directly, dialogs off" "refused *" "$out/adhoc-b" raw-read "$key#$ta"
+expect "B's own read (sign in again, no dialog)" absent "$out/adhoc-b" store-read "$key"
+expect "B saves its fresh token beside A's" written "$out/adhoc-b" store-write "$key" token-b
+expect "B reads its own back" "found token-b" "$out/adhoc-b" store-read "$key"
+expect "A still reads its own" "found token-a" "$out/adhoc-a" store-read "$key"
+echo "   an item from before identity tags (the bare key)"
+expect "an older build saves under the bare key" written "$out/adhoc-a" legacy-write "$legacy" token-old
+expect "B's own read (sign in again, no dialog)" absent "$out/adhoc-b" store-read "$legacy"
+expect "B saves its fresh token" written "$out/adhoc-b" store-write "$legacy" token-new
+expect "B reads it back" "found token-new" "$out/adhoc-b" store-read "$legacy"
+echo "   the items left behind"
+"$out/adhoc-b" accounts | sed 's/^/  item: /' | tee -a "$log"
+expect "B deletes A's stale item, dialogs off" "*" "$out/adhoc-b" raw-delete "$key#$ta"
+expect "B deletes the bare-key item, dialogs off" "*" "$out/adhoc-b" raw-delete "$legacy"
+expect "B deletes its own item, dialogs off" deleted "$out/adhoc-b" raw-delete "$key#$tb"
 
-echo "2. what the app does now in an ad-hoc build"
-expect "A's mode" read-only "$("$out/adhoc-a" mode)"
-expect "B's mode" read-only "$("$out/adhoc-b" mode)"
-expect "B's own read (sign in again)" absent "$("$out/adhoc-b" store-read session:probe@adhoc)"
-
-echo "3. one stable identity across both builds"
-cat >"$out/stable.cnf" <<CNF
-[req]
-distinguished_name = dn
-x509_extensions = ext
-prompt = no
-[dn]
-CN = Lockdown throwaway stable signer
-O = Lockdown CI
-[ext]
-basicConstraints = critical, CA:false
-keyUsage = critical, digitalSignature
-extendedKeyUsage = critical, codeSigning
-CNF
-$openssl req -x509 -newkey rsa:2048 -nodes -days 1 -config "$out/stable.cnf" \
-  -keyout "$out/stable.key" -out "$out/stable.crt" 2>/dev/null
-$openssl pkcs12 -export -inkey "$out/stable.key" -in "$out/stable.crt" \
-  -out "$out/stable.p12" -passout "pass:$pass"
-security import "$out/stable.p12" -k "$kc" -P "$pass" -T /usr/bin/codesign >/dev/null
-rm "$out/stable.key" "$out/stable.p12"
+echo "2. the stable self-signed identity, made as Sean makes it"
+idpass=$($openssl rand -hex 16)
+LOCKDOWN_IDENTITY_PASSWORD="$idpass" sh "$here/packaging/macos/make-self-signed-identity.sh" "$out/identity" | tee "$out/identity.txt"
+grep -q "gh secret set MACOS_SELFSIGNED_CERTIFICATE --repo snds/lockdown" "$out/identity.txt" || fail "the script didn't say which secrets to add"
+grep -q "gh secret set MACOS_SELFSIGNED_CERTIFICATE_PASSWORD --repo snds/lockdown" "$out/identity.txt" || fail "the script didn't name the password secret"
+[ -s "$out/identity/lockdown-self-signed.p12.b64" ] || fail "no base64 .p12"
+# Imported from the base64 secret's form, as release.yml's macos job does.
+base64 -D -i "$out/identity/lockdown-self-signed.p12.b64" -o "$out/secret.p12"
+security import "$out/secret.p12" -k "$kc" -P "$idpass" -T /usr/bin/codesign >/dev/null
 security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pass" "$kc" >/dev/null
-cert=$($openssl x509 -noout -fingerprint -sha1 -in "$out/stable.crt" | sed 's/.*=//; s/://g')
+rm "$out/secret.p12"
+cert=$(security find-identity -p codesigning "$kc" | sed -n 's/^ *[0-9]*) \([0-9A-F]\{40\}\) "Lockdown self-signed (snds)".*/\1/p' | head -n 1)
+[ -n "$cert" ] || fail "the imported identity isn't listed for code signing"
+echo "signing identity $cert"
 cp "$probe_a" "$out/stable-a"
 cp "$probe_b" "$out/stable-b"
 codesign --force --sign "$cert" --keychain "$kc" --identifier design.snds.lockdown "$out/stable-a"
 codesign --force --sign "$cert" --keychain "$kc" --identifier design.snds.lockdown "$out/stable-b"
 codesign -d -r- "$out/stable-b" 2>&1 | sed 's/^/  /'
-expect "A writes" written "$("$out/stable-a" write session:probe@stable token-s)"
-expect "B reads, dialogs off" found "$("$out/stable-b" quiet-read session:probe@stable)"
-echo "keychain check passed"
+[ "$(cdhash "$out/stable-a")" != "$(cdhash "$out/stable-b")" ] || fail "the signed builds have the same code hash"
+sa=$("$out/stable-a" tag)
+sb=$("$out/stable-b" tag)
+echo "identity tags: A $sa, B $sb"
+case "$sa" in cert-*) ;; *) fail "a certificate-signed build should be tagged by its certificate, got $sa" ;; esac
+[ "$sa" = "$sb" ] || fail "two builds signed by one certificate have different tags"
+skey="session:stable@https://server.example"
+expect "A saves its token" written "$out/stable-a" store-write "$skey" token-s
+expect "B reads it, no sign-in" "found token-s" "$out/stable-b" store-read "$skey"
+expect "B reads the item directly, dialogs off" found "$out/stable-b" raw-read "$skey#$sb"
+expect "B renews it in place" written "$out/stable-b" store-write "$skey" token-s2
+expect "A reads B's renewal" "found token-s2" "$out/stable-a" store-read "$skey"
+
+echo "3. each build's signature state"
+sh "$here/packaging/macos/check-signature.sh" adhoc "$out/adhoc-a"
+sh "$here/packaging/macos/check-signature.sh" self-signed "$out/stable-a"
+if sh "$here/packaging/macos/check-signature.sh" self-signed "$out/adhoc-b" >/dev/null 2>&1; then
+  fail "check-signature.sh took an ad-hoc build for the self-signed identity"
+fi
+if sh "$here/packaging/macos/check-signature.sh" developer-id "$out/stable-b" >/dev/null 2>&1; then
+  fail "check-signature.sh took the self-signed identity for a Developer ID"
+fi
+
+if grep -q -- "-25308" "$log"; then
+  fail "the keychain wanted to ask the person (errSecInteractionNotAllowed) somewhere above"
+fi
+rm -rf "$out/identity"
+echo "keychain check passed: no answer above needed a dialog"

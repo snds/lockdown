@@ -1,65 +1,82 @@
-//! Where the desktop keeps the session token between runs
-//! (`lockdown_app::secrets`, D86, D87), so that an update never brings up a
-//! keychain dialog (docs/plan/60-auto-update.md §3).
+//! The session token in the OS keychain (`lockdown_app::secrets`, D86,
+//! D87), kept so that an update never brings up a keychain dialog
+//! (docs/plan/60-auto-update.md §3, D684 as Sean decided it on 2026-11-07).
 //!
-//! On a Mac, Lockdown writes the token through the `keyring` crate into the
-//! login keychain as a generic password (the file-based keychain). macOS files
-//! the app that created the item in the item's access list by the app's code
-//! requirement. An ad-hoc signed build (D450) has no signer, so its
-//! requirement is its own code hash, and the hash changes with every build. The
-//! next build is then a stranger to the item, and reading it makes macOS ask
-//! "Lockdown wants to use your confidential information stored in
-//! 'design.snds.lockdown' in your keychain". That is a manual step after an
-//! update, which Sean's rule forbids.
+//! On a Mac the token is a generic password in the login keychain, written
+//! through `keyring` (the file-based keychain API). macOS puts the app that
+//! made the item on the item's access list, named by the app's designated
+//! requirement. Another build that doesn't satisfy that requirement must
+//! ask the person ("Lockdown wants to use your confidential information
+//! stored in 'design.snds.lockdown' in your keychain") before it can read
+//! the item or change it. That is a manual step after an update, which
+//! Sean's rule forbids.
 //!
-//! So, on a Mac:
+//! Two things keep every build away from that dialog:
 //!
-//! - A build signed by an Apple-issued certificate (a Developer ID, D493)
-//!   keeps the token in the keychain. Its requirement names the team and
-//!   the identifier, which every build shares.
-//! - Any other build (ad hoc, unsigned, or a signature the OS didn't accept)
-//!   keeps the token in `sync.cbor`, readable only by this user. That is
-//!   where the CLI keeps it on every platform, beside the device key's own
-//!   file (D87). The keychain is only read, for a token an older build left
-//!   there.
-//! - Every keychain read is made with the user interface switched off. An
-//!   item the OS would ask about reads as absent, so the app falls back to
-//!   "sign in again" with the master password, and no dialog ever appears.
+//! - **Dialogs off.** Every keychain call on a Mac runs with
+//!   `SecKeychainSetUserInteractionAllowed(false)`. A read macOS would have
+//!   asked about comes back refused, and reads as no token: the person signs
+//!   in again with the master password, and is never shown a dialog.
+//! - **One item per signing identity.** The item's account is the key
+//!   followed by `#` and a tag for this build's code identity:
+//!   - `cert-<first 8 bytes of the signing certificate's SHA-256>` for a
+//!     build signed by a certificate (a Developer ID, or the stable
+//!     self-signed identity CI holds). Every build signed by the same
+//!     certificate shares the tag, and satisfies the item's access list, so
+//!     its token carries across updates;
+//!   - `build-<first 8 bytes of the executable's SHA-256>` for an ad-hoc or
+//!     unsigned build, whose identity is its own code.
+//!
+//!   A build never changes an item another identity wrote; changing one
+//!   would ask. It adds its own instead, which asks nothing. An item from
+//!   before this scheme (the bare key, no tag) is still read once, dialogs
+//!   off, so a build with the same identity keeps its token.
 //!
 //! Windows Credential Manager and the Secret Service on Linux have no
-//! per-program access list, so an update reads the token there as before.
+//! per-program access list, so there the key is used as it is.
 
 use lockdown_codesign::{CodeSignature, SignatureKind};
 
-/// Whether the token is kept in the OS keychain or in `sync.cbor`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Mode {
-    /// The keychain holds the token (Windows, Linux, a Developer ID Mac build).
-    Keep,
-    /// The token stays in `sync.cbor`; the keychain is only read, with no
-    /// dialog, for a token an older build left.
-    ReadOnly,
-}
-
-/// The mode for a Mac build with this signature (`None`: it couldn't be
-/// read). Only a valid signature from an Apple-issued certificate, which
-/// names a team, gives every build the same identity.
-pub fn mac_mode(own: Option<&CodeSignature>) -> Mode {
+/// This build's code identity, as the keychain's access list sees it: the
+/// signing certificate when there is one, else the code itself.
+pub fn identity_tag(own: Option<&CodeSignature>, exe_sha256: Option<&[u8; 32]>) -> Option<String> {
+    let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
     match own {
-        Some(s) if s.kind == SignatureKind::Signed && s.valid && s.team.is_some() => Mode::Keep,
-        _ => Mode::ReadOnly,
+        Some(s) if s.kind == SignatureKind::Signed && s.leaf_sha256.is_some() => s
+            .leaf_sha256
+            .map(|leaf| format!("cert-{}", hex(&leaf[..8]))),
+        _ => exe_sha256.map(|h| format!("build-{}", hex(&h[..8]))),
     }
 }
 
-/// This build's mode.
-pub fn mode() -> Mode {
+/// The keychain account for `key` under an identity tag.
+pub fn account(key: &str, tag: Option<&str>) -> String {
+    match tag {
+        Some(tag) => format!("{key}#{tag}"),
+        None => key.to_string(),
+    }
+}
+
+/// The SHA-256 of a build's executable: an ad-hoc build's identity.
+pub fn code_digest(bytes: &[u8]) -> [u8; 32] {
+    use sha2::Digest as _;
+    sha2::Sha256::digest(bytes).into()
+}
+
+/// This build's tag (macOS); `None` elsewhere, where the bare key is used.
+pub fn this_build_tag() -> Option<String> {
     #[cfg(target_os = "macos")]
     {
-        mac_mode(lockdown_codesign::macos::own().ok().as_ref())
+        let own = lockdown_codesign::macos::own().ok();
+        let exe = std::env::current_exe()
+            .ok()
+            .and_then(|p| std::fs::read(p).ok())
+            .map(|bytes| code_digest(&bytes));
+        identity_tag(own.as_ref(), exe.as_ref())
     }
     #[cfg(not(target_os = "macos"))]
     {
-        Mode::Keep
+        None
     }
 }
 
@@ -70,79 +87,85 @@ pub use store::Keychain;
 mod store {
     use lockdown_app::secrets::SecretStore;
 
-    use super::Mode;
+    use super::account;
 
     /// The keychain service every entry is filed under.
-    const SERVICE: &str = "design.snds.lockdown";
+    pub const SERVICE: &str = "design.snds.lockdown";
 
-    /// The session token in the OS keychain, or only read from it.
+    /// The session token in the OS keychain.
     pub struct Keychain {
-        pub mode: Mode,
+        /// This build's identity tag (macOS); `None` uses the bare key.
+        pub tag: Option<String>,
     }
 
     impl Keychain {
         /// The store for this build.
         pub fn for_this_build() -> Self {
             Self {
-                mode: super::mode(),
+                tag: super::this_build_tag(),
             }
         }
     }
 
-    /// Reads `key` with the keychain's dialogs switched off (macOS). A
-    /// refusal reads as no entry: the person signs in again with the
-    /// master password, and is never asked about the keychain.
+    /// Runs `f` with the keychain's dialogs switched off (macOS).
     #[cfg(target_os = "macos")]
-    fn read(entry: &keyring::Entry) -> Result<Option<String>, String> {
+    fn quietly<T>(f: impl FnOnce() -> T) -> Result<T, String> {
         use security_framework::os::macos::keychain::SecKeychain;
         let _quiet = SecKeychain::disable_user_interaction()
             .map_err(|e| format!("the keychain isn't available: {e}"))?;
-        match entry.get_password() {
-            Ok(v) => Ok(Some(v)),
-            Err(_) => Ok(None),
-        }
+        Ok(f())
     }
 
     #[cfg(not(target_os = "macos"))]
-    fn read(entry: &keyring::Entry) -> Result<Option<String>, String> {
-        match entry.get_password() {
+    fn quietly<T>(f: impl FnOnce() -> T) -> Result<T, String> {
+        Ok(f())
+    }
+
+    fn entry(account: &str) -> Result<keyring::Entry, String> {
+        keyring::Entry::new(SERVICE, account)
+            .map_err(|e| format!("the keychain isn't available: {e}"))
+    }
+
+    /// A read: the value, none, or (macOS) a refusal, which reads as none.
+    fn read(account: &str) -> Result<Option<String>, String> {
+        let entry = entry(account)?;
+        match quietly(|| entry.get_password())? {
             Ok(v) => Ok(Some(v)),
             Err(keyring::Error::NoEntry) => Ok(None),
+            // macOS: an item this identity may not read without asking.
+            Err(_) if cfg!(target_os = "macos") => Ok(None),
             Err(e) => Err(format!("couldn't read from the keychain: {e}")),
         }
     }
 
     impl SecretStore for Keychain {
         fn get(&self, key: &str) -> Result<Option<String>, String> {
-            let entry = keyring::Entry::new(SERVICE, key)
-                .map_err(|e| format!("the keychain isn't available: {e}"))?;
-            read(&entry)
+            if let Some(value) = read(&account(key, self.tag.as_deref()))? {
+                return Ok(Some(value));
+            }
+            if self.tag.is_none() {
+                return Ok(None);
+            }
+            // An item from before identity tags: read once, dialogs off;
+            // the next save writes this identity's own item.
+            read(key)
         }
 
         fn set(&self, key: &str, value: &str) -> Result<(), String> {
-            if self.mode == Mode::ReadOnly {
-                return Ok(());
-            }
-            let entry = keyring::Entry::new(SERVICE, key)
-                .map_err(|e| format!("the keychain isn't available: {e}"))?;
-            entry
-                .set_password(value)
+            let entry = entry(&account(key, self.tag.as_deref()))?;
+            quietly(|| entry.set_password(value))?
                 .map_err(|e| format!("couldn't save to the keychain: {e}"))
         }
 
         fn delete(&self, key: &str) {
-            // An item an older ad-hoc build wrote can't be deleted without
-            // the same dialog; the developer reset finds it (D482).
-            if self.mode == Mode::ReadOnly {
-                return;
+            // This identity's item goes. Another identity's would need the
+            // person's permission, which is never asked: with dialogs off
+            // that delete is refused and the item stays (doc 60 §8).
+            for account in [account(key, self.tag.as_deref()), key.to_string()] {
+                if let Ok(e) = entry(&account) {
+                    let _ = quietly(|| e.delete_credential());
+                }
             }
-            if let Ok(e) = keyring::Entry::new(SERVICE, key) {
-                let _ = e.delete_credential();
-            }
-        }
-
-        fn keeps_values(&self) -> bool {
-            self.mode == Mode::Keep
         }
     }
 }
@@ -151,41 +174,73 @@ mod store {
 mod tests {
     use super::*;
 
-    fn signed(team: Option<&str>, valid: bool) -> CodeSignature {
+    fn signed(leaf: Option<[u8; 32]>) -> CodeSignature {
         CodeSignature {
             kind: SignatureKind::Signed,
-            valid,
+            valid: true,
             identifier: Some("design.snds.lockdown".into()),
-            team: team.map(str::to_string),
+            leaf_sha256: leaf,
             ..CodeSignature::unsigned()
         }
     }
 
     #[test]
-    fn only_a_developer_id_build_keeps_the_token_in_the_mac_keychain() {
+    fn a_signed_build_is_tagged_by_its_certificate_and_any_other_by_its_code() {
+        let cert = [0xab; 32];
+        let exe_a = [0x01; 32];
+        let exe_b = [0x02; 32];
+        // Two builds signed by one certificate share the tag, whatever
+        // their code.
         assert_eq!(
-            mac_mode(Some(&signed(Some("ABCDE12345"), true))),
-            Mode::Keep
+            identity_tag(Some(&signed(Some(cert))), Some(&exe_a)),
+            Some("cert-abababababababab".into())
         );
         assert_eq!(
-            mac_mode(Some(&signed(Some("ABCDE12345"), false))),
-            Mode::ReadOnly
+            identity_tag(Some(&signed(Some(cert))), Some(&exe_b)),
+            identity_tag(Some(&signed(Some(cert))), Some(&exe_a))
         );
-        // A self-signed certificate names no team.
-        assert_eq!(mac_mode(Some(&signed(None, true))), Mode::ReadOnly);
+        // Ad hoc and unsigned builds are their code.
         let adhoc = CodeSignature {
             kind: SignatureKind::AdHoc,
             valid: true,
             ..CodeSignature::unsigned()
         };
-        assert_eq!(mac_mode(Some(&adhoc)), Mode::ReadOnly);
-        assert_eq!(mac_mode(Some(&CodeSignature::unsigned())), Mode::ReadOnly);
-        assert_eq!(mac_mode(None), Mode::ReadOnly);
+        assert_eq!(
+            identity_tag(Some(&adhoc), Some(&exe_a)),
+            Some("build-0101010101010101".into())
+        );
+        assert_ne!(
+            identity_tag(Some(&adhoc), Some(&exe_a)),
+            identity_tag(Some(&adhoc), Some(&exe_b))
+        );
+        assert_eq!(
+            identity_tag(Some(&CodeSignature::unsigned()), Some(&exe_b)),
+            Some("build-0202020202020202".into())
+        );
+        // A signature whose certificate couldn't be read falls back to the code.
+        assert_eq!(
+            identity_tag(Some(&signed(None)), Some(&exe_a)),
+            Some("build-0101010101010101".into())
+        );
+        assert_eq!(identity_tag(None, None), None);
+        // Builds that differ by one byte have different code identities.
+        assert_ne!(code_digest(b"build a"), code_digest(b"build b"));
+        assert_eq!(
+            identity_tag(None, Some(&code_digest(b"build a"))).map(|t| t.len()),
+            Some("build-".len() + 16)
+        );
+    }
+
+    #[test]
+    fn the_account_carries_the_tag_and_the_bare_key_without_one() {
+        let key = lockdown_app::secrets::session_key("https://s.example", "sean");
+        assert_eq!(account(&key, Some("cert-ab")), format!("{key}#cert-ab"));
+        assert_eq!(account(&key, None), key);
     }
 
     #[cfg(not(target_os = "macos"))]
     #[test]
-    fn windows_and_linux_keep_the_token_in_the_keychain() {
-        assert_eq!(mode(), Mode::Keep);
+    fn windows_and_linux_use_the_bare_key() {
+        assert_eq!(this_build_tag(), None);
     }
 }

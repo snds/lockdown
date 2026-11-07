@@ -40,6 +40,9 @@
 #   WINDOWS_MSIX_PUBLISHER                               (the certificate's subject)
 #   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 #                                   (the updater's key; read on a push to main only)
+#   MACOS_SELFSIGNED_CERTIFICATE, MACOS_SELFSIGNED_CERTIFICATE_PASSWORD
+#                                   (the stable self-signed Mac identity, D684;
+#                                    packaging/macos/make-self-signed-identity.sh)
 name: Release
 
 on:
@@ -242,9 +245,14 @@ jobs:
           path: lockdown-*.flatpak
           if-no-files-found: error
 
-  # Apple silicon and Intel in one universal app and dmg. Signed with the
-  # Developer ID when the signing secrets exist, ad-hoc otherwise (D450);
-  # notarised only when the notarisation secrets exist too.
+  # Apple silicon and Intel in one universal app and dmg. Signed, in order:
+  # with the Developer ID when its secrets exist (notarised too when the
+  # notarisation secrets do); else, on a push to main or a tag, with the
+  # stable self-signed identity when its secret exists (D684: every build
+  # then shares one identity, so the keychain keeps the session token
+  # across updates; it does nothing for Gatekeeper); else ad hoc (D450).
+  # A pull request never gets the self-signed identity: the keychain trusts
+  # whatever it signs.
   macos:
     name: macos · universal
     needs: meta
@@ -254,6 +262,7 @@ jobs:
       SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
       HAVE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_SIGNING_IDENTITY != '' }}
       HAVE_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+      HAVE_SELFSIGNED: ${{ secrets.MACOS_SELFSIGNED_CERTIFICATE != '' && (needs.meta.outputs.publish == 'true' || needs.meta.outputs.real == 'true') }}
       LOCKDOWN_DEVTOOLS: ${{ needs.meta.outputs.real == 'true' && 'off' || 'on' }}
     steps:
       - uses: actions/checkout@v4
@@ -295,14 +304,42 @@ jobs:
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           rm "$RUNNER_TEMP/cert.p12"
           echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          echo "SIGNING_STATE=developer-id" >> "$GITHUB_ENV"
+      # The stable self-signed identity (D684), imported like the Developer
+      # ID into a keychain of the job's own; Tauri signs the app and the
+      # browser host with it by its SHA-1.
+      - name: Self-signed identity (no Developer ID; main or a tag, with the secret)
+        if: env.HAVE_SIGNING != 'true' && env.HAVE_SELFSIGNED == 'true'
+        env:
+          MACOS_SELFSIGNED_CERTIFICATE: ${{ secrets.MACOS_SELFSIGNED_CERTIFICATE }}
+          MACOS_SELFSIGNED_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_SELFSIGNED_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/lockdown-selfsigned.keychain-db"
+          pass="$(openssl rand -hex 16)"
+          echo "$MACOS_SELFSIGNED_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/selfsigned.p12"
+          security create-keychain -p "$pass" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$pass" "$keychain"
+          security import "$RUNNER_TEMP/selfsigned.p12" -P "$MACOS_SELFSIGNED_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pass" "$keychain" > /dev/null
+          # The search list is split into names on purpose.
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/selfsigned.p12"
+          identity=$(security find-identity -p codesigning "$keychain" | sed -n 's/^ *[0-9]*) \([0-9A-F]\{40\}\) "Lockdown self-signed.*/\1/p' | head -n 1)
+          [ -n "$identity" ] || { echo "::error::MACOS_SELFSIGNED_CERTIFICATE holds no Lockdown self-signed code-signing identity"; exit 1; }
+          echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+          echo "SIGNING_STATE=self-signed" >> "$GITHUB_ENV"
       # The linker's own ad-hoc signature covers the executables but not the
       # bundle (no sealed resources, Info.plist not bound), and Gatekeeper
       # calls such a download damaged with no way past it but Terminal.
       # Tauri's ad-hoc identity "-" seals the whole bundle, the browser host
       # included, before the dmg is made.
       - name: Ad-hoc identity (without the secrets)
-        if: env.HAVE_SIGNING != 'true'
-        run: echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+        if: env.HAVE_SIGNING != 'true' && env.HAVE_SELFSIGNED != 'true'
+        run: |
+          echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+          echo "SIGNING_STATE=adhoc" >> "$GITHUB_ENV"
       - name: Notarisation account (only with the secrets)
         if: env.HAVE_SIGNING == 'true' && env.HAVE_NOTARY == 'true'
         env:
@@ -365,13 +402,10 @@ jobs:
             echo "$bin: $archs"
             case "$archs" in *x86_64*arm64*|*arm64*x86_64*) ;; *) echo "::error::$bin is not universal"; exit 1 ;; esac
           done
-          codesign -dv "$app" 2>&1
-          codesign --verify --deep --strict --verbose=2 "$app"
-          if [ "$HAVE_SIGNING" != true ]; then
-            info="$(codesign -dv "$app" 2>&1)"
-            case "$info" in *"Signature=adhoc"*) ;; *) echo "::error::expected an ad-hoc signature"; exit 1 ;; esac
-            case "$info" in *"Sealed Resources=none"*|*"Info.plist=not bound"*) echo "::error::the bundle is not sealed"; exit 1 ;; esac
-          fi
+          # Each of the three states: the Developer ID, the self-signed
+          # identity, ad hoc (packaging/macos/check-signature.sh).
+          sh packaging/macos/check-signature.sh "$SIGNING_STATE" "$app"
+          sh packaging/macos/check-signature.sh "$SIGNING_STATE" "$app/Contents/MacOS/lockdown-native-host"
           # The app inside the dmg is the one people install: check it too.
           dmg="$(ls target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -n 1)"
           mnt="$(mktemp -d)"
