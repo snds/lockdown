@@ -342,6 +342,8 @@ export interface Settings {
   alias_monitoring?: boolean
   /** The system-wide quick-access shortcut (docs/plan/26-desktop-finish.md §2). */
   quick_access_hotkey?: boolean
+  /** Whether the desktop app checks for a newer build by itself (docs/plan/60-auto-update.md). Default on. */
+  update_auto_check?: boolean
 }
 
 export interface BackupSettings {

@@ -25,6 +25,7 @@ pub mod security_depth;
 pub mod server_checks;
 pub mod sharing;
 pub mod transfer;
+pub mod updater;
 
 #[cfg(feature = "shell")]
 mod commands;
@@ -103,7 +104,9 @@ mod shell {
                     _ => PermissionResponse::Deny,
                 }
             })
-            .plugin(tauri_plugin_notification::init());
+            .plugin(tauri_plugin_notification::init())
+            // Automatic updates (docs/plan/60-auto-update.md), driven from Rust.
+            .plugin(super::updater::shell::plugin());
         // The developer reset and the demo (docs/plan/40-devtools.md).
         #[cfg(any(feature = "dev-reset", feature = "demo-vault"))]
         let builder = builder.plugin(lockdown_devtools::shell::plugin());
@@ -142,6 +145,8 @@ mod shell {
                 // (docs/plan/26-desktop-finish.md §2, §6).
                 app.manage(super::hygiene::CaptureCount::default());
                 super::quick::commands::start(app.handle(), &core);
+                // Updates: the check at launch and every six hours.
+                super::updater::shell::start(app.handle(), &core);
                 // WebKitGTK keeps getUserMedia off until the host turns it on;
                 // the permission handler above still answers each request.
                 #[cfg(target_os = "linux")]
@@ -168,8 +173,14 @@ mod shell {
                 }
             })
             .invoke_handler(super::commands::handler())
-            .run(tauri::generate_context!())
-            .expect("the Lockdown window starts");
+            .build(tauri::generate_context!())
+            .expect("the Lockdown window starts")
+            .run(|handle, event| {
+                // A downloaded update not taken installs as the app closes.
+                if let tauri::RunEvent::Exit = event {
+                    super::updater::shell::on_exit(handle);
+                }
+            });
         // Give the worker a moment to drop the keys on the way out.
         std::thread::sleep(Duration::from_millis(50));
     }

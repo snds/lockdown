@@ -102,6 +102,11 @@ pub struct Settings {
     /// each sync compares the server's log with theirs, beside the ones
     /// the server names. Changed only through `kt_mirrors_set`.
     pub kt_mirrors: Vec<String>,
+    /// Whether the desktop app checks for a newer build by itself, at
+    /// launch and every six hours (docs/plan/60-auto-update.md). On by
+    /// default, and on for a file written before it existed. "Check for
+    /// updates" works either way; the CLI ignores it.
+    pub update_auto_check: bool,
 }
 
 /// Where and how often automatic backups run.
@@ -159,6 +164,7 @@ impl Default for Settings {
             alias_monitoring: false,
             quick_access_hotkey: true,
             kt_mirrors: Vec::new(),
+            update_auto_check: true,
         }
     }
 }
@@ -374,6 +380,7 @@ mod tests {
             "alias_monitoring",
             "quick_access_hotkey",
             "kt_mirrors",
+            "update_auto_check",
         ]
         .into_iter()
         .collect();
@@ -397,6 +404,18 @@ mod tests {
             .into(),
             "the backup key is never in the settings file"
         );
+    }
+
+    #[test]
+    fn the_automatic_update_check_defaults_on_and_an_older_file_reads_it_as_on() {
+        assert!(Settings::default().update_auto_check);
+        let mut older = serde_json::to_value(Settings::default()).unwrap();
+        older.as_object_mut().unwrap().remove("update_auto_check");
+        let read: Settings = serde_json::from_value(older).unwrap();
+        assert!(read.update_auto_check);
+        let off: Settings =
+            serde_json::from_value(serde_json::json!({ "update_auto_check": false })).unwrap();
+        assert!(!off.update_auto_check);
     }
 
     #[test]
