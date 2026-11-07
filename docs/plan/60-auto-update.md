@@ -83,7 +83,24 @@ _It builds on D62 (wire and stored shapes only grow), D86 and D87 (the session t
 - the workspace crates in `Cargo.lock`, so `--locked` builds agree;
 - `tauri.conf.json`, `apps/desktop/package.json` and `apps/web/package.json`.
 
-The extension keeps `0.1.0`, because browsers take only numbers there and the extension isn't on the channel. MSIX gets the base version (`-Version` must be x.y.z).
+Package managers order versions their own way, so each package gets its own form of the version (`packaging/update/version-forms.py`). The meta job checks every form before anything builds:
+
+| Format | Main channel | Tag | Why |
+|---|---|---|---|
+| app, Cargo, npm, updater (semver) | `0.1.0-main.20261107025710` | `0.1.0` | |
+| deb `Version` | `0.1.0~main.20261107025710` | `0.1.0` | With `-`, deb reads `main.…` as the revision, which sorts after a later plain `0.1.0`. `~` sorts before it. |
+| rpm | Version `0.1.0`, Release `0.main.20261107025710` | `0.1.0`, Release `1` | rpm refuses `-` in Version. Tauri takes the rpm Version from the app's, and semver can't hold `~`, so the pre-release goes in Release, Fedora's convention for one. |
+| MSIX | `0.1.0.0` | `0.1.0.0` | Four numbers only. |
+| extension | `0.1.0` | `0.1.0` | Browsers take only numbers there, and the extension isn't on the channel. |
+
+In the Linux container (`packaging/repro/desktop-container.sh`), a main build:
+1. builds the deb with the app's version, then rewrites its control `Version` (`version-forms.py rewrite-deb`);
+2. bundles the rpm from the same binary with `tauri bundle` and the rpm config;
+3. runs the usual normalisation afterwards.
+
+`test_update_scripts.py` checks the ordering with `dpkg --compare-versions` and `rpm.vercmp` where they are installed:
+- older main build < newer main build < the release;
+- the release < the next version's main build (deb).
 
 A tag build keeps its plain version, and `meta` still refuses a tag that differs from the manifests.
 
@@ -156,13 +173,20 @@ Sealing the token under the device key was considered and not done. On a Mac tod
 2. Both ad-hoc builds report `read-only` mode, and B's read through the app's store says `absent`, with no dialog and no hang.
 3. The same two builds signed with **one** throwaway self-signed certificate: B reads A's item with dialogs off. A stable identity is enough.
 
+On this PR the job passed (run of 6562c53):
+- The two ad-hoc code hashes were `73d8062d…` and `be8d36cc…`.
+- A wrote and read its item back.
+- B, with dialogs off, was refused with `-25293` (`errSecAuthFailed`): the read macOS turns into the dialog.
+- Both builds ran read-only, and B's own store read said `absent`.
+- With one shared certificate (designated requirement `identifier "design.snds.lockdown" and certificate root = H"…"`), B read A's item.
+
 That job's result on this PR is in §5. It does **not** run the whole app across a real update with a signed-in account on a Mac, and it can't show a dialog on screen (the runner has no one to answer it). What it shows is the keychain's answer that macOS would have turned into a dialog. The full answer is still the Developer ID (D493), under which the token goes back into the keychain with nothing asked across updates. **Flagged for Sean.**
 
 ## 4. The test-only endpoint and key
 
 The `update-test` Cargo feature (`["shell", "tauri/test"]`) adds:
 - `TestSource::from_env` (`LOCKDOWN_UPDATE_TEST_ENDPOINT`, `LOCKDOWN_UPDATE_TEST_PUBKEY`), which replaces the channel's endpoint, key and hosts, and allows plain `http` on the loopback address only;
-- the end-to-end hooks: a report file, restart when ready, and opening the run's throwaway vault with `LOCKDOWN_UPDATE_TEST_PASSWORD`;
+- the end-to-end hooks: a report file, restart when ready, and opening the run's throwaway vault with its password. Each setting comes from `LOCKDOWN_UPDATE_TEST_<NAME>`, or else from `update-test.json` in the data directory. On Windows the file is the only way the run's settings reach build B, because Tauri's NSIS installer starts the new build through Explorer (`nsis_tauri_utils::RunAsUser`), with Explorer's environment;
 - Tauri's mock runtime for the plugin's own signature tests;
 - the marker `lockdown-update-test-3b9d`.
 
@@ -184,7 +208,7 @@ It is never in `tauri.conf.json`'s features, so development builds, dry runs and
 | The keychain | `packaging/update/keychain-check.sh <out> <probe a> <probe b>` | `keychain-macos` |
 
 **End to end.** `e2e-build.sh` builds A (`0.1.0-main.20260101000000`) and B (`…0102…`), debug, with `update-test`, signed by a key made in the job. It also builds the CLI. Then `e2e-run.sh`:
-1. The CLI makes a throwaway vault holding one item.
+1. The CLI makes a throwaway vault holding one item in the account's default places (as an installed app has it), and the run writes `update-test.json` beside it.
 2. A `latest.json` naming B is served on `127.0.0.1:8765`.
 3. A is installed: copied to a folder the account owns on macOS; the NSIS installer run with `/S` (per user) on Windows.
 4. A starts, opens the vault, finds B, downloads it, checks it, locks, installs and restarts.

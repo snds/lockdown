@@ -7,10 +7,12 @@ the manifest writer and the version stamp. Run from the repository root:
 
 import base64
 import importlib.util
+import io
 import json
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,6 +30,7 @@ def load(name):
 
 wm = load("write-manifest")
 sv = load("stamp-version")
+vf = load("version-forms")
 
 V1 = "0.1.0-main.20261107093000"
 V2 = "0.1.0-main.20261107120000"
@@ -136,6 +139,69 @@ class ManifestWriter(unittest.TestCase):
         previous = self.dir / "old.json"
         previous.write_text(json.dumps({"version": V2}))
         self.assertEqual(wm.main(args + bundles + ["--previous", str(previous)]), 1)
+
+
+class VersionForms(unittest.TestCase):
+    def test_each_format_gets_a_valid_form(self):
+        f = vf.check(V1)
+        self.assertEqual(f["semver"], V1)
+        self.assertEqual(f["deb"], "0.1.0~main.20261107093000")
+        self.assertEqual((f["rpm_version"], f["rpm_release"]), ("0.1.0", "0.main.20261107093000"))
+        self.assertEqual(f["msix"], "0.1.0.0")
+        self.assertEqual(f["extension"], "0.1.0")
+        tag = vf.check("0.1.0")
+        self.assertEqual((tag["deb"], tag["rpm_version"], tag["rpm_release"]), ("0.1.0", "0.1.0", "1"))
+        self.assertEqual(vf.rpm_config(V1), {"version": "0.1.0", "bundle": {"linux": {"rpm": {"release": "0.main.20261107093000"}}}})
+
+    def test_refuses_what_a_format_can_not_take(self):
+        for bad in ["0.1.0-beta.1", "0.1.0-main.1", "v0.1.0", "0.1", "0.1.0-main.20261107093000+x"]:
+            with self.assertRaises(vf.Invalid, msg=bad):
+                vf.check(bad)
+        with self.assertRaises(vf.Invalid):
+            vf.check("0.1.70000")  # MSIX and the extension take at most 65535
+
+    def test_package_managers_order_main_builds_before_the_release(self):
+        older, newer = "0.1.0-main.20261107093000", "0.1.0-main.20261107120000"
+        if shutil.which("dpkg"):
+            for a, b in [(older, newer), (newer, "0.1.0"), ("0.1.0", "0.1.1-main.20270101000000")]:
+                da, db = vf.forms(a)["deb"], vf.forms(b)["deb"]
+                ok = subprocess.run(["dpkg", "--compare-versions", da, "lt", db]).returncode == 0
+                self.assertTrue(ok, f"deb: {da} isn't before {db}")
+        if shutil.which("rpm"):
+            def evr(v):
+                f = vf.forms(v)
+                return f"{f['rpm_version']}-{f['rpm_release']}"
+            for a, b in [(older, newer), (newer, "0.1.0")]:
+                out = subprocess.run(["rpm", "--eval", f"%{{lua: print(rpm.vercmp('{evr(a)}', '{evr(b)}'))}}"], capture_output=True, text=True).stdout.strip()
+                self.assertEqual(out, "-1", f"rpm: {evr(a)} isn't before {evr(b)}")
+
+    def test_rewrites_the_deb_control_version(self):
+        norm = vf._normalizer()
+        work = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, work)
+        control = f"Package: lockdown\nVersion: {V1}\nArchitecture: amd64\n".encode()
+
+        def tgz(files):
+            buf = io.BytesIO()
+            with tarfile.open(fileobj=buf, mode="w") as t:
+                for name, blob in files:
+                    info = tarfile.TarInfo(name)
+                    info.size = len(blob)
+                    t.addfile(info, io.BytesIO(blob))
+            return norm.gzip_bytes(buf.getvalue())
+
+        deb = work / "lockdown.deb"
+        deb.write_bytes(norm.write_ar([("debian-binary", b"2.0\n"), ("control.tar.gz", tgz([("./control", control), ("./md5sums", b"")])), ("data.tar.gz", tgz([("./usr/bin/x", b"x")]))], 0))
+        self.assertEqual(vf.rewrite_deb(deb, V1), "0.1.0~main.20261107093000")
+        members = dict(norm.read_ar(deb.read_bytes()))
+        with tarfile.open(fileobj=io.BytesIO(members["control.tar.gz"]), mode="r:gz") as t:
+            text = t.extractfile("./control").read().decode()
+        self.assertIn("Version: 0.1.0~main.20261107093000\n", text)
+        self.assertIn("Package: lockdown\n", text)
+        self.assertEqual(members["data.tar.gz"], tgz([("./usr/bin/x", b"x")]))
+        if shutil.which("dpkg-deb"):
+            out = subprocess.run(["dpkg-deb", "-f", str(deb), "Version"], capture_output=True, text=True).stdout.strip()
+            self.assertEqual(out, "0.1.0~main.20261107093000")
 
 
 class VersionStamp(unittest.TestCase):

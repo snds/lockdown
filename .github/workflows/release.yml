@@ -101,6 +101,8 @@ jobs:
               publish=true
             fi
           fi
+          # Every package format's form of it must be valid (deb, rpm, MSIX, the extension).
+          python3 packaging/update/version-forms.py check "$version"
           {
             echo "version=$version"
             echo "base=$base"
