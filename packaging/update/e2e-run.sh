@@ -27,14 +27,18 @@ cli="$out/lockdown"
 report="$out/report.txt"
 : >"$report"
 
+# The app reads LOCKDOWN_ROOT; the CLI takes the same place as --root. Both
+# put the data directory beside it.
 export LOCKDOWN_ROOT="$out/home/snds/identity"
 mkdir -p "$LOCKDOWN_ROOT"
 export LOCKDOWN_MASTER_PASSWORD="$pw"
+lockdown() { "$cli" --root "$LOCKDOWN_ROOT" "$@"; }
 
 echo "1. a vault"
-"$cli" init --name "Update e2e" >/dev/null
-printf 'item-password-e2e\n' | "$cli" add login --site https://example.org --username e2e --password-stdin --title "Before the update"
-"$cli" list
+lockdown init --name "Update e2e" >/dev/null
+printf 'item-password-e2e\n' | lockdown add login --site https://example.org --username e2e --password-stdin --title "Before the update"
+lockdown list
+ls "$out/home/snds"
 
 echo "2. B, served"
 mkdir -p "$out/serve"
@@ -99,7 +103,7 @@ trap - EXIT
 sleep 3
 
 echo "6. the vault, read again by the CLI"
-"$cli" list | tee "$out/after.txt"
+lockdown list | tee "$out/after.txt"
 grep -q "Before the update" "$out/after.txt" || { echo "::error::the item isn't in the vault after the update"; exit 1; }
 if [ "$os" = mac ]; then
   plist="$out/apps/Lockdown.app/Contents/Info.plist"
