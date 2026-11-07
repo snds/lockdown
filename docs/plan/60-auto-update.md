@@ -177,7 +177,7 @@ The manifest names:
 
 **What is proven** (`keychain-macos`, `packaging/update/keychain-check.sh`, on `macos-latest`). It runs in a keychain made for the job, every call with dialogs off, and fails if `errSecInteractionNotAllowed` (-25308) appears anywhere. The same probe is built twice with a compile-time difference, so the two builds' code hashes differ. The probe goes through the app's own store.
 
-Part 1, two ad-hoc builds (run of 2706684):
+Part 1, two ad-hoc builds (runs of 2706684 and c8654ce):
 - A saved its token under `#build-a760…` and read it back.
 - B's direct read of A's item was refused with `-25293`, silently. B's own read said `absent` (sign in again).
 - B saved its fresh token beside A's item under `#build-befa…`, and read it back. A still read its own.
@@ -189,7 +189,13 @@ Part 2, the self-signed identity:
 - It is imported from the base64 secret form, as `release.yml` does.
 - Two different builds are signed with it. They must share a `cert-…` tag, and B must read A's token and renew it in place, with no sign-in.
 
-The results of part 2 are in §5.
+Part 2 passed (run of c8654ce):
+- The script made the identity, checked it signs, and named both secrets with their commands.
+- Imported from the base64 form, the identity signed two builds with different code hashes, both with designated requirement `identifier "design.snds.lockdown" and certificate root = H"5f71…"`.
+- Both builds had the tag `cert-04d89a0e0471f12d`.
+- A saved its token. B read it with no sign-in (direct read: `found`), renewed it in place, and A read the renewal.
+
+Part 3: `check-signature.sh` accepted the ad-hoc build as `adhoc` and the signed one as `self-signed` ("valid on disk", "satisfies its Designated Requirement"). It refused the ad-hoc build as `self-signed`, and the self-signed build as `developer-id`. Nothing anywhere answered `-25308`.
 
 **Stale items (gap).** A refused delete is silent, so neither sign-out nor a later build can remove another identity's item without a dialog. While builds are ad hoc, every update leaves one small `session:<login>@<server>#build-<tag>` item per signed-in account. At a merge a day, that is about 30 a month, or about 365 a year. Each holds one expired token, and none is ever read again. Once the self-signed secret exists, no new items appear: every build shares the `cert-…` tag and renews the same item. The leftovers can be removed in Keychain Access by the person, who is then asked for permission. A signed build can't sweep them, because they belong to other identities. The developer reset (D482) also can't remove them without a dialog.
 
