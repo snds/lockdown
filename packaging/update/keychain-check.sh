@@ -58,10 +58,16 @@ cp "$probe_a" "$out/adhoc-a"
 cp "$probe_b" "$out/adhoc-b"
 codesign --force --sign - --identifier design.snds.lockdown "$out/adhoc-a"
 codesign --force --sign - --identifier design.snds.lockdown "$out/adhoc-b"
-ha=$(codesign -dv "$out/adhoc-a" 2>&1 | sed -n 's/^CDHash=//p')
-hb=$(codesign -dv "$out/adhoc-b" 2>&1 | sed -n 's/^CDHash=//p')
-echo "ad hoc: A $ha, B $hb"
+# The builds differ the way two merges do: LOCKDOWN_PROBE_BUILD is baked in
+# at compile time (`option_env!`), so the bytes and the code hash differ.
+# codesign prints CDHash only at -vvv, on stderr.
+cdhash() { codesign -dvvv "$1" 2>&1 | sed -n 's/^CDHash=//p' | head -n 1; }
+ha=$(cdhash "$out/adhoc-a")
+hb=$(cdhash "$out/adhoc-b")
+echo "ad hoc: A $ha ($("$out/adhoc-a" build)), B $hb ($("$out/adhoc-b" build))"
+[ -n "$ha" ] && [ -n "$hb" ] || fail "codesign named no code hash, so this proves nothing"
 [ "$ha" != "$hb" ] || fail "the two builds have the same code hash, so this proves nothing"
+codesign --verify --strict "$out/adhoc-a" && codesign --verify --strict "$out/adhoc-b"
 
 echo "1. an item an ad-hoc build wrote, read by the next ad-hoc build"
 expect "A writes" written "$("$out/adhoc-a" write session:probe@adhoc token-a)"
