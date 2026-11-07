@@ -55,6 +55,10 @@ import { PaperClientProvider } from "@/features/paper/paper-client"
 import { FirstRunClientProvider } from "@/features/unlock/first-run-client"
 import { tauriFirstRunClient } from "@/app/tauri-first-run"
 import { tauriPaperClient } from "@/app/tauri-paper"
+import { tauriUpdateClient } from "@/app/tauri-updates"
+import { UpdateClientProvider } from "@/features/updates/update-client"
+import { RestartRow } from "@/features/updates/restart-row"
+import { useUpdateNotices } from "@/features/updates/use-update-notices"
 
 // The developer reset and the demo (docs/plan/40-devtools.md): one lazy
 // mount each, gone from a release bundle with the define.
@@ -143,6 +147,8 @@ function Root() {
   const notice = useCallback((text: string) => {
     toast(text)
   }, [])
+  // A check someone asked for (the macOS menu, docs/plan/60-auto-update.md §6), told where Settings isn't open.
+  useUpdateNotices(nav.area !== "settings" || status === null, notice)
   const counts = useMemo(() => countViews(rows ?? []), [rows])
   const vaultsValue = useMemo(() => ({ vaults, reload }), [vaults, reload])
   const showExpiring = useCallback(() => setNav({ area: "vault", view: "expiring" }), [])
@@ -240,7 +246,12 @@ function Root() {
         onNavigate={setNav}
         onLock={lockNow}
         organization={<OrganizationNav rows={rows ?? []} nav={nav} onNavigate={setNav} />}
-        footer={<BackupIndicator onOpen={() => setNav({ area: "settings", view: nav.view })} />}
+        footer={
+          <>
+            <RestartRow onError={(text) => toast.error(text)} />
+            <BackupIndicator onOpen={() => setNav({ area: "settings", view: nav.view })} />
+          </>
+        }
       >
         {nav.area === "vault" && (
           <VaultView
@@ -333,7 +344,9 @@ export default function App() {
                             <PqStatusClientProvider value={tauriPqStatusClient}>
                               <PaperClientProvider value={tauriPaperClient}>
                                 <FirstRunClientProvider value={tauriFirstRunClient}>
-                                  <Root />
+                                  <UpdateClientProvider value={tauriUpdateClient}>
+                                    <Root />
+                                  </UpdateClientProvider>
                                 </FirstRunClientProvider>
                               </PaperClientProvider>
                             </PqStatusClientProvider>

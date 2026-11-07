@@ -14,6 +14,7 @@ pub mod depth;
 pub mod first_run;
 pub mod hygiene;
 pub mod items;
+pub mod keychain;
 pub mod live;
 pub mod organization;
 pub mod paper;
@@ -40,41 +41,8 @@ mod passkey_commands;
 mod shell {
     use std::time::Duration;
 
-    use lockdown_app::secrets::SecretStore;
     use lockdown_app::{App, LockPolicy, Paths};
     use tauri::Manager;
-
-    /// The keychain service every entry is filed under.
-    const SERVICE: &str = "design.snds.lockdown";
-
-    /// The session token in the OS keychain.
-    struct Keychain;
-
-    impl SecretStore for Keychain {
-        fn get(&self, key: &str) -> Result<Option<String>, String> {
-            let entry = keyring::Entry::new(SERVICE, key)
-                .map_err(|e| format!("the keychain isn't available: {e}"))?;
-            match entry.get_password() {
-                Ok(v) => Ok(Some(v)),
-                Err(keyring::Error::NoEntry) => Ok(None),
-                Err(e) => Err(format!("couldn't read from the keychain: {e}")),
-            }
-        }
-
-        fn set(&self, key: &str, value: &str) -> Result<(), String> {
-            let entry = keyring::Entry::new(SERVICE, key)
-                .map_err(|e| format!("the keychain isn't available: {e}"))?;
-            entry
-                .set_password(value)
-                .map_err(|e| format!("couldn't save to the keychain: {e}"))
-        }
-
-        fn delete(&self, key: &str) {
-            if let Ok(e) = keyring::Entry::new(SERVICE, key) {
-                let _ = e.delete_credential();
-            }
-        }
-    }
 
     /// Where the app lives: this computer's identity root and the
     /// `lockdown` directory beside it (D15, D47; Application Support on a
@@ -121,7 +89,11 @@ mod shell {
                             .build(),
                     )?;
                 }
-                lockdown_app::secrets::install(Box::new(Keychain));
+                // The OS keychain, or on a Mac whose identity changes with
+                // every build, sync.cbor (docs/plan/60-auto-update.md §3).
+                lockdown_app::secrets::install(Box::new(
+                    super::keychain::Keychain::for_this_build(),
+                ));
                 // The local account's server, inside the app, before the core
                 // opens anything (docs/plan/39-first-run.md §1.1).
                 lockdown_server::local::install();

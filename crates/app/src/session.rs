@@ -274,7 +274,7 @@ impl SyncConfig {
 
     fn save(&self, path: &Path) -> Result<(), String> {
         let mut on_disk = self.clone();
-        if let Some(store) = secrets::store() {
+        if let Some(store) = secrets::store().filter(|s| s.keeps_values()) {
             store.set(
                 &secrets::session_key(&self.server, &self.login),
                 &self.token,
@@ -2891,5 +2891,75 @@ fn field_view(f: &PlainField, reveal: bool) -> FieldView {
             _ => None,
         },
         link: None,
+    }
+}
+
+/// A store that keeps nothing (`keeps_values` false) leaves the token in
+/// `sync.cbor`, and is still read for a token an older build kept there
+/// (docs/plan/60-auto-update.md §3). The store is the process's one, so
+/// this is the only test in the library that installs one, and it answers
+/// only for its own server.
+#[cfg(test)]
+mod read_only_store_tests {
+    use super::*;
+
+    const SERVER: &str = "https://read-only-store.test";
+
+    struct ReadOnly;
+
+    impl secrets::SecretStore for ReadOnly {
+        fn get(&self, key: &str) -> Result<Option<String>, String> {
+            Ok((key == secrets::session_key(SERVER, "older"))
+                .then(|| "token-from-an-older-build".to_string()))
+        }
+        fn set(&self, _: &str, _: &str) -> Result<(), String> {
+            panic!("a store that keeps nothing is never written")
+        }
+        fn delete(&self, _: &str) {}
+        fn keeps_values(&self) -> bool {
+            false
+        }
+    }
+
+    fn config(login: &str, token: &str) -> SyncConfig {
+        SyncConfig {
+            v: SYNC_V,
+            server: SERVER.into(),
+            login: login.into(),
+            profile_id: lockdown_vault::Id::new(),
+            token: token.into(),
+            expires_at: 0,
+            vaults: BTreeMap::new(),
+            last_sync_at: None,
+            sign_in: None,
+        }
+    }
+
+    #[test]
+    fn the_token_stays_in_the_file_and_an_older_one_is_still_read() {
+        secrets::install(Box::new(ReadOnly));
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sync.cbor");
+        config("now", "token-in-the-file").save(&path).unwrap();
+        let plain = SyncConfig::load_plain(&path).unwrap();
+        assert_eq!(plain.token, "token-in-the-file", "kept in the file");
+        assert_eq!(
+            SyncConfig::load(&path).unwrap().unwrap().token,
+            "token-in-the-file"
+        );
+        // A file an older build wrote with the token in the keychain: the
+        // token is read once, and saved back into the file.
+        config("older", "").save(&path).unwrap();
+        let mut read = SyncConfig::load(&path).unwrap().unwrap();
+        assert_eq!(read.token, "token-from-an-older-build");
+        read.save(&path).unwrap();
+        assert_eq!(
+            SyncConfig::load_plain(&path).unwrap().token,
+            "token-from-an-older-build"
+        );
+        read.login = "nobody".into();
+        read.token = String::new();
+        read.save(&path).unwrap();
+        assert_eq!(SyncConfig::load(&path).unwrap().unwrap().token, "");
     }
 }
