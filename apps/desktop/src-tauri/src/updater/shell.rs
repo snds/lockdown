@@ -78,7 +78,10 @@ impl Updates {
 }
 
 fn emit(handle: &AppHandle, updates: &Updates) {
-    let _ = handle.emit(EVENT, updates.status());
+    let status = updates.status();
+    #[cfg(feature = "update-test")]
+    e2e::on_status(handle, &status);
+    let _ = handle.emit(EVENT, status);
 }
 
 /// Sets up the updater: the plan, the status, the macOS menu item, and the
@@ -97,6 +100,8 @@ pub fn start(handle: &AppHandle, core: &App) {
         source,
     });
     handle.manage(updates.clone());
+    #[cfg(feature = "update-test")]
+    e2e::started(&updates.status(), updates.install, core);
     #[cfg(target_os = "macos")]
     if let Err(e) = install_menu(handle) {
         log::warn!("the Check for Updates menu item couldn't be added: {e}");
@@ -485,6 +490,90 @@ pub mod commands {
             tauri::async_runtime::spawn(check(handle.clone(), false));
         }
         Ok(updates.status())
+    }
+}
+
+/// The end-to-end run's hooks (`update-test` builds only; CI's
+/// `update-e2e` job, docs/plan/60-auto-update.md §7): build A and build B
+/// write what they see to `LOCKDOWN_UPDATE_TEST_REPORT`, a ready update
+/// restarts at once with `LOCKDOWN_UPDATE_TEST_AUTORESTART=1`, and with
+/// `LOCKDOWN_UPDATE_TEST_PASSWORD` the build opens the job's throwaway
+/// vault and reports how many items it holds. None of it exists in a
+/// shipped build: build.rs refuses the feature in a release, and
+/// `packaging/devtools/check.sh` looks for its marker.
+#[cfg(feature = "update-test")]
+mod e2e {
+    use std::io::Write;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    /// The vault was opened (or failed to), so a restart may come: the
+    /// run sees each build open the vault before it moves on.
+    static OPENED: AtomicBool = AtomicBool::new(true);
+
+    use super::{App, AppHandle, Install, UpdateState, UpdateStatus};
+
+    fn report(line: &str) {
+        let Some(path) = std::env::var_os("LOCKDOWN_UPDATE_TEST_REPORT") else {
+            return;
+        };
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
+            let _ = writeln!(f, "{line}");
+        }
+    }
+
+    pub fn started(status: &UpdateStatus, install: Install, core: &App) {
+        std::hint::black_box(super::super::TEST_MARKER);
+        report(&format!(
+            "started {} enabled={} install={install:?}",
+            status.version, status.enabled
+        ));
+        let Ok(password) = std::env::var("LOCKDOWN_UPDATE_TEST_PASSWORD") else {
+            return;
+        };
+        let core = core.clone();
+        let version = status.version.clone();
+        OPENED.store(false, Ordering::SeqCst);
+        std::thread::spawn(move || {
+            let opened = core
+                .unlock_with_password(&password)
+                .and_then(|_| core.list());
+            match opened {
+                Ok(items) => report(&format!("opened {version} items={}", items.len())),
+                Err(e) => report(&format!("open-failed {version} {}", e.message)),
+            }
+            OPENED.store(true, Ordering::SeqCst);
+        });
+    }
+
+    pub fn on_status(handle: &AppHandle, status: &UpdateStatus) {
+        report(&format!(
+            "state {} {:?} offered={} error={}",
+            status.version,
+            status.state,
+            status.offered.as_deref().unwrap_or("-"),
+            status.error.as_deref().unwrap_or("-")
+        ));
+        if status.state == UpdateState::Ready
+            && std::env::var("LOCKDOWN_UPDATE_TEST_AUTORESTART").as_deref() == Ok("1")
+        {
+            let handle = handle.clone();
+            std::thread::spawn(move || {
+                for _ in 0..600 {
+                    if OPENED.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                report("restarting");
+                if let Err(e) = super::restart(&handle) {
+                    report(&format!("restart-failed {}", e.message));
+                }
+            });
+        }
     }
 }
 

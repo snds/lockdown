@@ -241,6 +241,162 @@ jobs:
             echo "::error::build.rs let a dev-reset build through with LOCKDOWN_DEVTOOLS=off"; exit 1
           fi
           echo "build.rs refused dev-reset with LOCKDOWN_DEVTOOLS=off, as it must"
+          # The updater's test-only endpoint and key (docs/plan/60-auto-update.md §4).
+          if cargo check -p lockdown-desktop --features update-test 2>/dev/null; then
+            echo "::error::build.rs let an update-test build through with LOCKDOWN_DEVTOOLS=off"; exit 1
+          fi
+          echo "build.rs refused update-test with LOCKDOWN_DEVTOOLS=off, as it must"
+
+  # Automatic updates (docs/plan/60-auto-update.md §7): the channel's
+  # scripts' tests, then a bundle signed by `tauri signer sign` with a
+  # throwaway key made here, written into a manifest by the channel's own
+  # writer and checked by the updater's own signature check (the plugin's
+  # `Update::verify` under the mock runtime), which must also refuse it
+  # changed or under another key. No real key is involved.
+  updater:
+    name: updater · signed with a throwaway key
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install WebKitGTK and friends (Tauri Linux deps)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libdbus-1-dev libxdo-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - name: Install
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+      - name: The version stamp and the manifest writer
+        run: python3 packaging/update/test_update_scripts.py -v
+      - name: A throwaway key; a bundle signed for its version; the manifest
+        working-directory: apps/desktop
+        run: |
+          d="$RUNNER_TEMP/signed"
+          mkdir -p "$d"
+          version=0.1.0-main.20261107120000
+          echo "$version" > "$d/version"
+          pnpm tauri signer generate --ci -p "" -w "$d/key"
+          head -c 4096 /dev/urandom > "$d/bundle"
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" pnpm tauri signer sign -f "$d/key" --app-version "$version" "$d/bundle"
+          rm "$d/key"
+          cp "$d/bundle" "$d/Lockdown_${version}_universal.app.tar.gz"
+          cp "$d/bundle.sig" "$d/Lockdown_${version}_universal.app.tar.gz.sig"
+          python3 ../../packaging/update/write-manifest.py --version "$version" --pub-date 2026-11-07T12:00:00Z \
+            --base-url https://github.com/snds/lockdown/releases/download/main-build \
+            --bundle "darwin=$d/Lockdown_${version}_universal.app.tar.gz" --out "$d/latest.json"
+          jq . "$d/latest.json"
+          echo "LOCKDOWN_UPDATE_TEST_SIGNED=$d" >> "$GITHUB_ENV"
+      - name: Build the web UI (the shell embeds it)
+        working-directory: apps/desktop
+        run: pnpm build
+      - name: Clippy, the update-test feature on
+        run: cargo clippy -p lockdown-desktop --all-targets --features update-test -- -D warnings
+      - name: The updater's own check accepts it, and refuses it changed or under another key
+        run: cargo test -p lockdown-desktop --features update-test --lib updater -- --nocapture
+
+  # The whole update, on the two platforms that update themselves
+  # (docs/plan/60-auto-update.md §7): build A and build B (debug, with the
+  # test-only endpoint and key), install A, serve B from 127.0.0.1 signed
+  # with a throwaway key made here, and let A find, download, check and
+  # install B and restart; B must start and open the vault A had.
+  update-e2e:
+    name: update end to end (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: update-e2e
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - name: Install
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+      - name: A throwaway updater key
+        working-directory: apps/desktop
+        run: |
+          mkdir -p "$RUNNER_TEMP/upd"
+          pnpm tauri signer generate --ci -p "" -w "$RUNNER_TEMP/upd/key"
+      - name: Build A and B, and the CLI
+        run: packaging/update/e2e-build.sh "$RUNNER_TEMP/upd"
+      - name: Install A, serve B, update, open the vault
+        run: packaging/update/e2e-run.sh "$RUNNER_TEMP/upd"
+      - name: Forget the throwaway key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/upd/key"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: update-e2e-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/upd/report.txt
+            ${{ runner.temp }}/upd/app.log
+            ${{ runner.temp }}/upd/server.log
+          if-no-files-found: ignore
+
+  # What a keychain item does across two builds with different code
+  # identities (docs/plan/60-auto-update.md §3): an ad-hoc build's item is
+  # refused to the next ad-hoc build (a person would see a dialog), the
+  # app's store reads it as absent with no dialog, and one stable identity
+  # across both builds reads it fine. In a keychain made for the job.
+  keychain-macos:
+    name: keychain across builds (macos)
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: keychain-macos
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - name: Build the web UI (the shell embeds it)
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile && pnpm build
+      - name: The probe, built twice
+        run: |
+          mkdir -p "$RUNNER_TEMP/probe"
+          LOCKDOWN_PROBE_BUILD=a cargo build -p lockdown-desktop --features shell --example keychain-probe
+          cp target/debug/examples/keychain-probe "$RUNNER_TEMP/probe/a"
+          LOCKDOWN_PROBE_BUILD=b cargo build -p lockdown-desktop --features shell --example keychain-probe
+          cp target/debug/examples/keychain-probe "$RUNNER_TEMP/probe/b"
+          "$RUNNER_TEMP/probe/a" build; "$RUNNER_TEMP/probe/b" build
+      - name: Two ad-hoc builds, the app's store, one stable identity
+        run: packaging/update/keychain-check.sh "$RUNNER_TEMP/probe/out" "$RUNNER_TEMP/probe/a" "$RUNNER_TEMP/probe/b"
 
   # The design-review harness (design/capture/README.md): its typecheck,
   # which also checks the desktop's, the web vault's and the extension's

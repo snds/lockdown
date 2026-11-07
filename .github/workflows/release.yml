@@ -8,6 +8,17 @@
 # - `workflow_dispatch` and pull requests are dry runs: the same builds and
 #   packages, unsigned, with no attestation and no release. Pull requests
 #   run it so CI proves the release path works before anyone tags.
+# - A push to `main` (every merge) builds the "main" channel
+#   (docs/plan/60-auto-update.md): the same builds as a dry run, then the
+#   `main-channel` job signs the update bundles' manifest and replaces the
+#   assets of the one GitHub pre-release `main-build`, which the desktop app
+#   follows. Only that job may write, and only on a push to `main` with the
+#   updater's signing key present; a pull request never publishes.
+# - Every build but a tag's carries the version `<x.y.z>-main.<commit time,
+#   UTC, YYYYMMDDHHMMSS>`, stamped into every manifest that has one
+#   (packaging/update/stamp-version.py); a tag keeps its plain version.
+#   Windows builds NSIS only then: MSI takes no such version, and NSIS is
+#   the installer the updater runs.
 # - The developer tools (docs/plan/40-devtools.md) are on in dry runs and
 #   off in a `v*` tag build: LOCKDOWN_DEVTOOLS=off and
 #   src-tauri/tauri.release.conf.json turn both Cargo features and the
@@ -27,10 +38,13 @@
 #   APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID              (notarisation)
 #   WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD    (Authenticode)
 #   WINDOWS_MSIX_PUBLISHER                               (the certificate's subject)
+#   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+#                                   (the updater's key; read on a push to main only)
 name: Release
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
   pull_request:
@@ -38,6 +52,8 @@ on:
 permissions:
   contents: read
 
+# Runs on main queue one behind another, never side by side, so two merges
+# can't interleave; a newer queued run replaces an older queued one.
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -52,29 +68,47 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
+      base: ${{ steps.meta.outputs.base }}
       epoch: ${{ steps.meta.outputs.epoch }}
       real: ${{ steps.meta.outputs.real }}
+      publish: ${{ steps.meta.outputs.publish }}
     steps:
       - uses: actions/checkout@v4
       - id: meta
-        name: Read the version; on a tag, check every manifest agrees
+        name: Read the version; check every manifest agrees; stamp the main channel's
         run: |
-          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          base=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
           epoch=$(git log -1 --format=%ct)
           real=false
+          publish=false
+          for v in "$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)" \
+            "$(jq -r .version apps/desktop/package.json)" \
+            "$(jq -r .version extension/manifest.base.json)"; do
+            [ "$v" = "$base" ] || { echo "::error::Cargo.toml says $base but a manifest says $v"; exit 1; }
+          done
           if [ "${{ github.event_name }}" = push ] && [ "${GITHUB_REF#refs/tags/v}" != "$GITHUB_REF" ]; then
             real=true
             tag="${GITHUB_REF#refs/tags/v}"
-            for v in "$version" \
-              "$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)" \
-              "$(jq -r .version extension/manifest.base.json)"; do
-              [ "$v" = "$tag" ] || { echo "::error::tag v$tag but a manifest says $v"; exit 1; }
-            done
+            [ "$base" = "$tag" ] || { echo "::error::tag v$tag but the manifests say $base"; exit 1; }
+            version=$base
+          else
+            # The commit's own time, so a rerun of the same commit gets the
+            # same version, and each merge a higher one (semver compares the
+            # numeric field as a number).
+            version="$base-main.$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y%m%d%H%M%S)"
+            # Only a push to main publishes; a pull request never does.
+            if [ "${{ github.event_name }}" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then
+              publish=true
+            fi
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "epoch=$epoch" >> "$GITHUB_OUTPUT"
-          echo "real=$real" >> "$GITHUB_OUTPUT"
-          echo "version $version, SOURCE_DATE_EPOCH $epoch, real release: $real"
+          {
+            echo "version=$version"
+            echo "base=$base"
+            echo "epoch=$epoch"
+            echo "real=$real"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+          echo "version $version, SOURCE_DATE_EPOCH $epoch, real release: $real, publishes the main channel: $publish"
 
   # deb and rpm through Tauri's bundler, reproducibly: inside the pinned
   # Ubuntu 22.04 container (glibc 2.35, so older systems run them), then
@@ -91,6 +125,9 @@ jobs:
       LOCKDOWN_DEVTOOLS: ${{ needs.meta.outputs.real == 'true' && 'off' || 'on' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Stamp the version (every build but a tag's)
+        if: needs.meta.outputs.real != 'true'
+        run: python3 packaging/update/stamp-version.py "${{ needs.meta.outputs.version }}"
       - name: Build and bundle (deb, rpm), pinned and normalised
         run: packaging/repro/build-desktop.sh build
       - name: The developer tools are out of a release, in a dry run
@@ -218,6 +255,9 @@ jobs:
       LOCKDOWN_DEVTOOLS: ${{ needs.meta.outputs.real == 'true' && 'off' || 'on' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Stamp the version (every build but a tag's)
+        if: needs.meta.outputs.real != 'true'
+        run: python3 packaging/update/stamp-version.py "${{ needs.meta.outputs.version }}"
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
@@ -274,9 +314,43 @@ jobs:
       - name: Stage the browser host (universal, lipo)
         working-directory: apps/desktop
         run: node scripts/stage-host.mjs --universal --release
+      # The update bundle is signed for the updater: with the release key
+      # on a push to main (the secret reaches no other run), with a
+      # throwaway key made here otherwise, so every dry run proves the
+      # signing. A tag build makes no update bundle (unchanged).
+      - name: Updater signing key (not a tag build)
+        if: needs.meta.outputs.real != 'true'
+        working-directory: apps/desktop
+        env:
+          RELEASE_KEY: ${{ needs.meta.outputs.publish == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+        run: |
+          # The bundler checks each signature against plugins.updater.pubkey
+          # right after signing, so the key the bundle must match goes in:
+          # the app's own (updater.pub) for the release key, so a secret
+          # that doesn't match the app stops the build here.
+          if [ -n "$RELEASE_KEY" ]; then
+            pub=$(tr -d '[:space:]' < src-tauri/updater.pub)
+            echo "signing the update with the release key"
+          else
+            pnpm tauri signer generate --ci -p "" -w "$RUNNER_TEMP/throwaway-updater.key" > /dev/null
+            pub=$(tr -d '[:space:]' < "$RUNNER_TEMP/throwaway-updater.key.pub")
+            echo "THROWAWAY_UPDATER_KEY=$RUNNER_TEMP/throwaway-updater.key" >> "$GITHUB_ENV"
+            echo "signing the update with a throwaway key (not publishing)"
+          fi
+          printf '{"plugins":{"updater":{"pubkey":"%s"}}}\n' "$pub" > "$RUNNER_TEMP/updater-key.conf.json"
+          echo "UPDATER_CONFIG=--config src-tauri/tauri.updater.conf.json --config $RUNNER_TEMP/updater-key.conf.json" >> "$GITHUB_ENV"
       - name: Build and bundle (app, dmg)
         working-directory: apps/desktop
-        run: pnpm tauri build --ci --target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.bundle.conf.json $([ "$LOCKDOWN_DEVTOOLS" = off ] && echo --config src-tauri/tauri.release.conf.json)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ needs.meta.outputs.publish == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ needs.meta.outputs.publish == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+        run: |
+          if [ -n "${THROWAWAY_UPDATER_KEY:-}" ]; then
+            TAURI_SIGNING_PRIVATE_KEY="$(cat "$THROWAWAY_UPDATER_KEY")"; TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+          fi
+          export TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          # shellcheck disable=SC2086
+          pnpm tauri build --ci --target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.bundle.conf.json ${UPDATER_CONFIG:-} $([ "$LOCKDOWN_DEVTOOLS" = off ] && echo --config src-tauri/tauri.release.conf.json)
       - name: The developer tools are out of a release, in a dry run
         run: |
           app="$(ls -d target/universal-apple-darwin/release/bundle/macos/*.app | head -n 1)"
@@ -313,10 +387,25 @@ jobs:
           app="$(ls -d target/universal-apple-darwin/release/bundle/macos/*.app | head -n 1)"
           ditto -c -k --keepParent "$app" "out/Lockdown_${{ needs.meta.outputs.version }}_universal.app.zip"
           ls -la out
+          # The updater's bundle and its signature (not a tag build).
+          if [ "${{ needs.meta.outputs.real }}" != true ]; then
+            mkdir -p updater
+            v="${{ needs.meta.outputs.version }}"
+            cp target/universal-apple-darwin/release/bundle/macos/Lockdown.app.tar.gz "updater/Lockdown_${v}_universal.app.tar.gz"
+            cp target/universal-apple-darwin/release/bundle/macos/Lockdown.app.tar.gz.sig "updater/Lockdown_${v}_universal.app.tar.gz.sig"
+            ls -la updater
+          fi
+          rm -f "$RUNNER_TEMP/throwaway-updater.key"
       - uses: actions/upload-artifact@v4
         with:
           name: macos-universal
           path: out/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: needs.meta.outputs.real != 'true'
+        with:
+          name: updater-macos
+          path: updater/*
           if-no-files-found: error
 
   # The `lockdown` command for a Mac (docs/plan/46-mac-cli-download.md):
@@ -337,6 +426,9 @@ jobs:
       HAVE_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Stamp the version (every build but a tag's)
+        if: needs.meta.outputs.real != 'true'
+        run: python3 packaging/update/stamp-version.py "${{ needs.meta.outputs.version }}"
       - name: Remapped paths (no runner path in the binary)
         run: echo "RUSTFLAGS=--remap-path-prefix=$GITHUB_WORKSPACE=/lockdown --remap-path-prefix=$HOME/.cargo=/cargo" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
@@ -415,6 +507,9 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+      - name: Stamp the version (every build but a tag's)
+        if: needs.meta.outputs.real != 'true'
+        run: python packaging/update/stamp-version.py "${{ needs.meta.outputs.version }}"
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -449,9 +544,47 @@ jobs:
       - name: Stage the browser host for the bundler
         working-directory: apps/desktop
         run: node scripts/stage-host.mjs --release
-      - name: Build and bundle (msi, nsis)
+      # The update bundle is signed for the updater: with the release key
+      # on a push to main (the secret reaches no other run), with a
+      # throwaway key made here otherwise, so every dry run proves the
+      # signing. A tag build makes no update bundle (unchanged).
+      - name: Updater signing key (not a tag build)
+        if: needs.meta.outputs.real != 'true'
         working-directory: apps/desktop
-        run: pnpm tauri build --ci --bundles msi,nsis --config src-tauri/tauri.bundle.conf.json $SIGN_CONFIG $([ "$LOCKDOWN_DEVTOOLS" = off ] && echo --config src-tauri/tauri.release.conf.json)
+        env:
+          RELEASE_KEY: ${{ needs.meta.outputs.publish == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+        run: |
+          # The bundler checks each signature against plugins.updater.pubkey
+          # right after signing, so the key the bundle must match goes in:
+          # the app's own (updater.pub) for the release key, so a secret
+          # that doesn't match the app stops the build here.
+          if [ -n "$RELEASE_KEY" ]; then
+            pub=$(tr -d '[:space:]' < src-tauri/updater.pub)
+            echo "signing the update with the release key"
+          else
+            pnpm tauri signer generate --ci -p "" -w "$RUNNER_TEMP/throwaway-updater.key" > /dev/null
+            pub=$(tr -d '[:space:]' < "$RUNNER_TEMP/throwaway-updater.key.pub")
+            echo "THROWAWAY_UPDATER_KEY=$RUNNER_TEMP/throwaway-updater.key" >> "$GITHUB_ENV"
+            echo "signing the update with a throwaway key (not publishing)"
+          fi
+          printf '{"plugins":{"updater":{"pubkey":"%s"}}}\n' "$pub" > "$RUNNER_TEMP/updater-key.conf.json"
+          echo "UPDATER_CONFIG=--config src-tauri/tauri.updater.conf.json --config $RUNNER_TEMP/updater-key.conf.json" >> "$GITHUB_ENV"
+      # MSI takes no pre-release version, so the main channel's builds and
+      # dry runs make NSIS only; a tag build makes both, as before.
+      - name: Build and bundle (msi on a tag, nsis)
+        working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ needs.meta.outputs.publish == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ needs.meta.outputs.publish == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+        run: |
+          if [ -n "${THROWAWAY_UPDATER_KEY:-}" ]; then
+            TAURI_SIGNING_PRIVATE_KEY="$(cat "$THROWAWAY_UPDATER_KEY")"; TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+          fi
+          export TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          bundles=nsis
+          [ "${{ needs.meta.outputs.real }}" = true ] && bundles=msi,nsis
+          # shellcheck disable=SC2086
+          pnpm tauri build --ci --bundles $bundles --config src-tauri/tauri.bundle.conf.json $SIGN_CONFIG ${UPDATER_CONFIG:-} $([ "$LOCKDOWN_DEVTOOLS" = off ] && echo --config src-tauri/tauri.release.conf.json)
       - name: The developer tools are out of a release, in a dry run
         run: packaging/devtools/check.sh ${{ needs.meta.outputs.real == 'true' && 'absent' || 'present' }} target/release/lockdown-desktop.exe apps/desktop/dist
       - name: MSIX layout, packed unsigned
@@ -460,7 +593,7 @@ jobs:
           WINDOWS_MSIX_PUBLISHER: ${{ secrets.WINDOWS_MSIX_PUBLISHER }}
         run: |
           $publisher = if ($env:WINDOWS_MSIX_PUBLISHER) { $env:WINDOWS_MSIX_PUBLISHER } else { "CN=Sean Sands" }
-          pwsh packaging/msix/build-layout.ps1 -Version "${{ needs.meta.outputs.version }}" -AppExe target/release/lockdown-desktop.exe -HostExe target/release/lockdown-native-host.exe -Out out/msix -Publisher $publisher
+          pwsh packaging/msix/build-layout.ps1 -Version "${{ needs.meta.outputs.base }}" -AppExe target/release/lockdown-desktop.exe -HostExe target/release/lockdown-native-host.exe -Out out/msix -Publisher $publisher
       - name: Sign the MSIX (only with the secret)
         if: env.HAVE_SIGNING == 'true'
         shell: pwsh
@@ -470,12 +603,27 @@ jobs:
       - name: Collect
         run: |
           mkdir -p out/release
-          cp target/release/bundle/msi/*.msi target/release/bundle/nsis/*.exe out/msix/*.msix out/release/
+          cp target/release/bundle/nsis/*.exe out/msix/*.msix out/release/
+          if [ "${{ needs.meta.outputs.real }}" = true ]; then
+            cp target/release/bundle/msi/*.msi out/release/
+          else
+            # The updater's installer and its signature.
+            mkdir -p updater
+            cp target/release/bundle/nsis/*-setup.exe target/release/bundle/nsis/*-setup.exe.sig updater/
+            ls -la updater
+          fi
+          rm -f "$RUNNER_TEMP/throwaway-updater.key"
           ls -la out/release
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installers
           path: out/release/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: needs.meta.outputs.real != 'true'
+        with:
+          name: updater-windows
+          path: updater/*
           if-no-files-found: error
 
   # The store packages, reproducible (scripts/pack.mjs), and the source
@@ -534,6 +682,9 @@ jobs:
       SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
     steps:
       - uses: actions/checkout@v4
+      - name: Stamp the version (every build but a tag's)
+        if: needs.meta.outputs.real != 'true'
+        run: python3 packaging/update/stamp-version.py "${{ needs.meta.outputs.version }}"
       - uses: pnpm/action-setup@v4
         with:
           package_json_file: apps/web/package.json
@@ -582,6 +733,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Stamp the version (every build but a tag's)
+        if: needs.meta.outputs.real != 'true'
+        run: python3 packaging/update/stamp-version.py "${{ needs.meta.outputs.version }}"
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:
@@ -683,3 +837,113 @@ jobs:
             --title "Lockdown ${{ needs.meta.outputs.version }}" \
             --notes "Draft made by the release workflow. Check the files against SHA256SUMS and with \`gh attestation verify <file> --repo $GITHUB_REPOSITORY\` (docs/verify.md) before publishing." \
             dist/*
+
+  # The "main" channel (docs/plan/60-auto-update.md §2): on a push to main
+  # only, and only with the updater's signing key as a secret. The one job
+  # in this workflow that writes to the repository's releases outside a tag:
+  #
+  # 1. every update bundle's signature is checked against the key the app
+  #    carries (apps/desktop/src-tauri/updater.pub), so a mismatched secret
+  #    publishes nothing every installed app would refuse;
+  # 2. the deb is signed too (the Linux app only links to it, but the
+  #    manifest names a signature for every platform);
+  # 3. latest.json is written by packaging/update/write-manifest.py, which
+  #    refuses a version not newer than the one published;
+  # 4. the pre-release `main-build` (made on the first run, its tag moved to
+  #    this commit on every run) gets the new files, latest.json last, then
+  #    loses the old ones. It is always a pre-release and never "latest".
+  #
+  # A pull request never reaches it: `publish` is true only for a push to
+  # refs/heads/main (the meta job), the job's `if` checks the event and the
+  # ref again, and the signing secret is passed to no step of any other run.
+  # Without the secret it stops after saying so. Its own concurrency group
+  # keeps two runs from writing at once.
+  main-channel:
+    name: main channel · signed updates · main-build pre-release
+    needs: [meta, linux, flatpak, macos, windows]
+    if: needs.meta.outputs.publish == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    concurrency:
+      group: main-build-publish
+      cancel-in-progress: false
+    env:
+      HAVE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+      VERSION: ${{ needs.meta.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Without the signing key, nothing is published
+        if: env.HAVE_KEY != 'true'
+        run: echo "::notice::TAURI_SIGNING_PRIVATE_KEY isn't set, so the main channel wasn't published (a dry run)"
+      - uses: actions/checkout@v4
+        if: env.HAVE_KEY == 'true'
+      - uses: actions/download-artifact@v4
+        if: env.HAVE_KEY == 'true'
+        with:
+          path: dist
+          merge-multiple: true
+          pattern: "{updater-macos,updater-windows,linux-packages,linux-flatpak,macos-universal}"
+      - uses: pnpm/action-setup@v4
+        if: env.HAVE_KEY == 'true'
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v4
+        if: env.HAVE_KEY == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - name: Sign the deb (the Linux app's link)
+        if: env.HAVE_KEY == 'true'
+        working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          pnpm install --frozen-lockfile
+          for deb in ../../dist/*.deb; do pnpm tauri signer sign --app-version "$VERSION" "$deb"; done
+      - name: Every signature checks against the app's key
+        if: env.HAVE_KEY == 'true'
+        run: |
+          sudo apt-get update && sudo apt-get install -y minisign
+          base64 -d apps/desktop/src-tauri/updater.pub > "$RUNNER_TEMP/updater.pub"
+          for sig in dist/*.app.tar.gz.sig dist/*-setup.exe.sig dist/*.deb.sig; do
+            base64 -d "$sig" > "$RUNNER_TEMP/check.minisig"
+            minisign -V -p "$RUNNER_TEMP/updater.pub" -m "${sig%.sig}" -x "$RUNNER_TEMP/check.minisig"
+          done
+      - name: Write latest.json (never older than what is published)
+        if: env.HAVE_KEY == 'true'
+        run: |
+          gh release download main-build --repo "$GITHUB_REPOSITORY" --pattern latest.json --output "$RUNNER_TEMP/published.json" 2>/dev/null || echo "nothing published yet"
+          python3 packaging/update/write-manifest.py --version "$VERSION" \
+            --pub-date "$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)" \
+            --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/main-build" \
+            --notes "Built from $GITHUB_SHA on main." \
+            --bundle "darwin=$(ls dist/*_universal.app.tar.gz)" \
+            --bundle "windows=$(ls dist/*-setup.exe)" \
+            --bundle "linux=$(ls dist/*.deb)" \
+            --previous "$RUNNER_TEMP/published.json" --out dist/latest.json
+          cat dist/latest.json
+          (cd dist && sha256sum $(ls | grep -v '^latest.json$' | sort) > SHA256SUMS)
+      - name: Replace the main-build pre-release's files
+        if: env.HAVE_KEY == 'true'
+        run: |
+          repo="$GITHUB_REPOSITORY"
+          notes="The newest build of main ($VERSION, $GITHUB_SHA). Lockdown's desktop app updates itself from here. Not a release: tagged releases are drafts Sean publishes by hand."
+          if gh release view main-build --repo "$repo" > /dev/null 2>&1; then
+            gh api -X PATCH "repos/$repo/git/refs/tags/main-build" -f sha="$GITHUB_SHA" -F force=true > /dev/null
+            gh release edit main-build --repo "$repo" --prerelease --latest=false --title "Lockdown main ($VERSION)" --notes "$notes"
+          else
+            gh release create main-build --repo "$repo" --target "$GITHUB_SHA" --prerelease --latest=false --title "Lockdown main ($VERSION)" --notes "$notes"
+          fi
+          keep=$(cd dist && ls)
+          # The bundles first, latest.json last: the old manifest names the
+          # old files until the new one replaces it.
+          (cd dist && gh release upload main-build --repo "$repo" --clobber $(ls | grep -v '^latest.json$'))
+          gh release upload main-build --repo "$repo" --clobber dist/latest.json
+          for old in $(gh release view main-build --repo "$repo" --json assets -q '.assets[].name'); do
+            echo "$keep" | grep -qxF "$old" || gh release delete-asset main-build "$old" --repo "$repo" --yes
+          done
+          gh release view main-build --repo "$repo" --json isPrerelease,tagName,assets -q '{prerelease: .isPrerelease, tag: .tagName, files: [.assets[].name]}'
