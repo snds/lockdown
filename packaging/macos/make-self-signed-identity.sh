@@ -71,7 +71,7 @@ CNF
   -keyout "$work/key.pem" -out "$out/lockdown-self-signed.crt"
 # 3DES and SHA-1 MAC: the .p12 form macOS's `security import` reads.
 "$openssl" pkcs12 -export -inkey "$work/key.pem" -in "$out/lockdown-self-signed.crt" \
-  -name "$name" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES \
+  -name "$name" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 \
   -passout env:LOCKDOWN_IDENTITY_PASSWORD -out "$p12"
 rm -f "$work/key.pem"
 
@@ -79,15 +79,31 @@ rm -f "$work/key.pem"
 # a scratch binary signed with the identity, its signature read back.
 kc="$work/check.keychain-db"
 kcpass=$("$openssl" rand -hex 16)
+old_list=$("$security" list-keychains -d user | tr -d '"')
 "$security" create-keychain -p "$kcpass" "$kc" >/dev/null
+# codesign finds an identity only in a keychain on the search list; this
+# one is on it for the check and taken off again straight after.
+cleanup() {
+  # shellcheck disable=SC2086
+  "$security" list-keychains -d user -s $old_list 2>/dev/null || true
+  "$security" delete-keychain "$kc" 2>/dev/null || true
+  rm -rf "$work"
+}
+trap cleanup EXIT
 "$security" unlock-keychain -p "$kcpass" "$kc"
 "$security" import "$p12" -k "$kc" -P "$pass" -T /usr/bin/codesign >/dev/null
 "$security" set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kcpass" "$kc" >/dev/null
+# shellcheck disable=SC2086
+"$security" list-keychains -d user -s "$kc" $old_list
 sha1=$("$openssl" x509 -noout -fingerprint -sha1 -in "$out/lockdown-self-signed.crt" | sed 's/.*=//; s/://g')
+# The certificate and its private key both came in (an identity, not a lone certificate).
+"$security" find-identity -p codesigning "$kc" | grep -q "$sha1" \
+  || { echo "make-self-signed-identity: the .p12 imported no signing identity (the private key is missing)" >&2; exit 1; }
 printf 'lockdown signing check\n' >"$work/probe"
 codesign --force --sign "$sha1" --keychain "$kc" --identifier design.snds.lockdown "$work/probe"
 codesign -dvvv "$work/probe" 2>&1 | grep -q "Authority=$name" || { echo "make-self-signed-identity: the identity didn't sign" >&2; exit 1; }
-"$security" delete-keychain "$kc"
+cleanup
+trap - EXIT
 
 base64 <"$p12" | tr -d '\n' >"$p12.b64"
 chmod 600 "$p12" "$p12.b64"

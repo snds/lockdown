@@ -20,7 +20,7 @@ _It builds on D62 (wire and stored shapes only grow), D86 and D87 (the session t
 
   Linux packages, a machine-wide Windows install, and a Mac app in a folder the account can't write to can't replace themselves. There the app says a newer build exists and links to the release.
 
-  On a Mac, an ad-hoc build no longer keeps the session token in the keychain, so an update never brings up the keychain dialog (§3).
+  On a Mac the session token stays in the keychain (D684, Sean's call). Every keychain call runs with dialogs off, each signing identity has its own item, and the main channel signs with a stable self-signed identity, so an update never brings up the keychain dialog (§3).
 - **Read with:**
   - `apps/desktop/src-tauri/src/updater.rs`: the rules, pure and tested.
   - `updater/shell.rs`: the plugin, the commands, the background check, install on quit, the macOS menu item, the e2e hooks and the signature tests.
@@ -33,8 +33,8 @@ _It builds on D62 (wire and stored shapes only grow), D86 and D87 (the session t
   - Give the webview an updater permission. The page asks through the four commands.
   - Pass `TAURI_SIGNING_PRIVATE_KEY` to any step of a run other than a push to `main`. In the build jobs the expression yields an empty string unless `meta.publish` is true, and `main-channel` checks the event and the ref itself.
   - Mark `main-build` as latest, or make it a full release.
-  - Let the Mac app keep anything in the keychain while its signature isn't an Apple-issued one (D684).
-  - Read the keychain on a Mac with its dialogs on.
+  - Touch the Mac keychain with its dialogs on, or change an item another signing identity wrote (D684). Each identity writes its own item.
+  - Give the self-signed Mac identity to a pull request's build. The keychain trusts whatever that identity signs.
   - Turn on `update-test` in anything that ships. build.rs refuses it with `LOCKDOWN_DEVTOOLS=off`, and `packaging/devtools/check.sh` looks for its marker.
 
 ## 1. Architecture
@@ -149,38 +149,53 @@ The manifest names:
 - **Developer ID:** the requirement names the team and the identifier, which every build shares, so nothing is asked.
 - **Windows Credential Manager and the Secret Service:** these have no per-program list, so an update reads the token as before.
 
-**The options, weighed:**
+**Sean's decision (2026-11-07, D684):** keep the token in the Mac keychain on every build. Solve it without Apple, because there is no Developer ID yet. An earlier version of this slice kept ad-hoc builds' tokens in `sync.cbor`; that is reverted, and no core change remains.
 
-| Option | Dialog after an update | Needs someone to act | Weakness |
-|---|---|---|---|
-| A stable signing identity held by CI (a self-signed code-signing certificate) | none while the certificate lasts | Sean makes the certificate and adds two secrets; a lapse or a change of certificate brings back one dialog per item | a self-signed identity proves nothing to Gatekeeper; it is D493 in miniature, without Apple |
-| Keep the token out of the keychain in ad-hoc builds, in `sync.cbor` as the CLI keeps it | none | nothing | the token is protected like the device key file beside it (user-only, D87), not by the keychain's per-app list |
-| Read with the UI suppressed, treat a refusal as "sign in again" | none | the person signs in with the master password after every update | a sign-in on every update; writing the new token would ask again |
+**What the app does now (`keychain.rs`):**
+- **Dialogs off.** Every Mac keychain call (read, write, delete) runs with `SecKeychainSetUserInteractionAllowed(false)`. Anything macOS would have asked about comes back refused. A refused read is treated as no token, so the person signs in again with the master password. No keychain dialog ever appears.
+- **One item per signing identity.** The item's account is the key, then `#`, then a tag for this build's code identity:
+  - `cert-<first 8 bytes of the signing certificate's SHA-256>` for a build signed by a certificate (the self-signed identity below, or a Developer ID). Every build signed by that certificate shares the tag. The item's access list names the certificate, so the next build reads the token, renews it in place, and nothing is asked.
+  - `build-<first 8 bytes of the executable's SHA-256>` for an ad-hoc or unsigned build. Its identity is its own code.
+- **Never change another identity's item.** Changing it would ask. A new build adds its own item instead, which asks nothing, even with the old one still there.
+- **Old items.** An item from before identity tags (the bare key) is read once, dialogs off. If it is refused, the person signs in again, and the new token goes into this identity's own item.
+- **Windows Credential Manager and the Secret Service** have no per-program list, so they keep the bare key, as before.
 
-**Chosen:** the second option, with the third as a safety net, and the first left for D493.
-- A Mac build keeps the token in the keychain only when its own signature is a valid one from an Apple-issued certificate (it names a team), read at launch through `lockdown_codesign::macos::own`.
-- Any other build installs `keychain::Keychain` in read-only mode. `SecretStore::keeps_values` (new, default `true`) is `false`, so `SyncConfig::save` leaves the token in `sync.cbor`, user-only, exactly as with no store and as the CLI does on every platform.
-- The keychain is still read, for a token an older build left. That happens once, and the token then moves into the file on its next save.
-- **Every** keychain read on a Mac now runs with `SecKeychainSetUserInteractionAllowed(false)`. A read macOS would have asked about comes back refused, and is treated as no token: the person signs in with the master password, and is never shown a keychain dialog.
-- Nothing is deleted from the keychain in read-only mode, because deleting asks too. The developer reset finds those items (D482).
+**A stable self-signed identity from CI.** With one certificate signing every build, the tag and the access list stay the same from build to build, so the token simply carries over.
+- `packaging/macos/make-self-signed-identity.sh` (stock `/usr/bin/openssl`, which is LibreSSL, and `/usr/bin/security`) makes the identity once on Sean's Mac:
+  - a 10-year RSA-3072 code-signing certificate, `CN=Lockdown self-signed (snds)`;
+  - a `.p12` under a password it prompts for twice;
+  - a base64 copy of the `.p12`;
+  - a check that it signs.
+  It then prints the two secrets, `MACOS_SELFSIGNED_CERTIFICATE` and `MACOS_SELFSIGNED_CERTIFICATE_PASSWORD`, with the `gh secret set` commands. Nothing it makes is committed.
+- `release.yml`'s `macos` job signs in this order:
+  1. the Developer ID when its secrets exist;
+  2. else, on a push to `main` or a tag, the self-signed identity when `MACOS_SELFSIGNED_CERTIFICATE` exists;
+  3. else ad hoc.
 
-Sealing the token under the device key was considered and not done. On a Mac today the device key is a user-only file beside `sync.cbor` (D87), so a sealed token would be exactly as reachable, and the CLI would need a new format.
+  Pull requests never get the self-signed identity, because the keychain trusts whatever it signs. `packaging/macos/check-signature.sh` checks the app and the browser host for each of the three states. The browser channel's signature check (D359) already accepts two ends signed by the same self-signed certificate.
+- It does nothing for Gatekeeper. A download still needs "Open Anyway", and only a Developer ID (D493) fixes that. The identity fixes keychain continuity only.
 
-**One-time cost for an existing install.** A Mac that signed in with a pre-slice ad-hoc build has its token in the keychain, written by that build's identity. The first build with this slice reads it with dialogs off, is refused, and asks for the master password once (sign in again). From then on the token is in `sync.cbor`. That build had to be installed by hand anyway, because builds before it have no updater.
+**What is proven** (`keychain-macos`, `packaging/update/keychain-check.sh`, on `macos-latest`). It runs in a keychain made for the job, every call with dialogs off, and fails if `errSecInteractionNotAllowed` (-25308) appears anywhere. The same probe is built twice with a compile-time difference, so the two builds' code hashes differ. The probe goes through the app's own store.
 
-**What is proven, and what isn't.** The `keychain-macos` job (`packaging/update/keychain-check.sh`) runs on `macos-latest`, in a keychain made for the job and set as the default. It builds the same probe twice (`examples/keychain-probe.rs`, which goes through the app's own `Keychain` store), so the two binaries' code hashes differ:
-1. Build A, signed ad hoc, writes an item and reads it back with dialogs off. Build B, a different ad-hoc build, reading the same item with dialogs off, is **refused**. With dialogs on, a person would have been asked.
-2. Both ad-hoc builds report `read-only` mode, and B's read through the app's store says `absent`, with no dialog and no hang.
-3. The same two builds signed with **one** throwaway self-signed certificate: B reads A's item with dialogs off. A stable identity is enough.
+Part 1, two ad-hoc builds (run of 2706684):
+- A saved its token under `#build-a760…` and read it back.
+- B's direct read of A's item was refused with `-25293`, silently. B's own read said `absent` (sign in again).
+- B saved its fresh token beside A's item under `#build-befa…`, and read it back. A still read its own.
+- An item from before identity tags behaved the same: refused silently to B, and B's own save beside it worked.
+- B could **not** delete A's item or the bare-key item: both refused with `-25244` (`errSecInvalidOwnerEdit`), silently. B deleted its own.
 
-On this PR the job passed (run of 6562c53):
-- The two ad-hoc code hashes were `73d8062d…` and `be8d36cc…`.
-- A wrote and read its item back.
-- B, with dialogs off, was refused with `-25293` (`errSecAuthFailed`): the read macOS turns into the dialog.
-- Both builds ran read-only, and B's own store read said `absent`.
-- With one shared certificate (designated requirement `identifier "design.snds.lockdown" and certificate root = H"…"`), B read A's item.
+Part 2, the self-signed identity:
+- The identity is made by the script exactly as Sean will run it.
+- It is imported from the base64 secret form, as `release.yml` does.
+- Two different builds are signed with it. They must share a `cert-…` tag, and B must read A's token and renew it in place, with no sign-in.
 
-That job's result on this PR is in §5. It does **not** run the whole app across a real update with a signed-in account on a Mac, and it can't show a dialog on screen (the runner has no one to answer it). What it shows is the keychain's answer that macOS would have turned into a dialog. The full answer is still the Developer ID (D493), under which the token goes back into the keychain with nothing asked across updates. **Flagged for Sean.**
+The results of part 2 are in §5.
+
+**Stale items (gap).** A refused delete is silent, so neither sign-out nor a later build can remove another identity's item without a dialog. While builds are ad hoc, every update leaves one small `session:<login>@<server>#build-<tag>` item per signed-in account. At a merge a day, that is about 30 a month, or about 365 a year. Each holds one expired token, and none is ever read again. Once the self-signed secret exists, no new items appear: every build shares the `cert-…` tag and renews the same item. The leftovers can be removed in Keychain Access by the person, who is then asked for permission. A signed build can't sweep them, because they belong to other identities. The developer reset (D482) also can't remove them without a dialog.
+
+**One-time cost.** The first build after this change can't read what a different ad-hoc build saved, so it asks for the master password once (sign in again). The same happens once when the self-signed identity first signs a build.
+
+It does **not** run the whole app across a real update with a signed-in account. It shows the keychain's answers, which are what macOS turns into dialogs or not. **Flagged for Sean:** Developer ID remains the full answer for Gatekeeper.
 
 ## 4. The test-only endpoint and key
 
@@ -277,7 +292,8 @@ Earlier runs found two problems, both in the test, not the app:
 1. **The CLI has no `lockdown update`** (D546's gap 3 stands). It is planned to follow the same manifest.
 2. **Self-updating Linux.** The app links to the deb (§6).
 3. **The stable channel** (`v*` releases) is designed for, not built.
-4. **Developer ID (D493).** Until it exists, a Mac build keeps the session token in `sync.cbor`, and Gatekeeper's "Open Anyway" still applies to the first manual install.
+4. **Developer ID (D493).** Until it exists, Gatekeeper's "Open Anyway" still applies to the first manual install. The self-signed identity fixes only keychain continuity.
+9. **Stale keychain items in ad-hoc builds.** One item per update per account is left behind, about 365 a year at a merge a day, until `MACOS_SELFSIGNED_CERTIFICATE` exists. No build can delete them without a dialog; the person can, in Keychain Access (§3).
 5. **MSI in dry runs.** Pull requests no longer build the MSI (§2). Only a tag does.
 6. **A machine-wide Windows install** (Program Files) only links. A stable-channel MSI updater would need elevation, which Lockdown never asks for.
 7. **Release notes** in the manifest are one line naming the commit. There is no changelog.
@@ -301,7 +317,7 @@ Run from the worktree, with their final lines in the PR body:
 | D681 | **What an update must pass.** The manifest and the bundle come only over https from `github.com` and GitHub's release-asset hosts, with every redirect checked. The version must be strictly newer in semver. The bundle's minisign signature must check against the public key built in from `updater.pub` (ID 303459ECC0739D7D), and the version signed in its trusted comment must equal the manifest's (`requireSignedVersion`), so an older bundle can't be passed off as newer. A check sends no version, device or account, only the plugin's user agent. Plain version: only Sean's signed builds, newer than yours and fetched from GitHub, ever install. | Proposed; audit item |
 | D682 | **The version scheme.** Every build but a tag's is `<x.y.z>-main.<commit time, UTC, YYYYMMDDHHMMSS>`, stamped into `Cargo.toml`, the path dependencies, `Cargo.lock`, `tauri.conf.json` and both `package.json` files. The extension and MSIX keep `x.y.z`. A tag keeps its plain version. After a `v` tag, `Cargo.toml` moves to the next version so main builds sort after it. Plain version: each merge gets a higher number, worked out from the commit itself. | Proposed |
 | D683 | **Windows updates through NSIS, per user, passive.** MSI can't take the pre-release version, so main builds and dry runs make NSIS only, and tag builds keep MSI and NSIS. The updater runs the installer with `/P /UPDATE /R`. An install outside `%LOCALAPPDATA%` only links to the release, so no update ever asks for an administrator. Plain version: on Windows an update shows a progress bar and reopens Lockdown, with nothing to click. | Proposed |
-| D684 | **On a Mac without a Developer ID, the session token stays out of the keychain.** A build whose own signature isn't a valid Apple-issued one keeps the token in `sync.cbor` (user-only, as the CLI does). It reads the keychain only for a token an older build left. Every Mac keychain read runs with dialogs off, and a refusal means "sign in again". `SecretStore::keeps_values` is added (default true). Proven on `macos-latest` as far as §3 says. An existing ad-hoc install signs in once with the master password after its first updatable build. Plain version: updating never makes macOS ask about the keychain, and until Lockdown is signed by Apple's program your sign-in is kept the way the command line keeps it. | Proposed; **flagged for Sean** (the full answer is D493's Developer ID); audit item |
+| D684 | **The session token stays in the macOS keychain on every build (Sean, 2026-11-07), and an update never brings up a keychain dialog.**<br>• Every Mac keychain call runs with dialogs off, and a refused read means "sign in again" with the master password.<br>• Each signing identity has its own item (`#cert-<certificate>` or `#build-<code>`), so a new build adds its own item rather than changing another's, which would ask.<br>• The main channel and tags sign the Mac app with a stable self-signed identity (`MACOS_SELFSIGNED_CERTIFICATE`, made once with `make-self-signed-identity.sh`) when there is no Developer ID, so the token carries across updates. Ad hoc stays the fallback, and pull requests never get the identity.<br>• Ad-hoc builds leave one stale item per update, which no build can delete silently (gap 9).<br>Plain version: you're never asked about the keychain, and once the signing identity is set up you're not asked to sign in after an update either. | Proposed; **flagged for Sean** (Developer ID, D493, remains the full answer: the self-signed identity fixes the keychain, not Gatekeeper); audit item |
 | D685 | **The main channel is published by one job, on a push to `main`, only with the secret.** `main-channel` (`contents: write`, its own concurrency group):<br>• checks every signature against `updater.pub` with `minisign`;<br>• writes `latest.json` (never older than the published one);<br>• moves the `main-build` tag, uploads the new files with `latest.json` last, and deletes the old ones;<br>• always marks the release as a pre-release, never "latest".<br>A pull request can't publish: `meta.publish`, the job's own `if`, and the secret passed only when publishing. Without the secret it stops cleanly. `v*` releases are unchanged drafts. Plain version: every merge becomes the newest test build on one GitHub page, and nothing else can put a build there. | Proposed; audit item |
 | D686 | **Dry runs sign with a throwaway key.** Pull requests, `workflow_dispatch` and a `main` push without the secret sign the update bundles with a key made in the job. The bundler checks each signature against the key it should match (the app's own key when publishing). CI's `updater` job signs a bundle with a throwaway key and runs the updater's own check on it, which must accept it and refuse it changed or under another key. Plain version: every change proves the signing works without ever touching Sean's key. | Proposed |
 | D687 | **The test-only endpoint and key live in the `update-test` feature.** It is off in every shipped build, build.rs refuses it in a release, and the developer-tools check looks for its marker. It lets the end-to-end job install build A, serve build B from this computer, and see A update itself and B open the vault (macOS and Windows). Plain version: the tests can point the app at a fake update server, and no real build can. | Proposed; audit item |
