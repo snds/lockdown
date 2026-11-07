@@ -46,11 +46,31 @@ release_config=()
 if [ "${LOCKDOWN_DEVTOOLS:-on}" = off ]; then
   release_config=(--config src-tauri/tauri.release.conf.json)
 fi
-pnpm tauri build --ci --bundles deb,rpm --config src-tauri/tauri.bundle.conf.json "${release_config[@]}"
+# A main-channel build or dry run carries a pre-release version, which rpm
+# refuses in Version and which deb would order after the release
+# (docs/plan/60-auto-update.md §2, packaging/update/version-forms.py): the
+# deb is built with the app's version and its control Version rewritten to
+# x.y.z~main.<stamp>; the rpm is bundled from the same binary with Version
+# x.y.z and Release 0.main.<stamp>.
+version=$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["version"])')
+python3 /src/packaging/update/version-forms.py check "$version"
+case "$version" in
+  *-main.*)
+    pnpm tauri build --ci --bundles deb --config src-tauri/tauri.bundle.conf.json "${release_config[@]}"
+    pnpm tauri bundle --ci --bundles rpm --config src-tauri/tauri.bundle.conf.json "${release_config[@]}" \
+      --config "$(python3 /src/packaging/update/version-forms.py rpm-config "$version")"
+    ;;
+  *)
+    pnpm tauri build --ci --bundles deb,rpm --config src-tauri/tauri.bundle.conf.json "${release_config[@]}"
+    ;;
+esac
 
 cd /src
 deb=$(ls target/release/bundle/deb/*.deb)
 rpm=$(ls target/release/bundle/rpm/*.rpm)
+case "$version" in
+  *-main.*) python3 packaging/update/version-forms.py rewrite-deb "$deb" "$version" ;;
+esac
 python3 packaging/repro/normalize-package.py "$deb" "$rpm"
 mkdir -p /out/stage
 cp "$deb" "$rpm" /out/

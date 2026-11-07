@@ -29,6 +29,7 @@ import { QuickSettings } from "@/features/quick/quick-settings"
 import { ServerChecks } from "@/features/server/server-checks"
 import { ServerSettings } from "@/features/server/server-settings"
 import { useFirstRunClient, type QuickUnlock } from "@/features/unlock/first-run-client"
+import { AboutSection } from "@/features/updates/about-section"
 
 interface SettingsViewProps {
   status: Status
@@ -266,6 +267,8 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
       <AliasSettings onNotice={onNotice} onChanged={onChanged} />
 
       <ClockSetting />
+
+      <AboutSection />
 
       <ImportWizard
         open={transfer === "import"}

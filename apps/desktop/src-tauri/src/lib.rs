@@ -14,6 +14,7 @@ pub mod depth;
 pub mod first_run;
 pub mod hygiene;
 pub mod items;
+pub mod keychain;
 pub mod live;
 pub mod organization;
 pub mod paper;
@@ -25,6 +26,7 @@ pub mod security_depth;
 pub mod server_checks;
 pub mod sharing;
 pub mod transfer;
+pub mod updater;
 
 #[cfg(feature = "shell")]
 mod commands;
@@ -39,41 +41,8 @@ mod passkey_commands;
 mod shell {
     use std::time::Duration;
 
-    use lockdown_app::secrets::SecretStore;
     use lockdown_app::{App, LockPolicy, Paths};
     use tauri::Manager;
-
-    /// The keychain service every entry is filed under.
-    const SERVICE: &str = "design.snds.lockdown";
-
-    /// The session token in the OS keychain.
-    struct Keychain;
-
-    impl SecretStore for Keychain {
-        fn get(&self, key: &str) -> Result<Option<String>, String> {
-            let entry = keyring::Entry::new(SERVICE, key)
-                .map_err(|e| format!("the keychain isn't available: {e}"))?;
-            match entry.get_password() {
-                Ok(v) => Ok(Some(v)),
-                Err(keyring::Error::NoEntry) => Ok(None),
-                Err(e) => Err(format!("couldn't read from the keychain: {e}")),
-            }
-        }
-
-        fn set(&self, key: &str, value: &str) -> Result<(), String> {
-            let entry = keyring::Entry::new(SERVICE, key)
-                .map_err(|e| format!("the keychain isn't available: {e}"))?;
-            entry
-                .set_password(value)
-                .map_err(|e| format!("couldn't save to the keychain: {e}"))
-        }
-
-        fn delete(&self, key: &str) {
-            if let Ok(e) = keyring::Entry::new(SERVICE, key) {
-                let _ = e.delete_credential();
-            }
-        }
-    }
 
     /// Where the app lives: this computer's identity root and the
     /// `lockdown` directory beside it (D15, D47; Application Support on a
@@ -103,7 +72,9 @@ mod shell {
                     _ => PermissionResponse::Deny,
                 }
             })
-            .plugin(tauri_plugin_notification::init());
+            .plugin(tauri_plugin_notification::init())
+            // Automatic updates (docs/plan/60-auto-update.md), driven from Rust.
+            .plugin(super::updater::shell::plugin());
         // The developer reset and the demo (docs/plan/40-devtools.md).
         #[cfg(any(feature = "dev-reset", feature = "demo-vault"))]
         let builder = builder.plugin(lockdown_devtools::shell::plugin());
@@ -118,7 +89,11 @@ mod shell {
                             .build(),
                     )?;
                 }
-                lockdown_app::secrets::install(Box::new(Keychain));
+                // The OS keychain, or on a Mac whose identity changes with
+                // every build, sync.cbor (docs/plan/60-auto-update.md §3).
+                lockdown_app::secrets::install(Box::new(
+                    super::keychain::Keychain::for_this_build(),
+                ));
                 // The local account's server, inside the app, before the core
                 // opens anything (docs/plan/39-first-run.md §1.1).
                 lockdown_server::local::install();
@@ -142,6 +117,8 @@ mod shell {
                 // (docs/plan/26-desktop-finish.md §2, §6).
                 app.manage(super::hygiene::CaptureCount::default());
                 super::quick::commands::start(app.handle(), &core);
+                // Updates: the check at launch and every six hours.
+                super::updater::shell::start(app.handle(), &core);
                 // WebKitGTK keeps getUserMedia off until the host turns it on;
                 // the permission handler above still answers each request.
                 #[cfg(target_os = "linux")]
@@ -168,8 +145,14 @@ mod shell {
                 }
             })
             .invoke_handler(super::commands::handler())
-            .run(tauri::generate_context!())
-            .expect("the Lockdown window starts");
+            .build(tauri::generate_context!())
+            .expect("the Lockdown window starts")
+            .run(|handle, event| {
+                // A downloaded update not taken installs as the app closes.
+                if let tauri::RunEvent::Exit = event {
+                    super::updater::shell::on_exit(handle);
+                }
+            });
         // Give the worker a moment to drop the keys on the way out.
         std::thread::sleep(Duration::from_millis(50));
     }

@@ -610,6 +610,10 @@ criteria = "safe-to-deploy"
 version = "0.3.6"
 criteria = "safe-to-deploy"
 
+[[exemptions.filetime]]
+version = "0.2.29"
+criteria = "safe-to-deploy"
+
 [[exemptions.find-msvc-tools]]
 version = "0.1.14"
 criteria = "safe-to-deploy"
@@ -1078,6 +1082,10 @@ criteria = "safe-to-deploy"
 version = "0.2.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.minisign-verify]]
+version = "0.3.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.miniz_oxide]]
 version = "0.9.1"
 criteria = "safe-to-deploy"
@@ -1198,6 +1206,10 @@ criteria = "safe-to-deploy"
 version = "0.3.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.objc2-osa-kit]]
+version = "0.3.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.objc2-system-configuration]]
 version = "0.3.2"
 criteria = "safe-to-deploy"
@@ -1248,6 +1260,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.os_pipe]]
 version = "1.2.3"
+criteria = "safe-to-deploy"
+
+[[exemptions.osakit]]
+version = "0.3.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.pango]]
@@ -1798,6 +1814,14 @@ criteria = "safe-to-deploy"
 version = "0.14.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.system-configuration]]
+version = "0.7.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.system-configuration-sys]]
+version = "0.6.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.system-deps]]
 version = "6.2.2"
 criteria = "safe-to-deploy"
@@ -1808,6 +1832,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.tao-macros]]
 version = "0.1.4"
+criteria = "safe-to-deploy"
+
+[[exemptions.tar]]
+version = "0.4.46"
 criteria = "safe-to-deploy"
 
 [[exemptions.target-lexicon]]
@@ -1860,6 +1888,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.tauri-plugin-opener]]
 version = "2.7.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.tauri-plugin-updater]]
+version = "2.14.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.tauri-runtime]]
@@ -2206,6 +2238,10 @@ criteria = "safe-to-deploy"
 version = "0.3.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.windows-registry]]
+version = "0.6.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.windows-result]]
 version = "0.4.1"
 criteria = "safe-to-deploy"
@@ -2396,6 +2432,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.x509-parser]]
 version = "0.18.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.xattr]]
+version = "1.6.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.xdg-home]]

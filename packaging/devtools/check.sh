@@ -6,7 +6,9 @@
 #
 # It looks for strings only a build with the tools carries: the marker
 # (lockdown_devtools::MARKER, apps/desktop/src/devtools/marker.ts), the
-# plugin's command names, and the default demo pack's name and format. A
+# plugin's command names, the default demo pack's name and format, and the
+# updater's test-only marker (the `update-test` feature,
+# lockdown_desktop_lib::updater::TEST_MARKER). A
 # folder is searched whole (the front end before Tauri compresses it into
 # the binary); a file as bytes (`grep -a`), so a binary is searched too.
 set -euo pipefail
@@ -22,6 +24,8 @@ needles=(
   "reset_plan"
   "lockdown-demo-pack"
   "Lockdown QA pack"
+  # The updater's test-only endpoint and key (docs/plan/60-auto-update.md §4).
+  "lockdown-update-test-3b9d"
 )
 
 found=0
