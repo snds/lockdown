@@ -219,7 +219,28 @@ It is never in `tauri.conf.json`'s features, so development builds, dry runs and
 - That build run under `xvfb-run` against a manifest served on 127.0.0.1. It reported `Checking`, then `Available` for B (Linux links, doesn't install).
 - The request it sent, captured header by header, is the one in §1.
 
-**Results on PR #56.** These are filled in from the CI run of the final commit; see the PR body. A platform not listed as passed was not proven.
+**Results on PR #56.** These are from the `update-e2e` runs of 0f49cbb and 3ab34e9, which both passed on both platforms.
+
+| Platform | What the report shows | Proven |
+|---|---|---|
+| macOS (`macos-latest`, ad-hoc debug `.app` in a folder the account owns) | A `0.1.0-main.20260101000000` started (`InPlace`), opened the vault (1 item), checked, became Ready with B, and restarted. B `…0102…` started, opened the vault (1 item) and found itself up to date. The installed bundle's `Info.plist` says B, and the CLI lists the item afterwards. | yes |
+| Windows (`windows-latest`, NSIS per user under `%LOCALAPPDATA%\Lockdown`) | The same sequence. B was started by the passive installer (`/P /UPDATE /R`) through Explorer. The installed exe's ProductVersion and FileVersion are B's, and the CLI lists the item afterwards. | yes |
+| Linux | Not an in-place update by design (§6). The check and the `Available` state were run locally under `xvfb-run` (above). | the check only |
+
+The Release dry run of 3ab34e9 passed every job:
+- deb `0.1.0~main.20261107031513`, and rpm `Lockdown-0.1.0-0.main.20261107031513`, both installed in the Ubuntu 24.04, Debian 12 and Fedora 41 containers;
+- the Flatpak;
+- the universal Mac app's `.app.tar.gz` and the NSIS `-setup.exe`, each signed for the updater with a throwaway key;
+- `main-channel` skipped, as a pull request must.
+
+Earlier runs found two problems, both in the test, not the app:
+- The CLI takes its data place only from `--root`, so the run's vault went elsewhere.
+- On Windows, the new build is started through Explorer and doesn't inherit the old build's environment, hence `update-test.json`.
+
+**Not proven:**
+- An update over the real GitHub hosts with the release key. That happens on the first push to `main` after this merges.
+- The release (non-debug) bundles' update. The e2e uses debug builds, because the plugin refuses a plain-http endpoint in a release build.
+- A machine-wide Windows install or a read-only Mac folder, which only link (§6).
 
 ## 6. Windows and Linux
 
@@ -266,7 +287,11 @@ It is never in `tauri.conf.json`'s features, so development builds, dry runs and
 
 ## 9. Gates run
 
-Listed in the PR body with their final output.
+Run from the worktree, with their final lines in the PR body:
+- Rust: `cargo fmt`, workspace clippy, wasm clippy, `cargo deny`, `cargo vet`, desktop clippy and tests with `shell` and with `update-test`, and `lockdown-app` tests.
+- Desktop: typecheck, lint, test, build, `ds:ratchet`.
+- Web vault: wasm, typecheck, lint, test, build and e2e.
+- The scripts' tests.
 
 ## 10. Proposed decisions
 
