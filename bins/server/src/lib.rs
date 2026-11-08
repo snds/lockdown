@@ -80,6 +80,7 @@ pub mod sharing_api;
 pub mod storage;
 pub mod tls;
 pub mod token;
+pub mod updates;
 pub mod web_vault;
 
 use std::collections::HashMap;
@@ -272,6 +273,9 @@ pub struct AppState {
     /// Session renewal's challenges between their two round trips
     /// (`renewal`).
     pub renewals: renewal::Challenges,
+    /// The update check: the running version against the main channel's
+    /// manifest (`updates`).
+    pub updates: updates::Updates,
 }
 
 impl std::fmt::Debug for AppState {
@@ -302,6 +306,7 @@ impl AppState {
             admin: admin::AdminState::default(),
             mirrors: mirror::MirrorState::default(),
             renewals: renewal::Challenges::default(),
+            updates: updates::Updates::default(),
         }
     }
 

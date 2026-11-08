@@ -71,6 +71,11 @@ tower.workspace = true
 # with the system's own responder.
 socket2 = { version = "0.6", features = ["all"] }
 
+# The update check (updates.rs): the shared kit's rules, the same ones the
+# desktop app follows (no `tauri` feature), and the version order.
+snds-app-updates.workspace = true
+semver = "1"
+
 [dev-dependencies]
 http-body-util.workspace = true
 tempfile.workspace = true

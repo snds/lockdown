@@ -14,6 +14,12 @@
 #   assets of the one GitHub pre-release `main-build`, which the desktop app
 #   follows. Only that job may write, and only on a push to `main` with the
 #   updater's signing key present; a pull request never publishes.
+# - The same push also publishes the server image (docs/plan/61-server-updates.md):
+#   `server-image` pushes the `server` job's reproducible OCI archive, digest
+#   unchanged, to the repository's own package `ghcr.io/<owner>/lockdown-server`,
+#   tagged `<the main-channel version>` and `main`, with build provenance.
+#   It needs no secret (GITHUB_TOKEN with `packages: write`), and a pull
+#   request never reaches it.
 # - Every build but a tag's carries the version `<x.y.z>-main.<commit time,
 #   UTC, YYYYMMDDHHMMSS>`, stamped into every manifest that has one
 #   (packaging/update/stamp-version.py); a tag keeps its plain version.
@@ -708,7 +714,8 @@ jobs:
           if-no-files-found: error
 
   # The server and CLI binaries and the server image, each reproducible
-  # (packaging/repro/); the image is an OCI archive, never pushed.
+  # (packaging/repro/); the image is an OCI archive, pushed only by
+  # `server-image` on a push to main.
   server:
     name: server · cli · image
     needs: meta
@@ -759,6 +766,68 @@ jobs:
           name: server
           path: release/*
           if-no-files-found: error
+
+  # The server image on the main channel (docs/plan/61-server-updates.md,
+  # D690): on a push to main only. The `server` job's OCI archive is pushed
+  # as it is (`--preserve-digests`, so the published digest is the
+  # reproducible build's) to ghcr.io/<owner>/lockdown-server, tagged with
+  # the main-channel version and the rolling `main`, and its build
+  # provenance is attested to the registry. A running server reads the
+  # same version from main-build's latest.json and says when a newer one
+  # is out; nothing here reaches a running server. Its own concurrency
+  # group keeps two runs from moving `main` at once.
+  server-image:
+    name: server image · ghcr.io (main channel)
+    needs: [meta, server]
+    if: needs.meta.outputs.publish == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    concurrency:
+      group: server-image-publish
+      cancel-in-progress: false
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: server
+          path: dist
+      - name: Push the archive unchanged (the version tag, then main)
+        id: push
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/lockdown-server"
+          archive="dist/lockdown-server-$VERSION-image.oci.tar"
+          command -v skopeo > /dev/null || { sudo apt-get update && sudo apt-get install -y skopeo; }
+          skopeo --version
+          printf '%s' "$REGISTRY_TOKEN" | skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          local_digest=$(skopeo inspect --format '{{.Digest}}' "oci-archive:$archive")
+          skopeo copy --preserve-digests "oci-archive:$archive" "docker://$image:$VERSION"
+          pushed=$(skopeo inspect --format '{{.Digest}}' "docker://$image:$VERSION")
+          echo "archive $local_digest, pushed $pushed"
+          [ "$local_digest" = "$pushed" ] || { echo "::error::the pushed image's digest isn't the archive's"; exit 1; }
+          # The rolling tag moves only after the version tag is in place.
+          skopeo copy --preserve-digests "docker://$image:$VERSION" "docker://$image:main"
+          [ "$(skopeo inspect --format '{{.Digest}}' "docker://$image:main")" = "$pushed" ]
+          {
+            echo "image=$image"
+            echo "digest=$pushed"
+          } >> "$GITHUB_OUTPUT"
+          echo "::notice::published $image:$VERSION and $image:main ($pushed)"
+      - name: Build provenance for the image
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ steps.push.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
 
   # CycloneDX SBOMs: the Rust workspace (every crate, every feature, from
   # Cargo.lock) and each JavaScript app (from its pnpm lock file).

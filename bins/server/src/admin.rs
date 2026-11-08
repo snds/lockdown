@@ -590,6 +590,7 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/admin/backups/run", post(backup_run))
         .route("/admin/drills/run", post(drill_run))
         .merge(crate::admin_passkeys::routes())
+        .merge(crate::updates::routes())
 }
 
 fn store(state: &AppState) -> Option<&SqlStorage> {
@@ -956,6 +957,7 @@ pub async fn overview(State(state): State<Arc<AppState>>, headers: HeaderMap) ->
         ));
     }
     out.push_str("</ul></div>");
+    out.push_str(&crate::updates::section(&state, &hidden(&csrf)));
     shell(&csrf, "/admin", "Overview", &out)
 }
 

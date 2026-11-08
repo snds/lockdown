@@ -598,6 +598,130 @@ async fn the_admin_page_needs_the_operator_key_and_invites_open_closed_signups_o
     assert_eq!(s, StatusCode::UNAUTHORIZED);
 }
 
+/// The manifest a test serves, and every address asked for.
+struct Manifest(&'static str, Mutex<Vec<String>>);
+
+impl lockdown_server::updates::ManifestSource for Manifest {
+    fn fetch(&self, url: &str) -> Result<Vec<u8>, String> {
+        self.1.lock().unwrap().push(url.to_string());
+        Ok(self.0.as_bytes().to_vec())
+    }
+}
+
+async fn signed_in_router(state: AppState) -> (Router, String) {
+    let key = lockdown_server::admin::generate_key().unwrap();
+    state.storage.sql().unwrap().set_operator_key(&key).unwrap();
+    let router = app(Arc::new(state));
+    let (_, h, _) = page(
+        &router,
+        "POST",
+        "/admin/sign-in",
+        None,
+        &format!("key={}", key.as_str()),
+    )
+    .await;
+    (router, cookie_from(&h))
+}
+
+#[tokio::test]
+async fn the_admin_page_checks_for_updates_and_shows_the_command_for_a_newer_build() {
+    use lockdown_server::updates::{FEED, UPDATE_COMMAND, Updates};
+    let source = Arc::new(Manifest(
+        r#"{"version":"0.1.0-main.20261109120000","platforms":{}}"#,
+        Mutex::default(),
+    ));
+    let mut state = AppState::in_memory(Config::default()).unwrap();
+    state.updates = Updates::new(
+        semver::Version::parse("0.1.0-main.20261108090000").unwrap(),
+        Some(source.clone()),
+    );
+    let (router, cookie) = signed_in_router(state).await;
+
+    // Before any check: the version, the channel, the switch on.
+    let (_, _, html) = page(&router, "GET", "/admin", Some(&cookie), "").await;
+    assert!(html.contains("Lockdown server 0.1.0-main.20261108090000</b> · main channel"));
+    assert!(html.contains("checks for updates when it starts and every six hours"));
+    assert!(html.contains("name=\"auto\" value=\"on\" checked"));
+    let csrf = csrf_of(&html);
+
+    // A form from another page checks nothing.
+    let (s, h, _) = page(
+        &router,
+        "POST",
+        "/admin/updates/check",
+        Some(&cookie),
+        "csrf=00",
+    )
+    .await;
+    assert_eq!(s, StatusCode::SEE_OTHER);
+    assert_eq!(h[header::LOCATION], "/admin#updates");
+    assert!(source.1.lock().unwrap().is_empty());
+    // Signed out, nothing either.
+    let (s, _, _) = page(
+        &router,
+        "POST",
+        "/admin/updates/check",
+        None,
+        &format!("csrf={csrf}"),
+    )
+    .await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    assert!(source.1.lock().unwrap().is_empty());
+
+    // Check for updates: one read of the main channel's manifest.
+    page(
+        &router,
+        "POST",
+        "/admin/updates/check",
+        Some(&cookie),
+        &format!("csrf={csrf}"),
+    )
+    .await;
+    assert_eq!(
+        *source.1.lock().unwrap(),
+        vec![FEED.main_endpoint.to_string()]
+    );
+    let (_, _, html) = page(&router, "GET", "/admin", Some(&cookie), "").await;
+    assert!(html.contains("Version 0.1.0-main.20261109120000 is out."));
+    assert!(html.contains(&UPDATE_COMMAND.replace('&', "&amp;")));
+    assert!(html.contains("ghcr.io/snds/lockdown-server:0.1.0-main.20261109120000"));
+    assert!(html.contains("One-click Update and Reload come later"));
+    assert!(html.contains("Last checked"));
+
+    // The switch: off, then kept off.
+    page(
+        &router,
+        "POST",
+        "/admin/updates/auto",
+        Some(&cookie),
+        &format!("csrf={csrf}"),
+    )
+    .await;
+    let (_, _, html) = page(&router, "GET", "/admin", Some(&cookie), "").await;
+    assert!(html.contains("name=\"auto\" value=\"on\">"));
+    page(
+        &router,
+        "POST",
+        "/admin/updates/auto",
+        Some(&cookie),
+        &format!("csrf={csrf}&auto=on"),
+    )
+    .await;
+    let (_, _, html) = page(&router, "GET", "/admin", Some(&cookie), "").await;
+    assert!(html.contains("name=\"auto\" value=\"on\" checked"));
+}
+
+#[tokio::test]
+async fn a_build_from_source_says_it_doesnt_check_and_offers_no_button() {
+    let (router, cookie) = signed_in_router(AppState::in_memory(Config::default()).unwrap()).await;
+    let (_, _, html) = page(&router, "GET", "/admin", Some(&cookie), "").await;
+    // Tests run unstamped (0.1.0): not a main-channel build.
+    if lockdown_server::updates::running().pre.is_empty() {
+        assert!(html.contains(lockdown_server::updates::OFF_NOT_MAIN));
+        assert!(!html.contains("/admin/updates/check"));
+    }
+}
+
 #[test]
 fn scheduled_backups_pass_their_drill_and_a_changed_or_foreign_backup_fails() {
     use lockdown_server::backup::BackupKey;

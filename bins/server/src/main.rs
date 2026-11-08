@@ -802,6 +802,17 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
             cli.drill_every_hours.max(1)
         );
     }
+    // The update check (docs/plan/61-server-updates.md): main-channel
+    // builds only; it says, never restarts anything.
+    if lockdown_server::updates::spawn(state.clone())
+        .map_err(|e| format!("couldn't start the update check: {e}"))?
+        .is_some()
+    {
+        eprintln!(
+            "lockdown-server: {} checks for updates at start and every 6 h (the admin page has the switch)",
+            env!("CARGO_PKG_VERSION")
+        );
+    }
     let groups = if cli.tls_pq_only {
         lockdown_tls::Groups::HybridOnly
     } else {
