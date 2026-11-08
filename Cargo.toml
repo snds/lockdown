@@ -78,6 +78,11 @@ ecosystem-identity = { git = "https://github.com/snds/ecosystem-identity", rev =
 # rules and its Tauri glue, extracted from this repo's slice 59. Pinned by
 # tag; `v0.1.0` is commit 83b0a69 (the lockfile holds the commit).
 snds-app-updates = { git = "https://github.com/snds/app-updates", tag = "v0.1.0", version = "0.1.0" }
+# The host helper's client (U5, lane D item 3; docs/plan/61-server-updates.md
+# §6, D691): the admin page's one-click Update and Reload ask the helper on
+# the host. The client and the protocol only (`default-features = false`: no
+# allow-list, no Docker code). Pinned by commit until the helper is tagged.
+snds-app-updates-host-helper = { git = "https://github.com/snds/app-updates", rev = "c0ff0bfcb6eab8aa8287f33739ff149016d1e4bf", version = "0.1.0", default-features = false }
 
 # Workspace crates.
 lockdown-crypto = { path = "crates/crypto", version = "0.1.0" }

@@ -77,5 +77,6 @@ unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # The shared identity crate (D34), pinned by commit, and the shared update
-# kit (U2), pinned by tag, in Cargo.toml.
+# kit (U2), pinned by tag, and its host helper client (D691), pinned by
+# commit, in Cargo.toml.
 allow-git = ["https://github.com/snds/ecosystem-identity", "https://github.com/snds/app-updates"]

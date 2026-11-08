@@ -813,6 +813,20 @@ fn serve(cli: ServeArgs) -> Result<(), String> {
             env!("CARGO_PKG_VERSION")
         );
     }
+    // One-click Update and Reload (docs/plan/61-server-updates.md §6): the
+    // host helper's settings, from its host-helper.env. Never the key in a
+    // log line.
+    let helper = lockdown_server::helper::Setting::from_env();
+    match &helper {
+        lockdown_server::helper::Setting::Ready(_) => {
+            eprintln!("lockdown-server: the admin page's Update and Reload ask the host helper")
+        }
+        lockdown_server::helper::Setting::Broken(why) => {
+            eprintln!("lockdown-server: the host helper's settings aren't usable: {why}")
+        }
+        lockdown_server::helper::Setting::Off => {}
+    }
+    state.updates.set_helper(helper);
     let groups = if cli.tls_pq_only {
         lockdown_tls::Groups::HybridOnly
     } else {

@@ -3673,6 +3673,7 @@ dependencies = [
  "sha1 0.11.0",
  "sha2 0.11.1",
  "snds-app-updates",
+ "snds-app-updates-host-helper",
  "socket2",
  "tempfile",
  "thiserror 2.0.21",
@@ -6016,6 +6017,18 @@ dependencies = [
  "tauri",
  "tauri-plugin-updater",
  "url",
+]
+
+[[package]]
+name = "snds-app-updates-host-helper"
+version = "0.1.0"
+source = "git+https://github.com/snds/app-updates?rev=c0ff0bfcb6eab8aa8287f33739ff149016d1e4bf#c0ff0bfcb6eab8aa8287f33739ff149016d1e4bf"
+dependencies = [
+ "getrandom 0.3.4",
+ "hmac 0.12.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]

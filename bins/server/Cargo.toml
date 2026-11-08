@@ -75,6 +75,9 @@ socket2 = { version = "0.6", features = ["all"] }
 # desktop app follows (no `tauri` feature), and the version order.
 snds-app-updates.workspace = true
 semver = "1"
+# One-click Update and Reload (helper.rs): the host helper's client,
+# signed requests over its private network, signed replies checked.
+snds-app-updates-host-helper.workspace = true
 
 [dev-dependencies]
 http-body-util.workspace = true

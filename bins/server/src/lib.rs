@@ -60,6 +60,7 @@ pub mod db;
 pub mod drill_account;
 pub mod drills;
 pub mod harden;
+pub mod helper;
 pub mod keys;
 pub mod kit;
 pub mod legacy;

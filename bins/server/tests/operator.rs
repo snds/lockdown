@@ -685,7 +685,9 @@ async fn the_admin_page_checks_for_updates_and_shows_the_command_for_a_newer_bui
     assert!(html.contains("Version 0.1.0-main.20261109120000 is out."));
     assert!(html.contains(&UPDATE_COMMAND.replace('&', "&amp;")));
     assert!(html.contains("ghcr.io/snds/lockdown-server:0.1.0-main.20261109120000"));
-    assert!(html.contains("One-click Update and Reload come later"));
+    // No host helper set up: the command, and where to install the helper.
+    assert!(html.contains(lockdown_server::helper::INSTALL_STEPS));
+    assert!(!html.contains("/admin/updates/reload"));
     assert!(html.contains("Last checked"));
 
     // The switch: off, then kept off.
@@ -709,6 +711,255 @@ async fn the_admin_page_checks_for_updates_and_shows_the_command_for_a_newer_bui
     .await;
     let (_, _, html) = page(&router, "GET", "/admin", Some(&cookie), "").await;
     assert!(html.contains("name=\"auto\" value=\"on\" checked"));
+}
+
+/// A host helper that answers as told and remembers each request.
+struct Helper {
+    refuse: Option<host_helper::ClientError>,
+    asked: Mutex<Vec<host_helper::UpdateRequest>>,
+    restarts: Mutex<usize>,
+}
+
+impl lockdown_server::helper::HostHelper for Helper {
+    fn update(
+        &self,
+        request: &host_helper::UpdateRequest,
+    ) -> Result<host_helper::UpdateReply, host_helper::ClientError> {
+        self.asked.lock().unwrap().push(request.clone());
+        match &self.refuse {
+            Some(e) => Err(e.clone()),
+            None => Ok(host_helper::UpdateReply {
+                stack: "lockdown".into(),
+                pulled: format!(
+                    "ghcr.io/snds/lockdown-server:{}",
+                    request.tag.clone().unwrap_or_default()
+                ),
+                digest: format!("sha256:{}", "1".repeat(64)),
+                services: vec!["lockdown".into()],
+            }),
+        }
+    }
+
+    fn restart(&self) -> Result<host_helper::RestartReply, host_helper::ClientError> {
+        *self.restarts.lock().unwrap() += 1;
+        match &self.refuse {
+            Some(e) => Err(e.clone()),
+            None => Ok(host_helper::RestartReply {
+                stack: "lockdown".into(),
+                services: vec!["lockdown".into()],
+            }),
+        }
+    }
+}
+
+/// A signed-in router over `state`, keeping the state to look at.
+async fn signed_in_keeping(state: AppState) -> (Router, String, Arc<AppState>) {
+    let key = lockdown_server::admin::generate_key().unwrap();
+    state.storage.sql().unwrap().set_operator_key(&key).unwrap();
+    let state = Arc::new(state);
+    let router = app(state.clone());
+    let (_, h, _) = page(
+        &router,
+        "POST",
+        "/admin/sign-in",
+        None,
+        &format!("key={}", key.as_str()),
+    )
+    .await;
+    (router, cookie_from(&h), state)
+}
+
+/// Waits for the helper's thread to record how the action ended.
+fn settled(state: &AppState) -> lockdown_server::helper::Progress {
+    for _ in 0..200 {
+        if let Some(a) = state.updates.action()
+            && a.progress != lockdown_server::helper::Progress::Working
+        {
+            return a.progress;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!("the helper's thread never finished");
+}
+
+#[tokio::test]
+async fn update_and_reload_ask_the_host_helper_with_the_token_and_land_in_the_log() {
+    use lockdown_server::helper::{Progress, Setting};
+    use lockdown_server::updates::Updates;
+    let newer = "0.1.0-main.20261109120000";
+    let source = Arc::new(Manifest(
+        r#"{"version":"0.1.0-main.20261109120000"}"#,
+        Mutex::default(),
+    ));
+    let helper = Arc::new(Helper {
+        refuse: None,
+        asked: Mutex::default(),
+        restarts: Mutex::default(),
+    });
+    let mut state = AppState::in_memory(Config::default()).unwrap();
+    state.updates = Updates::new(
+        semver::Version::parse("0.1.0-main.20261108090000").unwrap(),
+        Some(source),
+    );
+    state.updates.set_helper(Setting::Ready(helper.clone()));
+    let (router, cookie, state) = signed_in_keeping(state).await;
+    let (_, _, html) = page(&router, "GET", "/admin", Some(&cookie), "").await;
+    let csrf = csrf_of(&html);
+    // Up to date as far as the page knows: Reload, no Update.
+    assert!(html.contains("action=\"/admin/updates/reload\""));
+    assert!(!html.contains("action=\"/admin/updates/update\""));
+    page(
+        &router,
+        "POST",
+        "/admin/updates/check",
+        Some(&cookie),
+        &format!("csrf={csrf}"),
+    )
+    .await;
+    let (_, _, html) = page(&router, "GET", "/admin", Some(&cookie), "").await;
+    assert!(html.contains(&format!("<button>Update to {newer}</button>")));
+    assert!(!html.contains("docker compose pull"));
+
+    // Without the form token, or signed out, nothing is asked.
+    let (s, h, _) = page(
+        &router,
+        "POST",
+        "/admin/updates/update",
+        Some(&cookie),
+        &format!("csrf=00&tag={newer}"),
+    )
+    .await;
+    assert_eq!(s, StatusCode::SEE_OTHER);
+    assert_eq!(h[header::LOCATION], "/admin#updates");
+    let (s, _, _) = page(
+        &router,
+        "POST",
+        "/admin/updates/reload",
+        None,
+        &format!("csrf={csrf}"),
+    )
+    .await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    assert!(helper.asked.lock().unwrap().is_empty());
+    assert_eq!(*helper.restarts.lock().unwrap(), 0);
+
+    // A version other than the one on offer is refused before the helper.
+    page(
+        &router,
+        "POST",
+        "/admin/updates/update",
+        Some(&cookie),
+        &format!("csrf={csrf}&tag=0.1.0-main.20200101000000"),
+    )
+    .await;
+    assert!(helper.asked.lock().unwrap().is_empty());
+    let (_, _, html) = page(&router, "GET", "/admin", Some(&cookie), "").await;
+    assert!(html.contains(lockdown_server::updates::OFFER_CHANGED));
+
+    // Update: the offered tag, no digest (Lockdown's manifest has none yet).
+    let (s, h, _) = page(
+        &router,
+        "POST",
+        "/admin/updates/update",
+        Some(&cookie),
+        &format!("csrf={csrf}&tag={newer}"),
+    )
+    .await;
+    assert_eq!(s, StatusCode::SEE_OTHER);
+    assert_eq!(h[header::LOCATION], "/admin/updates/progress");
+    assert!(matches!(settled(&state), Progress::Done(_)));
+    assert_eq!(
+        *helper.asked.lock().unwrap(),
+        vec![host_helper::UpdateRequest {
+            tag: Some(newer.into()),
+            expect_digest: None,
+        }]
+    );
+
+    // The waiting page: its one script, allowed by hash, reading the state.
+    let (s, h, html) = page(&router, "GET", "/admin/updates/progress", Some(&cookie), "").await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(html.contains("data-from=\"0.1.0-main.20261108090000\""));
+    let csp = h[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(csp.contains("script-src 'sha256-") && csp.contains("connect-src 'self'"));
+    let (s, _, json) = page(&router, "GET", "/admin/updates/state", Some(&cookie), "").await;
+    assert_eq!(s, StatusCode::OK);
+    let j: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(j["version"], "0.1.0-main.20261108090000");
+    assert_eq!(j["kind"], "update");
+    assert_eq!(j["state"], "done");
+    let (s, _, _) = page(&router, "GET", "/admin/updates/state", None, "").await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+
+    // Reload.
+    page(
+        &router,
+        "POST",
+        "/admin/updates/reload",
+        Some(&cookie),
+        &format!("csrf={csrf}"),
+    )
+    .await;
+    assert!(matches!(settled(&state), Progress::Done(_)));
+    assert_eq!(*helper.restarts.lock().unwrap(), 1);
+
+    // The operator's log: who asked, what, which version, how it went.
+    let log: Vec<String> = state
+        .storage
+        .sql()
+        .unwrap()
+        .events(Some("updates"), 10)
+        .unwrap()
+        .into_iter()
+        .map(|e| e.detail)
+        .collect();
+    assert!(log.iter().any(|d| d
+        == &format!("the operator, from local, asked the host helper for an update to {newer}")));
+    assert!(log.iter().any(|d| d.starts_with(&format!(
+        "the host helper finished an update to {newer}: The host helper pulled"
+    ))));
+    assert!(
+        log.iter()
+            .any(|d| d == "the operator, from local, asked the host helper for a reload")
+    );
+    assert!(
+        log.iter()
+            .any(|d| d.contains("didn't happen") && d.contains("version on offer"))
+    );
+}
+
+#[tokio::test]
+async fn a_refusal_from_the_host_helper_shows_in_plain_words() {
+    use lockdown_server::helper::{Progress, Setting};
+    let helper = Arc::new(Helper {
+        refuse: Some(host_helper::ClientError::Refused {
+            status: 401,
+            code: "stale".into(),
+            message: "The request is too old or from the future.".into(),
+        }),
+        asked: Mutex::default(),
+        restarts: Mutex::default(),
+    });
+    let state = AppState::in_memory(Config::default()).unwrap();
+    state.updates.set_helper(Setting::Ready(helper.clone()));
+    let (router, cookie, state) = signed_in_keeping(state).await;
+    let (_, _, html) = page(&router, "GET", "/admin", Some(&cookie), "").await;
+    let csrf = csrf_of(&html);
+    page(
+        &router,
+        "POST",
+        "/admin/updates/reload",
+        Some(&cookie),
+        &format!("csrf={csrf}"),
+    )
+    .await;
+    assert!(matches!(settled(&state), Progress::Failed(_)));
+    let (_, _, html) = page(&router, "GET", "/admin", Some(&cookie), "").await;
+    assert!(html.contains("The reload didn't happen. The server&#39;s clock and the host&#39;s differ by more than 90 seconds"));
+    let (_, _, json) = page(&router, "GET", "/admin/updates/state", Some(&cookie), "").await;
+    let j: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(j["state"], "failed");
+    assert!(j["message"].as_str().unwrap().contains("clock"));
 }
 
 #[tokio::test]
