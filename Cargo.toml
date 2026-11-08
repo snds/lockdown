@@ -74,6 +74,10 @@ authors = ["Sean Sands"]
 # Consumed, never forked. Pinned by commit until tag `v0.1.0` is on the remote;
 # then this line becomes `tag = "v0.1.0"`.
 ecosystem-identity = { git = "https://github.com/snds/ecosystem-identity", rev = "35d2a56b9d5dab92ebf2ee447427bd083cef0a04", version = "0.1.0" }
+# The shared update kit (the unified updates proposal, U2): the updater's
+# rules and its Tauri glue, extracted from this repo's slice 59. Pinned by
+# tag; `v0.1.0` is commit 83b0a69 (the lockfile holds the commit).
+snds-app-updates = { git = "https://github.com/snds/app-updates", tag = "v0.1.0", version = "0.1.0" }
 
 # Workspace crates.
 lockdown-crypto = { path = "crates/crypto", version = "0.1.0" }

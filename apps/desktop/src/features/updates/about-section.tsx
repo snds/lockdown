@@ -11,8 +11,8 @@ import { useUpdates } from "./use-updates"
 /**
  * Settings → About (docs/plan/60-auto-update.md §6): the version and
  * channel, "Check for updates" (a check now, and the download if there is
- * one), one status line, "Restart to update" once an update is ready, and
- * the switch for the automatic check. Not shown where the host has no
+ * one), one status line, "Restart to update" once an update is ready,
+ * "Reload app" otherwise, and the switch for the automatic check. Not shown where the host has no
  * updater (the web vault).
  */
 export function AboutSection() {
@@ -44,6 +44,12 @@ export function AboutSection() {
           <Button size="sm" onClick={() => run(updates.restart())}>
             <Icon name="restart_alt" data-icon="inline-start" />
             Restart to update
+          </Button>
+        )}
+        {status.state !== "ready" && (
+          <Button size="sm" variant="ghost" onClick={() => run(updates.reload())}>
+            <Icon name="replay" data-icon="inline-start" />
+            Reload app
           </Button>
         )}
         {status.state === "available" && status.link && (

@@ -44,6 +44,10 @@ function updateClient(first: UpdateStatus) {
       calls.push(`auto ${on}`)
       return Promise.resolve({ ...first, auto_check: on })
     },
+    reload: () => {
+      calls.push("reload")
+      return Promise.resolve()
+    },
     onStatus: (h) => {
       handler = h
       return Promise.resolve(() => {
@@ -101,6 +105,16 @@ describe("Settings → About", () => {
     expect(screen.getByText("Restarting locks Lockdown. Unlock it with your master password as usual.")).toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Restart to update" }))
     expect(u.calls).toEqual(["check", "restart"])
+  })
+
+  it("reloads the app when asked, and leaves it to Restart to update once an update is ready", async () => {
+    const u = updateClient(BASE)
+    mount(u.client)
+    await userEvent.click(await screen.findByRole("button", { name: "Reload app" }))
+    expect(u.calls).toEqual(["reload"])
+    u.push({ ...BASE, state: "ready", offered: NEXT })
+    expect(screen.queryByRole("button", { name: "Reload app" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Restart to update" })).toBeInTheDocument()
   })
 
   it("says when it is up to date", async () => {

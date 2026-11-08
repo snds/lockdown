@@ -12,5 +12,6 @@ export const tauriUpdateClient: UpdateClient = {
   check: () => invoke("update_check"),
   restart: () => invoke("update_restart"),
   setAuto: (on) => invoke("update_auto_set", { on }),
+  reload: () => invoke("app_reload"),
   onStatus: async (handler) => listen<UpdateStatus>(UPDATE_EVENT, (e) => handler(e.payload)),
 }

@@ -984,5 +984,6 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         crate::updater::shell::commands::update_check,
         crate::updater::shell::commands::update_restart,
         crate::updater::shell::commands::update_auto_set,
+        crate::updater::shell::commands::app_reload,
     ]
 }

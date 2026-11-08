@@ -36,7 +36,7 @@ export interface UpdateStatus {
 /** The window event every change arrives on. */
 export const UPDATE_EVENT = "lockdown://update"
 
-/** The updater's four commands and its event (apps/desktop/src-tauri/src/updater/shell.rs). */
+/** The updater's five commands and its event (apps/desktop/src-tauri/src/updater/shell.rs). */
 export interface UpdateClient {
   status(): Promise<UpdateStatus>
   /** Checks now and starts the download; the outcome arrives through `onStatus`. */
@@ -45,6 +45,8 @@ export interface UpdateClient {
   restart(): Promise<void>
   /** The "Check automatically" switch. */
   setAuto(on: boolean): Promise<UpdateStatus>
+  /** Locks the vault, then closes and reopens the app (installing a downloaded update on the way). */
+  reload(): Promise<void>
   /** Every change; resolves to the unsubscribe. */
   onStatus(handler: (s: UpdateStatus) => void): Promise<() => void>
 }
