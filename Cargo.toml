@@ -76,8 +76,8 @@ authors = ["Sean Sands"]
 ecosystem-identity = { git = "https://github.com/snds/ecosystem-identity", rev = "35d2a56b9d5dab92ebf2ee447427bd083cef0a04", version = "0.1.0" }
 # The shared update kit (the unified updates proposal, U2): the updater's
 # rules and its Tauri glue, extracted from this repo's slice 59. Pinned by
-# commit until its tag `v0.1.0` is on the remote.
-snds-app-updates = { git = "https://github.com/snds/app-updates", rev = "83b0a69bb732bba0fd6a82bbbb4e76e23f5498df", version = "0.1.0" }
+# tag; `v0.1.0` is commit 83b0a69 (the lockfile holds the commit).
+snds-app-updates = { git = "https://github.com/snds/app-updates", tag = "v0.1.0", version = "0.1.0" }
 
 # Workspace crates.
 lockdown-crypto = { path = "crates/crypto", version = "0.1.0" }
