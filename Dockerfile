@@ -49,6 +49,11 @@ RUN --mount=type=secret,id=cargo_ca,required=false \
     && if [ -f apps/web/dist/index.html ]; then cp -r apps/web/dist/. /out/web/; fi
 
 FROM gcr.io/distroless/cc-debian12:nonroot${RUNTIME_DIGEST}
+# The published image (ghcr.io/snds/lockdown-server, release.yml
+# `server-image`) is linked to this repository by its source label.
+LABEL org.opencontainers.image.source="https://github.com/snds/lockdown" \
+      org.opencontainers.image.description="The Lockdown server: one binary for cloud and self-host" \
+      org.opencontainers.image.licenses="Apache-2.0"
 COPY --from=build /out/lockdown-server /usr/local/bin/lockdown-server
 COPY --from=build --chown=65532:65532 /out/data /data
 COPY --from=build /out/web /usr/share/lockdown/web

@@ -26,7 +26,9 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left
 label{display:block;font-weight:600;margin:.6rem 0 .2rem}input[type=text],input[type=password],input[type=email],input[type=number]{width:100%;max-width:28rem;padding:.5rem .6rem;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}\
 button{font:inherit;padding:.45rem .9rem;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:var(--card);cursor:pointer}\
 button.quiet{background:transparent;color:var(--accent)}button.danger{border-color:var(--bad);background:transparent;color:var(--bad)}\
-form.inline{display:inline}.row{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center}";
+form.inline{display:inline}.row{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center}\
+pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.6rem .8rem;overflow-x:auto}\
+label.check{display:flex;gap:.5rem;align-items:center;font-weight:400}";
 
 /// Escapes text for HTML text and attribute values.
 pub fn esc(text: &str) -> String {

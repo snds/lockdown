@@ -23,7 +23,7 @@ docker compose up -d --build
 
 To have the image carry the web vault, build the page first (`cd apps/web && pnpm install && pnpm build:wasm && pnpm build`), then `docker compose build`, and add `LOCKDOWN_WEB_VAULT: /usr/share/lockdown/web` to the environment; it is then at `https://<your server>/vault/`.
 
-No image is published to a registry yet; build it from the source you checked out. That way the image is the code you can read.
+Every merge to `main` also publishes the image as `ghcr.io/snds/lockdown-server`, tagged with its version (`0.1.0-main.<commit time>`) and `main`. `compose.yaml` names `ghcr.io/snds/lockdown-server:main`, so `docker compose up -d` without `--build` runs the published image, and `docker compose up -d --build` builds the same thing from the source you checked out. The published image is the reproducible build of that commit: its digest is the one CI built (docs/plan/24-release.md §5), with build provenance (`gh attestation verify oci://ghcr.io/snds/lockdown-server:main --repo snds/lockdown`). See [Updates](#13-updates).
 
 ### As a plain program
 
@@ -141,6 +141,7 @@ Backups of a Postgres server are the same file: `backup create --database-url �
 - **Upgrading.** Stop the server, take a backup, start the new version. Database changes are forward-only and run on start; a newer database refuses to open in an older server ("the database is from a newer server"). The way back from a bad upgrade is the backup.
 - **Compatibility.** A Lockdown app supports the current server release and the two before it. The server says its release in `/.well-known/lockdown` (`version`), so an app that is too new can say which server release it needs instead of failing.
 - **Certificates and settings** change without an upgrade: replace the files, or change a variable and restart.
+- **Knowing when to upgrade.** The admin page checks for a newer build and shows the command; see [Updates](#13-updates).
 
 ## 5. What the operator can see
 
@@ -221,7 +222,7 @@ lockdown-server admin clear-key --data /data      # closes the page
 
 **Passkeys.** Signed in with the key, add a passkey under **Passkeys** (it asks for your PIN or biometric); from then on the sign-in page also offers **Sign in with a passkey**, which asks for the same check each time. The key keeps working and is the way back in if every passkey is lost; `admin clear-key` closes the page to passkeys too.
 
-Only the key's hash is kept. Signing in gives the browser a cookie for eight hours (an hour unused); every form carries its own anti-forgery token. It shows the release, where the data and attachments live, the setup checks, each account (login name, devices, live sessions, vaults, attachment room used, security keys), invites, backups and drills. It can invite a login name, end an account's sessions, and run a backup or a drill now. It never shows a vault, a key or a token: the server has none. Put it behind the same TLS as everything else; if only you use it, your proxy can also limit `/admin` to your own network.
+Only the key's hash is kept. Signing in gives the browser a cookie for eight hours (an hour unused); every form carries its own anti-forgery token. It shows the release and whether a newer one is out ([Updates](#13-updates)), where the data and attachments live, the setup checks, each account (login name, devices, live sessions, vaults, attachment room used, security keys), invites, backups and drills. It can invite a login name, end an account's sessions, and run a backup or a drill now. It never shows a vault, a key or a token: the server has none. Put it behind the same TLS as everything else; if only you use it, your proxy can also limit `/admin` to your own network.
 
 ## 12. Mirrors of the public log
 
@@ -238,3 +239,26 @@ lockdown-server --data /data --kt-mirror https://mirror.example
 ```
 
 The mirror pins the account server's log key on first sight and keeps each new head only if the server proves it continues the last one. If the server's log ever goes back, splits or is rewritten, the mirror records the problem in its log and keeps serving its last good head, which the apps then report. Delete `kt-mirror.cbor` in the mirror's data folder to start it over. Apps remember a mirror once the server names it, so dropping one from `--kt-mirror` doesn't stop the check; people can add their own in Settings → This server. A split shows in the apps in plain words ("This server's public log doesn't match a mirror"); the vault stays readable; until it is explained, share nothing new through that server. Mirrors learn only the log's sizes and roots, never who is in it.
+
+## 13. Updates
+
+**What the server checks.** A server built on the main channel (the published image, version `x.y.z-main.<commit time>`) reads one file, the main channel's manifest at `https://github.com/snds/lockdown/releases/download/main-build/latest.json`, the same one the desktop app follows. It reads it when it starts, every six hours after that, and whenever you press **Check for updates** on the admin page (`/admin`, under **Updates**). It follows the desktop app's rules, from the shared update kit:
+
+- only https, only on `github.com` and GitHub's release-asset hosts, and every redirect is checked the same way;
+- only a strictly newer version counts;
+- it sends nothing about your server: one `GET` with the user agent `lockdown-server`, no version, no account, no address beyond the one every connection has.
+
+**Check for updates automatically** (on by default) is the switch beside the button. Off, the server checks only when you press the button. A server built from source or from a tagged release (a plain version such as `0.1.0`) doesn't check, and the page says so.
+
+**Updating by hand, today.** When a newer build is out, the page shows its version and the command. Run it in the folder with your `compose.yaml`:
+
+```sh
+# First, a backup (§3; or Backups → Back up now on the admin page, when backups are scheduled):
+docker compose exec -e LOCKDOWN_BACKUP_KEY='LDBK-…' lockdown \
+    lockdown-server backup create --out /data/backups/before-update.ldbk
+docker compose pull && docker compose up -d
+```
+
+`pull` fetches `ghcr.io/snds/lockdown-server:main`; `up -d` replaces the container with the new image, on the same volume and settings, and the database changes run on start (§4). To stay on one build, name its version tag in `compose.yaml` (`ghcr.io/snds/lockdown-server:0.1.0-main.20261108120000`) instead of `main`.
+
+**What the helper will add.** One-click **Update** (pull the new image and restart) and **Reload** (restart the containers) on the admin page need something allowed to run Docker on the host. The server will never have that: it has no Docker socket, and it can't restart itself. A small helper installed on the host will do it when the admin page asks; until then the page shows the command above.
