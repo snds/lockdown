@@ -22,15 +22,16 @@ _It builds on D62 (wire and stored shapes only grow), D86 and D87 (the session t
 
   On a Mac the session token stays in the keychain (D684, Sean's call). Every keychain call runs with dialogs off, each signing identity has its own item, and the main channel signs with a stable self-signed identity, so an update never brings up the keychain dialog (§3).
 - **Read with:**
-  - `apps/desktop/src-tauri/src/updater.rs`: the rules, pure and tested.
-  - `updater/shell.rs`: the plugin, the commands, the background check, install on quit, the macOS menu item, the e2e hooks and the signature tests.
+  - The shared update kit, `snds/app-updates` (pinned by commit in the root `Cargo.toml`): the rules and the plugin glue, extracted from this repo on 2026-11-08 (§11).
+  - `apps/desktop/src-tauri/src/updater.rs`: Lockdown's feed, key and test source, and the rules' tests.
+  - `updater/shell.rs`: Lockdown's `Host` (the switch in `settings.cbor`, the vault locked before a restart, the demo's held network), the commands, the e2e hooks and the signature tests.
   - `apps/desktop/src-tauri/src/keychain.rs`.
   - `apps/desktop/src/features/updates/`.
   - `.github/workflows/release.yml`: `meta`, `macos`, `windows` and `main-channel`.
   - `.github/workflows/ci.yml`: `updater`, `update-e2e` and `keychain-macos`.
   - `packaging/update/`.
 - **Do not:**
-  - Give the webview an updater permission. The page asks through the four commands.
+  - Give the webview an updater permission. The page asks through the five commands.
   - Pass `TAURI_SIGNING_PRIVATE_KEY` to any step of a run other than a push to `main`. In the build jobs the expression yields an empty string unless `meta.publish` is true, and `main-channel` checks the event and the ref itself.
   - Mark `main-build` as latest, or make it a full release.
   - Touch the Mac keychain with its dialogs on, or change an item another signing identity wrote (D684). Each identity writes its own item.
@@ -66,7 +67,7 @@ _It builds on D62 (wire and stored shapes only grow), D86 and D87 (the session t
 | Restart | `restart` | Takes the ready update, locks the vault and forgets the pending clipboard copy (exactly what `commands::lock` does), installs, and relaunches. On Windows the passive installer closes the app and starts the new one (`/P /UPDATE /R`). |
 | On quit | `on_exit` | The app now uses `RunEvent::Exit`. A ready update installs there with no relaunch (`restart_after_install(false)`). |
 | Menu | `install_menu` (macOS) | Adds "Check for Updates…" under "About" in the app menu. It shows the window and does what the button does. |
-| Commands | `update_status`, `update_check`, `update_restart`, `update_auto_set` | Added at the end of the handler list. Changes arrive on the `lockdown://update` event. |
+| Commands | `update_status`, `update_check`, `update_restart`, `update_auto_set`, `app_reload` | Added at the end of the handler list. Changes arrive on the `lockdown://update` event. |
 | Page | `features/updates/` | `UpdateClient` and its provider (only the desktop gives one, so the web vault shows nothing). Also `AboutSection`, `RestartRow` and `useUpdateNotices`, plus `app/tauri-updates.ts`, the only file that imports `@tauri-apps`. |
 | The key | `updater.pub`, `build.rs` | build.rs reads the file (one line of base64 of the minisign `.pub` text, the form `tauri signer generate` writes and `plugins.updater.pubkey` takes) into `LOCKDOWN_UPDATER_PUBKEY`. Without the file, the app builds with updates off. |
 | Keychain | `keychain.rs`, `lockdown_app::secrets` | Covered in §3. |
@@ -278,6 +279,7 @@ Earlier runs found two problems, both in the test, not the app:
 | Button | **Check for updates** |
 | Button (ready) | **Restart to update** |
 | Button (Linux, machine-wide, unwritable) | **Get it from GitHub** |
+| Button (not ready) | **Reload app** (locks Lockdown, closes it and opens it again) |
 | Switch | "Check for updates automatically" |
 | Status: idle, switch on | "Lockdown checks for updates when it opens and every six hours." |
 | Status: idle, switch off | "Automatic checks are off. Check whenever you like." |
@@ -329,3 +331,13 @@ Run from the worktree, with their final lines in the PR body:
 | D687 | **The test-only endpoint and key live in the `update-test` feature.** It is off in every shipped build, build.rs refuses it in a release, and the developer-tools check looks for its marker. It lets the end-to-end job install build A, serve build B from this computer, and see A update itself and B open the vault (macOS and Windows). Plain version: the tests can point the app at a fake update server, and no real build can. | Proposed; audit item |
 | D688 | **Where an app can't replace itself, it links.** Linux packages, a machine-wide Windows install, and a Mac app in a folder the account can't write to show "Version … is out" with "Get it from GitHub" and never download. Self-updating Linux is a recorded gap. Plain version: where Lockdown can't update itself without a password or the package manager, it tells you and links to the build. | Proposed; **flagged for Sean** (the wording) |
 | D689 | **Recorded gaps:**<br>• `lockdown update` for the CLI (D546's gap 3);<br>• the stable channel;<br>• self-updating Linux;<br>• MSI in dry runs;<br>• release notes;<br>• "Restart to update" on the locked screen.<br>Plain version: what this slice leaves for later, written down. | Proposed; recorded gap |
+
+## 11. The shared update kit (2026-11-08)
+
+The unified updates proposal (approved by Sean on 2026-11-08, U1–U6) lifts this updater into `snds/app-updates`, so every desktop app updates the same way. Lockdown is its first user, with its behavior unchanged:
+
+- **In the kit:** the rules (`Channel`, `plan`, `allowed`, `is_newer`, `Install`, `UpdateStatus`) with Lockdown's addresses made into a `Feed`, and the plugin glue (the background check, the redirect rule, install on quit, the macOS menu item).
+- **Still here:** `FEED`, `built_in_key`, `RELEASE_KEY_ID`, `TEST_MARKER`, the commands with `AppError`, and `LockdownHost`, which keeps the switch in `settings.cbor`, locks the vault as Lock does before any restart, and holds checks in the demo's home.
+- **New:** **Reload app** (`app_reload`) in Settings → About. It locks the vault, closes Lockdown and opens it again. With an update downloaded it is Restart to update, so a reload never keeps the old build by accident.
+- **Tests:** every rules test and signature test stayed in this repo and passes on the kit; the kit runs its own copies too.
+

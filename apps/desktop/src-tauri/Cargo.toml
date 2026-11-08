@@ -38,8 +38,8 @@ shell = [
     "dep:objc2-foundation",
     "dep:tauri-plugin-notification",
     "dep:lockdown-server",
+    "snds-app-updates/tauri",
     "dep:tauri-plugin-updater",
-    "dep:reqwest",
     "dep:security-framework",
 ]
 # The developer tools (docs/plan/40-devtools.md), each self-contained in
@@ -53,7 +53,7 @@ demo-vault = ["shell", "dep:lockdown-devtools", "lockdown-devtools/demo", "lockd
 # that run the updater's own signature check. Only CI's update jobs turn it
 # on; build.rs refuses it in a release, and the developer-tools check looks
 # for its marker in every shipped binary.
-update-test = ["shell", "tauri/test"]
+update-test = ["shell", "tauri/test", "snds-app-updates/update-test"]
 
 [build-dependencies]
 tauri-build = { version = "2.7.2", optional = true , features = [] }
@@ -116,18 +116,16 @@ data-encoding.workspace = true
 
 lockdown-devtools = { workspace = true, optional = true }
 
-# Automatic updates from the "main" pre-release (docs/plan/60-auto-update.md):
-# the manifest fetched, the bundle's minisign signature checked against the
-# key built in (build.rs reads updater.pub), the bundle installed. Driven from
-# Rust only; no updater permission reaches the webview.
-tauri-plugin-updater = { version = "2.14.1", optional = true }
-# The redirect rule on the updater's requests: every hop stays on GitHub.
-reqwest = { workspace = true, optional = true }
-# The updater's rules, pure and tested without the shell: version order,
-# the hosts an update may come from, and the built-in key's form.
+# Automatic updates from the "main" pre-release (docs/plan/60-auto-update.md),
+# through the shared update kit (snds/app-updates): the rules (version order,
+# the hosts an update may come from, the key's form) and, with `shell`, the
+# Tauri glue that fetches the manifest, checks the bundle's minisign signature
+# against the key built in (build.rs reads updater.pub) and installs it.
+# Driven from Rust only; no updater permission reaches the webview.
+snds-app-updates.workspace = true
 semver = "1"
-url.workspace = true
-minisign-verify = "0.3"
+# The plugin's type in `shell::plugin`, and its mock-runtime signature tests.
+tauri-plugin-updater = { version = "2.14.1", optional = true }
 # Held update checks in the demo's confined home (D485).
 lockdown-sync.workspace = true
 
@@ -155,3 +153,6 @@ tempfile.workspace = true
 # endpoint tests create an identity in milliseconds. Never in an app build.
 ecosystem-identity = { workspace = true, features = ["insecure-test-kdf"] }
 lockdown-crypto = { workspace = true, features = ["insecure-test-kdf"] }
+# The updater's tests: plain http to this computer is allowed only for a test
+# source, which the kit compiles in only with `update-test`.
+snds-app-updates = { workspace = true, features = ["update-test"] }
