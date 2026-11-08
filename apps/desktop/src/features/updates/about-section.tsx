@@ -1,19 +1,23 @@
 import { useState } from "react"
 
-import { Button, Field, FieldLabel, Icon, Switch } from "@unicron/ui"
+import { AutoCheckSwitch, UpdateStatusRow, type UpdateWords } from "@unicron/ui"
 
 import { describeError, useClient } from "@/core/client"
 
 import { useUpdateClient } from "./update-client"
-import { canCheck, channelName, updateLine } from "./update-model"
 import { useUpdates } from "./use-updates"
 
+/** Lockdown's words where they differ from unicron's: the switch names what it checks. */
+const WORDS: Partial<UpdateWords> = { autoCheck: "Check for updates automatically" }
+
 /**
- * Settings → About (docs/plan/60-auto-update.md §6): the version and
- * channel, "Check for updates" (a check now, and the download if there is
- * one), one status line, "Restart to update" once an update is ready,
- * "Reload app" otherwise, and the switch for the automatic check. Not shown where the host has no
- * updater (the web vault).
+ * Settings → About (docs/plan/60-auto-update.md §6): unicron's update rows
+ * (`UpdateStatusRow`, `AutoCheckSwitch`) in the About card. They show the
+ * version and channel, one status line, "Check for updates" (a check now,
+ * and the download if there is one), "Restart to update" once an update is
+ * ready, "Reload app" otherwise, the release page when this copy can't
+ * replace itself, and the switch for the automatic check. Not shown where
+ * the host has no updater (the web vault).
  */
 export function AboutSection() {
   const updates = useUpdateClient()
@@ -32,48 +36,19 @@ export function AboutSection() {
       <h2 id="about-title" className="font-medium">
         About
       </h2>
-      <p className="text-sm">
-        Lockdown {status.version} · {channelName(status)}
-      </p>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" disabled={!canCheck(status)} onClick={() => run(updates.check())}>
-          <Icon name="refresh" data-icon="inline-start" />
-          Check for updates
-        </Button>
-        {status.state === "ready" && (
-          <Button size="sm" onClick={() => run(updates.restart())}>
-            <Icon name="restart_alt" data-icon="inline-start" />
-            Restart to update
-          </Button>
-        )}
-        {status.state !== "ready" && (
-          <Button size="sm" variant="ghost" onClick={() => run(updates.reload())}>
-            <Icon name="replay" data-icon="inline-start" />
-            Reload app
-          </Button>
-        )}
-        {status.state === "available" && status.link && (
-          <Button size="sm" variant="outline" onClick={() => run(client.openSite(status.link!))}>
-            <Icon name="open_in_new" data-icon="inline-start" />
-            Get it from GitHub
-          </Button>
-        )}
-      </div>
-      <p role="status" className={status.state === "failed" ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
-        {updateLine(status)}
-      </p>
-      {status.state === "ready" && <p className="text-sm text-muted-foreground">Restarting locks Lockdown. Unlock it with your master password as usual.</p>}
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      {status.enabled && (
-        <Field orientation="horizontal">
-          <FieldLabel htmlFor="update-auto">Check for updates automatically</FieldLabel>
-          <Switch id="update-auto" checked={status.auto_check} onCheckedChange={(on) => run(updates.setAuto(on))} />
-        </Field>
-      )}
+      <UpdateStatusRow
+        status={status}
+        appName="Lockdown"
+        words={WORDS}
+        onCheck={() => run(updates.check())}
+        onRestart={() => run(updates.restart())}
+        onReload={() => run(updates.reload())}
+        // The web view won't open a window itself; the shell opens the release page.
+        onOpenLink={(link) => run(client.openSite(link))}
+        restartNote="Restarting locks Lockdown. Unlock it with your master password as usual."
+        error={error}
+      />
+      <AutoCheckSwitch status={status} words={WORDS} onCheckedChange={(on) => run(updates.setAuto(on))} />
     </section>
   )
 }

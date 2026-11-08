@@ -1,37 +1,16 @@
 import { createContext, useContext } from "react"
 
-/** Where an update stands (`updater::UpdateState`, apps/desktop/src-tauri/src/updater.rs). */
-export type UpdateState = "idle" | "checking" | "up_to_date" | "downloading" | "ready" | "available" | "failed"
+import type { UpdateStatus } from "@unicron/ui"
 
 /**
- * What Settings → About, the sidebar and the menu show
- * (`updater::UpdateStatus`; docs/plan/60-auto-update.md). Plain data and
- * plain words from the shell; nothing in it is secret.
+ * Where an update stands, and what Settings → About, the sidebar and the
+ * menu show (`updater::UpdateState` and `updater::UpdateStatus`,
+ * apps/desktop/src-tauri/src/updater.rs; docs/plan/60-auto-update.md): the
+ * update kit's status, typed once in unicron for every app. Plain data and
+ * plain words from the shell; nothing in it is secret. Lockdown's shell
+ * reports the "main" and "stable" channels.
  */
-export interface UpdateStatus {
-  /** The running version, `0.1.0-main.20261107093000`. */
-  version: string
-  channel: "main" | "stable"
-  /** Whether this build checks for updates at all. */
-  enabled: boolean
-  /** Why it doesn't, in one line. */
-  off: string | null
-  /** The "Check automatically" switch. */
-  auto_check: boolean
-  state: UpdateState
-  /** 0 to 99 while downloading. */
-  percent: number | null
-  /** The newer version (downloading, ready, available). */
-  offered: string | null
-  /** What went wrong, in plain words (failed). */
-  error: string | null
-  /** The release page (available). */
-  link: string | null
-  /** Why the app points there instead of updating itself (available). */
-  link_why: string | null
-  /** The last check was asked for (the button or the menu). */
-  asked: boolean
-}
+export type { UpdateState, UpdateStatus } from "@unicron/ui"
 
 /** The window event every change arrives on. */
 export const UPDATE_EVENT = "lockdown://update"
