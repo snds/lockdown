@@ -79,6 +79,7 @@ describe("Settings → About", () => {
     expect(await screen.findByText("Lockdown 0.1.0-main.20261107093000 · main channel (every merged change)")).toBeInTheDocument()
     expect(screen.getByRole("status")).toHaveTextContent("Lockdown checks for updates when it opens and every six hours.")
     expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toBeChecked()
+    expect(screen.getByRole("switch")).toHaveAccessibleDescription("When the app opens, and every six hours.")
   })
 
   it("says automatic checks are off, and the switch turns them back on", async () => {
@@ -117,6 +118,14 @@ describe("Settings → About", () => {
     expect(screen.getByRole("button", { name: "Restart to update" })).toBeInTheDocument()
   })
 
+  it("says what went wrong with a click, as an alert", async () => {
+    const u = updateClient(BASE)
+    u.client.reload = () => Promise.reject(new Error("The vault couldn't lock."))
+    mount(u.client)
+    await userEvent.click(await screen.findByRole("button", { name: "Reload app" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("The vault couldn't lock.")
+  })
+
   it("says when it is up to date", async () => {
     mount(updateClient({ ...BASE, state: "up_to_date" }).client)
     expect(await screen.findByRole("status")).toHaveTextContent("Lockdown is up to date.")
@@ -137,7 +146,8 @@ describe("Settings → About", () => {
       opened,
     )
     expect(await screen.findByRole("status")).toHaveTextContent(`Version ${NEXT} is out. Lockdown can't update itself when installed from a Linux package.`)
-    await userEvent.click(screen.getByRole("button", { name: "Get it from GitHub" }))
+    // A link drawn as a button; the shell opens it, since the web view won't.
+    await userEvent.click(screen.getByRole("link", { name: "Get it from GitHub" }))
     expect(opened).toEqual([link])
   })
 
