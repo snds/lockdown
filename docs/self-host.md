@@ -250,7 +250,7 @@ The mirror pins the account server's log key on first sight and keeps each new h
 
 **Check for updates automatically** (on by default) is the switch beside the button. Off, the server checks only when you press the button. A server built from source or from a tagged release (a plain version such as `0.1.0`) doesn't check, and the page says so.
 
-**Updating by hand, today.** When a newer build is out, the page shows its version and the command. Run it in the folder with your `compose.yaml`:
+**Updating by hand.** When a newer build is out and the host helper (below) isn't set up, the page shows its version and the command. Run it in the folder with your `compose.yaml`:
 
 ```sh
 # First, a backup (§3; or Backups → Back up now on the admin page, when backups are scheduled):
@@ -261,4 +261,13 @@ docker compose pull && docker compose up -d
 
 `pull` fetches `ghcr.io/snds/lockdown-server:main`; `up -d` replaces the container with the new image, on the same volume and settings, and the database changes run on start (§4). To stay on one build, name its version tag in `compose.yaml` (`ghcr.io/snds/lockdown-server:0.1.0-main.20261108120000`) instead of `main`.
 
-**What the helper will add.** One-click **Update** (pull the new image and restart) and **Reload** (restart the containers) on the admin page need something allowed to run Docker on the host. The server will never have that: it has no Docker socket, and it can't restart itself. A small helper installed on the host will do it when the admin page asks; until then the page shows the command above.
+**One-click Update and Reload, with the host helper.** The server will never have a Docker socket or a way to restart itself. The host helper does it for the server: a small container beside it on the host, holding the socket, that only pulls this server's own image at an allowed tag and recreates or restarts its container ([its README](https://github.com/snds/app-updates/blob/main/host-helper/README.md): what it does, its threat model and its install steps). Once it is installed and the server is recreated with the helper's `compose.override.yaml` (which adds the helper's private network and `host-helper.env`, the helper's address and this server's key), the **Updates** card on the admin page shows:
+
+- **Update to {version}** when a newer build is out. It asks the helper to pull `ghcr.io/snds/lockdown-server:{version}` and start the server on it, on the same volume and settings. Take a backup first (as above).
+- **Reload**, always. It asks the helper to restart the server on the build it runs.
+
+Either way the server goes away for a few seconds. The page waits for it ("Reconnecting… the server is restarting.") and says when it is back; sign-ins live in memory, so you sign in again afterwards. If the helper refuses (a version its allow-list doesn't allow, the server's and the host's clocks more than 90 seconds apart, a key it doesn't recognise, an update already running), nothing changes and the card says why in words. Every request is in the operator's log: who asked (the operator, and from which address), what, which version, and how it went; never the key.
+
+Lockdown's manifest doesn't name the image's digest yet, so the server can't pass one and the helper checks the tag only (the helper's allow-list still limits it to this server's own repository and its main-channel versions). Vale's manifest does; Lockdown's will when the release workflow writes it.
+
+Without the helper (no `host-helper.env`), the card shows the command above and a link to the helper's install steps. `docker compose up -d` works the same with or without it: the helper's override file is the only change, and it lives beside your `compose.yaml`, not in this repository.
