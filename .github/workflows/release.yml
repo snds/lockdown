@@ -953,7 +953,11 @@ jobs:
   # 2. the deb is signed too (the Linux app only links to it, but the
   #    manifest names a signature for every platform);
   # 3. latest.json is written by packaging/update/write-manifest.py, which
-  #    refuses a version not newer than the one published;
+  #    refuses a version not newer than the one published. It names the
+  #    server image's digest for this version when `server-image` pushed it,
+  #    so a server's one-click Update asks the host helper for exactly that
+  #    build (docs/plan/61-server-updates.md §6); if that job failed, the
+  #    desktop channel still publishes, without the digest;
   # 4. the pre-release `main-build` (made on the first run, its tag moved to
   #    this commit on every run) gets the new files, latest.json last, then
   #    loses the old ones. It is always a pre-release and never "latest".
@@ -965,8 +969,14 @@ jobs:
   # keeps two runs from writing at once.
   main-channel:
     name: main channel · signed updates · main-build pre-release
-    needs: [meta, linux, flatpak, macos, windows]
-    if: needs.meta.outputs.publish == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [meta, linux, flatpak, macos, windows, server-image]
+    # Runs once the desktop builds pass, whether or not the server image was
+    # pushed (`!cancelled()` lets it run after a failed `server-image`).
+    if: >-
+      !cancelled()
+      && needs.meta.outputs.publish == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.linux.result == 'success' && needs.flatpak.result == 'success'
+      && needs.macos.result == 'success' && needs.windows.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -978,6 +988,7 @@ jobs:
       HAVE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
       VERSION: ${{ needs.meta.outputs.version }}
       GH_TOKEN: ${{ github.token }}
+      SERVER_IMAGE_DIGEST: ${{ needs.server-image.result == 'success' && needs.server-image.outputs.digest || '' }}
     steps:
       - name: Without the signing key, nothing is published
         if: env.HAVE_KEY != 'true'
@@ -1029,6 +1040,7 @@ jobs:
             --bundle "darwin=$(ls dist/*_universal.app.tar.gz)" \
             --bundle "windows=$(ls dist/*-setup.exe)" \
             --bundle "linux=$(ls dist/*.deb)" \
+            --server-image-digest "$SERVER_IMAGE_DIGEST" \
             --previous "$RUNNER_TEMP/published.json" --out dist/latest.json
           cat dist/latest.json
           (cd dist && sha256sum $(ls | grep -v '^latest.json$' | sort) > SHA256SUMS)

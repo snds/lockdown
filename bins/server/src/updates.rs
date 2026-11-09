@@ -179,17 +179,33 @@ const UNREADABLE: &str = "The update's description couldn't be read.";
 pub enum Outcome {
     /// The manifest's version is this one or older.
     UpToDate,
-    /// A strictly newer version is out.
-    Newer(Version),
+    /// A strictly newer version is out, with its server image's digest when
+    /// the manifest names one.
+    Newer(Version, Option<String>),
 }
 
 #[derive(Deserialize)]
 struct Manifest {
     version: String,
+    #[serde(default)]
+    server_image: Option<ServerImage>,
 }
 
-/// Reads a manifest (`latest.json`, the desktop app's: only its `version`
-/// is used) against the running version.
+#[derive(Deserialize)]
+struct ServerImage {
+    digest: String,
+}
+
+/// `sha256:` and 64 lower-case hex characters.
+fn is_digest(d: &str) -> bool {
+    d.strip_prefix("sha256:")
+        .is_some_and(|h| h.len() == 64 && h.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+}
+
+/// Reads a manifest (`latest.json`, the desktop app's: its `version`, and
+/// the server image's digest when it names one) against the running version.
+/// A malformed digest is dropped, not trusted: Update then checks the tag
+/// only, as before manifests carried one.
 pub fn judge(current: &Version, body: &[u8]) -> std::result::Result<Outcome, String> {
     if body.len() > MANIFEST_LIMIT {
         return Err(UNREADABLE.into());
@@ -197,8 +213,12 @@ pub fn judge(current: &Version, body: &[u8]) -> std::result::Result<Outcome, Str
     let manifest: Manifest = serde_json::from_slice(body).map_err(|_| UNREADABLE.to_string())?;
     let offered = Version::parse(manifest.version.trim().trim_start_matches('v'))
         .map_err(|_| UNREADABLE.to_string())?;
+    let digest = manifest
+        .server_image
+        .map(|i| i.digest)
+        .filter(|d| is_digest(d));
     Ok(if app_updates::is_newer(current, &offered) {
-        Outcome::Newer(offered)
+        Outcome::Newer(offered, digest)
     } else {
         Outcome::UpToDate
     })
@@ -217,6 +237,9 @@ pub struct Status {
     pub state: UpdateState,
     /// The newer version (`Available`).
     pub offered: Option<String>,
+    /// Its server image's digest, when the manifest names one: Update asks
+    /// the host helper for exactly that build.
+    pub offered_digest: Option<String>,
     /// What went wrong (`Failed`).
     pub error: Option<String>,
     /// When the last check finished.
@@ -275,6 +298,7 @@ impl Updates {
             off: channel.endpoint(&FEED).is_none().then_some(OFF_NOT_MAIN),
             state: UpdateState::Idle,
             offered: None,
+            offered_digest: None,
             error: None,
             checked_at: None,
         };
@@ -403,16 +427,19 @@ impl Updates {
             Ok(Outcome::UpToDate) => {
                 s.state = UpdateState::UpToDate;
                 s.offered = None;
+                s.offered_digest = None;
                 eprintln!("lockdown-server: update check: up to date");
             }
-            Ok(Outcome::Newer(v)) => {
+            Ok(Outcome::Newer(v, digest)) => {
                 s.state = UpdateState::Available;
                 eprintln!("lockdown-server: update check: version {v} is out");
                 s.offered = Some(v.to_string());
+                s.offered_digest = digest;
             }
             Err(e) => {
                 s.state = UpdateState::Failed;
                 s.offered = None;
+                s.offered_digest = None;
                 eprintln!("lockdown-server: update check failed: {e}");
                 s.error = Some(e);
             }
@@ -693,16 +720,22 @@ pub async fn update_now(
         );
         return see_other("/admin#updates");
     }
-    // Lockdown's manifest carries no image digest yet, so the helper
-    // checks the tag only (docs/plan/61-server-updates.md §6).
-    let request = host_helper::UpdateRequest {
-        tag: Some(asked.clone()),
-        expect_digest: None,
-    };
+    let request = update_request(&status, &asked);
     start(state, peer, Kind::Update, Some(asked), move |h| {
         h.update(&request)
             .map(|r| crate::helper::done_line(Kind::Update, Some(&r), None))
     })
+}
+
+/// What Update asks the host helper for: the version on offer and, when the
+/// manifest names one, its image's digest. The helper then refuses any other
+/// build and restarts nothing (docs/plan/61-server-updates.md §6). A manifest
+/// without a digest leaves the helper checking the tag only.
+fn update_request(status: &Status, tag: &str) -> host_helper::UpdateRequest {
+    host_helper::UpdateRequest {
+        tag: Some(tag.to_owned()),
+        expect_digest: status.offered_digest.clone(),
+    }
 }
 
 /// `POST /admin/updates/reload` (a form: `csrf`): asks the host helper to
@@ -904,7 +937,7 @@ mod tests {
         let newer = br#"{"version":"0.1.0-main.20261108120000","platforms":{}}"#;
         assert_eq!(
             judge(&at, newer),
-            Ok(Outcome::Newer(v("0.1.0-main.20261108120000")))
+            Ok(Outcome::Newer(v("0.1.0-main.20261108120000"), None))
         );
         let same = br#"{"version":"0.1.0-main.20261108090000"}"#;
         assert_eq!(judge(&at, same), Ok(Outcome::UpToDate));
@@ -913,8 +946,31 @@ mod tests {
         // The release sorts after its own main builds.
         assert_eq!(
             judge(&at, br#"{"version":"0.1.0"}"#),
-            Ok(Outcome::Newer(v("0.1.0")))
+            Ok(Outcome::Newer(v("0.1.0"), None))
         );
+        // The server image's digest, when named and well formed.
+        let d = format!("sha256:{}", "ab".repeat(32));
+        let with = format!(
+            r#"{{"version":"0.1.0-main.20261108120000","server_image":{{"digest":"{d}"}}}}"#
+        );
+        assert_eq!(
+            judge(&at, with.as_bytes()),
+            Ok(Outcome::Newer(v("0.1.0-main.20261108120000"), Some(d)))
+        );
+        for odd in [
+            "sha256:abc",
+            "md5:00",
+            "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB",
+        ] {
+            let m = format!(
+                r#"{{"version":"0.1.0-main.20261108120000","server_image":{{"digest":"{odd}"}}}}"#
+            );
+            assert_eq!(
+                judge(&at, m.as_bytes()),
+                Ok(Outcome::Newer(v("0.1.0-main.20261108120000"), None)),
+                "{odd}"
+            );
+        }
         for bad in [
             &b"not json"[..],
             br#"{"version":"soon"}"#,
@@ -1048,11 +1104,16 @@ mod tests {
     }
 
     fn state_with(offered: Option<&str>, helper: Setting) -> AppState {
-        let mut state = AppState::in_memory(crate::Config::default()).unwrap();
         let manifest = match offered {
             Some(v) => format!(r#"{{"version":"{v}"}}"#),
             None => r#"{"version":"0.1.0-main.20261108000000"}"#.into(),
         };
+        state_from(&manifest, helper)
+    }
+
+    fn state_from(manifest: &str, helper: Setting) -> AppState {
+        let mut state = AppState::in_memory(crate::Config::default()).unwrap();
+        let manifest = manifest.to_owned();
         let source = Arc::new(Fixed(Ok(manifest.into_bytes()), Mutex::default()));
         state.updates = Updates::new(v("0.1.0-main.20261108000000"), Some(source));
         state.updates.check(1);
@@ -1166,6 +1227,27 @@ mod tests {
         );
         assert!(section(&off, "").contains(HELPER_OFF));
         assert!(lock(&fake.asked).is_empty());
+    }
+
+    #[test]
+    fn update_asks_for_the_manifests_image_digest_when_it_names_one() {
+        let d = format!("sha256:{}", "ab".repeat(32));
+        let tag = "0.1.0-main.20261109000000";
+        let with = state_from(
+            &format!(r#"{{"version":"{tag}","server_image":{{"digest":"{d}"}}}}"#),
+            Setting::Off,
+        );
+        let status = with.updates.status();
+        assert_eq!(status.offered.as_deref(), Some(tag));
+        let r = update_request(&status, tag);
+        assert_eq!(r.tag.as_deref(), Some(tag));
+        assert_eq!(r.expect_digest.as_deref(), Some(d.as_str()));
+        // An older manifest, without one: the tag only, as before.
+        let without = state_with(Some(tag), Setting::Off);
+        assert_eq!(
+            update_request(&without.updates.status(), tag).expect_digest,
+            None
+        );
     }
 
     #[test]

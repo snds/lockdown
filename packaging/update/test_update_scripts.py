@@ -130,12 +130,28 @@ class ManifestWriter(unittest.TestCase):
         # Nothing comparable published yet: the first run starts the channel.
         self.assertEqual(wm.write(V1, "", BASE, bundles, "", previous={})["version"], V1)
 
+    def test_names_the_server_image_digest_when_given(self):
+        digest = "sha256:" + "ab" * 32
+        m = wm.write(V1, "2026-11-07T09:30:00Z", BASE, self.all_three(), "", server_image_digest=digest)
+        self.assertEqual(m["server_image"], {"digest": digest})
+        self.assertNotIn("server_image", wm.write(V1, "2026-11-07T09:30:00Z", BASE, self.all_three(), ""))
+        for bad in ["sha256:abc", "sha512:" + "ab" * 32, "sha256:" + "AB" * 32, "ab" * 32]:
+            with self.assertRaises(wm.Refused, msg=bad):
+                wm.write(V1, "2026-11-07T09:30:00Z", BASE, self.all_three(), "", server_image_digest=bad)
+
     def test_the_command_line_writes_the_file_and_fails_with_a_reason(self):
         out = self.dir / "latest.json"
         args = ["--version", V1, "--pub-date", "2026-11-07T09:30:00Z", "--base-url", BASE, "--out", str(out)]
         bundles = sum((["--bundle", f"{k}={p}"] for k, p in self.all_three()), [])
         self.assertEqual(wm.main(args + bundles), 0)
         self.assertEqual(json.loads(out.read_text())["version"], V1)
+        self.assertNotIn("server_image", json.loads(out.read_text()))
+        digest = "sha256:" + "cd" * 32
+        self.assertEqual(wm.main(args + bundles + ["--server-image-digest", digest]), 0)
+        self.assertEqual(json.loads(out.read_text())["server_image"]["digest"], digest)
+        # An empty digest (the image job didn't run) writes the manifest without one.
+        self.assertEqual(wm.main(args + bundles + ["--server-image-digest", ""]), 0)
+        self.assertNotIn("server_image", json.loads(out.read_text()))
         previous = self.dir / "old.json"
         previous.write_text(json.dumps({"version": V2}))
         self.assertEqual(wm.main(args + bundles + ["--previous", str(previous)]), 1)
