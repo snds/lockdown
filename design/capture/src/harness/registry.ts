@@ -40,9 +40,10 @@ export function statesMeta(): StateMeta[] {
  * One image's id: the state's, then its width (or `natural`), theme and,
  * when compact, the density. The review build opens any of them:
  * `#/desktop-vault-filled--w390-dark` lands on that state, dark, at 390.
+ * A fixed window (`pnpm shots`) adds its height: `--w390x844-dark`.
  */
-export function imageId(state: string, width: number | "natural", theme: Theme, density: Density): string {
-  return `${state}--${width === "natural" ? "natural" : `w${width}`}-${theme}${density === "compact" ? "-compact" : ""}`
+export function imageId(state: string, width: number | "natural", theme: Theme, density: Density, height?: number): string {
+  return `${state}--${width === "natural" ? "natural" : `w${width}${height ? `x${height}` : ""}`}-${theme}${density === "compact" ? "-compact" : ""}`
 }
 
 export interface Address {
@@ -56,7 +57,7 @@ export function parseAddress(hash: string): Address {
   const raw = decodeURIComponent(hash.replace(/^#\/?/, ""))
   if (!raw) return { id: null, theme: null, frame: null, density: null }
   const [id, suffix] = raw.split("--")
-  const m = suffix ? /^(?:w(\d+)|natural)-(light|dark)(-compact)?$/.exec(suffix) : null
+  const m = suffix ? /^(?:w(\d+)(?:x\d+)?|natural)-(light|dark)(-compact)?$/.exec(suffix) : null
   const width = m?.[1] ? Number(m[1]) : null
   return {
     id: id ?? null,

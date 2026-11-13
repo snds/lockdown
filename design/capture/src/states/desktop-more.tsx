@@ -94,7 +94,8 @@ export const DESKTOP_MORE: StateDef[] = [
     brief_row: "First run: join",
     notes: "The server refused the sign-in, after the server's key was confirmed.",
     setup: fresh,
-    answers: () => ({ account_login: () => fail("refused", "The other device denied this request, or it timed out. Ask again from the other device.") }),
+    // The desktop joins through the sealed sign-in since #39 (doc 45); refusing the old `account_login` reached nothing.
+    answers: () => ({ account_login_sealed: () => fail("refused", "The other device denied this request, or it timed out. Ask again from the other device.") }),
     steps: [
       { click: "I already use Lockdown" },
       { wait: /nas\.rivera\.example/ },

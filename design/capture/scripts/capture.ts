@@ -4,6 +4,14 @@
 //
 //   pnpm build && pnpm capture [--out <dir>] [--only <id-prefix>]
 //
+// `--sizes 1440x900,390x844` takes fixed windows instead: each picture is
+// that window exactly, never grown to its content, so it lines up with a
+// design frame. A size is taken for a state drawn at a width of its class
+// (a phone, under 600 px, or wider), so the desktop-only states get no
+// phone picture. `pnpm shots` builds first and takes the two sizes above.
+// `--strict` exits non-zero when any picture could not be taken, its state
+// never said it was ready, or its steps stopped.
+//
 // Chromium comes from PLAYWRIGHT_BROWSERS_PATH (never installed by this
 // script). The browser's clock is pinned, so countdowns and "edited 3 days
 // ago" read the same in every run.
@@ -37,6 +45,8 @@ interface Shot {
   screen: string
   state: string
   width: number | "natural"
+  /** The fixed window's height (`--sizes`); `null` when the window grew to the content. */
+  height: number | null
   theme: "light" | "dark"
   density: "comfortable" | "compact"
   file: string
@@ -51,6 +61,8 @@ const { values: args } = parseArgs({
     only: { type: "string", multiple: true },
     themes: { type: "string", default: "light,dark" },
     widths: { type: "string" },
+    sizes: { type: "string" },
+    strict: { type: "boolean", default: false },
     jobs: { type: "string", default: "3" },
     "skip-axe": { type: "boolean", default: false },
   },
@@ -60,9 +72,20 @@ const OUT = path.resolve(args.out)
 const PINNED = new Date("2026-10-29T16:20:00-07:00")
 const BASE_HEIGHT = 800
 const MAX_HEIGHT = 3000
+/** Under this width a window is a phone's (the harness's 390); at or over it, a desktop's. */
+const PHONE_BELOW = 600
 
-const imageId = (state: string, width: number | "natural", theme: string, density: string) =>
-  `${state}--${width === "natural" ? "natural" : `w${width}`}-${theme}${density === "compact" ? "-compact" : ""}`
+const sizes = (args.sizes ?? "")
+  .split(",")
+  .filter(Boolean)
+  .map((s) => {
+    const m = /^(\d+)x(\d+)$/.exec(s.trim())
+    if (!m) throw new Error(`--sizes takes WIDTHxHEIGHT pairs (1440x900,390x844), not ${s}`)
+    return { width: Number(m[1]), height: Number(m[2]) }
+  })
+
+const imageId = (state: string, width: number | "natural", height: number | null, theme: string, density: string) =>
+  `${state}--${width === "natural" ? "natural" : `w${width}${height ? `x${height}` : ""}`}-${theme}${density === "compact" ? "-compact" : ""}`
 
 /** How much taller the window must be for every scrolling pane to show its whole content. */
 async function overflow(page: Page): Promise<number> {
@@ -102,17 +125,25 @@ async function main() {
 
   const only = args.widths?.split(",").map(Number)
   const jobs = wanted.flatMap((s) => {
-    const widths = s.widths === "natural" ? (["natural"] as const) : s.widths.filter((w) => !only || only.includes(w))
-    return widths.flatMap((width) =>
-      themes.flatMap((theme) => (s.compact ? (["comfortable", "compact"] as const) : (["comfortable"] as const)).map((density) => ({ s, width, theme, density }))),
+    const views: Array<{ width: number | "natural"; height: number | null }> =
+      s.widths === "natural"
+        ? [{ width: "natural", height: null }]
+        : [
+            // With --sizes alone, only the fixed windows; --widths adds grown ones back.
+            ...(sizes.length && !only ? [] : s.widths.filter((w) => !only || only.includes(w)).map((width) => ({ width, height: null }))),
+            ...sizes.filter((z) => (s.widths as number[]).some((w) => (w < PHONE_BELOW) === (z.width < PHONE_BELOW))),
+          ]
+    return views.flatMap(({ width, height }) =>
+      themes.flatMap((theme) => (s.compact ? (["comfortable", "compact"] as const) : (["comfortable"] as const)).map((density) => ({ s, width, height, theme, density }))),
     )
   })
   const total = jobs.length
+  const failed: string[] = []
 
-  async function shoot({ s, width, theme, density }: (typeof jobs)[number]) {
-    const id = imageId(s.id, width, theme, density)
+  async function shoot({ s, width, height, theme, density }: (typeof jobs)[number]) {
+    const id = imageId(s.id, width, height, theme, density)
     const ctx = await browser.newContext({
-      viewport: { width: width === "natural" ? 900 : width, height: BASE_HEIGHT },
+      viewport: { width: width === "natural" ? 900 : width, height: height ?? BASE_HEIGHT },
       deviceScaleFactor: 1,
       colorScheme: theme,
       reducedMotion: "reduce",
@@ -156,7 +187,8 @@ async function main() {
         const el = page.locator(s.frame ?? "#root > *").first()
         await el.screenshot({ path: path.join(OUT, file), animations: "disabled" })
       } else {
-        const extra = await overflow(page)
+        // A fixed window stays the size of the design's frame; anything below the fold is left out.
+        const extra = height === null ? await overflow(page) : 0
         if (extra > 0) {
           await page.setViewportSize({ width, height: Math.min(MAX_HEIGHT, BASE_HEIGHT + extra) })
           await page.waitForTimeout(250)
@@ -179,12 +211,15 @@ async function main() {
       if (!ready) notes.push("The state did not report ready within 30 s.")
       if (result && !result.ok) notes.push(`Steps stopped: ${result.error}.`)
       if (result?.missing.length) notes.push(`The fixture had no answer for: ${result.missing.join(", ")}.`)
-      manifest.push({ id, surface: s.surface, screen: s.screen, state: s.state, width, theme, density, file, brief_row: s.brief_row, notes: notes.join(" ") })
+      if (!ready) failed.push(`${id}: never reported ready`)
+      else if (result && !result.ok) failed.push(`${id}: steps stopped: ${result.error}`)
+      manifest.push({ id, surface: s.surface, screen: s.screen, state: s.state, width, height, theme, density, file, brief_row: s.brief_row, notes: notes.join(" ") })
       log[id] = { ready, steps: result, console_errors: errors }
       n += 1
       console.log(`${String(n).padStart(4)}/${total} ${id}${result && !result.ok ? `  (steps: ${result.error})` : ""}${errors.length ? `  (${errors.length} console errors: ${errors[0]?.slice(0, 160)})` : ""}`)
     } catch (e) {
       n += 1
+      failed.push(`${id}: no picture: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`)
       log[id] = { ready: false, failed: e instanceof Error ? e.message : String(e), console_errors: errors }
       console.log(`${String(n).padStart(4)}/${total} ${id}  FAILED: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`)
     } finally {
@@ -222,6 +257,10 @@ async function main() {
   if (!args["skip-axe"]) writeFileSync(path.join(OUT, "axe.json"), JSON.stringify(prune({ ...read<Record<string, unknown>>("axe.json", {}), ...axe }), null, 2) + "\n")
   writeFileSync(path.join(OUT, "capture-log.json"), JSON.stringify(prune({ ...read<Record<string, unknown>>("capture-log.json", {}), ...log }), null, 2) + "\n")
   console.log(`${manifest.length} images in ${OUT}`)
+  if (failed.length) {
+    console.log(`${failed.length} of ${total} not as the state says (capture-log.json has each one's console):\n  ${failed.sort().join("\n  ")}`)
+    if (args.strict) process.exitCode = 1
+  }
 }
 
 await main()
