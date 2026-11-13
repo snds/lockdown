@@ -5,12 +5,12 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@unicron/tokens': https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.14.0/unicron-tokens-0.14.0.tgz
+  '@unicron/tokens': https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz
 
 patchedDependencies:
-  '@unicron/ui@0.22.0':
+  '@unicron/ui@0.24.0':
     hash: a1ea1d6969a36576ee642c69810539038a7ecc90a4ea841c12e1ad556cca2261
-    path: ../../patches/@unicron__ui@0.22.0.patch
+    path: ../../patches/@unicron__ui@0.24.0.patch
 
 importers:
 
@@ -23,11 +23,11 @@ importers:
         specifier: ^4.3.3
         version: 4.3.3(vite@8.3.5(@types/node@24.19.2)(jiti@2.7.0))
       '@unicron/tokens':
-        specifier: https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.14.0/unicron-tokens-0.14.0.tgz
-        version: https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.14.0/unicron-tokens-0.14.0.tgz
+        specifier: https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz
+        version: https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz
       '@unicron/ui':
-        specifier: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.22.0/unicron-ui-0.22.0.tgz
-        version: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.22.0/unicron-ui-0.22.0.tgz(patch_hash=a1ea1d6969a36576ee642c69810539038a7ecc90a4ea841c12e1ad556cca2261)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.24.0/unicron-ui-0.24.0.tgz
+        version: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.24.0/unicron-ui-0.24.0.tgz(patch_hash=a1ea1d6969a36576ee642c69810539038a7ecc90a4ea841c12e1ad556cca2261)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -637,13 +637,13 @@ packages:
   '@types/react@19.3.0':
     resolution: {integrity: sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==}
 
-  '@unicron/tokens@https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.14.0/unicron-tokens-0.14.0.tgz':
-    resolution: {tarball: https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.14.0/unicron-tokens-0.14.0.tgz}
-    version: 0.14.0
+  '@unicron/tokens@https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz':
+    resolution: {integrity: sha512-dv1SRnTIjU/wxa0N/IuWsyWG86zHEN0BlCtmuNyP+4j+MZPvrVV19/tfeVQiUyfLSQtcdo+qQsOMnfwNhFX2Zg==, tarball: https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz}
+    version: 0.16.0
 
-  '@unicron/ui@https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.22.0/unicron-ui-0.22.0.tgz':
-    resolution: {tarball: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.22.0/unicron-ui-0.22.0.tgz}
-    version: 0.22.0
+  '@unicron/ui@https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.24.0/unicron-ui-0.24.0.tgz':
+    resolution: {integrity: sha512-iYgt1fuz3EBhqIQvPLv/cLMW1KwGNJxqHu7dix5H5US5wTvz4fSQ/lM0iiRL7Qvdj9+z6s0ZF6PVfJiIbC08TQ==, tarball: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.24.0/unicron-ui-0.24.0.tgz}
+    version: 0.24.0
     peerDependencies:
       react: ^19.0.0
       react-dom: ^19.0.0
@@ -1497,13 +1497,13 @@ snapshots:
     dependencies:
       csstype: 3.2.3
 
-  '@unicron/tokens@https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.14.0/unicron-tokens-0.14.0.tgz': {}
+  '@unicron/tokens@https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz': {}
 
-  '@unicron/ui@https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.22.0/unicron-ui-0.22.0.tgz(patch_hash=a1ea1d6969a36576ee642c69810539038a7ecc90a4ea841c12e1ad556cca2261)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@unicron/ui@https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.24.0/unicron-ui-0.24.0.tgz(patch_hash=a1ea1d6969a36576ee642c69810539038a7ecc90a4ea841c12e1ad556cca2261)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@base-ui/react': 1.9.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@fontsource-variable/inter': 5.3.0
-      '@unicron/tokens': https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.14.0/unicron-tokens-0.14.0.tgz
+      '@unicron/tokens': https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz
       class-variance-authority: 0.7.1
       clsx: 2.1.1
       cmdk: 1.1.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

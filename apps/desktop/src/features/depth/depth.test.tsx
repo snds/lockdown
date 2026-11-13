@@ -186,7 +186,8 @@ describe("checking keys with a phrase", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Check with a phrase" }))
     expect(await screen.findByLabelText("Phrase")).toHaveTextContent("123 456 789")
-    expect(await screen.findByRole("status", {}, SLOW)).toHaveTextContent("verified")
+    // While it waits, the spinner is the status ("Loading", since unicron 0.23); then the sentence is.
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("verified"), SLOW)
     expect(onVerified).toHaveBeenCalled()
   })
 })

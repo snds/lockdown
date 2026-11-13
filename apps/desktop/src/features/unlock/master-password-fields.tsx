@@ -9,7 +9,7 @@ import { WelcomeGroup } from "./welcome"
 
 const STRENGTH_WORDS: Record<SecretStrength, string> = { weak: "Weak", fair: "Fair", strong: "Strong" }
 const FILLED: Record<SecretStrength, number> = { weak: 1, fair: 2, strong: 3 }
-const TONE: Record<SecretStrength, string> = { weak: "bg-destructive", fair: "bg-attention", strong: "bg-secure" }
+const TONE: Record<SecretStrength, string> = { weak: "bg-destructive", fair: "bg-warning", strong: "bg-secure" }
 
 /** The strength meter: three segments and the word, from the core's estimate. */
 export function StrengthMeter({ strength }: { strength: SecretStrength | undefined }) {

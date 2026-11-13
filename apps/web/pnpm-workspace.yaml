@@ -5,9 +5,9 @@ onlyBuiltDependencies: []
 overrides:
   # As apps/desktop: @unicron/ui pins its tokens by exact version, which is
   # not on a registry; point the dependency at the same release tarball.
-  "@unicron/tokens": https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.14.0/unicron-tokens-0.14.0.tgz
+  "@unicron/tokens": https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz
 
 patchedDependencies:
   # As apps/desktop: unicron's Icon draws by codepoint when given one
   # (docs/plan/38-mac-fixes.md §2). Drop once unicron ships it.
-  "@unicron/ui@0.22.0": ../../patches/@unicron__ui@0.22.0.patch
+  "@unicron/ui@0.24.0": ../../patches/@unicron__ui@0.24.0.patch

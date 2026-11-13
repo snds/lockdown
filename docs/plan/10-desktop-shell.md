@@ -169,14 +169,14 @@ A call on a locked vault answers `{ code: "locked" }`; the UI shows the unlock s
 | `--secure-foreground` | `--g-neutral-0` | `--g-neutral-0` | a label on that fill |
 | `--secure-text` | `--g-green-600` | `--g-green-300` | the same as words (Status's facts) |
 | `--danger` | `--destructive` | `--destructive` | revoke, trash |
-| `--attention` | `--warning` | `--warning` | fill: needs attention (kit not made, expiring, conflict copy) |
-| `--attention-foreground` | `--warning-foreground` | `--warning-foreground` | a label on that fill |
-| `--attention-text` | `--g-amber-600` | `--g-amber-300` | the same as words (sidebar entry, Status) |
+| `--attention-text` | `--attention-foreground` (the core's; `--g-amber-600`) | `--attention-foreground` (the core's; `--g-amber-300`) | needs attention as words (sidebar entry, Status) |
 | `--area-codes` | `--g-blue-500` | `--g-blue-500` | fill: the Codes view |
 | `--area-codes-foreground` | `--g-neutral-0` | `--g-neutral-0` | a label on that fill |
 | `--area-codes-text` | `--g-blue-600` | `--g-blue-300` | the same as words (the Codes sidebar entry) |
 
 The six components take no app-extension tokens: their roles (`warning`, `info`, `protected`) and knobs (`--c-crown-jewel-*`, `--c-secret-field-*`, `--c-code-*`, `--c-large-type-*`, `--c-approval-*`, `--c-risk-tier-*`) ship in `@unicron/tokens` 0.2.0, and nothing here redefines them.
+
+**The core's attention family (`@unicron/ui` 0.24.0, `@unicron/tokens` 0.16.0).** Since tokens 0.15.0 the core has status roles of its own, `success`, `attention` and `running`, each with `-foreground` (the hue as words) and `-surface`, exposed as `--color-*`. This layer used to declare `--attention` (a fill, on `--warning`) and `--attention-foreground` (its label) itself; loaded after the core, they would have replaced the core's for every component that draws them (`StatusOrb`, `Indicator`, `AgentPrompt`), and the two `-foreground`s mean different things. It now declares neither. The one needs-attention fill, the password meter's "fair", is the core's `bg-warning`, which `--attention` always aliased; `--attention-text` names the core's `--attention-foreground`, on the same amber 600 / 300 steps. Nothing changes on screen.
 
 The UI uses `bg-surface-*`, `text-secure-text`, `text-attention-text` and `text-area-codes-text` from this layer (a hue as words is always its `-text` role; the base role is for fills, §11); everything else is unicron's defaults. The tier-3 knobs gained density (D92): `--c-row-height`, `--c-row-pad-y`, `--c-row-gap`, `--c-group-pad-y`, each a multiple of Tailwind's `--spacing` from the unicron stylesheet (comfortable rows 10 units = 40 px, compact 8 = 32 px), switched by `:root[data-density="compact"]` and applied to any element marked `data-row` or `data-group-header`; no raw lengths, no `className` on a primitive.
 

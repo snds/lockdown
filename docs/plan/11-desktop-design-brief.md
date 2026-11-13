@@ -282,7 +282,7 @@ Declared in `apps/desktop/src/styles/app-extension.css`, written as Mailbird's i
 | `--surface-selected` | `--g-neutral-100` | `--g-neutral-800` | Selected row |
 | `--surface-locked` | `--g-neutral-100` | `--g-neutral-900` | The wash over the vault while locked |
 | `--verified` | `--g-green-500` | `--g-green-400` | KT-verified, manifest verified, drill passed; always paired with a word |
-| `--attention` | `--warning` (adopted in tokens 0.2.0) | `--warning` (the tokens swap it) | Needs attention, expiring, unverified |
+| `--attention-text` | `--attention-foreground` (the core's, tokens 0.15.0+) | the same (the tokens swap it) | Needs attention, expiring, unverified, as words. The fill is the core's `--warning`; the app declares no `--attention` of its own, since the core has one (doc 10 §4) |
 | `--area-codes` | `--g-blue-500` | `--g-blue-400` | The one wayfinding hue, for the Codes view and the palette's code rows |
 
 The six components take no app-extension tokens; their colors come from core tier 2 roles, the three the specs added (`warning`, `info`, `protected`) among them.

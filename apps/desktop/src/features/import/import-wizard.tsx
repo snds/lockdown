@@ -260,7 +260,8 @@ export function ImportWizard({ open, restore = null, onClose, onImported, initia
 
         {(step === "checking" || step === "saving") && (
           <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Spinner />
+            {/* The words are the status; the spinner beside them is only a picture (unicron 0.23 gave it a status of its own). */}
+            <Spinner aria-hidden />
             {step === "checking" ? "Checking the file…" : "Bringing it in…"}
           </div>
         )}

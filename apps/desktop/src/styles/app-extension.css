@@ -15,14 +15,19 @@
  * tokens; nothing here redefines them.
  *
  * Fill and text are separate roles (@unicron/tokens 0.5.0). A hue's base
- * role (`--secure`, `--attention`, `--area-codes`) is a fill: a dot, a
- * badge, a status fill, with its `-foreground` label. Its `-text` role is
- * the same hue as words on a surface, on the core's text steps (600 light,
- * 300 dark), held to APCA Lc 75 on the page, a card, the chrome and a
- * selected row; the fills read Lc 22-70 as text there, under that floor.
- * A fill's label holds Lc 60: green and blue stay on 500 in dark mode with
- * a white label, as the core's dark `info` does (400 with either label
- * read Lc 51-58). Measured numbers: docs/plan/10-desktop-shell.md §11.
+ * role (`--secure`, `--area-codes`) is a fill: a dot, a badge, a status
+ * fill, with its `-foreground` label. Its `-text` role is the same hue as
+ * words on a surface, on the core's text steps (600 light, 300 dark), held
+ * to APCA Lc 75 on the page, a card, the chrome and a selected row; the
+ * fills read Lc 22-70 as text there, under that floor. A fill's label
+ * holds Lc 60: green and blue stay on 500 in dark mode with a white label,
+ * as the core's dark `info` does (400 with either label read Lc 51-58).
+ * Measured numbers: docs/plan/10-desktop-shell.md §11.
+ *
+ * "Needs attention" is the core's own family since @unicron/tokens 0.15.0
+ * (`--attention`, `--attention-foreground`, `--attention-surface`), and
+ * nothing here redefines it: its fill is the core's `warning`, and
+ * `--attention-text` names the core's ink (doc 10 §4).
  */
 
 /* ── Tier 2 · App roles (light) ─────────────────────────────────────────── */
@@ -40,11 +45,10 @@
   /* "Danger / revoke": revoking a device, moving an item to the trash.
      The core's `destructive` reads as text in both modes since 0.4.0. */
   --danger: var(--destructive);
-  /* Needs attention: expiring, unverified, a conflict copy. Aliases the
-     core's `warning` role (brief §8), which is a fill (amber.400). */
-  --attention: var(--warning);
-  --attention-foreground: var(--warning-foreground);
-  --attention-text: var(--g-amber-600);
+  /* Needs attention as words: expiring, unverified, a conflict copy. The
+     core's attention ink, on the same text steps (amber 600 light, 300
+     dark); a needs-attention fill is the core's `bg-warning`. */
+  --attention-text: var(--attention-foreground);
   /* The one wayfinding hue: the Codes view and the palette's code rows. */
   --area-codes: var(--g-blue-500);
   --area-codes-foreground: var(--g-neutral-0);
@@ -64,9 +68,7 @@
   --secure-foreground: var(--g-neutral-0);
   --secure-text: var(--g-green-300);
   --danger: var(--destructive);
-  --attention: var(--warning);
-  --attention-foreground: var(--warning-foreground);
-  --attention-text: var(--g-amber-300);
+  --attention-text: var(--attention-foreground);
   --area-codes: var(--g-blue-500);
   --area-codes-foreground: var(--g-neutral-0);
   --area-codes-text: var(--g-blue-300);
@@ -154,8 +156,6 @@
   --color-secure-foreground: var(--secure-foreground);
   --color-secure-text: var(--secure-text);
   --color-danger: var(--danger);
-  --color-attention: var(--attention);
-  --color-attention-foreground: var(--attention-foreground);
   --color-attention-text: var(--attention-text);
   --color-area-codes: var(--area-codes);
   --color-area-codes-foreground: var(--area-codes-foreground);
