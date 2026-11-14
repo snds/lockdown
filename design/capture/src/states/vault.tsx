@@ -9,9 +9,9 @@ import { SHAPE, longVault, withShape } from "../fixture/shape"
 import { ago } from "../fixture/time"
 import { as, fail, forever } from "../host/core"
 import type { StateDef } from "../harness/types"
-import { d, only, w, WIDE } from "./defs"
+import { d, only, w } from "./defs"
 import { open, webOpen } from "./steps/screens"
-import { DIALOG, MENU, answerGate, go, starts } from "./steps/shell"
+import { DIALOG, MENU, answerGate, go, openSwitcher, starts } from "./steps/shell"
 import { itemAction, openItem, reveal } from "./steps/vault"
 
 export const VAULT_STATES: StateDef[] = [
@@ -45,8 +45,8 @@ export const VAULT_STATES: StateDef[] = [
   d({ id: "desktop-view-archived", screen: "Smart views", state: "Archived", brief_row: null, notes: "Archived items, out of the list and search.", steps: [...open, ...go("archived")] }),
   d({ id: "desktop-view-deleted", screen: "Smart views", state: "Deleted", brief_row: "Item detail", notes: "The trash: readable through the grace period.", steps: [...open, ...go("deleted")] }),
   d({ id: "desktop-view-deleted-empty", screen: "Smart views", state: "Deleted, empty", brief_row: "Item detail", notes: "The trash is empty.", setup: only((i) => i.state !== "trashed"), steps: [...open, ...go("deleted")] }),
-  d({ id: "desktop-scope-vault-family", widths: WIDE, screen: "Vaults and folders", state: "Family vault", brief_row: "Vault", notes: "The list narrowed to the shared Family vault.", steps: [...open, ...go("vault-family")] }),
-  d({ id: "desktop-scope-folder-finance", widths: WIDE, screen: "Vaults and folders", state: "Finance folder", brief_row: "Vault", notes: "The list narrowed to a folder.", steps: [...open, ...go("folder-finance")] }),
+  d({ id: "desktop-scope-vault-family", screen: "Vaults and folders", state: "Family vault", brief_row: "Vault", notes: "The list narrowed to the shared Family vault.", steps: [...open, ...go("vault-family")] }),
+  d({ id: "desktop-scope-folder-finance", screen: "Vaults and folders", state: "Finance folder", brief_row: "Vault", notes: "The list narrowed to a folder.", steps: [...open, ...go("folder-finance")] }),
   d({ id: "desktop-item-login-full", screen: "Item detail", state: "Login: password, passkey and code", brief_row: "Item detail", notes: "One account, every way in: the methods block first, then the websites.", steps: [...open, ...openItem("Northwind Mail")] }),
   d({ id: "desktop-item-login-methods", screen: "Item detail", state: "Login: password, passkey, a five-character code and a protected note", brief_row: "Item detail", notes: "The design's login: every method, a five-character code, and a recovery note kept masked.", setup: withShape, steps: [...open, ...openItem(SHAPE.login)] }),
   d({ id: "desktop-item-login-passkey", screen: "Item detail", state: "Login: a passkey and nothing else", brief_row: "Item detail", notes: "The design's passkey login: no password to show, copy or check.", setup: withShape, steps: [...open, ...openItem(SHAPE.passkeyLogin)] }),
@@ -133,9 +133,9 @@ export const VAULT_STATES: StateDef[] = [
     },
     steps: [{ pause: 600 }],
   }),
-  d({ id: "desktop-nav-vault-menu", widths: WIDE, screen: "Vaults and tags trees", state: "Vault menu", brief_row: "Vaults and tags trees", notes: "A vault's menu: new folder, rename.", steps: [...open, { click: "Personal options" }, MENU] }),
-  d({ id: "desktop-nav-new-vault", widths: WIDE, screen: "Vaults and tags trees", state: "New vault", brief_row: "Vaults and tags trees", notes: "Naming a new vault.", steps: [...open, { click: "New vault" }, DIALOG] }),
-  d({ id: "desktop-nav-tag", widths: WIDE, screen: "Vaults and tags trees", state: "Narrowed to a tag", brief_row: "Vaults and tags trees", notes: "The list narrowed to #travel.", steps: [...open, ...go("tag-travel")] }),
+  d({ id: "desktop-nav-vault-menu", screen: "Vaults and tags trees", state: "Vault menu", brief_row: "Vaults and tags trees", notes: "A vault's menu: new folder, rename.", steps: [...open, ...openSwitcher(), { click: "Personal options" }, MENU] }),
+  d({ id: "desktop-nav-new-vault", screen: "Vaults and tags trees", state: "New vault", brief_row: "Vaults and tags trees", notes: "Naming a new vault.", steps: [...open, ...openSwitcher(), { click: "New vault" }, DIALOG] }),
+  d({ id: "desktop-nav-tag", screen: "Vaults and tags trees", state: "Narrowed to a tag", brief_row: "Vaults and tags trees", notes: "The list narrowed to #travel.", steps: [...open, ...go("tag-travel")] }),
   d({ id: "desktop-item-more-menu", screen: "Where it is, item menu", state: "Item menu", brief_row: "Where it is, item menu", notes: "History, archive, move, crown-jewel on or off.", steps: [...open, ...openItem("Bluefin Bank"), { click: "More for this item" }, MENU] }),
   d({ id: "desktop-item-history", screen: "Version history", state: "Versions", brief_row: "Version history", notes: "Every version, which device, which fields; hidden values stay hidden.", steps: [...open, ...openItem("Northwind Mail"), { click: "More for this item" }, { click: "History", role: "menuitem" }, DIALOG] }),
   d({ id: "desktop-item-jewel-on", screen: "Where it is, item menu", state: "Keep as a crown jewel?", brief_row: "Where it is, item menu", notes: "Moving an item into the crown-jewel class.", steps: [...open, ...openItem("Bluefin Bank"), { click: "More for this item" }, { click: "Keep as a crown jewel", role: "menuitem" }, DIALOG] }),

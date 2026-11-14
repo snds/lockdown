@@ -61,16 +61,16 @@ export const EDGES_STATES: StateDef[] = [
   d({ id: "desktop-sharing-compare", screen: "People", state: "Compare fingerprints", brief_row: "People", notes: "Compare by reading out, pasting or scanning.", steps: [...open, ...go("sharing"), { click: "Compare" }, DIALOG] }),
   d({ id: "desktop-sharing-phrase", screen: "Phrase check", state: "Say this phrase", brief_row: "Phrase check", notes: "Verify keys with words said aloud.", steps: [...open, ...go("sharing"), { click: "Check with a phrase" }, DIALOG] }),
   d({ id: "desktop-sharing-forget", screen: "People", state: "Forget?", brief_row: "People", notes: "Forgetting a contact.", steps: [...open, ...go("sharing"), { click: "Forget", nth: 2 }, DIALOG] }),
-  d({ id: "desktop-sharing-vault", screen: "Manage sharing", state: "Family vault", brief_row: "Manage sharing", notes: "Members, rights, add, remove, history.", steps: [...open, ...go("sharing"), { click: /^Manage sharing/ }, DIALOG] }),
-  d({ id: "desktop-sharing-text-link", screen: "Share and request links", state: "Share some text", brief_row: "Share and request links", notes: "Make a text link.", steps: [...open, ...go("sharing"), { click: /^Share some text/ }, DIALOG] }),
-  d({ id: "desktop-sharing-request-link", screen: "Share and request links", state: "Ask for a secret", brief_row: "Share and request links", notes: "Make a request link.", steps: [...open, ...go("sharing"), { click: /^Ask someone for a secret/ }, DIALOG] }),
-  d({ id: "desktop-sharing-opened", screen: "Opened link", state: "An answer opened", brief_row: "Opened link", notes: "Reading an answered request one value at a time.", steps: [...open, ...go("sharing"), { click: "Open the answer" }, { pause: 600 }] }),
-  d({ id: "desktop-sharing-emergency-add", screen: "Emergency access", state: "Add a contact", brief_row: "Emergency access", notes: "Name a verified contact with a wait.", steps: [...open, ...go("sharing"), { click: /^Add an emergency contact/ }, DIALOG] }),
+  d({ id: "desktop-sharing-vault", screen: "Manage sharing", state: "Family vault", brief_row: "Manage sharing", notes: "Members, rights, add, remove, history.", steps: [...open, ...go("sharing-vaults"), { click: /^Manage sharing/ }, DIALOG] }),
+  d({ id: "desktop-sharing-text-link", screen: "Share and request links", state: "Share some text", brief_row: "Share and request links", notes: "Make a text link.", steps: [...open, ...go("sharing-links"), { click: /^Share some text/ }, DIALOG] }),
+  d({ id: "desktop-sharing-request-link", screen: "Share and request links", state: "Ask for a secret", brief_row: "Share and request links", notes: "Make a request link.", steps: [...open, ...go("sharing-links"), { click: /^Ask someone for a secret/ }, DIALOG] }),
+  d({ id: "desktop-sharing-opened", screen: "Opened link", state: "An answer opened", brief_row: "Opened link", notes: "Reading an answered request one value at a time.", steps: [...open, ...go("sharing-links"), { click: "Open the answer" }, { pause: 600 }] }),
+  d({ id: "desktop-sharing-emergency-add", screen: "Emergency access", state: "Add a contact", brief_row: "Emergency access", notes: "Name a verified contact with a wait.", steps: [...open, ...go("sharing-emergency"), { click: /^Add an emergency contact/ }, DIALOG] }),
   d({ id: "desktop-sharing-emergency-requested", screen: "Emergency access", state: "Asked for access", brief_row: "Emergency access", notes: "Your contact asked for access: the banner with Stop.", answers: () => ({ sharing_overview: () => {
     const o = as("sharing_overview")({}) as { emergency: Array<Record<string, unknown>> }
     o.emergency[0] = { ...o.emergency[0], state: "requested", release_at: ahead(5) }
     return o
-  } }), steps: [...open, ...go("sharing")] }),
+  } }), steps: [...open, ...go("sharing-emergency")] }),
   d({ id: "desktop-devices-add", screen: "Add a device", state: "Code and QR", brief_row: "Add a device", notes: "A link for the new device: a code to type, or a QR to scan; ten minutes, once.", answers: () => ({ link_poll: () => as("link_offer")({}) }), steps: [...open, ...go("devices"), { click: "Add a device" }, DIALOG, { pause: 400 }] }),
   d({ id: "desktop-devices-add-compare", screen: "Add a device", state: "Do the digits match?", brief_row: "Add a device", notes: "The new device shows six digits; approve if they match.", steps: [...open, ...go("devices"), { click: "Add a device" }, DIALOG, { wait: "Do the digits match?" }] }),
   d({ id: "desktop-devices-end-session", screen: "Signed in", state: "End all other sessions?", brief_row: "Signed in", notes: "Ending every session but this one.", steps: [...open, ...go("devices"), { click: "End all other sessions" }, DIALOG] }),
@@ -130,7 +130,7 @@ export const EDGES_STATES: StateDef[] = [
       sharing_overview: () => ({ ...(as("sharing_overview")({}) as object), paused: SHARING_PAUSED }),
       request_create: () => fail("refused", `Making a request link ${PAUSED_REASON}`),
     }),
-    steps: [...open, ...go("sharing"), { click: /^Ask someone for a secret/ }, DIALOG, { fill: "What you're asking for (they see this)", value: "The Wi-Fi password" }, { click: "Make the link" }, { wait: /^Making a request link is paused/ }],
+    steps: [...open, ...go("sharing-links"), { click: /^Ask someone for a secret/ }, DIALOG, { fill: "What you're asking for (they see this)", value: "The Wi-Fi password" }, { click: "Make the link" }, { wait: /^Making a request link is paused/ }],
   }),
   d({
     id: "desktop-sharing-vault-held",
@@ -139,7 +139,7 @@ export const EDGES_STATES: StateDef[] = [
     brief_row: "Manage sharing",
     notes: "While the server's log doesn't match a mirror, a member added elsewhere waits unapplied; items from members already here keep syncing (doc 35 §2).",
     answers: () => ({ vault_sharing: (a) => ({ ...(as("vault_sharing")(a) as object), held: HELD }) }),
-    steps: [...open, ...go("sharing"), { click: /^Manage sharing/, nth: 1 }, DIALOG, { wait: HELD }],
+    steps: [...open, ...go("sharing-vaults"), { click: /^Manage sharing/, nth: 1 }, DIALOG, { wait: HELD }],
   }),
   d({
     id: "desktop-sharing-vault-held-after",
@@ -148,7 +148,7 @@ export const EDGES_STATES: StateDef[] = [
     brief_row: "Manage sharing",
     notes: "A head signed by someone this device hasn't met stopped the vault during a split: heads chain hash to hash, so every later change waits behind it, members' already here included (doc 36 §3).",
     answers: () => ({ vault_sharing: (a) => ({ ...(as("vault_sharing")(a) as object), held: HELD_AFTER }) }),
-    steps: [...open, ...go("sharing"), { click: /^Manage sharing/, nth: 1 }, DIALOG, { wait: HELD_AFTER }],
+    steps: [...open, ...go("sharing-vaults"), { click: /^Manage sharing/, nth: 1 }, DIALOG, { wait: HELD_AFTER }],
   }),
 
   // --- the web vault -----------------------------------------------------------------

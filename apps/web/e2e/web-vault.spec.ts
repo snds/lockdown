@@ -142,7 +142,7 @@ test("sign in as a new device, find, create, edit, find, lock, unlock and sign o
   await expect(row(page, /Example mail \(work\)/)).toBeVisible({ timeout: 60_000 })
 
   // The theme (doc 62 §3): this browser prefers light, so the page starts on stone, with System on.
-  await go(page, "settings")
+  await go(page, "appearance")
   const html = root(page)
   await expect(html).toHaveAttribute("data-theme", "lockdown")
   await expect(html).not.toHaveClass(/(^|\s)dark(\s|$)/)
@@ -153,6 +153,7 @@ test("sign in as a new device, find, create, edit, find, lock, unlock and sign o
   await expect(theme(page, "Graphite")).toBeChecked()
 
   // Sign out: the edit reaches the server first, then the tab forgets it all.
+  await go(page, "this-browser")
   await signOut(page)
   await expect(signInTab(page)).toBeVisible()
   const listed = lockdown(["sync"]) && lockdown(["list"])

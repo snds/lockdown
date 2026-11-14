@@ -87,14 +87,21 @@ const moreView = (label: string): Step[] => [
 /** Opens what the page head switches (the vaults, Tags, Sharing) where the sidebar's groups don't show. */
 const switcher: Step[] = [items, { click: /Switch vault$/ }, { see: LAYER }]
 
-/** A row of the vaults tree: in the sidebar, or in the switcher's sheet or popover. */
-const tree = (...labels: string[]): Step[] => [
-  by({
-    sidebar: labels.map((l) => ({ click: starts(l), within: SIDEBAR })),
-    rail: [...switcher, ...labels.map((l) => ({ click: starts(l), within: LAYER }))],
-    phone: [...switcher, ...labels.map((l) => ({ click: starts(l), within: LAYER }))],
-  }),
-]
+/**
+ * A row of the vaults tree, by the names on the way to it: in the sidebar, or in the switcher's sheet or
+ * popover. There a chosen row closes the layer, so a vault on the way to its folder is opened with its
+ * own "Expand" button; Tags only opens.
+ */
+const tree = (...labels: string[]): Step[] => {
+  const inLayer = labels.map((l, i): Step => ({ click: i < labels.length - 1 && l !== "Tags" ? `Expand ${l}` : starts(l), within: `${LAYER} [role="list"][aria-label="Vaults"]` }))
+  return [
+    by({
+      sidebar: labels.map((l) => ({ click: starts(l), within: SIDEBAR })),
+      rail: [...switcher, ...inLayer],
+      phone: [...switcher, ...inLayer],
+    }),
+  ]
+}
 
 /** Settings: the pinned row, the rail's item, or the phone's profile button. */
 const settings: Step = by({
@@ -122,7 +129,10 @@ const thisDevice: Step[] = [
 const healthList = (label: string): Step[] => [section("Health"), { click: starts(label), role: "listitem" }]
 
 /** A Sharing tab. */
-const sharing = (tab?: string): Step[] => [...tree("Sharing"), ...(tab ? [{ click: tab, role: "tab" } as Step] : [])]
+const sharing = (tab?: string): Step[] => [
+  by({ sidebar: [{ click: starts("Sharing"), within: SIDEBAR }], rail: [...switcher, { click: starts("Sharing"), within: LAYER }], phone: [...switcher, { click: starts("Sharing"), within: LAYER }] }),
+  ...(tab ? [{ click: tab, role: "tab" } as Step] : []),
+]
 
 /**
  * Every place a state goes to, by an id that outlives its label.

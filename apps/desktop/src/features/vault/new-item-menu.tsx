@@ -107,7 +107,8 @@ const QUICK_KINDS = ["login", "card", "note", "code"] as const
  */
 export function QuickCreateItems({ onPick }: { onPick: (template: string) => void }) {
   const { templates } = useTemplates()
-  const kinds = (templates?.kinds ?? []).filter((t) => t.creatable && !t.id)
+  // The kind's own template, not one of its variants (a Passport, a Router).
+  const kinds = (templates?.kinds ?? []).filter((t) => t.creatable && !t.variant)
   const rows = QUICK_KINDS.map((k) => kinds.find((t) => t.kind === k)).filter((t): t is TemplateView => Boolean(t))
   return (
     <DropdownMenuGroup>

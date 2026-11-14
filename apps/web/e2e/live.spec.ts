@@ -72,7 +72,7 @@ test("a change on another device shows in an open tab by itself, through the wor
   await expect(signedInHeading(page)).toBeVisible()
 
   // Settings → This server: the drill and the mirrors, as the server reports them.
-  await go(page, "settings")
+  await go(page, "server")
   await expect(serverLine(page, "This server doesn't run restore drills")).toBeVisible()
   await expect(serverLine(page, "No mirror has been compared yet")).toBeVisible()
 

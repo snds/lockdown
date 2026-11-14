@@ -22,7 +22,7 @@ import {
 
 import type { ItemSummary } from "@/core/types"
 import { OrganizationNav } from "@/features/organization/organization-nav"
-import { inScope, scopeTitle } from "@/features/organization/org-model"
+import { inScope } from "@/features/organization/org-model"
 import { useVaults } from "@/features/organization/vaults-context"
 import { isMac } from "@/features/palette/palette-model"
 import { ItemEditor, type EditorTarget } from "@/features/vault/item-editor"
@@ -189,7 +189,8 @@ export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, t
 
   const reselect = (id: Section) => {
     go(SECTIONS_BAR.find((s) => s.id === id)?.place ?? "all")
-    document.querySelector("[data-column][data-shown]")?.scrollTo({ top: 0 })
+    const column = document.querySelector("[data-column][data-shown]")
+    if (column) column.scrollTop = 0
     onRefresh?.()
   }
 
@@ -198,7 +199,7 @@ export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, t
       <ShellContext.Provider value={shell}>
         <CrumbProvider>
           <AppFrame layout={layout}>
-            <Sidebar surface={surface} collapsed={collapsed} onCollapsedChange={setCollapsed} rows={rows} toFix={toFix} sharingMark={sharingMark} settingsMark={settingsMark} onLock={onLock} onCreate={() => setCreating(true)} />
+            <Sidebar collapsed={collapsed} onCollapsedChange={setCollapsed} rows={rows} toFix={toFix} sharingMark={sharingMark} settingsMark={settingsMark} onLock={onLock} onCreate={() => setCreating(true)} />
             <StatusLine surface={surface}>{status}</StatusLine>
             <TopRow onLeave={leave} onLock={onLock} settingsMark={settingsMark} />
             <AppFrameMain>
@@ -233,7 +234,6 @@ const SIDEBAR_KEY = "lockdown.sidebar.collapsed"
 const MORE_KEY = "lockdown.sidebar.more"
 
 interface SidebarProps {
-  surface: Surface
   collapsed: boolean
   onCollapsedChange: (collapsed: boolean) => void
   rows: ItemSummary[] | null
@@ -251,7 +251,7 @@ interface SidebarProps {
  * medium width, or collapsed by choice (⌘\), the frame draws it as its rail
  * of Search, Items, Codes and Health; the rest is behind the page head.
  */
-function Sidebar({ surface, collapsed, onCollapsedChange, rows, toFix, sharingMark, settingsMark, onLock, onCreate }: SidebarProps) {
+function Sidebar({ collapsed, onCollapsedChange, rows, toFix, sharingMark, settingsMark, onLock, onCreate }: SidebarProps) {
   const { nav, go, navigate } = usePlaces()
   const frame = useAppFrame()
   const [drawer, setDrawer] = useState(false)
@@ -282,8 +282,8 @@ function Sidebar({ surface, collapsed, onCollapsedChange, rows, toFix, sharingMa
       onCollapsedChange={onCollapsedChange}
       drawerOpen={drawer}
       onDrawerOpenChange={setDrawer}
-      // The macOS window buttons sit over the lockup's row in the desktop app (the title bar is the app's own).
-      leadingInset={surface === "desktop" && isMac() && isTauri() ? { start: 40, top: 28 } : undefined}
+      // No `leadingInset`: the desktop window keeps the system's title bar (src-tauri sets no overlay), so the
+      // macOS window buttons are above the lockup, not over it. It is this one prop when the title bar becomes the app's.
     >
       <NavItem label="Search" icon="search" current={current === "search"} mark={{ keys: "/" }} onClick={() => go("search")} />
       {groups ? (
@@ -307,11 +307,6 @@ function Sidebar({ surface, collapsed, onCollapsedChange, rows, toFix, sharingMa
       )}
     </AppFrameSidebar>
   )
-}
-
-/** Inside the Tauri window (the desktop app), not a browser showing the same build. */
-function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 }
 
 /**
@@ -380,7 +375,14 @@ function ItemsHead({ collapsed, rows, sharingMark, children }: { collapsed: bool
 
   if (groups || !items) return <PageHeadProvider value={null}>{children}</PageHeadProvider>
 
-  const scopeName = (nav.scope ? scopeTitle(nav.scope, vaults) : null) ?? "All vaults"
+  // The scope as the breadcrumb names it, without its group: `FAMILY // FINANCE`, `#WORK`.
+  const scopeWords = nav.scope
+    ? crumbsOf({ area: "vault", view: "all", scope: nav.scope }, vaults, "desktop", false)
+        .slice(1)
+        .map((c) => c.label)
+        .join(" // ")
+    : ""
+  const scopeName = scopeWords || "All vaults"
   // A sideways swipe (or an arrow key on the head) steps the scope: All vaults, then each vault.
   const stops = ["all", ...vaults.map((v) => vaultPlace(v.id))]
   const at = Math.max(0, stops.indexOf(nav.scope?.vault ? vaultPlace(nav.scope.vault) : "all"))

@@ -27,7 +27,14 @@ export function TopRow({ onLeave, onLock, settingsMark }: TopRowProps) {
     // An open item, or an open Settings section: back to its list.
     return (
       <AppFrameTopRow>
-        <TopBar onBack={frame.back?.onBack} backLabel={frame.back?.label} actions={nav.area === "settings" ? lock : undefined} />
+        <TopBar
+          onBack={frame.back?.onBack}
+          backLabel={frame.back?.label}
+          // A Settings section's own head is a level below: the bar carries the page's name.
+          title={nav.area === "settings" ? place("settings")?.label : undefined}
+          titleAs={nav.area === "settings" ? "h1" : undefined}
+          actions={nav.area === "settings" ? lock : undefined}
+        />
       </AppFrameTopRow>
     )
   }

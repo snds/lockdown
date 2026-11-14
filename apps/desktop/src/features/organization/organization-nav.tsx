@@ -192,136 +192,155 @@ export function OrganizationNav({ rows, nav, onNavigate, variant = "sidebar", sh
   const count = (n: number | undefined): NavMarkProp | undefined => (n ? { count: n, label: countName(n, "item") } : undefined)
   const sharedVaults = vaults.filter((v) => v.sharing && v.sharing.kind !== "received")
   const switcher = variant === "switcher"
+  const tree = (
+    <>
+      {switcher && <NavItem label="All vaults" icon="folder" current={nav.area === "vault" && current === nav.view && !nav.scope} mark={count(rows.filter((r) => r.state === "live").length)} onClick={() => go({})} />}
+      {vaults.map((v) => {
+        const open = isOpen(v.id)
+        return [
+          <NavItem
+            key={v.id}
+            label={v.name}
+            icon={vaultIcon(v)}
+            description={v.sharing && !v.sharing.owned && v.sharing.owner ? v.sharing.owner : undefined}
+            mark={count(counts.byVault.get(v.id))}
+            current={current === vaultPlace(v.id)}
+            expanded={v.folders.length > 0 ? open : undefined}
+            onExpandedChange={(next) => setOpen(v.id, next)}
+            onClick={() => go({ vault: v.id })}
+            action={
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<IconButton label={`${v.name} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" />} />
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => newFolder(v, null)}>
+                    <Icon name="folder--add" />
+                    New folder
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => renameVault(v)}>
+                    <Icon name="edit" />
+                    Rename
+                  </DropdownMenuItem>
+                  {v.sharing && v.sharing.kind !== "received" && sharing && (
+                    <DropdownMenuItem onClick={() => goPlace(membersPlace(v.id))}>
+                      <Icon name="user--multiple" />
+                      Members
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <Icon name="trash-can" />
+                      Keep trashed items
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      <DropdownMenuGroup>
+                        <DropdownMenuLabel>Purged on every device after</DropdownMenuLabel>
+                        <DropdownMenuRadioGroup value={String(v.trash_days)} onValueChange={(d) => void setTrashDays(v, Number(d))}>
+                          {TRASH_DAYS.map((d) => (
+                            <DropdownMenuRadioItem key={d} value={String(d)}>
+                              {d === 365 ? "A year" : `${d} days`}
+                            </DropdownMenuRadioItem>
+                          ))}
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuGroup>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            }
+          />,
+          ...(open
+            ? folderTree(v.folders).map((f) => (
+                <NavItem
+                  key={f.id}
+                  label={f.name}
+                  icon={nav.scope?.folder === f.id ? "folder--open" : "folder"}
+                  level={f.depth + 1}
+                  mark={count(counts.byFolder.get(f.id))}
+                  current={current === folderPlace(f.id)}
+                  onClick={() => go({ folder: f.id })}
+                  action={
+                    <DropdownMenu>
+                      <DropdownMenuTrigger render={<IconButton label={`${f.name} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" />} />
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => newFolder(v, f.id)}>
+                          <Icon name="folder--add" />
+                          New folder inside
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => renameFolder(v, f.id, f.name, f.parent)}>
+                          <Icon name="edit" />
+                          Rename
+                        </DropdownMenuItem>
+                        {f.parent && (
+                          <DropdownMenuItem onClick={() => void client.changeFolder(v.id, f.id, f.name, null).then(done("Moved to the top.")).catch(fail)}>
+                            <Icon name="folder--move-to" />
+                            Move to the top
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive" onClick={() => removeFolder(v, f.id, f.name)}>
+                          <Icon name="trash-can" />
+                          Remove
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  }
+                />
+              ))
+            : []),
+        ]
+      })}
+      {tags.length > 0 && <NavItem label="Tags" icon="tag" expanded={isOpen("tags")} onExpandedChange={(next) => setOpen("tags", next)} />}
+      {tags.length > 0 &&
+        isOpen("tags") &&
+        tags.map((t) => (
+          <NavItem
+            key={t.tag}
+            label={t.name}
+            icon="tag"
+            level={t.depth + 1}
+            mark={count(t.count)}
+            current={current === tagPlace(t.tag)}
+            onClick={() => go({ tag: t.tag })}
+            action={
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<IconButton label={`#${t.tag} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" />} />
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => renameTag(t.tag)}>
+                    <Icon name="edit" />
+                    Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuItem variant="destructive" onClick={() => removeTag(t.tag)}>
+                    <Icon name="trash-can" />
+                    Take off every item
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            }
+          />
+        ))}
+      {switcher && <NavItem label="New vault" icon="add" onClick={newVault} />}
+      {sharing && !switcher && (
+        <NavItem label="Sharing" icon="share" current={current === "sharing"} mark={sharingMark > 0 ? { count: sharingMark, tone: "needs-you" } : undefined} onClick={() => goPlace("sharing")} />
+      )}
+    </>
+  )
   return (
     <>
-      <NavSection title="Vaults" count={vaults.length} tree action={switcher ? undefined : <IconButton label="New vault" icon="add" size="icon-sm" variant="ghost" onClick={newVault} />}>
-        {switcher && <NavItem label="All vaults" icon="folder" current={nav.area === "vault" && current === nav.view && !nav.scope} mark={count(rows.filter((r) => r.state === "live").length)} onClick={() => go({})} />}
-        {vaults.map((v) => {
-          const open = isOpen(v.id)
-          return [
-            <NavItem
-              key={v.id}
-              label={v.name}
-              icon={vaultIcon(v)}
-              description={v.sharing && !v.sharing.owned && v.sharing.owner ? v.sharing.owner : undefined}
-              mark={count(counts.byVault.get(v.id))}
-              current={current === vaultPlace(v.id)}
-              expanded={v.folders.length > 0 ? open : undefined}
-              onExpandedChange={(next) => setOpen(v.id, next)}
-              onClick={() => go({ vault: v.id })}
-              action={
-                <DropdownMenu>
-                  <DropdownMenuTrigger render={<IconButton label={`${v.name} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" />} />
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => newFolder(v, null)}>
-                      <Icon name="folder--add" />
-                      New folder
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => renameVault(v)}>
-                      <Icon name="edit" />
-                      Rename
-                    </DropdownMenuItem>
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger>
-                        <Icon name="trash-can" />
-                        Keep trashed items
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent>
-                        <DropdownMenuGroup>
-                          <DropdownMenuLabel>Purged on every device after</DropdownMenuLabel>
-                          <DropdownMenuRadioGroup value={String(v.trash_days)} onValueChange={(d) => void setTrashDays(v, Number(d))}>
-                            {TRASH_DAYS.map((d) => (
-                              <DropdownMenuRadioItem key={d} value={String(d)}>
-                                {d === 365 ? "A year" : `${d} days`}
-                              </DropdownMenuRadioItem>
-                            ))}
-                          </DropdownMenuRadioGroup>
-                        </DropdownMenuGroup>
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              }
-            />,
-            ...(open
-              ? folderTree(v.folders).map((f) => (
-                  <NavItem
-                    key={f.id}
-                    label={f.name}
-                    icon={nav.scope?.folder === f.id ? "folder--open" : "folder"}
-                    level={f.depth + 1}
-                    mark={count(counts.byFolder.get(f.id))}
-                    current={current === folderPlace(f.id)}
-                    onClick={() => go({ folder: f.id })}
-                    action={
-                      <DropdownMenu>
-                        <DropdownMenuTrigger render={<IconButton label={`${f.name} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" />} />
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => newFolder(v, f.id)}>
-                            <Icon name="folder--add" />
-                            New folder inside
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => renameFolder(v, f.id, f.name, f.parent)}>
-                            <Icon name="edit" />
-                            Rename
-                          </DropdownMenuItem>
-                          {f.parent && (
-                            <DropdownMenuItem onClick={() => void client.changeFolder(v.id, f.id, f.name, null).then(done("Moved to the top.")).catch(fail)}>
-                              <Icon name="folder--move-to" />
-                              Move to the top
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem variant="destructive" onClick={() => removeFolder(v, f.id, f.name)}>
-                            <Icon name="trash-can" />
-                            Remove
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    }
-                  />
-                ))
-              : []),
-          ]
-        })}
-        {tags.length > 0 && <NavItem label="Tags" icon="tag" expanded={isOpen("tags")} onExpandedChange={(next) => setOpen("tags", next)} />}
-        {tags.length > 0 &&
-          isOpen("tags") &&
-          tags.map((t) => (
-            <NavItem
-              key={t.tag}
-              label={t.name}
-              icon="tag"
-              level={t.depth + 1}
-              mark={count(t.count)}
-              current={current === tagPlace(t.tag)}
-              onClick={() => go({ tag: t.tag })}
-              action={
-                <DropdownMenu>
-                  <DropdownMenuTrigger render={<IconButton label={`#${t.tag} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" />} />
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => renameTag(t.tag)}>
-                      <Icon name="edit" />
-                      Rename
-                    </DropdownMenuItem>
-                    <DropdownMenuItem variant="destructive" onClick={() => removeTag(t.tag)}>
-                      <Icon name="trash-can" />
-                      Take off every item
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              }
-            />
-          ))}
-        {switcher && <NavItem label="New vault" icon="add" onClick={newVault} />}
-        {sharing && !switcher && (
-          <NavItem label="Sharing" icon="share" current={current === "sharing"} mark={sharingMark > 0 ? { count: sharingMark, tone: "needs-you" } : undefined} onClick={() => goPlace("sharing")} />
-        )}
-      </NavSection>
+      {switcher ? (
+        // In the sheet the header already says VAULTS // NN, so the rows stand under it without a second heading.
+        // They are plain rows there, each with a real button to open its branch: a finger has no arrow keys.
+        <div role="list" aria-label="Vaults" className="flex flex-col gap-1">
+          {tree}
+        </div>
+      ) : (
+        <NavSection title="Vaults" count={vaults.length} tree action={<IconButton label="New vault" icon="add" size="icon-sm" variant="ghost" onClick={newVault} />}>
+          {tree}
+        </NavSection>
+      )}
       {switcher && sharedVaults.length > 0 && (
         <div className="flex flex-col">
           <SectionHeader title="Shared with" count={sharedVaults.length} />
-          <div role="list">
+          <div role="list" aria-label="Shared with">
             {sharedVaults.map((v) => (
               <ListRow
                 key={v.id}
