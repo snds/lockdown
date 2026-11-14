@@ -1,13 +1,19 @@
-import { DESKTOP_STATES } from "../states/desktop"
-import { DESKTOP_MORE } from "../states/desktop-more"
 import { DEVTOOLS_STATES } from "../states/devtools"
+import { EDGES_STATES } from "../states/edges"
 import { EXTENSION_STATES } from "../states/extension"
+import { SCREENS_STATES } from "../states/screens"
 import { SERVER_STATES } from "../states/server"
-import { WEB_STATES } from "../states/web"
+import { SHELL_STATES } from "../states/shell"
+import { VAULT_STATES } from "../states/vault"
 import type { Frame } from "./prefs"
 import type { Density, StateDef, StateMeta, Theme } from "./types"
 
-export const STATES: StateDef[] = [...DESKTOP_STATES, ...DESKTOP_MORE, ...DEVTOOLS_STATES, ...WEB_STATES, ...EXTENSION_STATES, ...SERVER_STATES]
+/**
+ * Every state, one file per owner so lanes that work at once never edit the
+ * same file: the shell (foundation), then the screens, vault and edges lanes.
+ * An id never changes: before and after pictures pair up by it.
+ */
+export const STATES: StateDef[] = [...SHELL_STATES, ...SCREENS_STATES, ...DEVTOOLS_STATES, ...SERVER_STATES, ...VAULT_STATES, ...EDGES_STATES, ...EXTENSION_STATES]
 
 const byId = new Map(STATES.map((s) => [s.id, s]))
 if (byId.size !== STATES.length) {
@@ -33,6 +39,8 @@ export function statesMeta(): StateMeta[] {
     frame: s.frame ?? null,
     trusted: s.trusted ?? [],
     hold_clock: s.hold_clock ?? false,
+    live_clock: s.live_clock ?? false,
+    built: s.built ?? null,
   }))
 }
 

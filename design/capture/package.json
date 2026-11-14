@@ -16,6 +16,7 @@
     "review:build": "node scripts/review-build.ts",
     "capture": "node scripts/capture.ts",
     "shots": "vite build && node scripts/capture.ts --sizes 1440x900,390x844 --strict --out test-results/shots",
+    "shots:built": "vite build && node scripts/capture.ts --built --strict",
     "engine:check": "node scripts/engine-check.ts",
     "typecheck": "tsc -b",
     "lint": "oxlint"

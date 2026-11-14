@@ -3,7 +3,13 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test } from "@playwright/test"
+
+import { addDevice, approve, compareDialog, deviceCode } from "./steps/devices.ts"
+import { answerGate } from "./steps/gate.ts"
+import { row } from "./steps/items.ts"
+import { go, vaultOpen } from "./steps/nav.ts"
+import { digitsToCompare, finishJoin, joinApproved, joinLoginName, joinWithCode, signIn } from "./steps/unlock.ts"
 
 /**
  * The web vault's device-link join in Chromium against the real server
@@ -49,8 +55,6 @@ test.afterAll(() => {
   if (home) rmSync(home, { recursive: true, force: true })
 })
 
-const sidebar = (page: Page) => page.getByRole("navigation", { name: "Sidebar" })
-
 test("a tab with nothing on it joins through a signed-in tab's device link", async ({ browser }) => {
   test.setTimeout(300_000)
   const problems: string[] = []
@@ -59,48 +63,37 @@ test("a tab with nothing on it joins through a signed-in tab's device link", asy
   const first = await (await browser.newContext()).newPage()
   first.on("pageerror", (e) => problems.push(`first: ${e.message}`))
   await first.goto("/vault/")
-  const form = first.getByRole("form", { name: "Sign in" })
-  await form.getByLabel("Login name").fill(LOGIN)
-  await form.getByLabel("Master password").fill(PASSWORD)
-  await form.getByLabel("Secret Key").fill(secretKey)
-  await form.getByRole("button", { name: "Sign in" }).click()
-  await expect(first.getByRole("heading", { name: "All items" })).toBeVisible({ timeout: 90_000 })
+  await signIn(first, LOGIN, PASSWORD, secretKey)
+  await expect(vaultOpen(first)).toBeVisible({ timeout: 90_000 })
 
-  await sidebar(first).getByRole("button", { name: "Devices" }).click()
-  await first.getByRole("button", { name: "Add a device" }).click()
-  const offer = first.getByRole("dialog", { name: "Add a device" })
-  const code = (await offer.getByLabel("Device code").textContent())!.trim()
+  await go(first, "devices")
+  const offer = await addDevice(first)
+  const code = (await deviceCode(offer).textContent())!.trim()
   expect(code).toMatch(/^[0-9A-Z]{5}-[0-9A-Z]{5}$/)
 
   // The new device: a tab with nothing on it types the code.
   const second = await (await browser.newContext()).newPage()
   second.on("pageerror", (e) => problems.push(`second: ${e.message}`))
   await second.goto("/vault/")
-  await second.getByRole("tab", { name: "With a device" }).click()
-  await second.getByLabel("Code from the other device").fill(code)
-  await second.getByRole("button", { name: "Join", exact: true }).click()
+  await joinWithCode(second, code)
 
   // Both show the same six digits.
-  const theirs = second.getByLabel("Digits to compare")
+  const theirs = digitsToCompare(second)
   await expect(theirs).toHaveText(/^\d{3} \d{3}$/, { timeout: 60_000 })
-  const compare = first.getByRole("dialog", { name: "Do the digits match?" })
-  await expect(compare.getByLabel("Digits to compare")).toHaveText((await theirs.textContent())!.trim(), { timeout: 60_000 })
+  const compare = compareDialog(first)
+  await expect(digitsToCompare(compare)).toHaveText((await theirs.textContent())!.trim(), { timeout: 60_000 })
 
   // The first tab approves behind its password gate.
-  await compare.getByRole("button", { name: "Approve" }).click()
-  // By its exact name: from unicron 1.0 the gate's field has a "Show Account password" button beside it.
-  await first.getByLabel("Account password", { exact: true }).fill(PASSWORD)
-  await first.getByRole("button", { name: "Confirm" }).click()
+  await approve(compare)
+  await answerGate(first, PASSWORD)
   await expect(compare).toBeHidden({ timeout: 60_000 })
 
   // The new tab finishes with the password alone and opens the vault.
-  await expect(second.getByLabel("Login name")).toBeVisible({ timeout: 60_000 })
-  await expect(second.getByText(/Approved\./)).toBeVisible()
-  await second.getByLabel("Login name").fill(LOGIN)
-  await second.getByLabel("Master password").fill(PASSWORD)
-  await second.getByRole("button", { name: "Finish" }).click()
-  await expect(second.getByRole("heading", { name: "All items" })).toBeVisible({ timeout: 90_000 })
-  await expect(second.getByRole("button", { name: /Bank from the desktop/ }).first()).toBeVisible()
+  await expect(joinLoginName(second)).toBeVisible({ timeout: 60_000 })
+  await expect(joinApproved(second)).toBeVisible()
+  await finishJoin(second, LOGIN, PASSWORD)
+  await expect(vaultOpen(second)).toBeVisible({ timeout: 90_000 })
+  await expect(row(second, /Bank from the desktop/)).toBeVisible()
 
   expect(problems).toEqual([])
 })

@@ -12,15 +12,13 @@ import { demoItems, DEMO_PACK } from "../fixture/demo-pack"
 import { uid } from "../fixture/ids"
 import type { World } from "../fixture/world"
 import type { StateDef, Step } from "../harness/types"
-import { MASTER_PASSWORD } from "../fixture/commands"
 import { WIDTHS } from "../harness/types"
 import { DeveloperMenu } from "./developer-menu"
+import { open } from "./steps/screens"
+import { openItem } from "./steps/vault"
 
 const app = () => <App />
 const DIALOG: Step = { see: '[role="dialog"]' }
-const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-const starts = (s: string) => new RegExp(`^${esc(s)}(\\s|$)`)
-const open: Step[] = [{ fill: "Master password", value: MASTER_PASSWORD }, { click: "Unlock", role: "button" }, { wait: /^All items/ }]
 
 /** The demo's world: the pack's items in place of the fixture's. */
 function demoWorld(w: World) {
@@ -129,7 +127,7 @@ export const DEVTOOLS_STATES: StateDef[] = [
       setup: demoWorld,
       answers: demoOpen,
       mount: app,
-      steps: [...open, { wait: "Demo", role: "region" }, { click: starts(title), within: "main" }, { wait: title, role: "heading" }],
+      steps: [...open, { wait: "Demo", role: "region" }, ...openItem(title)],
     }),
   ),
 ]
