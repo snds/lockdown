@@ -12,7 +12,7 @@ import type { StateDef } from "../harness/types"
 import { d, only, w } from "./defs"
 import { open, webOpen } from "./steps/screens"
 import { DIALOG, MENU, answerGate, go, openSwitcher, starts } from "./steps/shell"
-import { itemAction, openItem, passkeyDetails, reveal } from "./steps/vault"
+import { itemAction, openItem, openItemMenu, passkeyDetails, reveal } from "./steps/vault"
 
 export const VAULT_STATES: StateDef[] = [
   d({ id: "desktop-vault-filled", screen: "Vault", state: "Filled", brief_row: "Vault", notes: "All items, grouped by kind, title A to Z (D93).", compact: true, steps: open }),
@@ -138,9 +138,9 @@ export const VAULT_STATES: StateDef[] = [
   d({ id: "desktop-nav-vault-menu", screen: "Vaults and tags trees", state: "Vault menu", brief_row: "Vaults and tags trees", notes: "A vault's menu: new folder, rename.", steps: [...open, ...openSwitcher(), { click: "Personal options" }, MENU] }),
   d({ id: "desktop-nav-new-vault", screen: "Vaults and tags trees", state: "New vault", brief_row: "Vaults and tags trees", notes: "Naming a new vault.", steps: [...open, ...openSwitcher(), { click: "New vault" }, DIALOG] }),
   d({ id: "desktop-nav-tag", screen: "Vaults and tags trees", state: "Narrowed to a tag", brief_row: "Vaults and tags trees", notes: "The list narrowed to #travel.", steps: [...open, ...go("tag-travel")] }),
-  d({ id: "desktop-item-more-menu", built: { area: "item", screen: "more-menu", kind: "undrawn" }, screen: "Where it is, item menu", state: "Item menu", brief_row: "Where it is, item menu", notes: "History, archive, move, crown-jewel on or off.", steps: [...open, ...openItem("Bluefin Bank"), { click: "More for this item" }, MENU] }),
-  d({ id: "desktop-item-history", screen: "Version history", state: "Versions", brief_row: "Version history", notes: "Every version, which device, which fields; hidden values stay hidden.", steps: [...open, ...openItem("Northwind Mail"), { click: "More for this item" }, { click: "History", role: "menuitem" }, DIALOG] }),
-  d({ id: "desktop-item-jewel-on", screen: "Where it is, item menu", state: "Keep as a crown jewel?", brief_row: "Where it is, item menu", notes: "Moving an item into the crown-jewel class.", steps: [...open, ...openItem("Bluefin Bank"), { click: "More for this item" }, { click: "Keep as a crown jewel", role: "menuitem" }, DIALOG] }),
+  d({ id: "desktop-item-more-menu", built: { area: "item", screen: "more-menu", kind: "undrawn" }, screen: "Where it is, item menu", state: "Item menu", brief_row: "Where it is, item menu", notes: "History, archive, move, crown-jewel on or off.", steps: [...open, ...openItem("Bluefin Bank"), ...openItemMenu()] }),
+  d({ id: "desktop-item-history", screen: "Version history", state: "Versions", brief_row: "Version history", notes: "Every version, which device, which fields; hidden values stay hidden.", steps: [...open, ...openItem("Northwind Mail"), itemAction("History"), DIALOG] }),
+  d({ id: "desktop-item-jewel-on", screen: "Where it is, item menu", state: "Keep as a crown jewel?", brief_row: "Where it is, item menu", notes: "Moving an item into the crown-jewel class.", steps: [...open, ...openItem("Bluefin Bank"), itemAction("Keep as a crown jewel"), DIALOG] }),
   d({ id: "desktop-item-lookalike", screen: "Lookalike warning", state: "Site imitates another", brief_row: "Lookalike warning", notes: "First in the detail: this login's site imitates the bank's.", steps: [...open, ...openItem("Bluefin Bank alerts")] }),
   d({ id: "desktop-item-wifi-card", screen: "Wi-Fi guest card", state: "Join the network", brief_row: "Wi-Fi guest card", notes: "A QR guests scan; hides after 60 s.", steps: [...open, ...openItem("Guest Wi-Fi"), { click: /Guest card/ }, DIALOG, { pause: 300 }] }),
   d({ id: "desktop-item-large-type", screen: "Large type", state: "Wi-Fi password", brief_row: "Large type", notes: "Read across a room; 120 s.", steps: [...open, ...openItem("Guest Wi-Fi"), { click: /Show large type/ }, DIALOG, { pause: 400 }] }),

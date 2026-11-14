@@ -395,7 +395,7 @@ function ItemOpen({ id, rows, item, setItem, onEdit, onTrashed, onChanged, onNot
   })
 
   // --- the title, in the role X6 names ----------------------------------------------------------
-  const titleRef = useRef<HTMLHeadingElement | null>(null)
+  const titleRef = useRef<HTMLSpanElement | null>(null)
   const [titleFallback, setTitleFallback] = useState(false)
   const art = item.kind === "card"
   useLayoutEffect(() => {
@@ -405,7 +405,10 @@ function ItemOpen({ id, rows, item, setItem, onEdit, onTrashed, onChanged, onNot
     if (!el || art || !frame.phone) return setTitleFallback(false)
     setTitleFallback(el.scrollWidth > el.clientWidth + 1)
   }, [art, frame.phone, title])
-  const titleClass = art || titleFallback ? "type-title line-clamp-2 break-words text-foreground" : frame.phone ? "type-display-compact truncate text-foreground" : "type-display line-clamp-2 break-words text-foreground"
+  const oneLine = frame.phone && !art && !titleFallback
+  const titleClass = `min-w-0 text-foreground ${art || titleFallback ? "type-title" : frame.phone ? "type-display-compact" : "type-display"}`
+  // The type roles balance their lines (text-wrap), so the cut sits on an inner span that sets its own wrap.
+  const titleLines = oneLine ? "block truncate" : "line-clamp-2 break-words"
 
   const [detailsOpen, setDetailsOpen] = useState(readDetailsOpen)
   const folder = vault?.folders.find((f) => f.id === item.organization?.folder)
@@ -445,8 +448,10 @@ function ItemOpen({ id, rows, item, setItem, onEdit, onTrashed, onChanged, onNot
             )}
           </div>
           <div className="flex min-w-0 items-center gap-3">
-            <h2 ref={titleRef} className={titleClass} title={title}>
-              {title}
+            <h2 className={titleClass} title={title}>
+              <span ref={titleRef} className={titleLines}>
+                {title}
+              </span>
             </h2>
             {item.crown_jewel && <CrownJewelMark size="md" />}
             {item.tier && <RiskTierBadge tier={item.tier} verified={item.tier_verified} size="md" explain />}

@@ -4,7 +4,7 @@
 
 import { runSteps } from "../../harness/driver"
 import type { Step } from "../../harness/types"
-import { MENU, starts } from "./shell"
+import { starts } from "./shell"
 
 /** Opens an item from the list by its title and waits for its detail. */
 export const openItem = (title: string): Step[] => [{ click: starts(title), within: "main" }, { wait: title, role: "heading" }]
@@ -25,8 +25,19 @@ export const openDetails = (): Step => ({
   },
 })
 
-/** A row of the item's ⋯ menu (brief I1): the overline's line on a desktop, the top bar on a phone. */
-const fromMenu = (row: string | RegExp): Step => ({ run: () => runSteps([{ click: "More for this item" }, MENU, { click: row, role: "menuitem" }]) })
+/** The item's ⋯ menu, open: a menu on a desktop, a sheet of row buttons on a phone (AdaptiveMenu). */
+const ITEM_MENU: Step = { see: '[role="menu"], [role="dialog"]' }
+
+/** Opens the item's ⋯ menu (brief I1): the overline's line on a desktop, the top bar on a phone. */
+export const openItemMenu = (): Step[] => [{ click: "More for this item" }, ITEM_MENU]
+
+/** A row of the item's ⋯ menu: a menu item on a desktop, a row button in the sheet on a phone. */
+const fromMenu = (row: string | RegExp): Step => ({
+  run: async () => {
+    await runSteps(openItemMenu())
+    await runSteps([{ click: row, role: document.querySelector('[role="menu"]') ? "menuitem" : "button" }])
+  },
+})
 
 const ACTIONS = {
   // Share stays ItemShare's own button until edges-8 lets the ⋯ open it: on the overline's line on a
@@ -42,6 +53,8 @@ const ACTIONS = {
   Trash: fromMenu("Move to Recently deleted"),
   "Delete for good": fromMenu("Delete for good"),
   "Signing in on a TV?": fromMenu("Signing in on a TV?"),
+  History: fromMenu("History"),
+  "Keep as a crown jewel": fromMenu("Keep as a crown jewel"),
 } satisfies Record<string, Step>
 
 /** One of the open item's own actions, by its name. */
