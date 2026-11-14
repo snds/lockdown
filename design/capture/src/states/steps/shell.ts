@@ -77,8 +77,11 @@ const moreView = (label: string): Step[] => [
     sidebar: [
       {
         run: async () => {
-          const more = Array.from(document.querySelectorAll<HTMLElement>(`${SIDEBAR} [aria-expanded]`)).find((el) => (el.getAttribute("aria-label") ?? "") === "More")
-          if (more?.getAttribute("aria-expanded") === "false") await runSteps([{ click: "More", within: SIDEBAR }])
+          // More is drawn once the rows have loaded: wait for it, so a slow load never skips the click.
+          const find = () => Array.from(document.querySelectorAll<HTMLElement>(`${SIDEBAR} [aria-expanded]`)).find((el) => (el.getAttribute("aria-label") ?? "") === "More")
+          const start = performance.now()
+          while (!find() && performance.now() - start < 6000) await new Promise((r) => setTimeout(r, 50))
+          if (find()?.getAttribute("aria-expanded") === "false") await runSteps([{ click: "More", within: SIDEBAR }])
         },
       },
       { click: starts(label), within: SIDEBAR },
