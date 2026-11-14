@@ -1,24 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 
-import { Spinner, Toaster, TooltipProvider, toast } from "@unicron/ui"
+import { Spinner, Tabs, TabsList, TabsTrigger, Toaster, TooltipProvider, toast } from "@unicron/ui"
 
 import { GateProvider } from "@/app/gate"
 import { useLockWatch } from "@/app/lock-watch"
 import { LockedProvider } from "@/app/locked"
 import { SettingsProvider } from "@/app/settings"
-import { AppShell, type Nav, type ShellScreen } from "@/app/shell"
+import { navFor, sharingTabs, type SharingTab } from "@/app/places"
+import { AppShell, type Nav } from "@/app/shell"
+import { PageColumn } from "@/components/master-detail"
 import { TemplatesProvider, useTemplates } from "@/app/templates"
 import { describeError, isSignInNeeded, useClient } from "@/core/client"
-import type { ItemSummary, LockReason, LockState, PersonaInfo, Status, VaultView as VaultEntry } from "@/core/types"
+import type { ItemSummary, LockReason, LockState, Status, VaultView as VaultEntry } from "@/core/types"
 import { CodesView } from "@/features/codes/codes-view"
-import { DevicesView } from "@/features/devices/devices-view"
 import { useExpiryReminder } from "@/features/organization/expiry"
 import { useAwayReminder } from "@/features/vault/use-away-reminder"
-import { OrganizationNav } from "@/features/organization/organization-nav"
 import { VaultsProvider } from "@/features/organization/vaults-context"
 import { QuickPalette } from "@/features/palette/quick-palette"
 import { LockedWash } from "@/features/unlock/locked-wash"
-import { countViews } from "@/features/vault/list-model"
+import { toFixCount } from "@/features/security/security-model"
+import { SearchView } from "@/features/vault/search-view"
 import { VaultView } from "@/features/vault/vault-view"
 import { DepthClientProvider } from "@/features/depth/depth-client"
 
@@ -56,14 +57,9 @@ function warnOnSplit(lines: readonly string[]) {
     })
 }
 
-/** The screens the web vault has beside the vault's views. */
-const WEB_SCREENS: ReadonlyArray<ShellScreen> = [
-  ["sharing", "link", "Links"],
-  ["people", "user--multiple", "People"],
-  ["devices", "devices", "Devices"],
-  ["security", "security", "Security"],
-  ["settings", "settings", "Settings"],
-]
+/** The web vault's Sharing tabs (brief W1): People and Links. */
+const TAB_LABELS: Record<SharingTab, string> = { people: "People", vaults: "Vaults", links: "Links", emergency: "Emergency" }
+const WEB_TABS = sharingTabs("web")
 
 /** How often an open vault syncs on its own while the tab is in view and
  *  the live channel is down (with it up, changes arrive by themselves). */
@@ -94,11 +90,10 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
   // `#/devices` (the link in the server's alert emails) opens on Devices,
   // where every signed-in session can be ended.
   const [nav, setNav] = useState<Nav>(() =>
-    typeof window !== "undefined" && window.location.hash === "#/devices" ? { area: "devices", view: "all" } : { area: "vault", view: "all" },
+    typeof window !== "undefined" && window.location.hash === "#/devices" ? { area: "settings", view: "all", section: "devices" } : { area: "vault", view: "all" },
   )
   const [rows, setRows] = useState<ItemSummary[] | null>(null)
   const [rowsError, setRowsError] = useState<string | null>(null)
-  const [personas, setPersonas] = useState<PersonaInfo[]>([])
   const [vaults, setVaults] = useState<VaultEntry[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [palette, setPalette] = useState(false)
@@ -142,7 +137,6 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
         setRowsError(null)
       })
       .catch((e) => setRowsError(describeError(e)))
-    client.personas().then(setPersonas).catch(() => setPersonas([]))
     client.vaults().then(setVaults).catch(() => setVaults([]))
   }, [client])
 
@@ -250,14 +244,19 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
   const notice = useCallback((text: string) => {
     toast(text)
   }, [])
-  const counts = useMemo(() => countViews(rows ?? []), [rows])
+  // Health counts only what the web can know (brief X1): the Needs attention list.
+  const toFix = useMemo(() => toFixCount(null, rows ?? []), [rows])
+  const go = useCallback((id: string) => {
+    const to = navFor(id)
+    if (to) setNav(to)
+  }, [])
   const vaultsValue = useMemo(() => ({ vaults, reload: syncThenList }), [vaults, syncThenList])
-  const showExpiring = useCallback(() => setNav({ area: "vault", view: "expiring" }), [])
+  const showExpiring = useCallback(() => go("expiring"), [go])
   const remind = useCallback((text: string, show: () => void) => {
     toast(text, { action: { label: "Show", onClick: show } })
   }, [])
   useExpiryReminder(client, status !== null, remind, showExpiring)
-  const showAttention = useCallback(() => setNav({ area: "vault", view: "attention" }), [])
+  const showAttention = useCallback(() => go("attention"), [go])
   useAwayReminder(client, status !== null, remind, showAttention)
   const { refreshUserTemplates } = useTemplates()
   const open = status !== null
@@ -307,13 +306,20 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
     <LockedProvider value={lock?.locked ?? false}>
       <VaultsProvider value={vaultsValue}>
         <AppShell
+          surface="web"
           nav={nav}
-          personas={personas}
-          counts={counts}
           onNavigate={setNav}
+          rows={rows}
           onLock={lockNow}
-          screens={WEB_SCREENS}
-          organization={<OrganizationNav rows={rows ?? []} nav={nav} onNavigate={setNav} />}
+          toFix={toFix}
+          onNotice={notice}
+          onRefresh={syncThenList}
+          onSaved={(id, generated) => {
+            setSelected(id)
+            if (nav.area !== "vault" && nav.area !== "search") setNav({ area: "vault", view: "all" })
+            syncThenList()
+            notice(generated ? "Saved. The new password is in the item; copy it from there." : "Saved.")
+          }}
         >
           {nav.area === "vault" && (
             <VaultView
@@ -328,12 +334,32 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
               scope={nav.scope}
             />
           )}
-          {nav.area === "codes" && <CodesView rows={rows ?? []} onChanged={syncThenList} />}
-          {nav.area === "sharing" && <LinksView link={link} clipboard={clipboard} />}
-          {nav.area === "people" && <PeopleView link={link} onNotice={notice} />}
-          {nav.area === "devices" && <DevicesView status={status} onChanged={syncThenList} onNotice={notice} focus={nav.device} />}
-          {nav.area === "security" && <WebSecurityView onDevice={(device) => setNav({ area: "devices", view: "all", device })} />}
-          {nav.area === "settings" && <WebSettingsView server={server} login={web.login ?? ""} onLock={setLock} onSignOut={signOut} />}
+          {nav.area === "search" && <SearchView rows={rows} selected={selected} onSelect={setSelected} onChanged={syncThenList} onNotice={notice} />}
+          {nav.area === "codes" && (
+            <PageColumn>
+              <CodesView rows={rows ?? []} onChanged={syncThenList} />
+            </PageColumn>
+          )}
+          {nav.area === "sharing" && (
+            <PageColumn>
+              <Tabs value={nav.tab === "links" ? "links" : "people"} onValueChange={(tab) => go(`sharing-${tab}`)}>
+                <TabsList variant="line" aria-label="Sharing">
+                  {WEB_TABS.map((tab) => (
+                    <TabsTrigger key={tab} value={tab}>
+                      {TAB_LABELS[tab]}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+              {nav.tab === "links" ? <LinksView link={link} clipboard={clipboard} /> : <PeopleView link={link} onNotice={notice} />}
+            </PageColumn>
+          )}
+          {nav.area === "security" && (
+            <PageColumn>
+              <WebSecurityView onDevice={(device) => setNav({ area: "settings", view: "all", section: "devices", device })} />
+            </PageColumn>
+          )}
+          {nav.area === "settings" && <WebSettingsView status={status} onChanged={syncThenList} onNotice={notice} server={server} login={web.login ?? ""} onLock={setLock} onSignOut={signOut} />}
         </AppShell>
         <QuickPalette
           open={palette}

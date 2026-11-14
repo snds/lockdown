@@ -4,8 +4,8 @@ import type { Step } from "../../harness/types"
 
 /** Opens the New item menu. */
 export const newItemMenu: Step = { click: /^New item/ }
-/** Starts a new item of one kind (or the menu's templates entry) from the New item menu. */
-export const newItem = (entry: RegExp): Step[] => [newItemMenu, { click: entry, role: "menuitem" }]
+/** Starts a new item of one kind (or the menu's templates entry) from the New item menu: a menu beside the sidebar, a sheet of the same rows on a phone. */
+export const newItem = (entry: RegExp): Step[] => [newItemMenu, { click: entry, within: '[data-adaptive="menu"]' }]
 
 /** Picks an option of a native select the way a person would, so React hears the change. */
 export function choose(selector: string, value: string) {

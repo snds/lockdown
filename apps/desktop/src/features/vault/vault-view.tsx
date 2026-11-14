@@ -38,7 +38,6 @@ import { DetailPane } from "./detail-pane"
 import { ItemRow } from "./item-row"
 import { DEFAULT_GROUP, DEFAULT_SORT, VIEW_LABELS, buildList, kindIcon, type GroupBy, type ListView, type SortKey } from "./list-model"
 import { ItemEditor, type EditorTarget } from "./item-editor"
-import { NewItemMenu } from "./new-item-menu"
 import { useQuickCopy } from "./quick-copy"
 
 interface VaultViewProps {
@@ -56,7 +55,7 @@ interface VaultViewProps {
   scope?: Scope
 }
 
-const EMPTY: Record<ListView, [string, string]> = {
+const EMPTY: Partial<Record<ListView, [string, string]>> = {
   all: ["Nothing saved yet", "Add one with New item, or import from another manager in Settings."],
   passkeys: ["No passkeys yet", "Save a passkey with Lockdown when a site offers one in your browser; a Login keeps its own."],
   codes: ["No codes here", "Add a code from the Codes screen."],
@@ -100,7 +99,7 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
     return buildList(scoped, view, query, sort, groupBy, paths)
   }, [scoped, view, query, sort, groupBy, paths])
   const inView = useMemo(() => groups.reduce((n, g) => n + g.rows.length, 0), [groups])
-  const [emptyTitle, emptyText] = scope ? ["Nothing here", "Nothing filed here is in this view; pick All items in the sidebar to see everything."] : EMPTY[view]
+  const [emptyTitle, emptyText] = scope ? ["Nothing here", "Nothing filed here is in this view; pick All items in the sidebar to see everything."] : (EMPTY[view] ?? ["Nothing here yet", "Add one with New item."])
 
   const header = (
     <PaneHeader title={paneTitle}>
@@ -131,7 +130,6 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
       </DropdownMenu>
       <IconButton label="Quick access" icon="flash" shortcut={isMac() ? "⌘K" : "Ctrl+K"} onClick={onPalette} />
       <IconButton label="Find duplicates" icon="merge" onClick={() => setDuplicates(true)} />
-      <NewItemMenu onPick={(kind) => setEditor({ kind, item: null, vaultId: scope?.vault ?? vaults.find((v) => v.folders.some((f) => f.id === scope?.folder))?.id, folder: scope?.folder, tags: scope?.tag ? [scope.tag] : undefined })} onNotice={onNotice} />
     </PaneHeader>
   )
 

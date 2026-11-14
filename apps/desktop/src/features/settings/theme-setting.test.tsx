@@ -8,6 +8,7 @@ import type { Status } from "@/core/types"
 import { fakeClient } from "@/test/fake-client"
 
 import { SettingsView } from "./settings-view"
+import { PlacesProvider } from "@/app/places"
 import { ThemeSetting, type ThemeChoice } from "./theme-setting"
 
 /*
@@ -69,7 +70,10 @@ describe("Settings → Appearance → Theme on the desktop", () => {
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
         <ClientProvider value={fakeClient({})}>
           <SettingsProvider>
-            <SettingsView status={status} lock={null} onLock={() => {}} onChanged={() => {}} onNotice={() => {}} />
+            {/* Appearance is one of Settings' sections now (doc 64): the test opens on it. */}
+            <PlacesProvider value={{ nav: { area: "settings", view: "all", section: "appearance" }, surface: "desktop", go: () => {}, navigate: () => {} }}>
+              <SettingsView status={status} onStatus={() => {}} lock={null} onLock={() => {}} onChanged={() => {}} onNotice={() => {}} />
+            </PlacesProvider>
           </SettingsProvider>
         </ClientProvider>
       </ThemeProvider>,

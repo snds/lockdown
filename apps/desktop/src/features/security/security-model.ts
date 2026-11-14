@@ -34,6 +34,17 @@ export function groupBySeverity(findings: Finding[]): Record<Severity, Finding[]
   return out
 }
 
+/**
+ * How many things there are to fix (redesign brief H1): the findings to fix
+ * now and soon, and the rows in the Needs attention list. From the cached
+ * report and the loaded rows only; `null` while no report has been read
+ * counts the list alone. The nav marks and the Health tab read this.
+ */
+export function toFixCount(report: SecurityReport | null, rows: ReadonlyArray<{ views: readonly string[] }>): number {
+  const findings = report ? report.counts.urgent + report.counts.important : 0
+  return findings + rows.filter((r) => r.views.includes("attention")).length
+}
+
 /** The one-line summary at the top of the screen. */
 export function summaryWords(report: SecurityReport): string {
   const { urgent, important, suggested } = report.counts

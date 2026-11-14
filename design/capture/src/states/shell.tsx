@@ -10,7 +10,7 @@ import { as } from "../host/core"
 import type { StateDef } from "../harness/types"
 import { d } from "./defs"
 import { open } from "./steps/screens"
-import { DIALOG, lock } from "./steps/shell"
+import { DIALOG, go, lock } from "./steps/shell"
 import { openItem, reveal } from "./steps/vault"
 
 const reminders = (password: boolean, drill: boolean, kitTest: boolean) => ({
@@ -74,5 +74,5 @@ export const SHELL_STATES: StateDef[] = [
     },
     steps: [...open, { wait: "mail.northwind.example added a passkey to this login" }, { pause: 400 }],
   }),
-  d({ id: "desktop-backup-late", screen: "Backup line", state: "Late", brief_row: "Backup line", notes: "The sidebar's last-backup line when a backup is overdue.", answers: () => ({ backup_status: () => ({ ...(as("backup_status")({}) as object), last_success_at: ago(4), next_due_at: ago(3) }) }), steps: open }),
+  d({ id: "desktop-backup-late", screen: "Backup line", state: "Late", brief_row: "Backup line", notes: "A backup is overdue. The sidebar's line is gone (doc 64, D728): the state is told in Settings → Backups until found-5's Banner.", answers: () => ({ backup_status: () => ({ ...(as("backup_status")({}) as object), last_success_at: ago(4), next_due_at: ago(3) }) }), steps: [...open, ...go("settings-backups")] }),
 ]

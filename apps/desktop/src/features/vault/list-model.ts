@@ -2,8 +2,21 @@ import type { IconName } from "@unicron/ui"
 
 import type { ItemSummary, SmartView } from "@/core/types"
 
-/** What the list shows: everything, or one smart view (D93; brief §3). */
-export type ListView = "all" | SmartView
+/**
+ * The kinds that are a view of their own (redesign brief X1): every kind
+ * but the three a smart view already lists (`passkeys`, `codes`, `wi-fi`),
+ * in the order the More list shows them.
+ */
+export const KIND_VIEWS = ["login", "card", "note", "ssh-key", "api-credential", "document", "identity", "bank-account", "crypto-wallet", "server", "database", "software-licence", "membership", "custom"] as const
+export type KindView = (typeof KIND_VIEWS)[number]
+
+/** What the list shows: everything, one smart view (D93; brief §3), or one kind. */
+export type ListView = "all" | SmartView | KindView
+
+/** Whether a view is one kind's (its value is the kind's own id). */
+export function isKindView(view: ListView): view is KindView {
+  return (KIND_VIEWS as readonly string[]).includes(view)
+}
 
 export type SortKey = "title" | "changed" | "used"
 export type GroupBy = "kind" | "none"
@@ -28,7 +41,7 @@ export const KIND_LABELS: Record<string, string> = {
   "crypto-wallet": "Crypto wallets",
   server: "Servers",
   database: "Databases",
-  "software-licence": "Software licences",
+  "software-licence": "Software licenses",
   membership: "Memberships",
   custom: "Custom",
 }
@@ -72,26 +85,49 @@ export const VIEW_LABELS: Record<ListView, string> = {
   "wi-fi": "Wi-Fi",
   expiring: "Expiring",
   attention: "Needs attention",
-  deleted: "Deleted",
-  favourites: "Favourites",
+  deleted: "Recently deleted",
+  favourites: "Favorites",
   archived: "Archived",
   contacts: "Contacts",
+  login: "Logins",
+  card: "Cards",
+  note: "Notes",
+  "ssh-key": "SSH keys",
+  "api-credential": "API credentials",
+  document: "Documents",
+  identity: "Identities",
+  "bank-account": "Bank accounts",
+  "crypto-wallet": "Crypto wallets",
+  server: "Servers",
+  database: "Databases",
+  "software-licence": "Software licenses",
+  membership: "Memberships",
+  custom: "Custom",
 }
 
 /** The rows a view holds. "All" leaves trashed and archived items to their own views. */
 export function rowsIn(rows: ItemSummary[], view: ListView): ItemSummary[] {
   if (view === "all") return rows.filter((r) => r.state !== "trashed" && r.state !== "archived")
+  if (isKindView(view)) return rows.filter((r) => r.kind === view && r.state !== "trashed" && r.state !== "archived")
   return rows.filter((r) => r.views.includes(view))
 }
 
 /** How many rows each view holds, for the sidebar's counts. */
 export function countViews(rows: ItemSummary[]): Record<ListView, number> {
-  const counts: Record<ListView, number> = { all: 0, passkeys: 0, codes: 0, "wi-fi": 0, expiring: 0, attention: 0, deleted: 0, favourites: 0, archived: 0, contacts: 0 }
+  const counts = Object.fromEntries((Object.keys(VIEW_LABELS) as ListView[]).map((v) => [v, 0])) as Record<ListView, number>
   for (const r of rows) {
-    if (r.state !== "trashed" && r.state !== "archived") counts.all += 1
+    if (r.state !== "trashed" && r.state !== "archived") {
+      counts.all += 1
+      if (isKindView(r.kind as ListView)) counts[r.kind as KindView] += 1
+    }
     for (const v of r.views) counts[v] += 1
   }
   return counts
+}
+
+/** How many kinds hold an item that is neither archived nor in Recently deleted: the `ITEMS // 09 TYPES` overline. */
+export function countTypes(rows: ItemSummary[]): number {
+  return new Set(rows.filter((r) => r.state !== "trashed" && r.state !== "archived").map((r) => r.kind)).size
 }
 
 /**

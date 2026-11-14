@@ -1,8 +1,10 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent, type ReactNode } from "react"
 
 import { useTheme } from "next-themes"
 
 import {
+  AppFrameInset,
+  AppFramePageHead,
   Button,
   Field,
   FieldDescription,
@@ -12,13 +14,16 @@ import {
   Input,
   NativeSelect,
   NativeSelectOption,
+  SettingsFrame,
   Switch,
   ToggleGroup,
   ToggleGroupItem,
+  useAppFrame,
 } from "@unicron/ui"
 
 import { useSettings } from "@/app/settings"
-import { PaneHeader } from "@/components/master-detail"
+import { deviceName, settingsSections, usePlaces, type SettingsSection } from "@/app/places"
+import { Embedded } from "@/components/master-detail"
 import { describeError, useClient } from "@/core/client"
 import type { ApprovalRoute, Density, LockState, RevealGesture, Status } from "@/core/types"
 import { BackupsSection } from "@/features/backups/backups-section"
@@ -26,6 +31,11 @@ import { AliasSettings } from "@/features/bridges/alias-settings"
 import { ClockSetting } from "@/features/bridges/clock"
 import { ExportDialog } from "@/features/export/export-dialog"
 import { ImportWizard } from "@/features/import/import-wizard"
+import { DevicesView } from "@/features/devices/devices-view"
+import { isMac } from "@/features/palette/palette-model"
+import { RecoveryView } from "@/features/recovery/recovery-view"
+import { SecuritySettings } from "@/features/security/security-settings"
+import { StatusView } from "@/features/status/status-view"
 import { BrowsersSection } from "@/features/browsers/browsers-section"
 import { QuickSettings } from "@/features/quick/quick-settings"
 import { ServerChecks } from "@/features/server/server-checks"
@@ -40,6 +50,8 @@ const THEME_OF: Record<ThemeChoice, string> = { system: "system", stone: "light"
 
 interface SettingsViewProps {
   status: Status
+  /** The core's status changed (Status' own check, a log-in): the app keeps the new one. */
+  onStatus: (status: Status) => void
   lock: LockState | null
   onLock: (state: LockState) => void
   onChanged: () => void
@@ -64,8 +76,9 @@ const CLIPBOARD_CHOICES = [10, 20, 30, 45, 60, 90]
  * here is written to `settings.cbor` through the core (D100), which also
  * applies the lock timers; this screen only edits them.
  */
-export function SettingsView({ status, lock, onLock, onChanged, onNotice }: SettingsViewProps) {
+export function SettingsView({ status, onStatus, lock, onLock, onChanged, onNotice }: SettingsViewProps) {
   const client = useClient()
+  const { nav, go } = usePlaces()
   const { settings, update } = useSettings()
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -120,15 +133,8 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
     void save({ server: value || null }).then(() => onNotice(value ? "Server saved." : "Server cleared."))
   }
 
-  return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-(--c-section-gap) p-(--c-page-gutter-narrow) md:p-(--c-page-gutter)">
-      <PaneHeader title="Settings" />
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-
+  const thisDevice = (
+    <div className="flex flex-col gap-(--c-section-gap)">
       <Section title="Lock">
         <FieldGroup>
           <Field orientation="horizontal">
@@ -186,20 +192,6 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
         </FieldGroup>
       </Section>
 
-      <Section title="Appearance">
-        <ThemeSetting value={theme === "light" ? "stone" : theme === "dark" ? "graphite" : "system"} onChange={(choice) => setTheme(THEME_OF[choice])} />
-        <FieldGroup>
-          <Field orientation="horizontal">
-            <FieldLabel id="density-label">Density</FieldLabel>
-            <ToggleGroup aria-labelledby="density-label" value={[settings.density]} onValueChange={(v) => v[0] && void save({ density: v[0] as Density })} disabled={busy}>
-              <ToggleGroupItem value="comfortable">Comfortable</ToggleGroupItem>
-              <ToggleGroupItem value="compact">Compact</ToggleGroupItem>
-            </ToggleGroup>
-          </Field>
-          <FieldDescription>Comfortable is roomier, with taller rows and more space between sections. Compact fits more on the screen.</FieldDescription>
-        </FieldGroup>
-      </Section>
-
       <Section title="Reveal">
         <FieldGroup>
           <Field orientation="horizontal">
@@ -228,6 +220,56 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
         </p>
       </Section>
 
+    </div>
+  )
+  return (
+    <>
+      <SettingsPlaces overview={thisDevice}>
+        {(shown) => (
+          <div className="flex flex-col gap-(--c-section-gap)">
+            {error && (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+            {shown === "this-device" && thisDevice}
+            {shown === "browsers" && <BrowsersSection onNotice={onNotice} />}
+            {shown === "quick-access" && <QuickSettings onNotice={onNotice} />}
+            {shown === "appearance" && (
+              <>
+      <Section title="Appearance">
+        <ThemeSetting value={theme === "light" ? "stone" : theme === "dark" ? "graphite" : "system"} onChange={(choice) => setTheme(THEME_OF[choice])} />
+        <FieldGroup>
+          <Field orientation="horizontal">
+            <FieldLabel id="density-label">Density</FieldLabel>
+            <ToggleGroup aria-labelledby="density-label" value={[settings.density]} onValueChange={(v) => v[0] && void save({ density: v[0] as Density })} disabled={busy}>
+              <ToggleGroupItem value="comfortable">Comfortable</ToggleGroupItem>
+              <ToggleGroupItem value="compact">Compact</ToggleGroupItem>
+            </ToggleGroup>
+          </Field>
+          <FieldDescription>Comfortable is roomier, with taller rows and more space between sections. Compact fits more on the screen.</FieldDescription>
+        </FieldGroup>
+      </Section>
+
+              </>
+            )}
+            {shown === "devices" && (
+              <Embedded>
+                <DevicesView status={status} onChanged={onChanged} onNotice={onNotice} focus={nav.device} />
+              </Embedded>
+            )}
+            {shown === "recovery" && (
+              <Embedded>
+                <RecoveryView status={status} onChanged={onChanged} onNotice={onNotice} onEmergency={() => go("sharing-emergency")} />
+              </Embedded>
+            )}
+            {shown === "status" && (
+              <Embedded>
+                <StatusView status={status} onStatus={onStatus} onNotice={onNotice} />
+              </Embedded>
+            )}
+            {shown === "server" && (
+              <>
       {frc ? (
         <ServerSettings frc={frc} status={status} onNotice={onNotice} onChanged={onChanged} />
       ) : (
@@ -249,6 +291,10 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
 
       {!(status.account?.local ?? false) && <ServerChecks onNotice={onNotice} />}
 
+              </>
+            )}
+            {shown === "import-export" && (
+              <>
       <Section title="Import and export">
         <p className="text-sm text-muted-foreground">
           Bring your data in from another app, or take all of it out as one file. Lockdown shows what a file holds, and what it leaves out, before
@@ -266,20 +312,23 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
         </div>
       </Section>
 
+              </>
+            )}
+            {shown === "backups" && (
+              <>
       <Section title="Backups">
         <BackupsSection onChanged={onChanged} onNotice={onNotice} />
       </Section>
 
-      <BrowsersSection onNotice={onNotice} />
-
-      <QuickSettings onNotice={onNotice} />
-
-      <AliasSettings onNotice={onNotice} onChanged={onChanged} />
-
-      <ClockSetting />
-
-      <AboutSection />
-
+              </>
+            )}
+            {shown === "aliases" && <AliasSettings onNotice={onNotice} onChanged={onChanged} />}
+            {shown === "codes" && <ClockSetting />}
+            {shown === "security-checks" && <SecuritySettings onSaved={onChanged} />}
+            {shown === "about" && <AboutSection />}
+          </div>
+        )}
+      </SettingsPlaces>
       <ImportWizard
         open={transfer === "import"}
         onClose={() => setTransfer(null)}
@@ -289,7 +338,54 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
         }}
       />
       <ExportDialog open={transfer === "export"} onClose={() => setTransfer(null)} onNotice={onNotice} />
-    </div>
+    </>
+  )
+}
+
+/** The Settings groups' overlines; the device's is its real kind (cross-app decisions §5). */
+const GROUP_TITLES = { account: "Account", vault: "Vault", lockdown: "Lockdown" } as const
+
+interface SettingsPlacesProps {
+  /** On a phone and at medium width: the device's own rows, drawn first, above the list of every other section (brief T0). */
+  overview?: ReactNode
+  /** The open section's content. */
+  children: (shown: SettingsSection) => ReactNode
+}
+
+/**
+ * Settings as places (brief T0, doc 64): unicron's `SettingsFrame` over the
+ * sections `places.ts` lists for this build, with the open one read from
+ * and written to the shell's `Nav`. The desktop app and the web vault both
+ * mount it and give it their own sections' content. With room for two
+ * columns the section list stands beside the open section; narrower, the
+ * device's rows come first, then the list, and a section is a pushed screen.
+ */
+export function SettingsPlaces({ overview, children }: SettingsPlacesProps) {
+  const { nav, surface, go } = usePlaces()
+  const frame = useAppFrame()
+  const device = deviceName(surface, isMac())
+  const all = settingsSections(surface)
+  // Narrower than two columns the device's rows are the overview, so its section is not listed twice.
+  const listed = frame.split || !overview ? all : all.filter((p) => p.nav.section !== "this-device")
+  const sections = listed.map((p) => ({
+    value: p.nav.section as string,
+    label: p.nav.section === "this-device" ? device : p.label,
+    icon: p.icon,
+    group: p.settingsGroup === "device" ? device : GROUP_TITLES[p.settingsGroup ?? "account"],
+    description: p.description,
+  }))
+  const open = nav.section && listed.some((p) => p.nav.section === nav.section) ? nav.section : null
+  const shown = open ?? (frame.split ? (listed[0]?.nav.section ?? null) : null)
+  return (
+    <SettingsFrame
+      sections={sections}
+      value={open}
+      onValueChange={(value) => go(value ? `settings-${value}` : "settings")}
+      overview={overview ? <AppFrameInset>{overview}</AppFrameInset> : undefined}
+      head={frame.phone ? undefined : <AppFramePageHead title="Settings" size="sm" gap="sm" />}
+    >
+      {shown ? <AppFrameInset>{children(shown)}</AppFrameInset> : null}
+    </SettingsFrame>
   )
 }
 

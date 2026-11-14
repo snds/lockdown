@@ -13,13 +13,18 @@ import {
   ItemDescription,
   ItemGroup,
   ItemTitle,
+  ListRow,
   Separator,
   Spinner,
 } from "@unicron/ui"
 
 import { PaneHeader } from "@/components/master-detail"
 import { describeError, useClient } from "@/core/client"
-import type { Finding, SecurityReport } from "@/core/types"
+import { usePlaces } from "@/app/places"
+import type { Finding, ItemSummary, SecurityReport } from "@/core/types"
+import { DuplicatesReview } from "@/features/organization/duplicates-review"
+import { rowsIn } from "@/features/vault/list-model"
+import { count, countName } from "@/lib/format"
 import { whenLocal } from "@/lib/format"
 
 import { FederationSection } from "@/features/bridges/federation"
@@ -37,6 +42,8 @@ import { usePlaybooks } from "./use-playbooks"
 const RECHECK_AFTER_SECS = 24 * 3600
 
 interface SecurityViewProps {
+  /** The item rows, for the lists Health holds (Expiring, Needs attention, Duplicates). Left out, their rows show no count. */
+  rows?: ItemSummary[]
   /** Opens an item in the vault. */
   onOpenItem: (id: string) => void
   /** Goes to the Devices screen (a new device's sign-in), to one device when named. */
@@ -58,7 +65,7 @@ interface SecurityViewProps {
  * when the last breach check is a day old or the account's alerts haven't
  * been fetched this session.
  */
-export function SecurityView({ onOpenItem, onDevices, onRecovery, onChanged, onNotice }: SecurityViewProps) {
+export function SecurityView({ rows, onOpenItem, onDevices, onRecovery, onChanged, onNotice }: SecurityViewProps) {
   const client = useClient()
   const playbooks = usePlaybooks()
   const [report, setReport] = useState<SecurityReport | null>(null)
@@ -135,9 +142,14 @@ export function SecurityView({ onOpenItem, onDevices, onRecovery, onChanged, onN
   }
 
   const groups = groupBySeverity(report?.findings ?? [])
+  // The lists Health holds (D724): today's Expiring and Needs attention views, and the duplicates review.
+  const { go } = usePlaces()
+  const [duplicates, setDuplicates] = useState(false)
+  const expiring = rows ? rowsIn(rows, "expiring").length : null
+  const attention = rows ? rowsIn(rows, "attention").length : null
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-(--c-section-gap) p-(--c-page-gutter-narrow) md:p-(--c-page-gutter)">
-      <PaneHeader title="Security">
+      <PaneHeader title="Health">
         <Button size="sm" variant="outline" onClick={() => void check()} disabled={checking}>
           {checking ? <Spinner data-icon="inline-start" /> : <Icon name="renew" data-icon="inline-start" />}
           {checking ? "Checking…" : "Check now"}
@@ -148,6 +160,24 @@ export function SecurityView({ onOpenItem, onDevices, onRecovery, onChanged, onN
           {error}
         </p>
       )}
+      <div role="list" aria-label="Lists">
+        <ListRow role="listitem" size="compact" title="Expiring" meta="Cards, documents and licenses with a date coming up" metaStyle="plain" status={expiring === null ? undefined : <span aria-label={countName(expiring, "item")}>{count(expiring)}</span>} onClick={() => go("expiring")} />
+        <ListRow role="listitem" size="compact" title="Needs attention" meta="Conflict copies and sign-ins left on someone else's screen" metaStyle="plain" status={attention === null ? undefined : <span aria-label={countName(attention, "item")}>{count(attention)}</span>} onClick={() => go("attention")} />
+        <ListRow role="listitem" size="compact" title="Duplicates" meta="Items that say the same thing twice" metaStyle="plain" onClick={() => setDuplicates(true)} />
+      </div>
+      <DuplicatesReview
+        open={duplicates}
+        onOpenChange={setDuplicates}
+        rows={rows ?? []}
+        onChanged={(text) => {
+          onChanged()
+          onNotice(text)
+        }}
+        onOpen={(id) => {
+          setDuplicates(false)
+          onOpenItem(id)
+        }}
+      />
       {!report && !error && <Spinner />}
       {report && (
         <>

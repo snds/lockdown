@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 
-import { Badge, Button, Icon, Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle, Separator, Spinner } from "@unicron/ui"
+import { Badge, Button, Icon, Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle, Separator, Spinner, Tabs, TabsList, TabsTrigger } from "@unicron/ui"
 
 import { PaneHeader } from "@/components/master-detail"
 import { describeError } from "@/core/client"
@@ -16,7 +16,18 @@ import { SharingPaused } from "./sharing-paused"
 import { RIGHT_NAMES, useSharingClient, type SentShareView, type SharingOverview } from "./sharing-client"
 import { HouseholdsSection, VaultsSection } from "./vault-sharing"
 
+/** The part of Sharing a tab shows (redesign brief §3: People, Vaults, Links, Emergency are places). */
+export type SharingSection = "people" | "vaults" | "links" | "emergency"
+
+const SECTION_LABELS: Record<SharingSection, string> = { people: "People", vaults: "Vaults", links: "Links", emergency: "Emergency" }
+
 interface SharingViewProps {
+  /** The tab showing. Left out: everything in one scroll, as before the tabs were places. */
+  section?: SharingSection
+  /** Picks another tab. With it, the tabs are drawn. */
+  onSection?: (section: SharingSection) => void
+  /** One shared vault's members only (its id): the Vaults tab narrowed to that vault. */
+  vault?: string
   /** The rows, for the titles of items shared one by one. */
   rows: ItemSummary[]
   onOpenItem: (id: string) => void
@@ -32,7 +43,7 @@ interface SharingViewProps {
  * Nothing secret is drawn here except what a link or an answer holds,
  * which comes over one value at a time when the person asks.
  */
-export function SharingView({ rows, onOpenItem, onChanged, onNotice }: SharingViewProps) {
+export function SharingView({ section, onSection, vault, rows, onOpenItem, onChanged, onNotice }: SharingViewProps) {
   const sharing = useSharingClient()
   const { vaults, reload: reloadVaults } = useVaults()
   const [overview, setOverview] = useState<SharingOverview | null>(null)
@@ -68,6 +79,9 @@ export function SharingView({ rows, onOpenItem, onChanged, onNotice }: SharingVi
     }
   }
   const titleOf = (id: string) => rows.find((r) => r.id === id)?.title ?? "An item"
+  const shows = (s: SharingSection) => section === undefined || section === s
+  const shownVaults = vault ? vaults.filter((v) => v.id === vault) : vaults
+  // A vault's members names itself in the breadcrumb through its place; a tab names itself there too.
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-(--c-section-gap) p-(--c-page-gutter-narrow) md:p-(--c-page-gutter)">
@@ -77,6 +91,17 @@ export function SharingView({ rows, onOpenItem, onChanged, onNotice }: SharingVi
           Refresh
         </Button>
       </PaneHeader>
+      {section && onSection && (
+        <Tabs value={section} onValueChange={(v) => onSection(v as SharingSection)}>
+          <TabsList variant="line" aria-label="Sharing">
+            {(Object.keys(SECTION_LABELS) as SharingSection[]).map((s) => (
+              <TabsTrigger key={s} value={s}>
+                {SECTION_LABELS[s]}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      )}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -91,7 +116,7 @@ export function SharingView({ rows, onOpenItem, onChanged, onNotice }: SharingVi
               Sharing needs an account on a sync server. Set one up in Settings; until then this screen only shows what is already here.
             </p>
           )}
-          {overview.waiting_on_you > 0 && (
+          {shows("emergency") && overview.waiting_on_you > 0 && (
             <p role="alert" className="flex items-center gap-2 text-sm">
               <Badge variant="destructive">Emergency</Badge>
               {overview.waiting_on_you === 1
@@ -99,8 +124,8 @@ export function SharingView({ rows, onOpenItem, onChanged, onNotice }: SharingVi
                 : `${overview.waiting_on_you} people asked for emergency access to your vaults. Stop it below if you didn't expect it.`}
             </p>
           )}
-          <KeyResets resets={overview.resets ?? []} online={overview.online} onChanged={changed} onNotice={onNotice} />
-          {overview.fingerprint && (
+          {shows("people") && <KeyResets resets={overview.resets ?? []} online={overview.online} onChanged={changed} onNotice={onNotice} />}
+          {shows("people") && overview.fingerprint && (
             <section aria-labelledby="sharing-you" className="flex flex-col gap-1">
               <h2 id="sharing-you" className="text-base font-semibold">
                 Your fingerprint
@@ -111,18 +136,18 @@ export function SharingView({ rows, onOpenItem, onChanged, onNotice }: SharingVi
               </p>
             </section>
           )}
-          <PeopleSection contacts={overview.contacts} online={overview.online} onChanged={load} onNotice={onNotice} />
-          <Separator />
-          <VaultsSection vaults={vaults} contacts={overview.contacts} online={overview.online} onChanged={changed} onNotice={onNotice} />
-          <HouseholdsSection
+          {shows("people") && <PeopleSection contacts={overview.contacts} online={overview.online} onChanged={load} onNotice={onNotice} />}
+          {section === undefined && <Separator />}
+          {shows("vaults") && <VaultsSection vaults={shownVaults} contacts={overview.contacts} online={overview.online} onChanged={changed} onNotice={onNotice} />}
+          {shows("vaults") && !vault && <HouseholdsSection
             households={overview.households}
             vaults={vaults}
             contacts={overview.contacts}
             online={overview.online}
             onChanged={changed}
             onNotice={onNotice}
-          />
-          {(overview.sent.length > 0 || overview.received.length > 0) && (
+          />}
+          {shows("vaults") && !vault && (overview.sent.length > 0 || overview.received.length > 0) && (
             <section aria-labelledby="sharing-items" className="flex flex-col gap-2">
               <h2 id="sharing-items" className="text-base font-semibold">
                 Items shared one by one
@@ -167,11 +192,11 @@ export function SharingView({ rows, onOpenItem, onChanged, onNotice }: SharingVi
               )}
             </section>
           )}
-          <Separator />
-          <ShareLinksSection online={overview.online} onNotice={onNotice} />
-          <RequestLinksSection online={overview.online} onNotice={onNotice} />
-          <Separator />
-          <EmergencySection
+          {section === undefined && <Separator />}
+          {shows("links") && <ShareLinksSection online={overview.online} onNotice={onNotice} />}
+          {shows("links") && <RequestLinksSection online={overview.online} onNotice={onNotice} />}
+          {section === undefined && <Separator />}
+          {shows("emergency") && <EmergencySection
             grants={overview.emergency}
             contacts={overview.contacts}
             vaults={vaults}
@@ -179,7 +204,7 @@ export function SharingView({ rows, onOpenItem, onChanged, onNotice }: SharingVi
             onGrants={(emergency) => setOverview((o) => (o ? { ...o, emergency } : o))}
             onChanged={changed}
             onNotice={onNotice}
-          />
+          />}
         </>
       )}
     </div>

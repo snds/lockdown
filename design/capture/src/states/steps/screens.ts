@@ -4,7 +4,7 @@
 
 import { MASTER_PASSWORD } from "../../fixture/commands"
 import type { Step } from "../../harness/types"
-import { VAULT_OPEN, go } from "./shell"
+import { VAULT_OPEN, go, type PlaceId } from "./shell"
 
 /** The desktop's unlock screen, answered. */
 export const unlock: Step[] = [{ fill: "Master password", value: MASTER_PASSWORD }, { click: "Unlock", role: "button" }]
@@ -24,7 +24,10 @@ export const create: Step[] = [
 /** The kit put away. */
 export const kitSaved: Step[] = [{ click: "I saved, printed or wrote down the kit" }, { click: "Continue", role: "button" }]
 
-/** Settings, drawn. */
-export const settings: Step[] = [...open, ...go("settings"), { wait: "Density" }]
+/** Settings, drawn, on one of its sections (doc 64: Settings is a list of sections; each state opens the one it shows). */
+export const settingsAt = (section: SettingsPlace): Step[] => [...open, ...go(section)]
+type SettingsPlace = Extract<PlaceId, `settings-${string}`>
+/** Settings on Appearance, where Density is. */
+export const settings: Step[] = [...settingsAt("settings-appearance"), { wait: "Density" }]
 /** Settings is taller than a capture: bring Backups (its last section) into the picture. */
 export const toBackups: Step = { run: () => document.getElementById("backup-crown-jewels")?.scrollIntoView({ block: "start" }) }

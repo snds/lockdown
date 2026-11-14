@@ -83,16 +83,31 @@ describe("vaults, folders and tags in the sidebar", () => {
     const rows = [row("a", { folder: "f-clients", tags: ["work/clients"] }), row("b", { vault_id: "v2", tags: ["family"] })]
     mount(fakeClient(base), <OrganizationNav rows={rows} nav={{ area: "vault", view: "all" }} onNavigate={onNavigate} />)
     const user = userEvent.setup()
-    const vaults = screen.getByRole("list", { name: "Vaults" })
-    expect(within(vaults).getByRole("button", { name: /^Personal(?! options)/ })).toBeInTheDocument()
-    expect(within(vaults).getByRole("button", { name: /^Family(?! options)/ })).toBeInTheDocument()
-    const folders = screen.getByRole("list", { name: "Folders in Personal" })
-    await user.click(within(folders).getByRole("button", { name: /^Clients(?! options)/ }))
+    // One tree, named for the group and its count: Up and Down move, Right and Left open and close (doc 64).
+    const tree = screen.getByRole("tree", { name: /^Vaults/ })
+    expect(within(tree).getByRole("treeitem", { name: /^Personal/ })).toBeInTheDocument()
+    expect(within(tree).getByRole("treeitem", { name: /^Family/ })).toBeInTheDocument()
+    // A vault's folders are closed until it is opened; a vault with none has nothing to open.
+    expect(within(tree).queryByRole("treeitem", { name: /^Clients/ })).toBeNull()
+    expect(within(tree).getByRole("treeitem", { name: /^Personal/ })).toHaveAttribute("aria-expanded", "false")
+    expect(within(tree).getByRole("treeitem", { name: /^Family/ })).not.toHaveAttribute("aria-expanded")
+    within(tree).getByRole("treeitem", { name: /^Personal/ }).focus()
+    await user.keyboard("{ArrowRight}")
+    expect(within(tree).getByRole("treeitem", { name: /^Work/ })).toHaveAttribute("aria-level", "2")
+    expect(within(tree).getByRole("treeitem", { name: /^Clients/ })).toHaveAttribute("aria-level", "3")
+    await user.click(within(tree).getByRole("treeitem", { name: /^Clients/ }))
     expect(onNavigate).toHaveBeenLastCalledWith({ area: "vault", view: "all", scope: { folder: "f-clients" } })
-    const tags = screen.getByRole("list", { name: "Tags" })
-    expect(within(tags).getAllByRole("button", { name: /^(work|clients|family)(?! options)/ })).toHaveLength(3)
-    await user.click(within(tags).getByRole("button", { name: /^clients(?! options)/ }))
+    // Tags is one more row with the tag tree inside.
+    await user.click(within(tree).getByRole("treeitem", { name: "Tags" }))
+    expect(within(tree).getAllByRole("treeitem", { name: /^(work|clients|family),/ })).toHaveLength(3)
+    await user.click(within(tree).getByRole("treeitem", { name: /^clients,/ }))
     expect(onNavigate).toHaveBeenLastCalledWith({ area: "vault", view: "all", scope: { tag: "work/clients" } })
+    // Every row keeps its menu, by the same name.
+    expect(screen.getByRole("button", { name: "Personal options" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "#work/clients options" })).toBeInTheDocument()
+    // Sharing is the group's last row.
+    await user.click(within(tree).getByRole("treeitem", { name: "Sharing" }))
+    expect(onNavigate).toHaveBeenLastCalledWith({ area: "sharing", view: "all" })
   })
 
   it("makes a vault with the name given", async () => {

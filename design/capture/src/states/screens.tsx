@@ -17,7 +17,7 @@ import { as, fail, forever } from "../host/core"
 import { fakeLink, waitingCredentials } from "../host/web-link"
 import type { StateDef } from "../harness/types"
 import { d, linkPage, w } from "./defs"
-import { create, kitSaved, open, settings, toBackups, webOpen } from "./steps/screens"
+import { create, kitSaved, open, settings, settingsAt, toBackups, webOpen } from "./steps/screens"
 import { DIALOG, go } from "./steps/shell"
 
 const PERSON_LOGIN = PERSON.login
@@ -244,8 +244,8 @@ export const SCREENS_STATES: StateDef[] = [
     s.account!.transparency!.mirrors = [{ url: "https://kt.witness.example", named_by: "settings", at: ago(0.01), state: "split", message: "The mirror has a different log at size 48,209." }]
     return s
   } }), steps: [...open, ...go("status")] }),
-  d({ id: "desktop-settings-server", screen: "Settings → Server", state: "Found servers", brief_row: "Settings", notes: "What discovery found (the server in use, one on the network, one that needs https), Look again, and a typed address (doc 39 §1.11).", steps: [...settings, { wait: /nas\.rivera\.example/ }, { run: () => document.getElementById("server-settings-title")?.scrollIntoView({ block: "start" }) }, { pause: 200 }] }),
-  d({ id: "desktop-settings-server-local", screen: "Settings → Server", state: "Kept on this computer", brief_row: "Settings", notes: "A local account: the vault is kept on this computer only; no server words above it until one is found.", setup: (w) => { w.device = { ...w.device, local: true } }, steps: [...settings, { wait: /kept on this computer only/ }, { run: () => document.getElementById("server-settings-title")?.scrollIntoView({ block: "start" }) }, { pause: 200 }] }),
+  d({ id: "desktop-settings-server", screen: "Settings → Server", state: "Found servers", brief_row: "Settings", notes: "What discovery found (the server in use, one on the network, one that needs https), Look again, and a typed address (doc 39 §1.11).", steps: [...settingsAt("settings-server"), { wait: /nas\.rivera\.example/ }, { run: () => document.getElementById("server-settings-title")?.scrollIntoView({ block: "start" }) }, { pause: 200 }] }),
+  d({ id: "desktop-settings-server-local", screen: "Settings → Server", state: "Kept on this computer", brief_row: "Settings", notes: "A local account: the vault is kept on this computer only; no server words above it until one is found.", setup: (w) => { w.device = { ...w.device, local: true } }, steps: [...settingsAt("settings-server"), { wait: /kept on this computer only/ }, { run: () => document.getElementById("server-settings-title")?.scrollIntoView({ block: "start" }) }, { pause: 200 }] }),
   d({
     id: "desktop-settings-server-move",
     screen: "Settings → Server",
@@ -255,21 +255,21 @@ export const SCREENS_STATES: StateDef[] = [
     setup: (w) => {
       w.device = { ...w.device, local: true }
     },
-    steps: [...settings, { click: /^nas\.rivera\.example/ }, DIALOG, { click: "Continue", role: "button" }, { wait: /Your login on/ }],
+    steps: [...settingsAt("settings-server"), { click: /^nas\.rivera\.example/ }, DIALOG, { click: "Continue", role: "button" }, { wait: /Your login on/ }],
   }),
   d({ id: "desktop-status-local", screen: "Status", state: "Kept on this computer", brief_row: "Status", notes: "A local account: this computer's proofs, and one line about sync (doc 39 §1.8).", setup: (w) => { w.device = { ...w.device, local: true } }, steps: [...open, ...go("status"), { wait: /kept on this computer only/ }] }),
   d({ id: "desktop-settings-compact", screen: "Settings", state: "Compact density chosen", brief_row: "Settings", notes: "Appearance set to compact: the whole app tightens.", steps: [...settings, { click: "Compact" }, { pause: 300 }] }),
-  d({ id: "desktop-settings-import", screen: "Import / export", state: "Import: pick a format", brief_row: "Import / export", notes: "Twenty formats; a preview before anything is kept.", steps: [...settings, { click: /^Import…/ }, DIALOG] }),
-  d({ id: "desktop-settings-export", screen: "Import / export", state: "Export", brief_row: "Import / export", notes: "Four file kinds plus age; crown jewels left out unless opted in.", steps: [...settings, { click: /^Export…/ }, DIALOG, { pause: 400 }] }),
-  d({ id: "desktop-settings-backup-restore", screen: "Settings → Backups", state: "Restore from a backup", brief_row: "Settings → Backups", notes: "Restore opens the import preview.", steps: [...settings, { click: /^Restore…/ }, DIALOG] }),
+  d({ id: "desktop-settings-import", screen: "Import / export", state: "Import: pick a format", brief_row: "Import / export", notes: "Twenty formats; a preview before anything is kept.", steps: [...settingsAt("settings-import-export"), { click: /^Import…/ }, DIALOG] }),
+  d({ id: "desktop-settings-export", screen: "Import / export", state: "Export", brief_row: "Import / export", notes: "Four file kinds plus age; crown jewels left out unless opted in.", steps: [...settingsAt("settings-import-export"), { click: /^Export…/ }, DIALOG, { pause: 400 }] }),
+  d({ id: "desktop-settings-backup-restore", screen: "Settings → Backups", state: "Restore from a backup", brief_row: "Settings → Backups", notes: "Restore opens the import preview.", steps: [...settingsAt("settings-backups"), { click: /^Restore…/ }, DIALOG] }),
   d({ id: "desktop-settings-backups-off", screen: "Settings → Backups", state: "Off", brief_row: "Settings → Backups", notes: "Backups are off; the sidebar line says so too.", setup: (w) => {
     w.settings = { ...w.settings, backup: { enabled: false, folder: null, interval_hours: 24, keep_last: 10 } }
-  }, steps: settings }),
-  d({ id: "desktop-settings-backups-crown-waiting", screen: "Settings → Backups", state: "Crown jewels: next backup carries them", brief_row: "Settings → Backups", notes: "After the update: the switch is on and the newest backup was made without crown jewels, so one line says the next one carries them (doc 48).", answers: () => ({ backup_status: () => backupStatus(true, true, 2) }), steps: [...settings, { wait: /first to include your 2 crown jewels/ }, toBackups] }),
+  }, steps: settingsAt("settings-backups") }),
+  d({ id: "desktop-settings-backups-crown-waiting", screen: "Settings → Backups", state: "Crown jewels: next backup carries them", brief_row: "Settings → Backups", notes: "After the update: the switch is on and the newest backup was made without crown jewels, so one line says the next one carries them (doc 48).", answers: () => ({ backup_status: () => backupStatus(true, true, 2) }), steps: [...settingsAt("settings-backups"), { wait: /first to include your 2 crown jewels/ }, toBackups] }),
   d({ id: "desktop-settings-backups-crown-off", screen: "Settings → Backups", state: "Crown jewels left out", brief_row: "Settings → Backups", notes: "\"Include crown jewels\" off: the per-item opt-in and the count come back (doc 48).", setup: (w) => {
     w.settings = { ...w.settings, backup: { enabled: true, folder: "/Users/sam/Backups/Lockdown", interval_hours: 24, keep_last: 10, include_crown_jewels: false } }
-  }, steps: [...settings, { wait: /crown jewels aren't in your backups/ }, toBackups] }),
-  d({ id: "desktop-settings-browsers-refused", screen: "Settings → Browsers", state: "Host refused", brief_row: "Settings → Browsers", notes: "Every browser host refused (error colour).", answers: () => ({ browser_status: () => ({ ...(as("browser_status")({}) as object), listening: false, problem: "The browser host at /Applications/Lockdown.app/Contents/MacOS/lockdown-native-host isn't signed by this app's developer, so Lockdown refuses it.", peer_check: { by: "refused", detail: "The host's signature didn't match." } }) }), steps: settings }),
+  }, steps: [...settingsAt("settings-backups"), { wait: /crown jewels aren't in your backups/ }, toBackups] }),
+  d({ id: "desktop-settings-browsers-refused", screen: "Settings → Browsers", state: "Host refused", brief_row: "Settings → Browsers", notes: "Every browser host refused (error colour).", answers: () => ({ browser_status: () => ({ ...(as("browser_status")({}) as object), listening: false, problem: "The browser host at /Applications/Lockdown.app/Contents/MacOS/lockdown-native-host isn't signed by this app's developer, so Lockdown refuses it.", peer_check: { by: "refused", detail: "The host's signature didn't match." } }) }), steps: settingsAt("settings-browsers") }),
   d({
     id: "desktop-status-revoked",
     screen: "Status",

@@ -8,28 +8,28 @@ import { useLockWatch } from "@/app/lock-watch"
 import { LockedProvider } from "@/app/locked"
 import { SettingsProvider, useSettings } from "@/app/settings"
 import { TemplatesProvider, useTemplates } from "@/app/templates"
+import { navFor } from "@/app/places"
 import { AppShell, type Nav } from "@/app/shell"
+import { PageColumn } from "@/components/master-detail"
 import { describeError, useClient } from "@/core/client"
-import type { ItemSummary, LockState, PersonaInfo, Status, VaultView as VaultEntry } from "@/core/types"
+import type { ItemSummary, LockState, SecurityReport, Status, VaultView as VaultEntry } from "@/core/types"
 import { useExpiryReminder } from "@/features/organization/expiry"
 import { useAwayReminder } from "@/features/vault/use-away-reminder"
-import { OrganizationNav } from "@/features/organization/organization-nav"
 import { VaultsProvider } from "@/features/organization/vaults-context"
 import { CodesView } from "@/features/codes/codes-view"
-import { DevicesView } from "@/features/devices/devices-view"
 import { QuickPalette } from "@/features/palette/quick-palette"
 import { PairingDialog } from "@/features/browsers/pairing-dialog"
 import { PasskeyApprovalDialog } from "@/features/passkeys/passkey-approval-dialog"
 import type { PasskeyUpgrade } from "@/features/passkeys/passkey-client"
 import { upgradeToast, usePasskeyUpgrades } from "@/features/passkeys/use-passkey-upgrades"
-import { RecoveryView } from "@/features/recovery/recovery-view"
+import { toFixCount } from "@/features/security/security-model"
 import { SecurityView } from "@/features/security/security-view"
 import { SettingsView } from "@/features/settings/settings-view"
+import { useSharingClient } from "@/features/sharing/sharing-client"
 import { SharingLocalOnly, SharingView } from "@/features/sharing/sharing-view"
-import { StatusView } from "@/features/status/status-view"
 import { LockedWash } from "@/features/unlock/locked-wash"
 import { UnlockScreen } from "@/features/unlock/unlock-screen"
-import { countViews } from "@/features/vault/list-model"
+import { SearchView } from "@/features/vault/search-view"
 import { VaultView } from "@/features/vault/vault-view"
 import { useLive } from "@/features/sessions/use-live"
 import { LiveClientProvider } from "@/features/sessions/live-client"
@@ -42,7 +42,6 @@ import { tauriDepthClient } from "@/app/tauri-depth"
 import { DepthClientProvider } from "@/features/depth/depth-client"
 import { RemindersPrompt } from "@/features/depth/reminders"
 import { BridgesProvider } from "@/features/bridges/bridges-client"
-import { BackupIndicator } from "@/features/bridges/backup-indicator"
 import { tauriBridgesClient } from "@/app/tauri-bridges"
 import { tauriHygieneClient, tauriQuickClient, tauriScanClient } from "@/app/tauri-finish"
 import { listen } from "@tauri-apps/api/event"
@@ -56,7 +55,6 @@ import { tauriFirstRunClient } from "@/app/tauri-first-run"
 import { tauriPaperClient } from "@/app/tauri-paper"
 import { tauriUpdateClient } from "@/app/tauri-updates"
 import { UpdateClientProvider } from "@/features/updates/update-client"
-import { RestartRow } from "@/features/updates/restart-row"
 import { useUpdateNotices } from "@/features/updates/use-update-notices"
 
 // The developer reset and the demo (docs/plan/40-devtools.md): one lazy
@@ -78,7 +76,9 @@ function Root() {
   const [nav, setNav] = useState<Nav>({ area: "vault", view: "all" })
   const [rows, setRows] = useState<ItemSummary[] | null>(null)
   const [rowsError, setRowsError] = useState<string | null>(null)
-  const [personas, setPersonas] = useState<PersonaInfo[]>([])
+  const [report, setReport] = useState<SecurityReport | null>(null)
+  const [sharingMark, setSharingMark] = useState(0)
+  const sharing = useSharingClient()
   const [selected, setSelected] = useState<string | null>(null)
   const [palette, setPalette] = useState(false)
   const [vaults, setVaults] = useState<VaultEntry[]>([])
@@ -88,6 +88,8 @@ function Root() {
     if (state.locked) {
       setStatus(null)
       setRows(null)
+      setReport(null)
+      setSharingMark(0)
       setPalette(false)
     }
   }, [])
@@ -118,8 +120,9 @@ function Root() {
         setRowsError(null)
       })
       .catch((e) => setRowsError(describeError(e)))
-    client.personas().then(setPersonas).catch(() => setPersonas([]))
     client.vaults().then(setVaults).catch(() => setVaults([]))
+    // The cached report only (brief 4.0 Data): the network checks run when Health opens, as before.
+    client.securityReport().then(setReport).catch(() => setReport(null))
   }, [client])
 
   useEffect(() => {
@@ -148,15 +151,41 @@ function Root() {
   }, [])
   // A check someone asked for (the macOS menu, docs/plan/60-auto-update.md §6), told where Settings isn't open.
   useUpdateNotices(nav.area !== "settings" || status === null, notice)
-  const counts = useMemo(() => countViews(rows ?? []), [rows])
+  const toFix = useMemo(() => toFixCount(report, rows ?? []), [report, rows])
+  // What waits on the person in Sharing (brief X3): read at unlock and every minute while unlocked, and
+  // not at all with no account or a vault kept on this computer only.
+  const shares = status !== null && status.account != null && !status.account.local
+  useEffect(() => {
+    if (!shares) return
+    let live = true
+    const read = () =>
+      sharing
+        .overview()
+        .then((o) => live && setSharingMark((o.resets?.length ?? 0) + o.waiting_on_you))
+        .catch(() => {})
+    void read()
+    const timer = window.setInterval(() => void read(), 60_000)
+    return () => {
+      live = false
+      window.clearInterval(timer)
+    }
+  }, [shares, sharing])
+  const go = useCallback((id: string) => {
+    const to = navFor(id)
+    if (to) setNav(to)
+  }, [])
+  const openItem = useCallback((id: string) => {
+    setNav({ area: "vault", view: "all" })
+    setSelected(id)
+  }, [])
   const vaultsValue = useMemo(() => ({ vaults, reload }), [vaults, reload])
-  const showExpiring = useCallback(() => setNav({ area: "vault", view: "expiring" }), [])
+  const showExpiring = useCallback(() => go("expiring"), [go])
   const remind = useCallback((text: string, show: () => void) => {
     toast(text, { action: { label: "Show", onClick: show } })
   }, [])
   useExpiryReminder(client, status !== null, remind, showExpiring)
   // A sign-in on someone else's screen that is due to be signed out (D237).
-  const showAttention = useCallback(() => setNav({ area: "vault", view: "attention" }), [])
+  const showAttention = useCallback(() => go("attention"), [go])
   useAwayReminder(client, status !== null, remind, showAttention)
   // A site's automatic passkey upgrade, quiet in the browser, told here (D210, D312).
   const upgraded = useCallback((u: PasskeyUpgrade) => {
@@ -240,17 +269,19 @@ function Root() {
       <VaultsProvider value={vaultsValue}>
       <AppShell
         nav={nav}
-        personas={personas}
-        counts={counts}
         onNavigate={setNav}
+        rows={rows}
         onLock={lockNow}
-        organization={<OrganizationNav rows={rows ?? []} nav={nav} onNavigate={setNav} />}
-        footer={
-          <>
-            <RestartRow onError={(text) => toast.error(text)} />
-            <BackupIndicator onOpen={() => setNav({ area: "settings", view: nav.view })} />
-          </>
-        }
+        toFix={toFix}
+        sharingMark={shares ? sharingMark : 0}
+        onNotice={notice}
+        onRefresh={reload}
+        onSaved={(id, generated) => {
+          setSelected(id)
+          if (nav.area !== "vault" && nav.area !== "search") setNav({ area: "vault", view: "all" })
+          reload()
+          notice(generated ? "Saved. The new password is in the item; copy it from there." : "Saved.")
+        }}
       >
         {nav.area === "vault" && (
           <VaultView
@@ -265,36 +296,34 @@ function Root() {
             scope={nav.scope}
           />
         )}
-        {nav.area === "codes" && <CodesView rows={rows ?? []} onChanged={reload} />}
-        {nav.area === "devices" && <DevicesView status={status} onChanged={refreshStatus} onNotice={notice} focus={nav.device} />}
-        {nav.area === "recovery" && (
-          <RecoveryView status={status} onChanged={refreshStatus} onNotice={notice} onEmergency={() => setNav({ area: "sharing", view: nav.view })} />
+        {nav.area === "search" && <SearchView rows={rows} selected={selected} onSelect={setSelected} onChanged={reload} onNotice={notice} />}
+        {nav.area === "codes" && (
+          <PageColumn>
+            <CodesView rows={rows ?? []} onChanged={reload} />
+          </PageColumn>
         )}
-        {nav.area === "status" && <StatusView status={status} onStatus={setStatus} onNotice={notice} />}
-        {nav.area === "settings" && <SettingsView status={status} lock={lock} onLock={setLock} onChanged={refreshStatus} onNotice={notice} />}
-        {nav.area === "sharing" && status.account?.local && <SharingLocalOnly />}
+        {nav.area === "settings" && <SettingsView status={status} onStatus={setStatus} lock={lock} onLock={setLock} onChanged={refreshStatus} onNotice={notice} />}
+        {nav.area === "sharing" && status.account?.local && (
+          <PageColumn>
+            <SharingLocalOnly />
+          </PageColumn>
+        )}
         {nav.area === "sharing" && !status.account?.local && (
-          <SharingView
-            rows={rows ?? []}
-            onOpenItem={(id) => {
-              setNav({ area: "vault", view: "all" })
-              setSelected(id)
-            }}
-            onChanged={reload}
-            onNotice={notice}
-          />
+          <PageColumn>
+            <SharingView rows={rows ?? []} section={nav.tab ?? "people"} vault={nav.members} onSection={(tab) => go(`sharing-${tab}`)} onOpenItem={openItem} onChanged={reload} onNotice={notice} />
+          </PageColumn>
         )}
         {nav.area === "security" && (
-          <SecurityView
-            onOpenItem={(id) => {
-              setNav({ area: "vault", view: "all" })
-              setSelected(id)
-            }}
-            onDevices={(device) => setNav({ area: "devices", view: nav.view, device })}
-            onRecovery={() => setNav({ area: "recovery", view: nav.view })}
-            onChanged={reload}
-            onNotice={notice}
-          />
+          <PageColumn>
+            <SecurityView
+              rows={rows ?? []}
+              onOpenItem={openItem}
+              onDevices={(device) => setNav({ area: "settings", view: "all", section: "devices", device })}
+              onRecovery={() => go("settings-recovery")}
+              onChanged={reload}
+              onNotice={notice}
+            />
+          </PageColumn>
         )}
       </AppShell>
       <QuickPalette

@@ -1,6 +1,6 @@
 import type { ItemSummary } from "@/core/types"
 
-import { baseTitle, buildList, conflictPair, countViews, groupRows, rowsIn, sortRows } from "./list-model"
+import { baseTitle, buildList, conflictPair, countViews, groupRows, rowsIn, sortRows, KIND_VIEWS, VIEW_LABELS, countTypes } from "./list-model"
 
 function row(over: Partial<ItemSummary> & { id: string; title: string; kind: string }): ItemSummary {
   return {
@@ -57,7 +57,24 @@ describe("the vault list (D93)", () => {
     expect(rowsIn(rows, "deleted").map((r) => r.id)).toEqual(["5"])
     expect(rowsIn(rows, "codes").map((r) => r.id)).toEqual(["1"])
     expect(rowsIn(rows, "attention").map((r) => r.id)).toEqual(["4"])
-    expect(countViews(rows)).toEqual({ all: 5, passkeys: 1, codes: 1, "wi-fi": 1, expiring: 1, attention: 1, deleted: 1, favourites: 0, archived: 0, contacts: 0 })
+    const counts = countViews(rows)
+    const { all, passkeys, codes, "wi-fi": wifi, expiring, attention, deleted, favourites, archived, contacts } = counts
+    expect({ all, passkeys, codes, "wi-fi": wifi, expiring, attention, deleted, favourites, archived, contacts }).toEqual({ all: 5, passkeys: 1, codes: 1, "wi-fi": 1, expiring: 1, attention: 1, deleted: 1, favourites: 0, archived: 0, contacts: 0 })
+  })
+
+  it("has a view for every kind that is not already a smart view, counted from the live rows (doc 64)", () => {
+    const counts = countViews(rows)
+    for (const kind of KIND_VIEWS) {
+      const live = rows.filter((r) => r.kind === kind && r.state !== "trashed" && r.state !== "archived")
+      expect(rowsIn(rows, kind).map((r) => r.id)).toEqual(live.map((r) => r.id))
+      expect(counts[kind]).toBe(live.length)
+      expect(VIEW_LABELS[kind]).toBeTruthy()
+    }
+    // The kinds in the list, not counting what is trashed or archived.
+    expect(countTypes(rows)).toBe(new Set(rowsIn(rows, "all").map((r) => r.kind)).size)
+    // US spelling in the words people read; the ids keep the core's.
+    expect(VIEW_LABELS.favourites).toBe("Favorites")
+    expect(VIEW_LABELS.deleted).toBe("Recently deleted")
   })
 
   it("searches titles, sites and usernames inside the view", () => {
