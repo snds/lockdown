@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Tests for the main channel's scripts (docs/plan/60-auto-update.md §7):
-the manifest writer and the version stamp. Run from the repository root:
+the manifest writer and the version stamp; and for the shared feed's
+(docs/plan/66-shared-feed.md): the same manifest for a second address, the
+server feed's manifest, and the publish script against a stand-in `gh`.
+Run from the repository root:
 
     python3 packaging/update/test_update_scripts.py
 """
@@ -9,6 +12,7 @@ import base64
 import importlib.util
 import io
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -31,10 +35,13 @@ def load(name):
 wm = load("write-manifest")
 sv = load("stamp-version")
 vf = load("version-forms")
+wsm = load("write-server-manifest")
 
 V1 = "0.1.0-main.20261107093000"
 V2 = "0.1.0-main.20261107120000"
 BASE = "https://github.com/snds/lockdown/releases/download/main-build"
+# The shared feed's address (docs/plan/66-shared-feed.md §1).
+SHARED = "https://github.com/snds/releases/releases/download/lockdown-main"
 
 
 def sig_text(version, file="bundle"):
@@ -155,6 +162,323 @@ class ManifestWriter(unittest.TestCase):
         previous = self.dir / "old.json"
         previous.write_text(json.dumps({"version": V2}))
         self.assertEqual(wm.main(args + bundles + ["--previous", str(previous)]), 1)
+
+
+class SharedFeed(ManifestWriter):
+    """The same build written for both addresses (docs/plan/66-shared-feed.md §2)."""
+
+    # Only this class's own tests: the writer's are run by `ManifestWriter`.
+    def test_the_two_manifests_differ_only_in_where_the_files_are(self):
+        digest = "sha256:" + "ab" * 32
+        bundles = self.all_three()
+        bridge = wm.write(V1, "2026-11-07T09:30:00Z", BASE, bundles, "notes", server_image_digest=digest)
+        shared = wm.write(V1, "2026-11-07T09:30:00Z", SHARED, bundles, "notes", server_image_digest=digest)
+        self.assertEqual(sorted(bridge), sorted(shared))
+        for key in ("version", "notes", "pub_date", "server_image"):
+            self.assertEqual(bridge[key], shared[key], key)
+        self.assertEqual(sorted(bridge["platforms"]), sorted(shared["platforms"]))
+        for key, old in bridge["platforms"].items():
+            new = shared["platforms"][key]
+            self.assertEqual(old["signature"], new["signature"], "the same signed file")
+            self.assertTrue(old["url"].startswith(BASE + "/"), old["url"])
+            self.assertTrue(new["url"].startswith(SHARED + "/"), new["url"])
+            self.assertEqual(old["url"][len(BASE):], new["url"][len(SHARED):], "the same file name")
+
+    def test_each_feed_has_its_own_never_backwards_check(self):
+        bundles = self.all_three(V2)
+        # The bridge is behind and the shared feed is ahead (or the other way): each is judged alone.
+        self.assertEqual(wm.write(V2, "", BASE, bundles, "", previous={"version": V1})["version"], V2)
+        with self.assertRaisesRegex(wm.Refused, "isn't newer"):
+            wm.write(V2, "", SHARED, bundles, "", previous={"version": V2})
+        # The shared feed starts empty.
+        self.assertEqual(wm.write(V2, "", SHARED, bundles, "", previous=None)["version"], V2)
+
+
+for _name in [n for n in dir(ManifestWriter) if n.startswith("test_")]:
+    setattr(SharedFeed, _name, None)
+
+
+COMMIT = "0123456789abcdef0123456789abcdef01234567"
+DIGEST = "sha256:" + "ab" * 32
+IMAGE = f"ghcr.io/snds/lockdown-server@{DIGEST}"
+
+
+class ServerManifest(unittest.TestCase):
+    """The server feed's manifest (docs/plan/66-shared-feed.md §3)."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir)
+
+    def test_writes_the_shape_every_server_feed_has(self):
+        self.assertEqual(
+            wsm.write(V1, COMMIT, IMAGE),
+            {
+                "app": "lockdown-server",
+                "version": V1,
+                "commit": COMMIT,
+                "pubDate": "2026-11-07T09:30:00Z",
+                "images": {"server": {"repository": "ghcr.io/snds/lockdown-server", "digest": DIGEST}},
+            },
+        )
+
+    def test_names_the_image_the_server_runs(self):
+        # The repository in the manifest is the one the server pulls (bins/server/src/updates.rs).
+        source = (ROOT / "bins/server/src/updates.rs").read_text()
+        self.assertIn(f'pub const IMAGE: &str = "{wsm.REPOSITORY}";', source)
+
+    def test_refuses_wrong_inputs(self):
+        for version in ["0.1.0", "0.1.0-main", "0.1.0-main.2026", "0.1.0-beta.1", ""]:
+            with self.assertRaises(wsm.Refused, msg=version) as c:
+                wsm.write(version, COMMIT, IMAGE)
+            self.assertEqual(c.exception.code, wsm.BAD)
+        for commit in ["", "0123", COMMIT.upper(), COMMIT + "0"]:
+            with self.assertRaises(wsm.Refused, msg=commit):
+                wsm.write(V1, commit, IMAGE)
+        for image in [
+            "ghcr.io/snds/lockdown-server",
+            "ghcr.io/snds/lockdown-server:main",
+            "ghcr.io/snds/lockdown-server@sha256:abc",
+            "ghcr.io/snds/lockdown-server@sha512:" + "ab" * 32,
+            "ghcr.io/snds/lockdown-server@sha256:" + "AB" * 32,
+            f"ghcr.io/someone/lockdown-server@{DIGEST}",
+            f"docker.io/snds/lockdown-server@{DIGEST}",
+        ]:
+            with self.assertRaises(wsm.Refused, msg=image):
+                wsm.write(V1, COMMIT, image)
+
+    def test_never_takes_the_feed_backwards(self):
+        published = lambda v: json.dumps({"version": v})
+        self.assertEqual(wsm.write(V2, COMMIT, IMAGE, published(V1))["version"], V2)
+        with self.assertRaises(wsm.Refused) as c:
+            wsm.write(V1, COMMIT, IMAGE, published(V1))
+        self.assertEqual(c.exception.code, wsm.ALREADY)
+        with self.assertRaises(wsm.Refused) as c:
+            wsm.write(V1, COMMIT, IMAGE, published(V2))
+        self.assertEqual(c.exception.code, wsm.NEWER_PUBLISHED)
+        # A tagged release sorts after its own main builds, as semver has it.
+        with self.assertRaises(wsm.Refused) as c:
+            wsm.write(V1, COMMIT, IMAGE, published("0.1.0"))
+        self.assertEqual(c.exception.code, wsm.NEWER_PUBLISHED)
+
+    def test_never_writes_over_a_manifest_it_can_not_read(self):
+        for text in ["", "<html>", "[]", "{}", '{"version": 3}', '{"version": "next"}']:
+            with self.assertRaises(wsm.Refused, msg=text) as c:
+                wsm.write(V1, COMMIT, IMAGE, text)
+            self.assertEqual(c.exception.code, wsm.BAD)
+
+    def test_the_command_line_writes_only_on_success(self):
+        out = self.dir / "latest.json"
+        args = ["--version", V1, "--commit", COMMIT, "--image", IMAGE, "--out", str(out)]
+        self.assertEqual(wsm.main(args), 0)
+        self.assertEqual(json.loads(out.read_text())["images"]["server"]["digest"], DIGEST)
+        out.unlink()
+        previous = self.dir / "published.json"
+        previous.write_text(json.dumps({"version": V1}))
+        self.assertEqual(wsm.main(args + ["--previous", str(previous)]), wsm.ALREADY)
+        previous.write_text(json.dumps({"version": V2}))
+        self.assertEqual(wsm.main(args + ["--previous", str(previous)]), wsm.NEWER_PUBLISHED)
+        previous.write_text("not json")
+        self.assertEqual(wsm.main(args + ["--previous", str(previous)]), wsm.BAD)
+        self.assertFalse(out.exists(), "a refusal writes nothing")
+        # No file at that path: nothing is published yet.
+        self.assertEqual(wsm.main(args + ["--previous", str(self.dir / "absent.json")]), 0)
+
+
+# A stand-in for `gh`: releases are folders under $FAKE_GH, and every call is
+# one line of $FAKE_GH/log. It knows only the calls publish-feed.sh makes,
+# and fails on any other, so a changed script fails here first.
+FAKE_GH = r"""#!/usr/bin/env python3
+import json, os, shutil, sys
+from pathlib import Path
+
+state = Path(os.environ["FAKE_GH"])
+args = sys.argv[1:]
+with (state / "log").open("a") as log:
+    log.write(" ".join(args) + "\n")
+
+def flag(name, takes=1):
+    if name not in args:
+        return None
+    i = args.index(name)
+    value = args[i + 1] if takes else True
+    del args[i:i + 1 + takes]
+    return value
+
+def release(repo, tag):
+    return state / repo.replace("/", "__") / tag
+
+def names(folder):
+    return sorted(p.name for p in folder.iterdir() if p.name != ".release")
+
+if args[:1] == ["api"]:
+    sys.exit(1 if (state / "unreachable").exists() else 0)
+if args[:1] != ["release"]:
+    sys.exit(f"fake gh: unknown call {args}")
+verb, repo = args[1], flag("--repo")
+rest = args[2:]
+if verb == "view":
+    fields, query = flag("--json"), flag("-q")
+    rest = args[2:]
+    folder = release(repo, rest[0])
+    if not folder.is_dir():
+        sys.exit(1)
+    meta = json.loads((folder / ".release").read_text())
+    if fields == "assets":
+        print("\n".join(names(folder)))
+    elif fields:
+        print(json.dumps({"prerelease": meta["prerelease"], "tag": rest[0], "files": names(folder)}))
+elif verb in ("create", "edit"):
+    pre, latest = flag("--prerelease", 0), "--latest=false" in args
+    title, notes = flag("--title"), flag("--notes")
+    rest = [a for a in args[2:] if a != "--latest=false"]
+    folder = release(repo, rest[0])
+    if (verb == "create") == folder.is_dir():
+        sys.exit(f"fake gh: {verb} on a release that {'exists' if folder.is_dir() else 'is missing'}")
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / ".release").write_text(json.dumps({"prerelease": bool(pre), "not_latest": latest, "title": title, "notes": notes}))
+elif verb == "upload":
+    if not flag("--clobber", 0):
+        sys.exit("fake gh: upload without --clobber")
+    rest = args[2:]
+    folder = release(repo, rest[0])
+    if (state / "upload-fails").exists():
+        sys.exit(1)
+    for f in rest[1:]:
+        shutil.copy(f, folder / Path(f).name)
+elif verb == "delete-asset":
+    flag("--yes", 0)
+    rest = args[2:]
+    (release(repo, rest[0]) / rest[1]).unlink()
+elif verb == "download":
+    pattern, out = flag("--pattern"), flag("--output")
+    rest = args[2:]
+    if (state / "download-fails").exists():
+        sys.exit(1)
+    shutil.copy(release(repo, rest[0]) / pattern, out)
+else:
+    sys.exit(f"fake gh: unknown call {args}")
+"""
+
+REPO = "snds/releases"
+TAG = "lockdown-main"
+
+
+@unittest.skipUnless(shutil.which("bash") and os.name == "posix", "publish-feed.sh is a bash script")
+class PublishFeed(unittest.TestCase):
+    """packaging/update/publish-feed.sh against a stand-in `gh` (docs/plan/66-shared-feed.md §2)."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir)
+        self.state = self.dir / "state"
+        self.state.mkdir()
+        tools = self.dir / "bin"
+        tools.mkdir()
+        gh = tools / "gh"
+        gh.write_text(FAKE_GH)
+        gh.chmod(0o755)
+        self.env = {**os.environ, "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}", "FAKE_GH": str(self.state),
+                    "GH_TOKEN": "not-a-token"}
+        self.release = self.state / "snds__releases" / TAG
+
+    def run_script(self, *args):
+        return subprocess.run(["bash", str(HERE / "publish-feed.sh"), *args], env=self.env, capture_output=True, text=True)
+
+    def log(self):
+        log = self.state / "log"
+        return log.read_text().splitlines() if log.exists() else []
+
+    def feed(self, version, files):
+        d = self.dir / f"feed-{version}"
+        d.mkdir()
+        for name in files:
+            (d / name).write_text(f"{name} of {version}")
+        (d / "latest.json").write_text(json.dumps({"version": version}))
+        return d
+
+    def publish(self, d):
+        return self.run_script("publish", REPO, TAG, "Lockdown main", "notes", str(d))
+
+    def test_the_first_run_makes_a_pre_release_that_is_never_latest(self):
+        r = self.publish(self.feed(V1, ["a.tar.gz", "a.tar.gz.sig"]))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        meta = json.loads((self.release / ".release").read_text())
+        self.assertEqual(meta, {"prerelease": True, "not_latest": True, "title": "Lockdown main", "notes": "notes"})
+        self.assertEqual(sorted(p.name for p in self.release.iterdir()), [".release", "a.tar.gz", "a.tar.gz.sig", "latest.json"])
+
+    def test_files_go_up_first_and_the_manifest_last_then_old_files_go(self):
+        self.assertEqual(self.publish(self.feed(V1, ["old.tar.gz", "old.tar.gz.sig"])).returncode, 0)
+        (self.state / "log").unlink()
+        r = self.publish(self.feed(V2, ["new.tar.gz", "new.tar.gz.sig"]))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        calls = [c for c in self.log() if c.startswith(("release upload", "release delete-asset", "release edit", "release create"))]
+        self.assertTrue(calls[0].startswith("release edit"), calls)
+        self.assertIn("new.tar.gz", calls[1])
+        self.assertNotIn("latest.json", calls[1])
+        self.assertTrue(calls[2].endswith("latest.json"), calls)
+        self.assertEqual(sorted(c.split()[3] for c in calls[3:]), ["old.tar.gz", "old.tar.gz.sig"])
+        self.assertTrue(all(c.startswith("release delete-asset") for c in calls[3:]), calls)
+        self.assertEqual(json.loads((self.release / "latest.json").read_text())["version"], V2)
+        self.assertEqual(sorted(p.name for p in self.release.iterdir()), [".release", "latest.json", "new.tar.gz", "new.tar.gz.sig"])
+
+    def test_a_failed_upload_leaves_the_old_manifest_and_removes_nothing(self):
+        self.assertEqual(self.publish(self.feed(V1, ["old.tar.gz"])).returncode, 0)
+        (self.state / "upload-fails").touch()
+        r = self.publish(self.feed(V2, ["new.tar.gz"]))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(json.loads((self.release / "latest.json").read_text())["version"], V1)
+        self.assertTrue((self.release / "old.tar.gz").exists())
+        self.assertFalse(any(c.startswith("release delete-asset") for c in self.log()))
+
+    def test_a_manifest_alone_is_a_whole_feed(self):
+        # The server feed: latest.json and nothing else.
+        r = self.publish(self.feed(V1, []))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(sorted(p.name for p in self.release.iterdir()), [".release", "latest.json"])
+
+    def test_refuses_a_folder_without_a_manifest_and_a_token_that_can_not_read(self):
+        empty = self.dir / "empty"
+        empty.mkdir()
+        self.assertNotEqual(self.publish(empty).returncode, 0)
+        self.assertEqual(self.log(), [], "nothing was asked of GitHub")
+        (self.state / "unreachable").touch()
+        r = self.publish(self.feed(V1, ["a.tar.gz"]))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("can't read snds/releases", r.stdout)
+        self.assertFalse(self.release.exists())
+
+    def test_previous_reads_what_is_published(self):
+        out = self.dir / "published.json"
+        # No release yet, then a release with no manifest yet: nothing to compare with, and no failure.
+        r = self.run_script("previous", REPO, TAG, str(out))
+        self.assertEqual((r.returncode, out.exists()), (0, False), r.stderr)
+        self.release.mkdir(parents=True)
+        (self.release / ".release").write_text("{}")
+        r = self.run_script("previous", REPO, TAG, str(out))
+        self.assertEqual((r.returncode, out.exists()), (0, False), r.stderr)
+        (self.release / "latest.json").write_text(json.dumps({"version": V1}))
+        r = self.run_script("previous", REPO, TAG, str(out))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(out.read_text())["version"], V1)
+
+    def test_previous_fails_when_a_published_manifest_can_not_be_read(self):
+        out = self.dir / "published.json"
+        out.write_text("left over from another run")
+        self.release.mkdir(parents=True)
+        (self.release / ".release").write_text("{}")
+        (self.release / "latest.json").write_text(json.dumps({"version": V2}))
+        (self.state / "download-fails").touch()
+        r = self.run_script("previous", REPO, TAG, str(out))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse(out.exists(), "a stale file is never taken for the published one")
+        (self.state / "download-fails").unlink()
+        (self.state / "unreachable").touch()
+        self.assertNotEqual(self.run_script("previous", REPO, TAG, str(out)).returncode, 0)
+
+    def test_the_token_is_never_an_argument(self):
+        self.assertEqual(self.publish(self.feed(V1, ["a.tar.gz"])).returncode, 0)
+        self.assertNotIn("not-a-token", "\n".join(self.log()))
 
 
 class VersionForms(unittest.TestCase):
