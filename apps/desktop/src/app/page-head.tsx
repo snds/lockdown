@@ -30,6 +30,8 @@ export interface PageHeadFromShell {
   count?: number | string
   switcher?: PageHeadSwitcher
   below?: ReactNode
+  /** Controls the place adds after the screen's own: "Check again" on Items, Codes and Sharing (brief 3.3). */
+  actions?: ReactNode
 }
 
 const PageHeadContext = createContext<PageHeadFromShell | null>(null)
@@ -54,7 +56,13 @@ export function usePageHead(own: PageHeadOwn): AppFramePageHeadProps & { title: 
     title: shell?.title ?? own.title,
     count: shell?.count ?? own.count,
     meta: own.meta,
-    actions: own.actions,
+    actions:
+      own.actions && shell?.actions ? (
+        <>
+          {own.actions}
+          {shell.actions}
+        </>
+      ) : (own.actions ?? shell?.actions),
     switcher: shell?.switcher ?? own.switcher,
     below: shell?.below,
     gap: frame.phone || shell?.below ? "md" : "sm",

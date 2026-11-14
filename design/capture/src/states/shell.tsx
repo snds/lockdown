@@ -1,7 +1,8 @@
 // The shell's states (foundation): what the frame around every screen
-// draws by itself. Entry, navigation, chrome, messages, needs-you, the gate,
-// the lock, the backup line, the toasts that arrive on their own and the
-// reminders. Same App, same fixture; each state is a few steps deep.
+// draws by itself. Entry, navigation, chrome, the five message channels
+// (brief X2: the status line and strip, toasts, the critical and info
+// Banners), needs-you, the gate, the lock and the reminders. Same App, same
+// fixture; each state is a few steps deep.
 
 import { LIVE_EVENT } from "@/features/sessions/live-client"
 
@@ -10,7 +11,7 @@ import { as } from "../host/core"
 import type { StateDef, Step } from "../harness/types"
 import { WIDE, d } from "./defs"
 import { open } from "./steps/screens"
-import { DIALOG, MENU, go, lock, openKeys, openMore, openSwitcher } from "./steps/shell"
+import { DIALOG, MENU, checkAgain, go, lock, openKeys, openMore, openSwitcher, scrollContent } from "./steps/shell"
 import { openItem, reveal } from "./steps/vault"
 
 const reminders = (password: boolean, drill: boolean, kitTest: boolean) => ({
@@ -122,32 +123,50 @@ export const SHELL_STATES: StateDef[] = [
     screen: "Shell",
     state: "Idle lock warning",
     brief_row: null,
-    notes: "Ten seconds before an idle lock: one toast with Stay unlocked (D107).",
-    steps: [
-      ...open,
-      {
-        run: () => {
-          // The core's idle timer is near: the next poll says so.
-        },
-      },
-      { pause: 3400 },
-    ],
-    answers: (w) => ({ lock_state: () => ({ ...w.lock, idle_secs: 593, idle_timeout_secs: 600 }) }),
+    notes: "Ten seconds before an idle lock: LOCKING IN // 08 S in the live tone with ten segments and STAY UNLOCKED, in the status line on a desktop and the live strip on a phone; said once (brief X2, D750). The id is kept from the toast it replaced.",
+    built: { area: "messages", screen: "idle-lock", kind: "undrawn" },
+    steps: [...open, { wait: /^Stay( unlocked)?$/, role: "button" }, rest],
+    answers: (w) => ({ lock_state: () => ({ ...w.lock, idle_secs: 592, idle_timeout_secs: 600 }) }),
   }),
-  d({ id: "desktop-reminder-away", screen: "Signed in elsewhere", state: "Due: toast", brief_row: "Signed in elsewhere", notes: "A sign-in left on a hotel TV is due to be signed out: the toast after unlock (D237).", answers: () => ({ away_reminders: as("away_reminders_due") }), steps: [...open, { pause: 1500 }] }),
-  d({ id: "desktop-reminder-expiry", screen: "Smart views", state: "Expiring: toast", brief_row: "Needs attention", notes: "Items expiring soon: the reminder toast after unlock, with Show.", answers: () => ({ expiry_reminders: as("expiry_reminders_due") }), steps: [...open, { pause: 1500 }] }),
+  d({ id: "desktop-reminder-away", screen: "Signed in elsewhere", state: "Due: news", brief_row: "Signed in elsewhere", notes: "A sign-in left on a hotel TV is due to be signed out: the info Banner on All items after unlock, with Show and a close button (D237, D753).", answers: () => ({ away_reminders: as("away_reminders_due") }), steps: [...open, { wait: "Dismiss" }, rest] }),
+  d({
+    id: "desktop-reminder-expiry",
+    screen: "Smart views",
+    state: "Expiring: news",
+    brief_row: "Needs attention",
+    notes: "Items expiring soon: the one info Banner at the top of All items after unlock, with Show (Health at Expiring) and a close button; dismissed, it stays away for the day (brief X2 table 5, D753).",
+    built: { area: "messages", screen: "info-banner", kind: "undrawn" },
+    answers: () => ({ expiry_reminders: as("expiry_reminders_due") }),
+    steps: [...open, { wait: "Dismiss" }, rest],
+  }),
   d({ id: "desktop-reminder-kit-test", screen: "Reminders", state: "Test your recovery kit", brief_row: "Reminders", notes: "Right after the first run: test the kit, or skip with \"I understand an untested kit can fail\" (D251).", answers: () => ({ reminders: () => reminders(false, false, true) }), steps: [...open, DIALOG] }),
   d({ id: "desktop-reminder-password", screen: "Reminders", state: "Your password, once more", brief_row: "Reminders", notes: "Every 14 days where unlock never asks for the password (D252).", answers: () => ({ reminders: () => reminders(true, false, false) }), steps: [...open, DIALOG] }),
   d({ id: "desktop-reminder-drill", screen: "Reminders", state: "Time for the drill", brief_row: "Reminders", notes: "The yearly drill (D253).", answers: () => ({ reminders: () => reminders(false, true, false) }), steps: [...open, DIALOG] }),
-  d({ id: "desktop-live-session-ended", screen: "Shell", state: "Session ended elsewhere", brief_row: null, notes: "Another device ended this one's session: the toast.", steps: [...open, { emit: LIVE_EVENT, payload: { kind: "session_ended" } }, { pause: 600 }] }),
-  d({ id: "desktop-live-split", screen: "Shell", state: "Log split warning", brief_row: "Status", notes: "A sync's mirrors caught a split view: the sticky warning.", steps: [...open, { emit: LIVE_EVENT, payload: { kind: "synced", pulled: 2, lines: ["Split view: the mirror at kt.witness.example disagrees."] } }, { pause: 600 }] }),
+  d({
+    id: "desktop-live-session-ended",
+    screen: "Shell",
+    state: "Session ended elsewhere",
+    brief_row: null,
+    notes: "Another device ended this one's session: the critical Banner at the top of Items, \"Lockdown isn't syncing\", with SIGN IN, which opens the account dialog. It cannot be dismissed (brief X2 table 4, D751).",
+    built: { area: "messages", screen: "banner-sign-in", kind: "undrawn" },
+    steps: [...open, { emit: LIVE_EVENT, payload: { kind: "session_ended" } }, { wait: "Sign in", role: "button" }, rest],
+  }),
+  d({
+    id: "desktop-live-split",
+    screen: "Shell",
+    state: "Log split warning",
+    brief_row: "Status",
+    notes: "A sync's mirrors caught a split view: the critical Banner on Items (and Sharing, and Status) with SEE STATUS, until a sync without it (brief X2 table 4, D752).",
+    built: { area: "messages", screen: "banner-split", kind: "undrawn" },
+    steps: [...open, { emit: LIVE_EVENT, payload: { kind: "synced", pulled: 2, lines: ["Split view: the mirror at kt.witness.example disagrees."] } }, { wait: "See status", role: "button" }, rest],
+  }),
   d({ id: "desktop-locked-wash-narrow", screen: "Unlock", state: "Locked, behind the wash", brief_row: "Vault", notes: "The vault locked: the wash and skeleton rows, nothing readable (brief §4).", steps: [...open, ...lock(), { wait: "Unlock", role: "button" }] }),
   d({
     id: "desktop-passkey-upgrade-toast",
     screen: "Shell",
     state: "A site added a passkey",
     brief_row: "Passkeys block",
-    notes: "After a password sign-in Lockdown saw, the site added a passkey with no prompt; the app says so afterwards, with Show (D210, D312 as changed by D375).",
+    notes: "After a password sign-in Lockdown saw, the site added a passkey with no prompt; the app says so afterwards in the info Banner on All items, with Show opening the login (D210, D312 as changed by D375; D753). The id is kept from the toast it replaced.",
     answers: (w) => {
       let told = false
       const login = w.items.find((i) => i.title === "Northwind Mail")!
@@ -161,5 +180,35 @@ export const SHELL_STATES: StateDef[] = [
     },
     steps: [...open, { wait: "mail.northwind.example added a passkey to this login" }, { pause: 400 }],
   }),
-  d({ id: "desktop-backup-late", screen: "Backup line", state: "Late", brief_row: "Backup line", notes: "A backup is overdue. The sidebar's line is gone (doc 64, D728): the state is told in Settings → Backups until found-5's Banner.", answers: () => ({ backup_status: () => ({ ...(as("backup_status")({}) as object), last_success_at: ago(4), next_due_at: ago(3) }) }), steps: [...open, ...go("settings-backups")] }),
+  d({
+    id: "desktop-backup-late",
+    screen: "Backup line",
+    state: "Failed",
+    brief_row: "Backup line",
+    notes: "Backups are on and the last one failed, four days after the last that worked: the critical Banner at the top of Items with OPEN BACKUPS, in the core's words (brief X2 table 4, D754). The sidebar's line is gone (D728); \"Backed up 4 days ago\" is in Settings → Backups.",
+    answers: () => ({ backup_status: () => ({ ...(as("backup_status")({}) as object), last_success_at: ago(4), next_due_at: ago(3), last_error: "The backup folder /Volumes/Backup isn't there. Connect the drive, or choose another folder." }) }),
+    steps: [...open, { wait: "Open backups", role: "button" }, rest],
+  }),
+  // The scrolled phone chrome (States / 02): a sync the person asked for holds, so the strip shows; then the list scrolls.
+  d({
+    id: "shell-phone-scrolled",
+    widths: PHONE,
+    screen: "Phone chrome",
+    state: "Scrolled, dock minimized",
+    brief_row: null,
+    notes: "States / 02: the page head collapsed to the small centred title (still the switcher), the L mark only, the tab bar shrunk to the active tab, the SYNCING strip inside the bottom row, a hairline under the top row, the scroll-edge fade. Check again started the sync (brief 3.3, X2).",
+    built: { area: "items", screen: "scrolled", kind: "drawn" },
+    answers: () => ({ sync: () => new Promise(() => {}) }),
+    steps: [...open, ...checkAgain(), ...scrollContent(320), rest],
+  }),
+  d({
+    id: "shell-phone-scrolled-short",
+    widths: [900],
+    screen: "Phone chrome",
+    state: "Scrolled, on a short or medium screen",
+    brief_row: null,
+    notes: "The same steps on a phone held sideways (844 × 390: the trailing column, the strip at the foot of the content) and at medium width (the rail, the status line's SYNCING).",
+    answers: () => ({ sync: () => new Promise(() => {}) }),
+    steps: [...open, ...checkAgain(), ...scrollContent(320), rest],
+  }),
 ]

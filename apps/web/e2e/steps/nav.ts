@@ -125,3 +125,6 @@ export const blockingDialogs = (page: Page): Locator => page.getByRole("alertdia
 
 /** The page's root, where the theme is set. */
 export const root = (page: Page): Locator => page.locator("html")
+
+/** The toasts on screen (brief X2: only finished work raises one; never a sync, an error or news). */
+export const toasts = (page: Page): Locator => page.locator("[data-sonner-toast]")

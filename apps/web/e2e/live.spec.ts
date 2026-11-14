@@ -7,7 +7,7 @@ import { expect, test } from "@playwright/test"
 
 import { signedInHeading } from "./steps/devices.ts"
 import { titled } from "./steps/items.ts"
-import { go, lock, vaultOpen } from "./steps/nav.ts"
+import { go, lock, toasts, vaultOpen } from "./steps/nav.ts"
 import { serverLine } from "./steps/settings.ts"
 import { signIn, unlock } from "./steps/unlock.ts"
 
@@ -66,6 +66,8 @@ test("a change on another device shows in an open tab by itself, through the wor
   lockdown(["add", "login", "--site", "https://live.example", "--username", "me", "--title", "Arrived live", "--password-stdin"], "live-pass-1\n")
   lockdown(["sync"])
   await expect(titled(page, "Arrived live")).toBeVisible({ timeout: 20_000 })
+  // Another device's change just shows: a sync is live status, never a toast (brief X2).
+  await expect(toasts(page)).toHaveCount(0)
 
   // The session list comes from the same client the desktop uses.
   await go(page, "devices")

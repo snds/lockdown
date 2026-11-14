@@ -1,7 +1,7 @@
 import { render, waitFor } from "@testing-library/react"
 
 import { PasskeyClientProvider, type PasskeyClient, type PasskeyUpgrade } from "./passkey-client"
-import { upgradeToast, usePasskeyUpgrades } from "./use-passkey-upgrades"
+import { upgradeNews, usePasskeyUpgrades } from "./use-passkey-upgrades"
 
 const github: PasskeyUpgrade = { item_id: "i1", title: "GitHub", site: "github.com", at: 1_761_700_000 }
 
@@ -22,9 +22,9 @@ function client(upgrades: () => Promise<PasskeyUpgrade[]>): PasskeyClient {
   }
 }
 
-describe("the notice after a site's automatic passkey upgrade", () => {
-  it("names the site in the toast's words", () => {
-    expect(upgradeToast(github)).toBe("github.com added a passkey to this login")
+describe("the news after a site's automatic passkey upgrade", () => {
+  it("names the site in the Banner's title and the login in its body, with no full stop in the title", () => {
+    expect(upgradeNews(github)).toEqual({ title: "github.com added a passkey to this login", body: "GitHub" })
   })
 
   it("tells each upgrade the core hands out, once, while the vault is open", async () => {
@@ -52,7 +52,7 @@ describe("the notice after a site's automatic passkey upgrade", () => {
     expect(upgrades).not.toHaveBeenCalled()
   })
 
-  it("a core that can't answer is no toast and no error", async () => {
+  it("a core that can't answer is no news and no error", async () => {
     const notify = vi.fn()
     const upgrades = vi.fn(() => Promise.reject(new Error("locked")))
     render(

@@ -1,4 +1,7 @@
 import { act, render } from "@testing-library/react"
+
+import { Toaster } from "@unicron/ui"
+
 import { UpdateClientProvider, type UpdateClient, type UpdateStatus } from "./update-client"
 import { useUpdateNotices } from "./use-update-notices"
 
@@ -50,30 +53,44 @@ function updateClient(first: UpdateStatus) {
 }
 
 describe("a check someone asked for", () => {
-  function Notices({ show, onNotice }: { show: boolean; onNotice: (t: string) => void }) {
-    useUpdateNotices(show, onNotice)
+  function Notices({ show, onAsked }: { show: boolean; onAsked: () => void }) {
+    useUpdateNotices(show, onAsked)
     return null
   }
 
-  it("is told when it ends, and not for the automatic check or while Settings shows it", async () => {
+  it("opens About as it starts, once per check, and never raises a toast (cross-app decisions §3)", async () => {
     const u = updateClient(BASE)
-    const told: string[] = []
+    const asked = vi.fn()
     const { rerender } = render(
       <UpdateClientProvider value={u.client}>
-        <Notices show onNotice={(t) => told.push(t)} />
+        <Notices show onAsked={asked} />
+        <Toaster />
       </UpdateClientProvider>,
     )
     await act(async () => {})
-    u.push({ ...BASE, state: "checking", asked: true })
-    u.push({ ...BASE, state: "up_to_date", asked: true })
+    // The automatic check opens nothing.
+    u.push({ ...BASE, state: "checking", asked: false })
     u.push({ ...BASE, state: "up_to_date", asked: false })
-    expect(told).toEqual(["Lockdown is up to date."])
+    expect(asked).not.toHaveBeenCalled()
+    // An asked one opens About once, at its start; its outcome is About's to say.
+    u.push({ ...BASE, state: "checking", asked: true })
+    u.push({ ...BASE, state: "downloading", percent: 40, asked: true })
+    u.push({ ...BASE, state: "ready", offered: "0.1.0-main.20261107120000", asked: true })
+    expect(asked).toHaveBeenCalledTimes(1)
+    // A second ask is a second check.
+    u.push({ ...BASE, state: "checking", asked: true })
+    u.push({ ...BASE, state: "failed", error: "Lockdown couldn't reach GitHub. Check your connection and try again.", asked: true })
+    expect(asked).toHaveBeenCalledTimes(2)
+    // While About already shows it, nothing opens.
     rerender(
       <UpdateClientProvider value={u.client}>
-        <Notices show={false} onNotice={(t) => told.push(t)} />
+        <Notices show={false} onAsked={asked} />
+        <Toaster />
       </UpdateClientProvider>,
     )
-    u.push({ ...BASE, state: "failed", error: "Lockdown couldn't reach GitHub. Check your connection and try again.", asked: true })
-    expect(told).toEqual(["Lockdown is up to date."])
+    u.push({ ...BASE, state: "checking", asked: true })
+    expect(asked).toHaveBeenCalledTimes(2)
+    await act(async () => {})
+    expect(document.querySelectorAll("[data-sonner-toast]")).toHaveLength(0)
   })
 })

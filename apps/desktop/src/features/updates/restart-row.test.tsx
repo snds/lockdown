@@ -1,6 +1,8 @@
 import { act, render, screen } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { RestartRow } from "./restart-row"
+
+import { AppFrame, FloatButton, NavItem } from "@unicron/ui"
+
+import { updateMark, useUpdateMark } from "./restart-row"
 import { UpdateClientProvider, type UpdateClient, type UpdateStatus } from "./update-client"
 
 const BASE: UpdateStatus = {
@@ -52,18 +54,44 @@ function updateClient(first: UpdateStatus) {
   return { client, calls, push: (s: UpdateStatus) => act(() => handler?.(s)) }
 }
 
-describe("the sidebar's Restart to update", () => {
-  it("shows only once an update is ready", async () => {
+/** The three ways into Settings, each carrying the mark (cross-app decisions §3). */
+function WaysIn() {
+  const mark = useUpdateMark()
+  return (
+    <AppFrame layout="expanded">
+      <NavItem label="Settings" icon="settings" mark={mark} />
+      <FloatButton label="Profile" icon="user--avatar" size="l" mark={mark} />
+    </AppFrame>
+  )
+}
+
+describe("a ready update, on the way into Settings", () => {
+  it("is a mark joined to the name only while the update is ready, and never a restart button", async () => {
     const u = updateClient(BASE)
     render(
       <UpdateClientProvider value={u.client}>
-        <RestartRow onError={() => {}} />
+        <WaysIn />
       </UpdateClientProvider>,
     )
-    expect(screen.queryByRole("button")).not.toBeInTheDocument()
+    await act(async () => {})
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument()
+    for (const state of ["checking", "downloading", "up_to_date", "failed", "available"] as const) {
+      u.push({ ...BASE, state, asked: true })
+      expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Profile" })).toBeInTheDocument()
+    }
     u.push({ ...BASE, state: "ready", offered: NEXT })
-    const row = await screen.findByRole("button", { name: `Restart to update to version ${NEXT}. Lockdown locks first.` })
-    await userEvent.click(row)
-    expect(u.calls).toEqual(["restart"])
+    expect(await screen.findByRole("button", { name: `Settings, update ${NEXT} ready` })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: `Profile, update ${NEXT} ready` })).toBeInTheDocument()
+    // Restart to update lives in Settings → About (D755): nothing here restarts.
+    expect(screen.queryByRole("button", { name: /restart/i })).toBeNull()
+    expect(u.calls).toEqual([])
+    u.push({ ...BASE, state: "idle" })
+    expect(await screen.findByRole("button", { name: "Settings" })).toBeInTheDocument()
+  })
+
+  it("says nothing where the host has no updater (the web vault)", () => {
+    expect(updateMark(null)).toBeUndefined()
+    expect(updateMark({ ...BASE, state: "ready", offered: null })).toEqual({ square: true, label: "update ready" })
   })
 })

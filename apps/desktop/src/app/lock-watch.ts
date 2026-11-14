@@ -1,5 +1,4 @@
-import { useEffect } from "react"
-import { toast } from "@unicron/ui"
+import { useCallback, useEffect, useState } from "react"
 
 import { useClient } from "@/core/client"
 import type { LockState } from "@/core/types"
@@ -8,9 +7,8 @@ import type { LockState } from "@/core/types"
 const POLL_MS = 3000
 /** How often activity is reported, at most. */
 const TOUCH_MS = 10_000
-/** The warning before an idle lock, with "Stay unlocked" (brief §4). */
+/** The warning before an idle lock, with "Stay unlocked" (brief X2: the status line and the strip, D750). */
 const WARN_BEFORE_S = 10
-const WARN_TOAST = "idle-lock"
 
 /**
  * The seconds until the core's idle timer locks, or `null` when no idle
@@ -38,31 +36,7 @@ export function useLockWatch(onState: (state: LockState) => void) {
       last = now
       void client.touch().catch(() => {})
     }
-    // Ten seconds before the idle lock: one toast with "Stay unlocked",
-    // which is activity (`touch`); it goes when the timer is no longer near.
-    const warn = (state: LockState) => {
-      const left = idleLockIn(state)
-      if (left === null) {
-        toast.dismiss(WARN_TOAST)
-        return
-      }
-      toast(`Locking in ${left} s without you`, {
-        id: WARN_TOAST,
-        duration: (left + 1) * 1000,
-        action: {
-          label: "Stay unlocked",
-          onClick: () => {
-            last = Date.now()
-            void client.touch().catch(() => {})
-            toast.dismiss(WARN_TOAST)
-          },
-        },
-      })
-    }
-    const seen = (state: LockState) => {
-      warn(state)
-      onState(state)
-    }
+    const seen = (state: LockState) => onState(state)
     const visibility = () => {
       void client
         .setHidden(document.visibilityState === "hidden")
@@ -81,4 +55,41 @@ export function useLockWatch(onState: (state: LockState) => void) {
       window.removeEventListener("pointerdown", touch)
     }
   }, [client, onState])
+}
+
+/**
+ * The idle lock's countdown, from the lock state the watch polls every few
+ * seconds: the seconds left while it is 10 or fewer away, ticking each
+ * second between polls, and `stay`, which is activity (`touch`), so the
+ * core starts the idle timer over. The status line and the strip show it
+ * (brief X2); nothing here decides a lock.
+ */
+export function useIdleCountdown(state: LockState | null): { left: number | null; stay: () => void } {
+  const client = useClient()
+  const near = state ? idleLockIn(state) : null
+  const [deadline, setDeadline] = useState<number | null>(null)
+  const [now, setNow] = useState(() => Date.now())
+  // Stay was pressed: hidden until a poll says the lock is no longer near.
+  const [stayed, setStayed] = useState(false)
+  useEffect(() => {
+    if (near === null) {
+      setDeadline(null)
+      setStayed(false)
+      return
+    }
+    const at = Date.now()
+    setNow(at)
+    setDeadline(at + near * 1000)
+  }, [near, state])
+  useEffect(() => {
+    if (deadline === null) return
+    const t = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(t)
+  }, [deadline])
+  const stay = useCallback(() => {
+    setStayed(true)
+    void client.touch().catch(() => {})
+  }, [client])
+  const left = deadline === null || stayed ? null : Math.max(0, Math.min(WARN_BEFORE_S, Math.ceil((deadline - now) / 1000)))
+  return { left, stay }
 }

@@ -2,8 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 
 import { Spinner, Tabs, TabsList, TabsTrigger, Toaster, TooltipProvider, toast } from "@unicron/ui"
 
+import { MessageBoardProvider, criticalBanner, firstCritical, useNews, type CriticalSources } from "@/app/banners"
 import { GateProvider } from "@/app/gate"
-import { useLockWatch } from "@/app/lock-watch"
+import { useIdleCountdown, useLockWatch } from "@/app/lock-watch"
+import { notify, savedWords } from "@/app/notify"
+import { StatusProvider, clockWords, useLiveWork, type LiveStatus, type StatusFact } from "@/app/status"
 import { LockedProvider } from "@/app/locked"
 import { SettingsProvider } from "@/app/settings"
 import { navFor, sharingTabs, type SharingTab } from "@/app/places"
@@ -30,7 +33,7 @@ import { webDepthClient } from "../core/web-depth-client"
 import { webHygieneClient, webQuickClient, webScanClient } from "../core/web-finish-client"
 import { PeopleView } from "../features/people-view"
 import { HygieneClientProvider } from "@/features/hygiene/hygiene-client"
-import { useSecretWipe } from "@/features/hygiene/secret-wipe"
+import { useSecretWipe, wipeWords } from "@/features/hygiene/secret-wipe"
 import { QuickClientProvider } from "@/features/quick/quick-client"
 import { ScanClientProvider } from "@/features/scan/scan-client"
 import { LiveClientProvider } from "@/features/sessions/live-client"
@@ -48,13 +51,9 @@ import { PqStatusClientProvider } from "@/features/security/pq-status-client"
 import { PaperClientProvider } from "@/features/paper/paper-client"
 import { webPaperClient } from "../core/web-paper-client"
 
-/** A sync whose mirrors caught a split view says so until dismissed (docs/plan/27-web-server-finish.md §4). */
-function warnOnSplit(lines: readonly string[]) {
-  if (lines.some((l) => l.includes("Split view")))
-    toast.error("This server's public log doesn't match a mirror: it may be showing you a different history from everyone else. See Settings.", {
-      id: "kt-split",
-      duration: Infinity,
-    })
+/** The line of a sync that says the server's log is split from its mirrors (D328), or null: a critical Banner until a sync without it. */
+function splitLine(lines: readonly string[]): string | null {
+  return lines.find((l) => l.includes("Split view")) ?? null
 }
 
 /** The web vault's Sharing tabs (brief W1): People and Links. */
@@ -98,6 +97,12 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [palette, setPalette] = useState(false)
   const syncing = useRef(false)
+  // What is broken and fixable (brief X2 table 4): a split view, a sync that failed.
+  const [split, setSplit] = useState<string | null>(null)
+  const [syncError, setSyncError] = useState<string | null>(null)
+  // When this tab last synced, for the status line's SYNCED 14:31 (brief X2 row 3, web vault).
+  const [syncedAt, setSyncedAt] = useState<number | null>(null)
+  const news = useNews()
   // The worker's live channel (docs/plan/27-web-server-finish.md §2) is open.
   const liveUp = useRef(false)
 
@@ -126,8 +131,9 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
     [status, refreshWeb],
   )
   useLockWatch(onLockState)
+  const idle = useIdleCountdown(status ? lock : null)
   // Typed secrets go when the tab hides or stays out of focus (docs/plan/26-desktop-finish.md §7).
-  useSecretWipe(useCallback((n: number) => toast(n === 1 ? "Lockdown cleared a password you were typing while the tab was away." : `Lockdown cleared ${n} passwords you were typing while the tab was away.`), []))
+  useSecretWipe(useCallback((n: number) => void notify(wipeWords(n, "tab")), []))
 
   const list = useCallback(() => {
     client
@@ -140,30 +146,36 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
     client.vaults().then(setVaults).catch(() => setVaults([]))
   }, [client])
 
+  // Opening the vault and a sync show in the status line and the strip while they run (brief X2 row 2).
+  const { work, track } = useLiveWork(status !== null && rows === null)
+
   // A change made here goes to the server at once, then the list shows
-  // what the sync left (another device's changes too).
-  const syncThenList = useCallback(() => {
+  // what the sync left (another device's changes too). What goes wrong is a
+  // critical Banner with TRY AGAIN, not a toast (brief X2).
+  const syncThenList = useCallback((): Promise<void> => {
     list()
-    if (syncing.current) return
+    if (syncing.current) return Promise.resolve()
     syncing.current = true
-    client
-      .sync()
+    return track("syncing", client.sync())
       .then((outcome) => {
-        warnOnSplit(outcome.lines)
+        setSyncError(null)
+        setSplit(splitLine(outcome.lines))
+        setSyncedAt(Date.now())
         list()
       })
       .catch((e) => {
         // The server wouldn't renew this tab's session: the words say why,
         // and the tab locks so unlocking signs in again with the password.
+        // The tab is locked at once, so this one is a toast: no Banner would show.
         if (isSignInNeeded(e)) {
           toast.error(e.message, { id: "sync" })
           void client.lock().catch(() => undefined)
-        } else toast.error(`Not synced: ${describeError(e)}`, { id: "sync" })
+        } else setSyncError(describeError(e))
       })
       .finally(() => {
         syncing.current = false
       })
-  }, [client, list])
+  }, [client, list, track])
 
   // No vault could open yet (the only one is shared and this tab hasn't
   // checked who changed it): one sync now opens it, rather than waiting for
@@ -187,6 +199,7 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
       refreshWeb()
       setReason(null)
       setStatus(s)
+      setSyncedAt(s.account?.last_sync_at ? s.account.last_sync_at * 1000 : null)
     },
     [refreshWeb],
   )
@@ -231,18 +244,20 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
     if (!status) return
     if (n.kind === "synced") {
       list()
-      warnOnSplit(n.lines)
-    }
-    else if (n.kind === "sync_failed") toast.error(`A change from another device didn't sync: ${n.message}`, { id: "sync" })
+      setSyncError(null)
+      setSplit(splitLine(n.lines))
+      setSyncedAt(Date.now())
+    } else if (n.kind === "sync_failed") setSyncError(n.message)
     else if (n.kind === "session_ended") {
       liveUp.current = false
+      // The tab locks at once, so this is said in a toast: a Banner would never be seen.
       toast.error("This tab's session was ended from another of your devices. Unlock with your password to sign in again.")
       lockNow()
     }
   })
 
   const notice = useCallback((text: string) => {
-    toast(text)
+    notify(text)
   }, [])
   // Health counts only what the web can know (brief X1): the Needs attention list.
   const toFix = useMemo(() => toFixCount(null, rows ?? []), [rows])
@@ -250,14 +265,33 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
     const to = navFor(id)
     if (to) setNav(to)
   }, [])
-  const vaultsValue = useMemo(() => ({ vaults, reload: syncThenList }), [vaults, syncThenList])
-  const showExpiring = useCallback(() => go("expiring"), [go])
-  const remind = useCallback((text: string, show: () => void) => {
-    toast(text, { action: { label: "Show", onClick: show } })
+  const sync = useCallback(() => void syncThenList(), [syncThenList])
+  const vaultsValue = useMemo(() => ({ vaults, reload: sync }), [vaults, sync])
+  const openItem = useCallback((id: string) => {
+    setNav({ area: "vault", view: "all" })
+    setSelected(id)
   }, [])
-  useExpiryReminder(client, status !== null, remind, showExpiring)
-  const showAttention = useCallback(() => go("attention"), [go])
-  useAwayReminder(client, status !== null, remind, showAttention)
+  // News that can wait (brief X2 table 5): one dismissable info Banner on All items, not a toast (D753).
+  const { add: addNews, clear: clearNews } = news
+  useEffect(() => {
+    if (status === null) clearNews()
+  }, [status, clearNews])
+  const showExpiring = useCallback(() => go("expiring"), [go])
+  const expiryNews = useCallback((n: { title: string; body?: string }, show: () => void) => addNews({ id: "expiry", ...n, action: { label: "Show", onClick: show } }), [addNews])
+  useExpiryReminder(client, status !== null, expiryNews, showExpiring)
+  const showAway = useCallback((itemId: string | null) => (itemId ? openItem(itemId) : go("attention")), [openItem, go])
+  const awayNews = useCallback((n: { title: string; body?: string }, show: () => void) => addNews({ id: "away", ...n, action: { label: "Show", onClick: show } }), [addNews])
+  useAwayReminder(client, status !== null, awayNews, showAway)
+  // The web vault's critical Banners: a split view (SEE STATUS opens This server, where the mirrors are) and a failed sync.
+  // A session the server won't renew locks the tab instead, and the web has no backups.
+  const critical = useMemo(() => {
+    const sources: CriticalSources = { signIn: null, split, sync: syncError, backup: null }
+    const kind = firstCritical(sources)
+    return kind ? criticalBanner(kind, sources, { signIn: () => {}, seeStatus: () => go("settings-server"), tryAgain: sync, openBackups: () => {} }) : null
+  }, [split, syncError, go, sync])
+  // The web vault's own line: when this tab last synced (brief X2 row 3).
+  const syncedLine = useMemo<StatusFact | null>(() => (syncedAt ? { text: `Synced ${clockWords(syncedAt)}` } : null), [syncedAt])
+  const live = useMemo<LiveStatus>(() => ({ idleLeft: idle.left, onStay: idle.stay, work }), [idle.left, idle.stay, work])
   const { refreshUserTemplates } = useTemplates()
   const open = status !== null
   useEffect(() => {
@@ -271,6 +305,7 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
         <p role="alert" className="text-sm text-destructive">
           {webError}
         </p>
+        <Toaster position="bottom-center" />
       </Frame>
     )
   }
@@ -281,6 +316,7 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
         <h1 className="sr-only">Lockdown web vault</h1>
         <Spinner />
         <p className="mt-2 text-sm text-muted-foreground">Starting the vault…</p>
+        <Toaster position="bottom-center" />
       </Frame>
     )
   }
@@ -299,12 +335,16 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
             <SignInScreen session={session} server={server} onSignedIn={opened} credentials={navigator.credentials} />
           )}
         </div>
+        {/* The open shell holds its own, inside the frame. */}
+        <Toaster position="bottom-center" />
       </div>
     )
   }
   return (
     <LockedProvider value={lock?.locked ?? false}>
       <VaultsProvider value={vaultsValue}>
+        <StatusProvider live={live} fallback={syncedLine}>
+        <MessageBoardProvider critical={critical} news={news.news} onDismissNews={news.dismiss}>
         <AppShell
           surface="web"
           nav={nav}
@@ -313,12 +353,15 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
           onLock={lockNow}
           toFix={toFix}
           onNotice={notice}
-          onRefresh={syncThenList}
+          onRefresh={sync}
+          onSync={syncThenList}
           onSaved={(id, generated) => {
             setSelected(id)
             if (nav.area !== "vault" && nav.area !== "search") setNav({ area: "vault", view: "all" })
-            syncThenList()
-            notice(generated ? "Saved. The new password is in the item; copy it from there." : "Saved.")
+            const title = rows?.find((r) => r.id === id)?.title ?? null
+            void syncThenList()
+            // The toast names what was saved (brief X2); a new item's title arrives with the list, so it says "Saved".
+            notify(savedWords(title, generated))
           }}
         >
           {nav.area === "vault" && (
@@ -326,7 +369,7 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
               view={nav.view}
               rows={rows}
               error={rowsError}
-              onChanged={syncThenList}
+              onChanged={sync}
               onNotice={notice}
               selected={selected}
               onSelect={setSelected}
@@ -334,10 +377,10 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
               scope={nav.scope}
             />
           )}
-          {nav.area === "search" && <SearchView rows={rows} selected={selected} onSelect={setSelected} onChanged={syncThenList} onNotice={notice} />}
+          {nav.area === "search" && <SearchView rows={rows} selected={selected} onSelect={setSelected} onChanged={sync} onNotice={notice} />}
           {nav.area === "codes" && (
             <PageColumn>
-              <CodesView rows={rows ?? []} onChanged={syncThenList} />
+              <CodesView rows={rows ?? []} onChanged={sync} />
             </PageColumn>
           )}
           {nav.area === "sharing" && (
@@ -359,8 +402,10 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
               <WebSecurityView onDevice={(device) => setNav({ area: "settings", view: "all", section: "devices", device })} />
             </PageColumn>
           )}
-          {nav.area === "settings" && <WebSettingsView status={status} onChanged={syncThenList} onNotice={notice} server={server} login={web.login ?? ""} onLock={setLock} onSignOut={signOut} />}
+          {nav.area === "settings" && <WebSettingsView status={status} onChanged={sync} onNotice={notice} server={server} login={web.login ?? ""} onLock={setLock} onSignOut={signOut} />}
         </AppShell>
+        </MessageBoardProvider>
+        </StatusProvider>
         <QuickPalette
           open={palette}
           onOpenChange={setPalette}
@@ -388,7 +433,6 @@ export function WebApp(props: WebRootProps) {
           </GateProvider>
         </TemplatesProvider>
       </SettingsProvider>
-      <Toaster position="bottom-center" />
     </TooltipProvider>
   )
 }

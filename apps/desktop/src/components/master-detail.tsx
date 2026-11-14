@@ -4,6 +4,7 @@ import { AppFrameColumn, AppFrameDetail, AppFrameInset, AppFrameList, EmptyState
 
 import { useDetailTopBarHandUp } from "@/app/detail-bottom-row"
 import { ScreenHead } from "@/app/page-head"
+import { useShellRefresh } from "@/app/status"
 
 interface MasterDetailProps {
   /** Header for the list pane: title, search, actions. */
@@ -44,10 +45,12 @@ interface MasterDetailProps {
  */
 export function MasterDetail({ header, title, list, detail, onBack, emptyLabel }: MasterDetailProps) {
   const frame = useAppFrame()
+  // A pull down on the phone's list runs the place's refresh (brief 3.3); its plain path is "Check again".
+  const refresh = useShellRefresh()
   const hasDetail = detail !== null
   return (
     <>
-      <AppFrameList>
+      <AppFrameList onRefresh={refresh}>
         {header}
         {list}
       </AppFrameList>
@@ -106,8 +109,9 @@ export function PaneHeader({ title, children }: { title: string; children?: Reac
  * beside the sidebar like every other screen.
  */
 export function PageColumn({ children }: { children: ReactNode }) {
+  const refresh = useShellRefresh()
   return (
-    <AppFrameColumn>
+    <AppFrameColumn onRefresh={refresh}>
       {/* The column's own edge is the page's line, and the frame keeps the phone's 16: a screen adds no gutter of its own. */}
       <AppFrameInset>
         <div className="[--c-page-gutter-narrow:0px] [--c-page-gutter:0px]">{children}</div>

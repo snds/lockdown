@@ -15,6 +15,7 @@ import {
   IconButton,
   NavItem,
   NavSection,
+  Toaster,
   useAppFrame,
   type AppFrameLayout,
   type NavMarkProp,
@@ -30,6 +31,7 @@ import { VIEW_LABELS, countTypes, countViews, type ListView } from "@/features/v
 import { NewItemMenu } from "@/features/vault/new-item-menu"
 import { count as countWords, countName } from "@/lib/format"
 
+import { BannerSlot, useBannerShows, type BannerPlace } from "./banners"
 import { BottomRow } from "./bottom-row"
 import { CrumbProvider, useCrumbExtra } from "./crumbs"
 import { PushedBottomRow, PushedChromeProvider } from "./detail-bottom-row"
@@ -54,6 +56,7 @@ import {
   type Section,
   type Surface,
 } from "./places"
+import { ShellRefreshProvider, StatusLineItems, StatusStrip } from "./status"
 import { TopRow } from "./top-row"
 
 export type { Area, Nav, SettingsSection, SharingTab, Surface } from "./places"
@@ -77,7 +80,11 @@ interface AppShellProps {
   onNotice?: (text: string) => void
   /** A second tap on the active tab, after the shell went to its root and scrolled to the top: fetch again. */
   onRefresh?: () => void
-  /** The end of the status line: up to two `StatusItem`s. found-5 fills it. */
+  /** A sync the person asked for: a pull on Items, Codes and Sharing, and their "Check again" (brief 3.3). */
+  onSync?: () => Promise<unknown>
+  /** Health's CHECK NOW, for a pull on Health. */
+  onCheck?: () => Promise<unknown>
+  /** The end of the status line instead of the live status (`StatusProvider`): a test, a preview. */
   status?: ReactNode
   /** Pins the shell instead of taking the one the width picks: a test, a preview. */
   layout?: AppFrameLayout
@@ -137,7 +144,7 @@ function useDeviceFlag(key: string, initial: boolean): [boolean, (next: boolean)
  * head is the switcher and the chip row picks the view. Every place is in
  * `places.ts`; everything here reads that table.
  */
-export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, toFix = 0, sharingMark = 0, settingsMark, onSaved, onNotice, onRefresh, status, layout, children }: AppShellProps) {
+export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, toFix = 0, sharingMark = 0, settingsMark, onSaved, onNotice, onRefresh, onSync, onCheck, status, layout, children }: AppShellProps) {
   const [editor, setEditor] = useState<EditorTarget | null>(null)
   const [creating, setCreating] = useState(false)
   // The sidebar as its rail by choice (⌘\), kept on this device.
@@ -176,6 +183,10 @@ export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, t
       tags: nav.scope?.tag ? [nav.scope.tag] : undefined,
     })
 
+  // What a pull runs on the place showing, and its plain path, "Check again" (brief 3.3): a sync on
+  // Items, Codes and Sharing; CHECK NOW on Health (its own button is the plain path there).
+  const refresh = section === "health" ? onCheck : nav.area === "vault" || nav.area === "codes" || nav.area === "sharing" ? onSync : undefined
+
   const reselect = (id: Section) => {
     go(SECTIONS_BAR.find((s) => s.id === id)?.place ?? "all")
     const column = document.querySelector("[data-column][data-shown]")
@@ -188,19 +199,24 @@ export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, t
       <ShellContext.Provider value={shell}>
         <CrumbProvider>
           <PushedChromeProvider>
+          <ShellRefreshProvider value={refresh}>
           <AppFrame layout={layout}>
             <Sidebar collapsed={collapsed} onCollapsedChange={setCollapsed} rows={rows} toFix={toFix} sharingMark={sharingMark} settingsMark={settingsMark} onLock={onLock} onCreate={() => setCreating(true)} />
-            <StatusLine surface={surface}>{status}</StatusLine>
+            <StatusLine surface={surface}>{status ?? <StatusLineItems />}</StatusLine>
             <TopRow onLeave={leave} onLock={onLock} settingsMark={settingsMark} />
             <AppFrameMain>
-              <VaultListHead collapsed={collapsed} rows={rows} sharingMark={sharingMark}>
+              <VaultListHead collapsed={collapsed} rows={rows} sharingMark={sharingMark} onCheckAgain={refresh === onSync ? onSync : undefined}>
                 {children}
               </VaultListHead>
             </AppFrameMain>
+            <StatusStrip />
             <BottomRow toFix={toFix} onCreate={() => setCreating(true)} onQuickCreate={create} onReselect={reselect} />
             <PushedBottomRow />
             <CreateMenu open={creating} onOpenChange={setCreating} onPick={create} onNotice={onNotice} />
+            {/* Inside the frame, so it places toasts: the content's bottom left on a desktop, the strip's slot on a phone. */}
+            <Toaster />
           </AppFrame>
+          </ShellRefreshProvider>
           </PushedChromeProvider>
           <KeysDialog open={keysOpen} onOpenChange={setKeysOpen} />
           <ItemEditor
@@ -354,7 +370,20 @@ function CreateMenu({ open, onOpenChange, onPick, onNotice }: { open: boolean; o
  * overline, makes the whole head the switcher, and puts the chip row under
  * it. At the expanded width with the sidebar open, a screen's head is its own.
  */
-function VaultListHead({ collapsed, rows, sharingMark, children }: { collapsed: boolean; rows: ItemSummary[] | null; sharingMark: number; children: ReactNode }) {
+function VaultListHead({
+  collapsed,
+  rows,
+  sharingMark,
+  onCheckAgain,
+  children,
+}: {
+  collapsed: boolean
+  rows: ItemSummary[] | null
+  sharingMark: number
+  /** The place's plain sync: "Check again" in its head (Items, Codes, Sharing). */
+  onCheckAgain?: () => Promise<unknown>
+  children: ReactNode
+}) {
   const { nav, go, navigate } = usePlaces()
   const frame = useAppFrame()
   const { vaults } = useVaults()
@@ -366,7 +395,16 @@ function VaultListHead({ collapsed, rows, sharingMark, children }: { collapsed: 
   const counts = useMemo(() => (scoped ? countViews(scoped) : null), [scoped])
   const types = useMemo(() => (scoped ? countTypes(scoped) : null), [scoped])
 
-  if (groups || !items) return <PageHeadProvider value={null}>{children}</PageHeadProvider>
+  // The Banners of the place (brief X2): a critical one at the top of Items and Sharing, the news on All items.
+  const bannerPlace: BannerPlace | null = items ? (nav.view === "all" && !nav.scope ? "all-items" : "items") : nav.area === "sharing" ? "sharing" : null
+  const bannerShows = useBannerShows(bannerPlace ?? "items") && bannerPlace !== null
+  const banner = bannerShows && bannerPlace ? <BannerSlot place={bannerPlace} /> : undefined
+  const checkAgain = onCheckAgain ? <IconButton label="Check again" icon="renew" variant="ghost" onClick={() => void onCheckAgain()} /> : undefined
+
+  if (groups || !items) {
+    const own: PageHeadFromShell | null = banner || checkAgain ? { below: banner, actions: checkAgain } : null
+    return <PageHeadProvider value={own}>{children}</PageHeadProvider>
+  }
 
   // The scope as the breadcrumb names it, without its group: `FAMILY // FINANCE`, `#WORK`.
   const scopeWords = nav.scope
@@ -392,12 +430,7 @@ function VaultListHead({ collapsed, rows, sharingMark, children }: { collapsed: 
   // A view from More joins the row while it is the one showing.
   if (!chips.includes(nav.view)) chips.push(nav.view)
 
-  const head: PageHeadFromShell = {
-    overline: types === null ? scopeName : `${scopeName} // ${countWords(types)} ${types === 1 ? "type" : "types"}`,
-    title: nav.view === "all" ? "Items" : VIEW_LABELS[nav.view],
-    count: counts ? counts[nav.view] : undefined,
-    switcher: { label: "Switch vault", "aria-haspopup": "dialog", onClick: () => setSwitching(true), onSwipe: (direction) => step(direction === "next" ? 1 : -1) },
-    below: (
+  const chipRow = (
       <FilterChipGroup
         type="single"
         scroll
@@ -441,7 +474,22 @@ function VaultListHead({ collapsed, rows, sharingMark, children }: { collapsed: 
           </FilterChip>
         ))}
       </FilterChipGroup>
+  )
+  const head: PageHeadFromShell = {
+    overline: types === null ? scopeName : `${scopeName} // ${countWords(types)} ${types === 1 ? "type" : "types"}`,
+    title: nav.view === "all" ? "Items" : VIEW_LABELS[nav.view],
+    count: counts ? counts[nav.view] : undefined,
+    switcher: { label: "Switch vault", "aria-haspopup": "dialog", onClick: () => setSwitching(true), onSwipe: (direction) => step(direction === "next" ? 1 : -1) },
+    // The chips belong to the head; a Banner sits under them, at the top of the list (brief X2).
+    below: banner ? (
+      <div className="flex flex-col gap-4">
+        {chipRow}
+        {banner}
+      </div>
+    ) : (
+      chipRow
     ),
+    actions: checkAgain,
   }
 
   return (

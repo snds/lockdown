@@ -218,3 +218,32 @@ export const openKeys = (): Step[] => [{ run: () => (document.activeElement as H
 
 /** Answers the gate a protected action raises, with the password it asks for. */
 export const answerGate = (password: string): Step[] => [{ fill: /password/i, value: password }, { click: /^(Confirm|Continue|Unlock)$/ }]
+
+/**
+ * Presses "Check again" in the place's head (brief 3.3): the plain path to a sync. On a short screen
+ * (844 × 390) the head draws its small form, which holds no actions (a unicron gap, doc 67 §8), so
+ * there is nothing to press and the step does nothing.
+ */
+export const checkAgain = (): Step[] => [
+  {
+    run: async () => {
+      await runSteps([{ pause: 300 }])
+      const button = Array.from(document.querySelectorAll<HTMLElement>("button")).find((b) => b.getAttribute("aria-label") === "Check again" && b.offsetParent !== null)
+      if (button) await runSteps([{ click: "Check again", role: "button" }])
+    },
+  },
+]
+
+/** Scrolls the content column that shows, as a finger would, so the phone's chrome minimizes (States / 02). */
+export const scrollContent = (px: number): Step[] => [
+  { see: "[data-column][data-shown]" },
+  {
+    run: async () => {
+      const column = document.querySelector<HTMLElement>("[data-column][data-shown]")
+      if (!column) return
+      column.scrollTop = px
+      column.dispatchEvent(new Event("scroll"))
+      await new Promise((r) => setTimeout(r, 400))
+    },
+  },
+]
