@@ -203,9 +203,9 @@ export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, t
             <StatusLine surface={surface}>{status}</StatusLine>
             <TopRow onLeave={leave} onLock={onLock} settingsMark={settingsMark} />
             <AppFrameMain>
-              <ItemsHead collapsed={collapsed} rows={rows} sharingMark={sharingMark}>
+              <VaultListHead collapsed={collapsed} rows={rows} sharingMark={sharingMark}>
                 {children}
-              </ItemsHead>
+              </VaultListHead>
             </AppFrameMain>
             <BottomRow toFix={toFix} onCreate={() => setCreating(true)} onQuickCreate={create} onReselect={reselect} />
             <CreateMenu open={creating} onOpenChange={setCreating} onPick={create} onNotice={onNotice} />
@@ -361,7 +361,7 @@ function CreateMenu({ open, onOpenChange, onPick, onNotice }: { open: boolean; o
  * overline, makes the whole head the switcher, and puts the chip row under
  * it. At the expanded width with the sidebar open, a screen's head is its own.
  */
-function ItemsHead({ collapsed, rows, sharingMark, children }: { collapsed: boolean; rows: ItemSummary[] | null; sharingMark: number; children: ReactNode }) {
+function VaultListHead({ collapsed, rows, sharingMark, children }: { collapsed: boolean; rows: ItemSummary[] | null; sharingMark: number; children: ReactNode }) {
   const { nav, go, navigate } = usePlaces()
   const frame = useAppFrame()
   const { vaults } = useVaults()
