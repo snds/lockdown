@@ -6005,8 +6005,8 @@ checksum = "5b3dc8af474f516a851ff4bd12db780f948b9250ad37211e4eec0bccea54e01b"
 
 [[package]]
 name = "snds-app-updates"
-version = "0.1.0"
-source = "git+https://github.com/snds/app-updates?tag=v0.1.0#83b0a69bb732bba0fd6a82bbbb4e76e23f5498df"
+version = "0.2.0"
+source = "git+https://github.com/snds/app-updates?rev=2a2a63f0f9a48c2e60e454307df237805fc14b20#2a2a63f0f9a48c2e60e454307df237805fc14b20"
 dependencies = [
  "data-encoding",
  "log",
@@ -6014,6 +6014,7 @@ dependencies = [
  "reqwest",
  "semver",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-plugin-updater",
  "url",
@@ -6022,7 +6023,7 @@ dependencies = [
 [[package]]
 name = "snds-app-updates-host-helper"
 version = "0.1.0"
-source = "git+https://github.com/snds/app-updates?rev=c0ff0bfcb6eab8aa8287f33739ff149016d1e4bf#c0ff0bfcb6eab8aa8287f33739ff149016d1e4bf"
+source = "git+https://github.com/snds/app-updates?rev=2a2a63f0f9a48c2e60e454307df237805fc14b20#2a2a63f0f9a48c2e60e454307df237805fc14b20"
 dependencies = [
  "getrandom 0.3.4",
  "hmac 0.12.1",

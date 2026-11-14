@@ -103,6 +103,9 @@ pub fn start(handle: &AppHandle, core: &App) {
         test,
         event: EVENT,
         menu_id: MENU_ID,
+        // Lockdown follows the web feed only. The kit's local channel (a
+        // build this computer makes for itself) is never on.
+        local: None,
     };
     kit::start(
         handle,

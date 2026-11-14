@@ -546,6 +546,10 @@ pub fn section(state: &AppState, csrf_field: &str) -> String {
     let channel = match status.channel {
         Channel::Main => "main channel (every merged change)",
         Channel::Stable => "stable channel",
+        // A server never follows the kit's local channel (builds a computer
+        // makes for itself): `Channel::of` reads a version and gives only the
+        // two above. The arm is here because the match must name every one.
+        Channel::Local => "built on this computer",
     };
     let mut out = format!(
         "<h2 id=\"updates\">Updates</h2><div class=\"card\">\
@@ -735,6 +739,9 @@ fn update_request(status: &Status, tag: &str) -> host_helper::UpdateRequest {
     host_helper::UpdateRequest {
         tag: Some(tag.to_owned()),
         expect_digest: status.offered_digest.clone(),
+        // One image in this stack, so the one digest above is the whole
+        // check; `expect_digests` is for a stack with several.
+        expect_digests: None,
     }
 }
 
@@ -1085,6 +1092,9 @@ mod tests {
                     pulled: format!("{IMAGE}:{}", request.tag.clone().unwrap_or_default()),
                     digest: format!("sha256:{}", "0".repeat(64)),
                     services: vec!["lockdown".into()],
+                    images: Vec::new(),
+                    before: None,
+                    after: None,
                 }),
             }
         }
