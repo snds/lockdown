@@ -52,6 +52,7 @@ The signatures are the ones the job already checked against `updater.pub` with `
 |---|---|
 | `RELEASES_TOKEN` isn't set | The steps are skipped. The run says so in a notice and in its summary, and passes. `main-build` is published as usual. |
 | The token expired, or can't reach snds/releases | The step fails, after `main-build` was published. Installed apps keep updating. The run is red, so it is seen. |
+| GitHub can't say whether `lockdown-main` is there (a network error, a rate limit) | The step fails. Only GitHub's own "release not found" counts as a first run, so the never-backwards check is never skipped. |
 | The shared feed already has this version or a newer one | `write-manifest.py` refuses and the step fails. Nothing is uploaded. |
 | An upload fails half way | The old `latest.json` is still in place and still names the old files, which are still there. |
 | The run is rerun after a failure here | The `main-build` step refuses first (that version is already published there), so the job stops before these steps. The shared feed catches up at the next merge. |

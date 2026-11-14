@@ -321,9 +321,11 @@ if verb == "view":
     fields, query = flag("--json"), flag("-q")
     rest = args[2:]
     folder = release(repo, rest[0])
+    if (state / "view-fails").exists():
+        sys.exit("HTTP 502: Bad Gateway")
     if not folder.is_dir():
-        sys.exit(1)
-    meta = json.loads((folder / ".release").read_text())
+        sys.exit("release not found")
+    meta =json.loads((folder / ".release").read_text())
     if fields == "assets":
         print("\n".join(names(folder)))
     elif fields:
@@ -475,6 +477,20 @@ class PublishFeed(unittest.TestCase):
         (self.state / "download-fails").unlink()
         (self.state / "unreachable").touch()
         self.assertNotEqual(self.run_script("previous", REPO, TAG, str(out)).returncode, 0)
+
+    def test_previous_fails_when_github_can_not_say_whether_the_release_is_there(self):
+        # A failed look is not "no release yet": that would skip the never-backwards check.
+        out = self.dir / "published.json"
+        self.release.mkdir(parents=True)
+        (self.release / ".release").write_text("{}")
+        (self.release / "latest.json").write_text(json.dumps({"version": V2}))
+        (self.state / "view-fails").touch()
+        r = self.run_script("previous", REPO, TAG, str(out))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("couldn't tell", r.stdout)
+        self.assertFalse(out.exists())
+        self.assertNotEqual(self.publish(self.feed(V1, ["a.tar.gz"])).returncode, 0)
+        self.assertEqual(json.loads((self.release / "latest.json").read_text())["version"], V2)
 
     def test_the_token_is_never_an_argument(self):
         self.assertEqual(self.publish(self.feed(V1, ["a.tar.gz"])).returncode, 0)

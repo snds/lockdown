@@ -35,8 +35,20 @@ reach() {
   }
 }
 
+# Whether the release is there. Only GitHub's own "release not found" means
+# no; any other failure (the network, a rate limit, a server error) stops
+# here, so a missing answer is never taken for an empty feed and the
+# never-backwards check is never skipped.
 exists() {
-  gh release view "$2" --repo "$1" > /dev/null 2>&1
+  local err
+  if err=$(gh release view "$2" --repo "$1" 2>&1 > /dev/null); then
+    return 0
+  fi
+  case "$err" in
+    *"release not found"*) return 1 ;;
+  esac
+  echo "::error::couldn't tell whether $2 is on $1: $err"
+  exit 1
 }
 
 names() {
