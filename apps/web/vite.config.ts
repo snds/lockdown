@@ -6,7 +6,7 @@ import react from "@vitejs/plugin-react"
 import type { Plugin } from "vite"
 import { defineConfig } from "vitest/config"
 
-import { iconCodepoints } from "../desktop/scripts/icon-codepoints.ts"
+import { buildStamp } from "./build-stamp.ts"
 
 const here = import.meta.dirname
 const desktop = path.resolve(here, "../desktop/src")
@@ -54,9 +54,13 @@ function subresourceIntegrity(): Plugin {
 /**
  * Sonner (the toasts) writes its stylesheet into a `<style>` element when
  * it loads, which the web vault's Content Security Policy refuses (no
- * inline style). The same rules ship as `sonner/dist/styles.css`, which
- * main.tsx imports, so the build drops the run-time copy. A sonner whose
- * code no longer matches fails the build rather than the page.
+ * inline style). From unicron 1.0 the Toaster loads unicron's own copy of
+ * sonner with that step taken out, and `@unicron/ui/styles` carries the
+ * rules as a file, so nothing here imports `sonner` and this step has
+ * nothing to do (docs/plan/62-unicron-1-0.md §5). It stays as the guard:
+ * if any source imports `sonner` again, the build still drops the run-time
+ * copy, and a sonner whose code no longer matches fails the build rather
+ * than the page.
  */
 function sonnerWithoutInlineStyle(): Plugin {
   return {
@@ -77,8 +81,9 @@ if (process.env.NODE_ENV === "production" && !existsSync(wasm)) {
 
 export default defineConfig({
   base: "/vault/",
-  // The icons' codepoints from the shipped font, for the desktop's views and the vault's own (docs/plan/38-mac-fixes.md §2).
-  plugins: [sonnerWithoutInlineStyle(), react(), tailwindcss(), subresourceIntegrity(), iconCodepoints({ root: here, dirs: [desktop, path.resolve(here, "src")] })],
+  // `buildStamp` runs once the files are written, so the id it makes covers
+  // them as they are served (docs/plan/66-shared-feed.md §4).
+  plugins: [sonnerWithoutInlineStyle(), react(), tailwindcss(), subresourceIntegrity(), buildStamp()],
   define: {
     __LOCKDOWN_WASM_SHA384__: JSON.stringify(wasmHash()),
   },

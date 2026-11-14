@@ -5,6 +5,11 @@ import path from "node:path"
 
 import { expect, test, type Page } from "@playwright/test"
 
+import { add, editor, field, newItem } from "./steps/editor.ts"
+import { noticeControls, notices, row } from "./steps/items.ts"
+import { blockingDialogs, go, vaultOpen } from "./steps/nav.ts"
+import { signIn } from "./steps/unlock.ts"
+
 /**
  * docs/plan/49-shared-vault-quiet.md in the web vault, in Chromium against
  * the real server: Alice's only vault is shared with Bob, who wrote to it
@@ -45,55 +50,48 @@ test.afterAll(() => {
   if (home) rmSync(home, { recursive: true, force: true })
 })
 
-const sidebar = (page: Page) => page.getByRole("navigation", { name: "Sidebar" })
-
 /** Adds a note in the open view: a change made here, so the tab syncs at once. */
 async function addNote(page: Page, title: string) {
-  await page.getByRole("button", { name: "New item" }).click()
-  await page.getByRole("menuitem", { name: /Note$/ }).first().click()
-  const editor = page.getByRole("dialog")
-  await editor.getByLabel("Title").fill(title)
-  await editor.getByRole("button", { name: "Add", exact: true }).click()
-  await expect(editor).toBeHidden()
+  await newItem(page, /Note$/, true)
+  const dialog = editor(page)
+  await field(dialog, "Title").fill(title)
+  await add(dialog)
+  await expect(dialog).toBeHidden()
 }
 
 test("a shared vault leaves out what doesn't verify, says so in one line, and takes it once it does", async ({ page }) => {
   const problems: string[] = []
   page.on("pageerror", (e) => problems.push(`page error: ${e.message}`))
   await page.goto("/vault/")
-  const form = page.getByRole("form", { name: "Sign in" })
-  await form.getByLabel("Login name").fill(login)
-  await form.getByLabel("Master password").fill(PASSWORD)
-  await form.getByLabel("Secret Key").fill(secretKey)
-  await form.getByRole("button", { name: "Sign in" }).click()
-  await expect(page.getByRole("heading", { name: "All items" })).toBeVisible({ timeout: 90_000 })
+  await signIn(page, login, PASSWORD, secretKey)
+  await expect(vaultOpen(page)).toBeVisible({ timeout: 90_000 })
 
   // The only vault opens once the tab's first sync has met Bob.
-  await sidebar(page).getByRole("button", { name: /^Personal \d+ items?$/ }).click()
-  await expect(page.getByRole("button", { name: /Bob one/ }).first()).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole("note")).toHaveCount(0)
+  await go(page, "personal")
+  await expect(row(page, /Bob one/)).toBeVisible({ timeout: 60_000 })
+  await expect(notices(page)).toHaveCount(0)
 
   // Bob writes again; the tab hears it and takes it.
   fixture(["write", "--home", home, "--title", "Bob two"])
-  await expect(page.getByRole("button", { name: /Bob two/ }).first()).toBeVisible({ timeout: 60_000 })
+  await expect(row(page, /Bob two/)).toBeVisible({ timeout: 60_000 })
 
   // The server drops that head. The tab's next sync (its own new note)
   // leaves it alone and says so in one line, and keeps everything it had.
   fixture(["roll-back", "--home", home, "--db", db()])
   await addNote(page, "Tab note")
-  const note = page.getByRole("note").filter({ hasText: LINE_END })
+  const note = notices(page).filter({ hasText: LINE_END })
   await expect(note).toBeVisible({ timeout: 60_000 })
   await expect(note).toContainText(LINE_START)
-  await expect(note.getByRole("button")).toHaveCount(0)
-  await expect(page.getByRole("alertdialog")).toHaveCount(0)
-  await expect(page.getByRole("button", { name: /Bob two/ }).first()).toBeVisible()
-  await expect(page.getByRole("button", { name: /Tab note/ }).first()).toBeVisible()
+  await expect(noticeControls(note)).toHaveCount(0)
+  await expect(blockingDialogs(page)).toHaveCount(0)
+  await expect(row(page, /Bob two/)).toBeVisible()
+  await expect(row(page, /Tab note/)).toBeVisible()
 
   // The server shows the head again: the next sync takes the chain, the
   // line goes by itself, and the tab's notes go out.
   fixture(["put-back", "--home", home, "--db", db()])
   await addNote(page, "Tab two")
-  await expect(page.getByRole("note").filter({ hasText: LINE_END })).toHaveCount(0, { timeout: 60_000 })
-  await expect(page.getByRole("button", { name: /Tab note/ }).first()).toBeVisible()
+  await expect(notices(page).filter({ hasText: LINE_END })).toHaveCount(0, { timeout: 60_000 })
+  await expect(row(page, /Tab note/)).toBeVisible()
   expect(problems).toEqual([])
 })

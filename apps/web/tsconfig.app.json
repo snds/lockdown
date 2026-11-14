@@ -26,6 +26,7 @@
       "@unicron/ui/security/*": ["./node_modules/@unicron/ui/dist/components/security/*"],
       "@unicron/ui/*": ["./node_modules/@unicron/ui/dist/components/ui/*"],
       "sonner": ["./node_modules/sonner"],
+      "next-themes": ["./node_modules/next-themes"],
       "@base-ui/react": ["./node_modules/@base-ui/react"],
       "@base-ui/react/*": ["./node_modules/@base-ui/react/*"]
     },
@@ -37,5 +38,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["src", "../desktop/src/app/virtual-icon-codepoints.d.ts"]
+  "include": ["src"]
 }

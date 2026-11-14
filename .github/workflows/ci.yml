@@ -297,6 +297,21 @@ jobs:
             --base-url https://github.com/snds/lockdown/releases/download/main-build \
             --bundle "darwin=$d/Lockdown_${version}_universal.app.tar.gz" --out "$d/latest.json"
           jq . "$d/latest.json"
+          # The same signed bundle written for the shared feed too, as
+          # release.yml's main-channel job does on a push to main
+          # (docs/plan/66-shared-feed.md §2). The two manifests must name the
+          # same build and the same signature, and differ only in where the
+          # file is. Kept outside "$d": the updater's test reads that folder.
+          shared="$RUNNER_TEMP/shared-feed"
+          mkdir -p "$shared"
+          python3 ../../packaging/update/write-manifest.py --version "$version" --pub-date 2026-11-07T12:00:00Z \
+            --base-url https://github.com/snds/releases/releases/download/lockdown-main \
+            --bundle "darwin=$d/Lockdown_${version}_universal.app.tar.gz" --out "$shared/latest.json"
+          jq . "$shared/latest.json"
+          diff <(jq -S 'del(.platforms[].url)' "$d/latest.json") <(jq -S 'del(.platforms[].url)' "$shared/latest.json")
+          file="Lockdown_${version}_universal.app.tar.gz"
+          [ "$(jq -r '[.platforms[].url] | unique | join(" ")' "$d/latest.json")" = "https://github.com/snds/lockdown/releases/download/main-build/$file" ]
+          [ "$(jq -r '[.platforms[].url] | unique | join(" ")' "$shared/latest.json")" = "https://github.com/snds/releases/releases/download/lockdown-main/$file" ]
           echo "LOCKDOWN_UPDATE_TEST_SIGNED=$d" >> "$GITHUB_ENV"
       - name: Build the web UI (the shell embeds it)
         working-directory: apps/desktop

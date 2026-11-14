@@ -50,6 +50,8 @@ export interface EditorTarget {
   vaultId?: string
   folder?: string
   tags?: string[]
+  /** A new login's first website, already typed (Search's "New login" passes the query). Read only when making one. */
+  website?: string
 }
 
 interface ItemEditorProps {
@@ -126,7 +128,11 @@ function EditorForm({
   const { templates } = useTemplates()
   const editing = item !== null
   const [title, setTitle] = useState(plainTitle(item))
-  const [rows, setRows] = useState<EditorRow[]>(() => initialRows(template, item))
+  const [rows, setRows] = useState<EditorRow[]>(() => {
+    const start = initialRows(template, item)
+    // A new item made from a search that found nothing starts with what was searched for as its website.
+    return item === null && target.website ? start.map((r) => (r.fieldId === "url.0" && !r.text ? { ...r, text: target.website ?? "" } : r)) : start
+  })
   const [crownJewel, setCrownJewel] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)

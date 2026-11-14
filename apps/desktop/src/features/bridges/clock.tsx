@@ -46,7 +46,7 @@ export function ClockBanner() {
   return (
     <section role="status" aria-label="Clock" className="flex flex-wrap items-center gap-2 rounded-md border p-3 text-sm">
       <span className={view?.verdict === "too_far" ? "text-destructive" : "text-attention-text"}>
-        <Icon name="schedule" />
+        <Icon name="time" />
       </span>
       <span className="flex-1">{view?.words ?? `The clock check didn't finish: ${problem}`}</span>
       {view && (

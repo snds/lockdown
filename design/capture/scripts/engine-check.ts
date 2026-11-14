@@ -1,9 +1,18 @@
 // The engine check: the built harness (dist/) opened in each browser engine
-// the desktop app ships on, asserting that unicron's icons draw as one glyph,
-// that the print stylesheet prints a page alone, and taking a short smoke of
-// the main desktop screens as PNGs. The Mac app runs in WKWebView, so WebKit
-// is the engine that matters; Chromium runs the same assertions so the check
-// is honest (docs/plan/38-mac-fixes.md §2).
+// the desktop app ships on, asserting that unicron's icons draw, that the
+// text faces load, that the print stylesheet prints a page alone, and taking
+// a short smoke of the main desktop screens as PNGs. The Mac app runs in
+// WKWebView, so WebKit is the engine that matters; Chromium runs the same
+// assertions so the check is honest (docs/plan/38-mac-fixes.md §2).
+//
+// Icons: until unicron 1.0 an icon was a ligature in an icon font, which
+// Apple's WebKit did not shape inside SVG text, so this check measured that
+// each drew as one glyph. From 1.0 an icon is IBM Carbon's own drawing as
+// inline SVG (docs/plan/62-unicron-1-0.md §2), so the check is now: every
+// `svg[data-slot=icon]` on the page has Carbon's 32-unit view box and a
+// drawing in it, none is the empty box unicron draws for a name it does not
+// know (a name that arrived as data and was not translated), and every icon
+// the engine lays out has a box and a drawing that are not empty.
 //
 //   pnpm build && pnpm engine:check [--engines chromium,webkit] [--out <dir>]
 //
@@ -31,12 +40,16 @@ const OUT = path.resolve(args.out)
 const PINNED = new Date("2026-10-29T16:20:00-07:00")
 const ENGINES: Record<string, BrowserType> = { chromium, webkit, firefox }
 
-/** The main desktop screens: first run, unlock, the vault list and an item, settings, status, the kit page. */
+/**
+ * The main desktop screens: first run, unlock, the vault list and an item, settings, status, the kit page;
+ * and the "New item" menu, whose icons are names the core's templates send as data.
+ */
 const SMOKE = [
   "desktop-first-run-welcome",
   "desktop-unlock-locked",
   "desktop-vault-filled",
   "desktop-item-login-full",
+  "desktop-vault-new-item-menu",
   "desktop-settings",
   "desktop-status",
   "desktop-first-run-kit",
@@ -46,55 +59,82 @@ const SMOKE = [
 /** States whose open dialog is a page that prints alone (`[data-print-page]`, index.css). */
 const PRINTED = ["desktop-first-run-kit", "desktop-recovery-emergency-sheet"]
 
-/** One icon as the engine drew it: its name, and how wide its glyph came out against the icon's em. */
+/** unicron's icon: IBM Carbon's 32-unit art (unicron contract §4). */
+const VIEW_BOX = "0 0 32 32"
+
+/** The two text families unicron's stylesheet sets everything in, as @fontsource-variable names them. */
+const TEXT_FACES = ["Geist Variable", "Geist Mono Variable"]
+
+/** One icon as the engine drew it. */
 interface IconMeasure {
   name: string
-  /** The `<text>`'s advance in the SVG's own units (the icon is set at 24 of them). */
-  advance: number
-  /** The text's box, in the same units. */
+  viewBox: string | null
+  /** How many shapes (`path`, `circle`, `rect`) the svg holds. */
+  shapes: number
+  /** unicron marks a name it has no drawing for (`data-icon-missing`) and draws an empty box. */
+  missing: boolean
+  /** Whether the engine lays the svg out (an icon inside something hidden is not). */
+  laidOut: boolean
+  /** The svg's box on the page, in CSS pixels. */
   box: { width: number; height: number }
-  /** Drawn by its name (the ligature) rather than by its codepoint. */
-  byName: boolean
+  /** The drawing's own box inside the svg, in the svg's units; `null` when the icon is not laid out. */
+  drawing: { width: number; height: number } | null
 }
 
 interface StateReport {
   state: string
   ready: boolean
-  fontLoaded: boolean
   fontFaces: Array<{ family: string; status: string }>
+  /** The text families of TEXT_FACES with a face the engine loaded. */
+  facesLoaded: string[]
   icons: IconMeasure[]
-  wrong: IconMeasure[]
+  wrong: Array<IconMeasure & { why: string }>
   print: { rootHidden: boolean | null; pageShown: boolean | null } | null
   screenshot: string
   errors: string[]
 }
 
-/** The width one glyph may take, in SVG units: the icon's em is 24; a ligature's advance is that em. */
-const ONE_GLYPH = { min: 16, max: 30 }
+/** Why an icon is not drawn as it should be, or `null` when it is. */
+function wrongIcon(i: IconMeasure): string | null {
+  if (i.missing) return "unicron has no drawing for this name"
+  if (i.viewBox !== VIEW_BOX) return `view box ${i.viewBox ?? "none"}, not ${VIEW_BOX}`
+  if (i.shapes === 0) return "no path in it"
+  if (!i.laidOut) return null
+  if (i.box.width < 1 || i.box.height < 1) return `an empty box (${i.box.width.toFixed(1)} × ${i.box.height.toFixed(1)})`
+  if (!i.drawing || i.drawing.width <= 0 || i.drawing.height <= 0) return "a drawing with no size"
+  return null
+}
 
-async function measure(page: Page): Promise<{ fontLoaded: boolean; fontFaces: StateReport["fontFaces"]; icons: IconMeasure[] }> {
+async function measure(page: Page): Promise<{ fontFaces: StateReport["fontFaces"]; icons: IconMeasure[] }> {
   return page.evaluate(async () => {
     await document.fonts.ready
-    const fontLoaded = document.fonts.check('24px "Material Symbols Rounded"')
     const fontFaces: Array<{ family: string; status: string }> = []
-    document.fonts.forEach((f) => fontFaces.push({ family: f.family, status: f.status }))
+    document.fonts.forEach((f) => fontFaces.push({ family: f.family.replace(/["']/g, ""), status: f.status }))
     const icons: IconMeasure[] = []
     for (const svg of Array.from(document.querySelectorAll<SVGSVGElement>('svg[data-slot="icon"]'))) {
       const r = svg.getBoundingClientRect()
-      if (r.width === 0 || r.height === 0) continue
-      const text = svg.querySelector("text")
-      // An icon drawn some other way (a path, a foreignObject) is measured by its box against its em.
-      if (!text) {
-        const glyph = svg.querySelector<SVGGraphicsElement>("[data-glyph]") ?? svg
-        const b = glyph.getBBox()
-        icons.push({ name: svg.getAttribute("data-icon-name") ?? "?", advance: b.width, box: { width: b.width, height: b.height }, byName: false })
-        continue
+      // Laid out: it has boxes. An icon under `display: none` has none, and its drawing can't be measured.
+      const laidOut = svg.getClientRects().length > 0
+      let drawing: IconMeasure["drawing"] = null
+      if (laidOut) {
+        try {
+          const b = svg.getBBox()
+          drawing = { width: b.width, height: b.height }
+        } catch {
+          drawing = { width: 0, height: 0 }
+        }
       }
-      const name = text.getAttribute("data-icon-name") ?? text.textContent ?? ""
-      const box = text.getBBox()
-      icons.push({ name, advance: text.getComputedTextLength(), box: { width: box.width, height: box.height }, byName: text.textContent === name })
+      icons.push({
+        name: svg.getAttribute("data-icon-name") ?? "?",
+        viewBox: svg.getAttribute("viewBox"),
+        shapes: svg.querySelectorAll("path, circle, rect").length,
+        missing: svg.hasAttribute("data-icon-missing"),
+        laidOut,
+        box: { width: r.width, height: r.height },
+        drawing,
+      })
     }
-    return { fontLoaded, fontFaces, icons }
+    return { fontFaces, icons }
   })
 }
 
@@ -142,21 +182,22 @@ async function runEngine(name: string, site: string): Promise<{ engine: string; 
         .then(() => true)
         .catch(() => false)
       const m = await measure(page)
-      const wrong = m.icons.filter((i) => i.advance < ONE_GLYPH.min || i.advance > ONE_GLYPH.max)
+      const wrong = m.icons.flatMap((i) => {
+        const why = wrongIcon(i)
+        return why ? [{ ...i, why }] : []
+      })
+      const facesLoaded = TEXT_FACES.filter((family) => m.fontFaces.some((f) => f.family === family && f.status === "loaded"))
       const print = PRINTED.includes(state) ? await checkPrint(page, path.join(dir, `${state}--print.png`)) : null
       const screenshot = `${state}.png`
       await page.screenshot({ path: path.join(dir, screenshot), animations: "disabled" })
-      states.push({ state, ready, fontLoaded: m.fontLoaded, fontFaces: m.fontFaces, icons: m.icons, wrong, print, screenshot, errors })
+      states.push({ state, ready, fontFaces: m.fontFaces, facesLoaded, icons: m.icons, wrong, print, screenshot, errors })
       if (!ready) failures.push(`${state}: the state did not report ready`)
-      // Engines load a face only once something uses it, so a screen with no icon has no font to check.
-      if (m.icons.length > 0 && !m.fontLoaded) failures.push(`${state}: the Material Symbols font did not load`)
+      // Every screen sets words in Geist and labels in Geist Mono; the faces ship as files with the page (no CDN, no data: URL).
+      for (const family of TEXT_FACES) if (!facesLoaded.includes(family)) failures.push(`${state}: the ${family} font did not load`)
       if (wrong.length) {
-        const sample = wrong.slice(0, 4).map((i) => `${i.name} ${i.advance.toFixed(1)} wide`)
-        failures.push(`${state}: ${wrong.length} of ${m.icons.length} icons are not one glyph (${sample.join("; ")})`)
+        const sample = wrong.slice(0, 4).map((i) => `${i.name}: ${i.why}`)
+        failures.push(`${state}: ${wrong.length} of ${m.icons.length} icons are not drawn (${sample.join("; ")})`)
       }
-      // Every icon by its codepoint: a name the build missed would draw as a ligature, which Apple's WebKit leaves blank.
-      const byName = [...new Set(m.icons.filter((i) => i.byName).map((i) => i.name))]
-      if (byName.length) failures.push(`${state}: ${byName.length} icons drawn by name, not codepoint (${byName.slice(0, 6).join(", ")})`)
       if (print && (print.rootHidden !== true || print.pageShown !== true)) {
         failures.push(`${state}: printing would not print the page alone (app hidden: ${print.rootHidden}, page shown: ${print.pageShown})`)
       }
@@ -181,10 +222,15 @@ async function main() {
   let failed = false
   for (const r of reports) {
     const icons = r.states.reduce((n, s) => n + s.icons.length, 0)
+    const laidOut = r.states.reduce((n, s) => n + s.icons.filter((i) => i.laidOut).length, 0)
     const wrong = r.states.reduce((n, s) => n + s.wrong.length, 0)
-    const sample = r.states.flatMap((s) => s.icons).slice(0, 3).map((i) => `${i.name}: ${i.advance.toFixed(1)} wide`)
-    console.log(`${r.engine} ${r.version}: ${icons} icons over ${r.states.length} screens, ${wrong} not one glyph; e.g. ${sample.join("; ")}`)
-    if (icons === 0) r.failures.push("no icon was drawn on any screen")
+    const sample = r.states
+      .flatMap((s) => s.icons)
+      .filter((i) => i.laidOut)
+      .slice(0, 3)
+      .map((i) => `${i.name}: ${i.box.width.toFixed(0)} × ${i.box.height.toFixed(0)} px, ${i.shapes} shape${i.shapes === 1 ? "" : "s"}`)
+    console.log(`${r.engine} ${r.version}: ${icons} icons over ${r.states.length} screens (${laidOut} laid out), ${wrong} not drawn; e.g. ${sample.join("; ")}`)
+    if (laidOut === 0) r.failures.push("no icon was drawn on any screen")
     for (const f of r.failures) console.log(`  FAIL ${f}`)
     if (r.failures.length) failed = true
   }

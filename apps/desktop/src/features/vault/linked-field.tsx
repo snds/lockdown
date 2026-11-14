@@ -69,7 +69,7 @@ export function LinkedField({ itemId, field, onNotice, fillOnly = false }: Linke
       {link.code && !fillOnly && (
         <ItemActions>
           <Button variant="ghost" size="sm" onClick={() => void copyCode()}>
-            <Icon name="content_copy" data-icon="inline-start" />
+            <Icon name="copy" data-icon="inline-start" />
             Copy code
           </Button>
         </ItemActions>

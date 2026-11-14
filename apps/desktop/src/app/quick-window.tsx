@@ -2,8 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { listen } from "@tauri-apps/api/event"
 import { ThemeProvider } from "next-themes"
 
-import { Button, Icon, Toaster, TooltipProvider } from "@unicron/ui"
-import { toast } from "sonner"
+import { Button, Icon, Toaster, TooltipProvider, toast } from "@unicron/ui"
 
 import { GateProvider } from "@/app/gate"
 import { SettingsProvider } from "@/app/settings"
@@ -60,7 +59,7 @@ function QuickRoot() {
   if (locked) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-        <Icon name="lock" />
+        <Icon name="locked" />
         <p className="text-sm">Lockdown is locked.</p>
         <Button autoFocus onClick={() => void unlock()}>
           Unlock

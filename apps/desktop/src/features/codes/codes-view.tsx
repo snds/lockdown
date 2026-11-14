@@ -22,6 +22,7 @@ import {
   NativeSelect,
   NativeSelectOption,
   Spinner,
+  toast,
 } from "@unicron/ui"
 
 import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
@@ -33,7 +34,6 @@ import { CodeDisplayList } from "@unicron/ui/security/code-display"
 
 import { ItemCodeDisplay } from "@/features/vault/code-display"
 import { ScanDialog } from "@/features/scan/scan-dialog"
-import { toast } from "sonner"
 
 import { codeKey, useCodes } from "./use-codes"
 
@@ -65,7 +65,7 @@ export function CodesView({ rows, onChanged }: CodesViewProps) {
     <div className="flex min-h-0 flex-1 flex-col bg-surface-chrome">
       <PaneHeader title="Codes">
         <Button size="sm" variant="outline" onClick={() => setScanning(true)}>
-          <Icon name="qr_code_scanner" data-icon="inline-start" />
+          <Icon name="qr-code" data-icon="inline-start" />
           Sign in a TV
         </Button>
         <Button size="sm" onClick={() => setAdding(true)}>
@@ -86,7 +86,7 @@ export function CodesView({ rows, onChanged }: CodesViewProps) {
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon">
-                <Icon name="timer" />
+                <Icon name="time" />
               </EmptyMedia>
               <EmptyTitle>No codes yet</EmptyTitle>
               <EmptyDescription>

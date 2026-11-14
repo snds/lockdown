@@ -1,8 +1,11 @@
 /*
- * The shared design system (unicron): Tailwind, the core tokens, Inter,
- * the Material Symbols font, the dark variant, the base layer and the
- * primitives' classes. Then Lockdown's own roles (app-extension.css), and
- * the rule that keeps unicron's dialog actions labelled (dialog-actions.css).
+ * The shared design system (unicron 1.0): Tailwind, the core tokens with
+ * the four app themes (this app's is picked by `data-theme="lockdown"` in
+ * index.html), Geist and Geist Mono as files, the dark variant, the base
+ * layer, sonner's rules as a file, and the primitives' classes. Icons are
+ * inline SVG, so there is no icon font. Then Lockdown's own roles
+ * (app-extension.css), and the rule that stacks unicron's dialog actions
+ * on a narrow window (dialog-actions.css).
  */
 @import "@unicron/ui/styles";
 @import "./styles/app-extension.css";

@@ -1,4 +1,21 @@
+import { iconFromMaterial, isIconName, type IconName } from "@unicron/ui"
+
 import type { Control, FieldTemplateView, TemplateView, UserTemplateView } from "@/core/types"
+
+/**
+ * The icon a template names, as one unicron can draw. A template's icon
+ * arrives as data: the core's templates (crates/vault/src/template.rs) and
+ * a template a person saved name Material Symbols, which unicron drew until
+ * 1.0. unicron's icons are IBM Carbon now, so the name is translated here,
+ * once, where it is read (unicron docs/07-migrating-to-1.0.md §2.5):
+ * Material first, because a few words are names in both sets with different
+ * drawings; then a Carbon name as it is; then `fallback`, for a name neither
+ * set knows.
+ */
+export function templateIcon(name: string | undefined, fallback: IconName): IconName {
+  if (!name) return fallback
+  return iconFromMaterial(name) ?? (isIconName(name) ? name : fallback)
+}
 
 /** The control a field of a person's template draws, from its kind (`CustomKindView.kind`). */
 export function controlOfKind(kind: string): Control {

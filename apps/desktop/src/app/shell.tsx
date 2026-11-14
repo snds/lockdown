@@ -1,151 +1,473 @@
-import type { ReactNode } from "react"
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react"
 
-import { Button, Icon, NativeSelect, NativeSelectOption, Separator, type IconName } from "@unicron/ui"
+import {
+  AdaptiveMenu,
+  AdaptiveMenuGroup,
+  AdaptiveMenuItem,
+  AdaptivePopover,
+  AppFrame,
+  AppFrameMain,
+  AppFrameSidebar,
+  AppFrameStatusLine,
+  AppLockup,
+  FilterChip,
+  FilterChipGroup,
+  IconButton,
+  NavItem,
+  NavSection,
+  useAppFrame,
+  type AppFrameLayout,
+  type NavMarkProp,
+} from "@unicron/ui"
 
-import type { PersonaInfo } from "@/core/types"
-import type { Scope } from "@/features/organization/org-model"
-import { VIEW_LABELS, type ListView } from "@/features/vault/list-model"
+import type { ItemSummary } from "@/core/types"
+import { OrganizationNav } from "@/features/organization/organization-nav"
+import { inScope } from "@/features/organization/org-model"
+import { useVaults } from "@/features/organization/vaults-context"
+import { isMac } from "@/features/palette/palette-model"
+import { ItemEditor, type EditorTarget } from "@/features/vault/item-editor"
+import { VIEW_LABELS, countTypes, countViews, type ListView } from "@/features/vault/list-model"
+import { NewItemMenu } from "@/features/vault/new-item-menu"
+import { count as countWords, countName } from "@/lib/format"
 
-/** The areas of the window (brief §3): the vault's views, and the screens (Sharing: docs/plan/18-sharing.md). */
-export type Area = "vault" | "codes" | "security" | "devices" | "recovery" | "status" | "settings" | "sharing" | "people"
+import { BottomRow } from "./bottom-row"
+import { CrumbProvider, useCrumbExtra } from "./crumbs"
+import { PageHeadProvider, type PageHeadFromShell } from "./page-head"
+import {
+  ASIDE_VIEWS,
+  MAIN_VIEWS,
+  MORE_VIEWS,
+  PlacesProvider,
+  SECTIONS_BAR,
+  crumbsOf,
+  currentRow,
+  navFor,
+  sectionOf,
+  usePlaces,
+  vaultPlace,
+  viewIcon,
+  type Nav,
+  type PlacesValue,
+  type Section,
+  type Surface,
+} from "./places"
+import { TopRow } from "./top-row"
 
-export interface Nav {
-  area: Area
-  /** Which list the vault shows; only read while `area` is `vault`. */
-  view: ListView
-  /** A vault, folder or tag the list is narrowed to (features/organization). */
-  scope?: Scope
-  /** A device the Devices screen brings into view (the Security screen's post-quantum line). */
-  device?: string
-}
+export type { Area, Nav, SettingsSection, SharingTab, Surface } from "./places"
 
 interface AppShellProps {
+  /** Which build this is: the desktop app or the web vault. It picks the places. */
+  surface?: Surface
   nav: Nav
-  personas: PersonaInfo[]
-  counts: Record<ListView, number>
   onNavigate: (nav: Nav) => void
+  /** The item rows, for the counts; `null` until they load (a count is never `00` for "not known yet"). */
+  rows: ItemSummary[] | null
   onLock: () => void
-  /** The vaults, folders and tags sections, under the smart views. */
-  organization?: ReactNode
-  /** The screens under the views; the desktop's five unless a shell names fewer (the web vault). */
-  screens?: ReadonlyArray<ShellScreen>
-  /** A line above Lock (the last-backup indicator, docs/plan/23-bridges.md §10). */
-  footer?: ReactNode
+  /** How many things Health has to fix (the cached report and the Needs attention list). */
+  toFix?: number
+  /** What waits on the person in Sharing. */
+  sharingMark?: number
+  /** The update mark on the way into Settings (cross-app decisions §3); found-5 fills it. */
+  settingsMark?: NavMarkProp
+  /** An item was made or changed in the shell's editor: its id, and whether the core generated a value to copy. */
+  onSaved: (id: string, generated: boolean) => void
+  onNotice?: (text: string) => void
+  /** A second tap on the active tab, after the shell went to its root and scrolled to the top: fetch again. */
+  onRefresh?: () => void
+  /** The end of the status line: up to two `StatusItem`s. found-5 fills it. */
+  status?: ReactNode
+  /** Pins the shell instead of taking the one the width picks: a test, a preview. */
+  layout?: AppFrameLayout
   children: ReactNode
 }
 
-/** One screen in the sidebar: where it goes, its icon, its name. */
-export type ShellScreen = readonly [Area, IconName, string]
+/** What the shell does for any screen. */
+interface ShellValue {
+  /** Opens the editor: a new item from a template, or an item to change. */
+  edit: (target: EditorTarget) => void
+}
 
-const VIEWS: Array<[ListView, IconName]> = [
-  ["all", "inventory_2"],
-  ["favourites", "star"],
-  ["passkeys", "passkey"],
-  ["codes", "timer"],
-  ["wi-fi", "wifi"],
-  ["contacts", "contact_page"],
-  ["expiring", "schedule"],
-  ["attention", "warning"],
-  ["archived", "archive"],
-  ["deleted", "delete"],
-]
+const ShellContext = createContext<ShellValue>({ edit: () => {} })
 
-const SCREENS: ReadonlyArray<ShellScreen> = [
-  ["security", "security", "Security"],
-  ["sharing", "group", "Sharing"],
-  ["devices", "devices", "Devices"],
-  ["recovery", "health_and_safety", "Recovery"],
-  ["status", "shield", "Status"],
-  ["settings", "settings", "Settings"],
-]
+/** The shell's editor, from any screen: `useShell().edit({ kind: "login", item: null, website })`. */
+export function useShell(): ShellValue {
+  return useContext(ShellContext)
+}
+
+/** A choice kept on this device, outside the vault (the sidebar's shape is not a secret and not a setting of the account). */
+function useDeviceFlag(key: string, initial: boolean): [boolean, (next: boolean) => void] {
+  const [value, setValue] = useState(() => {
+    try {
+      const stored = window.localStorage.getItem(key)
+      return stored === null ? initial : stored === "1"
+    } catch {
+      return initial
+    }
+  })
+  const set = useCallback(
+    (next: boolean) => {
+      setValue(next)
+      try {
+        window.localStorage.setItem(key, next ? "1" : "0")
+      } catch {
+        // Kept for this session only.
+      }
+    },
+    [key],
+  )
+  return [value, set]
+}
+
+const typing = (el: EventTarget | null) => el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
 
 /**
- * The sidebar of brief §3: persona switcher (a read-only list for now),
- * All items and the smart views with counts, then Security · Sharing ·
- * Devices · Recovery · Status · Settings, and Lock. Codes is a view of the vault that opens its
- * own screen, because a code is usually part of a Login (brief §3). Rows
- * take the density knobs through `data-row` (the navigation height, `nav`).
+ * Lockdown's shell, as one tree of unicron's frame parts (redesign brief §3
+ * and X1, doc 64). The frame picks the shell from the window's width, so
+ * nothing here is a media query:
+ *
+ *   compact  (under 600)   the phone's floating rows: the lockup and the
+ *                          profile button on top; Search, the tab bar of
+ *                          Items, Codes and Health, and create at the foot
+ *   medium   (600 to 1023) the sidebar as its rail, one content column, a
+ *                          pushed detail with its way back in the status line
+ *   expanded (1024 up)     the sidebar, the status line, list beside detail
+ *
+ * Where the sidebar's groups don't show (the phone, the rail) the page
+ * head is the switcher and the chip row picks the view. Every place is in
+ * `places.ts`; everything here reads that table.
  */
-export function AppShell({ nav, personas, counts, onNavigate, onLock, organization, screens = SCREENS, footer, children }: AppShellProps) {
-  const active = personas.find((p) => p.active)
+export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, toFix = 0, sharingMark = 0, settingsMark, onSaved, onNotice, onRefresh, status, layout, children }: AppShellProps) {
+  const [editor, setEditor] = useState<EditorTarget | null>(null)
+  const [creating, setCreating] = useState(false)
+  // The sidebar as its rail by choice (⌘\), kept on this device.
+  const [collapsed, setCollapsed] = useDeviceFlag(SIDEBAR_KEY, false)
+  const { vaults } = useVaults()
+
+  const go = useCallback(
+    (id: string) => {
+      const to = navFor(id)
+      if (to) onNavigate(to)
+    },
+    [onNavigate],
+  )
+  const places = useMemo<PlacesValue>(() => ({ nav, surface, go, navigate: onNavigate }), [nav, surface, go, onNavigate])
+  const shell = useMemo<ShellValue>(() => ({ edit: setEditor }), [])
+
+  // The section the person was last in: where Back goes from Search, Sharing and Settings on a phone.
+  const section = sectionOf(nav)
+  const lastSection = useRef<Nav>({ area: "vault", view: "all" })
+  useEffect(() => {
+    if (section) lastSection.current = nav
+  }, [section, nav])
+  const leave = useCallback(() => onNavigate(lastSection.current), [onNavigate])
+
+  // `/` opens Search and ⌘, (Ctrl+,) opens Settings, from anywhere but a field (cross-app decisions §6).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.altKey) return
+      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !typing(e.target)) {
+        e.preventDefault()
+        go("search")
+      } else if (e.key === "," && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+        e.preventDefault()
+        go("settings")
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [go])
+
+  // A new item is filed where the list is looking (the scope when New item was pressed).
+  const create = (kind: string) =>
+    setEditor({
+      kind,
+      item: null,
+      vaultId: nav.scope?.vault ?? vaults.find((v) => v.folders.some((f) => f.id === nav.scope?.folder))?.id,
+      folder: nav.scope?.folder,
+      tags: nav.scope?.tag ? [nav.scope.tag] : undefined,
+    })
+
+  const reselect = (id: Section) => {
+    go(SECTIONS_BAR.find((s) => s.id === id)?.place ?? "all")
+    const column = document.querySelector("[data-column][data-shown]")
+    if (column) column.scrollTop = 0
+    onRefresh?.()
+  }
+
   return (
-    <div className="flex h-full min-h-0 flex-col md:flex-row">
-      <nav
-        aria-label="Sidebar"
-        className="flex shrink-0 flex-row items-center gap-1 overflow-x-auto border-b bg-surface-chrome p-2 md:w-(--c-shell-sidebar-width) md:flex-col md:items-stretch md:overflow-y-auto md:border-r md:border-b-0"
-      >
-        <div className="hidden px-1 pb-2 md:block">
-          <label htmlFor="persona" className="sr-only">
-            Persona
-          </label>
-          <NativeSelect id="persona" value={active?.id ?? ""} disabled aria-describedby="persona-note" onChange={() => {}}>
-            {personas.map((p) => (
-              <NativeSelectOption key={p.id} value={p.id}>
-                {p.label} · {p.kind}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-          <p id="persona-note" className="sr-only">
-            Switching personas comes in a later slice; this list is read-only.
-          </p>
-        </div>
-        {VIEWS.map(([view, icon]) => (
-          <NavRow
-            key={view}
-            icon={icon}
-            label={VIEW_LABELS[view]}
-            count={counts[view]}
-            current={view === "codes" ? nav.area === "codes" : nav.area === "vault" && nav.view === view && !nav.scope}
-            tone={view === "codes" ? "codes" : view === "attention" && counts.attention > 0 ? "attention" : undefined}
-            onClick={() => onNavigate(view === "codes" ? { area: "codes", view: "codes" } : { area: "vault", view })}
+    <PlacesProvider value={places}>
+      <ShellContext.Provider value={shell}>
+        <CrumbProvider>
+          <AppFrame layout={layout}>
+            <Sidebar collapsed={collapsed} onCollapsedChange={setCollapsed} rows={rows} toFix={toFix} sharingMark={sharingMark} settingsMark={settingsMark} onLock={onLock} onCreate={() => setCreating(true)} />
+            <StatusLine surface={surface}>{status}</StatusLine>
+            <TopRow onLeave={leave} onLock={onLock} settingsMark={settingsMark} />
+            <AppFrameMain>
+              <VaultListHead collapsed={collapsed} rows={rows} sharingMark={sharingMark}>
+                {children}
+              </VaultListHead>
+            </AppFrameMain>
+            <BottomRow toFix={toFix} onCreate={() => setCreating(true)} onQuickCreate={create} onReselect={reselect} />
+            <CreateMenu open={creating} onOpenChange={setCreating} onPick={create} onNotice={onNotice} />
+          </AppFrame>
+          <ItemEditor
+            target={editor}
+            onClose={() => setEditor(null)}
+            onSaved={(id, generated) => {
+              setEditor(null)
+              onSaved(id, generated)
+            }}
           />
-        ))}
-        {organization}
-        <Separator className="my-1 hidden md:block" />
-        {screens.map(([area, icon, label]) => (
-          <NavRow key={area} icon={icon} label={label} current={nav.area === area} onClick={() => onNavigate({ area, view: nav.view })} />
-        ))}
-        <div className="md:mt-auto">
-          {footer && <div className="hidden md:block">{footer}</div>}
-          <NavRow icon="lock" label="Lock" current={false} onClick={onLock} />
-        </div>
-      </nav>
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">{children}</main>
-    </div>
+        </CrumbProvider>
+      </ShellContext.Provider>
+    </PlacesProvider>
   )
 }
 
-interface NavRowProps {
-  icon: IconName
-  label: string
-  count?: number
-  current: boolean
-  tone?: "codes" | "attention"
-  /** How many levels deep (a folder inside a folder, a nested tag). */
-  depth?: number
-  onClick: () => void
+/** The sidebar's groups show: the expanded width with the sidebar not collapsed. Otherwise the page head switches and the chips pick the view. */
+function useSidebarGroups(collapsed: boolean): boolean {
+  const frame = useAppFrame()
+  return frame.layout === "expanded" && !collapsed && !frame.sidebarRail
 }
 
-/** One sidebar entry. The count is spoken as words, never shown alone. */
-export function NavRow({ icon, label, count, current, tone, depth = 0, onClick }: NavRowProps) {
+const SIDEBAR_KEY = "lockdown.sidebar.collapsed"
+const MORE_KEY = "lockdown.sidebar.more"
+
+interface SidebarProps {
+  collapsed: boolean
+  onCollapsedChange: (collapsed: boolean) => void
+  rows: ItemSummary[] | null
+  toFix: number
+  sharingMark: number
+  settingsMark?: NavMarkProp
+  onLock: () => void
+  onCreate: () => void
+}
+
+/**
+ * The desktop's navigation column (brief 3.2), 204 wide: the lockup, NEW
+ * ITEM, Search, ITEMS, VAULTS, TOOLS, and Settings pinned at the foot
+ * beside Lock. Exactly one row is current: the deepest real place. At
+ * medium width, or collapsed by choice (⌘\), the frame draws it as its rail
+ * of Search, Items, Codes and Health; the rest is behind the page head.
+ */
+function Sidebar({ collapsed, onCollapsedChange, rows, toFix, sharingMark, settingsMark, onLock, onCreate }: SidebarProps) {
+  const { nav, go, navigate } = usePlaces()
+  const frame = useAppFrame()
+  const [drawer, setDrawer] = useState(false)
+  const [moreOpen, setMoreOpen] = useDeviceFlag(MORE_KEY, false)
+  // The whole sidebar shows: at the expanded width, and in the drawer the rail opens at medium width.
+  const groups = useSidebarGroups(collapsed) || (drawer && !frame.phone)
+  const current = currentRow(nav)
+  const counts = useMemo(() => (rows ? countViews(rows) : null), [rows])
+  const types = useMemo(() => (rows ? countTypes(rows) : null), [rows])
+  const mark = (n: number | undefined, one = "item", many?: string): NavMarkProp | undefined => (n ? { count: n, label: countName(n, one, many) } : undefined)
+  const row = (v: ListView, level = 0) => (
+    <NavItem key={v} label={VIEW_LABELS[v]} icon={viewIcon(v)} level={level} mark={mark(counts?.[v])} current={current === v} onClick={() => go(v)} />
+  )
+  const more = MORE_VIEWS.filter((v) => (counts?.[v] ?? 0) > 0)
+  // More is open when the person left it open, and always while the place showing is inside it.
+  const inMore = [...MORE_VIEWS, ...ASIDE_VIEWS].includes(current as ListView)
+  const health = mark(toFix, "to fix", "to fix")
+  const section = sectionOf(nav)
+
   return (
-    <Button
-      variant={current ? "secondary" : "ghost"}
-      size="sm"
-      data-row="nav"
-      data-tone={tone}
-      className="w-full justify-start data-[tone=attention]:text-attention-text data-[tone=codes]:text-area-codes-text"
-      aria-current={current ? "page" : undefined}
-      onClick={onClick}
+    <AppFrameSidebar
+      label="Sidebar"
+      lockup={<AppLockup name="Lockdown" />}
+      action={{ label: "New item", icon: "add", onClick: onCreate }}
+      footer={<NavItem label="Settings" icon="settings" current={current === "settings"} mark={settingsMark} onClick={() => go("settings")} />}
+      footerControl={<IconButton label="Lock" icon="locked" variant="ghost" onClick={onLock} />}
+      collapsed={collapsed}
+      onCollapsedChange={onCollapsedChange}
+      drawerOpen={drawer}
+      onDrawerOpenChange={setDrawer}
+      // No `leadingInset`: the desktop window keeps the system's title bar (src-tauri sets no overlay), so the
+      // macOS window buttons are above the lockup, not over it. It is this one prop when the title bar becomes the app's.
     >
-      {depth > 0 && <span aria-hidden="true" className="inline-block shrink-0" style={{ width: `${depth * 0.75}rem` }} />}
-      <Icon name={icon} data-icon="inline-start" />
-      <span className="flex-1 truncate text-left">{label}</span>
-      {count !== undefined && count > 0 && (
-        <span className="text-xs text-muted-foreground" aria-label={`${count} ${count === 1 ? "item" : "items"}`}>
-          {count}
-        </span>
+      <NavItem label="Search" icon="search" current={current === "search"} mark={{ keys: "/" }} onClick={() => go("search")} />
+      {groups ? (
+        <>
+          <NavSection title={types === null ? "Items" : `Items // ${countWords(types)} ${types === 1 ? "type" : "types"}`} tree>
+            {row("all")}
+            {MAIN_VIEWS.map((v) => row(v))}
+            {rows && rows.length > 0 && <NavItem label="More" icon="overflow-menu--horizontal" expanded={moreOpen || inMore} onExpandedChange={setMoreOpen} />}
+            {rows && rows.length > 0 && (moreOpen || inMore) && [...more, ...ASIDE_VIEWS].map((v) => row(v, 1))}
+          </NavSection>
+          <OrganizationNav rows={rows ?? []} nav={nav} onNavigate={navigate} sharingMark={sharingMark} />
+          <NavSection title="Tools">
+            <NavItem label="Health" icon="checkmark--outline" current={current === "health"} mark={health} onClick={() => go("health")} />
+          </NavSection>
+        </>
+      ) : (
+        // The rail: the three sections. Views, vaults and Sharing are behind the page head there.
+        SECTIONS_BAR.map((s) => (
+          <NavItem key={s.id} label={s.label} icon={s.icon} current={section === s.id && current !== "search"} mark={s.id === "health" ? health : undefined} onClick={() => go(s.place)} />
+        ))
       )}
-    </Button>
+    </AppFrameSidebar>
   )
 }
+
+/**
+ * The desktop's top line: the breadcrumb as links (brief 3.2), with what
+ * the open screen added through `useCrumb`. At medium width a pushed
+ * detail's back button takes its leading slot; the frame does that.
+ */
+function StatusLine({ surface, children }: { surface: Surface; children?: ReactNode }) {
+  const { nav, go } = usePlaces()
+  const { vaults } = useVaults()
+  const extra = useCrumbExtra()
+  // Written in capitals here: a crumb that is a button does not take the line's capitals (a unicron gap, doc 64 §7).
+  const crumbs = crumbsOf(nav, vaults, surface, isMac(), extra).map((c) => ({ label: c.label.toUpperCase(), onClick: c.place ? () => go(c.place as string) : undefined }))
+  return <AppFrameStatusLine crumbs={crumbs}>{children}</AppFrameStatusLine>
+}
+
+/** The control the frame drew that a layer stands by: the sidebar's primary (full width, or the rail's icon), found, not held. */
+const sidebarCreate = () => [...document.querySelectorAll<HTMLElement>('[data-slot="app-frame-sidebar-head"] button')].findLast((el) => el.offsetParent !== null) ?? null
+const pageHead = () => [...document.querySelectorAll<HTMLElement>('[data-slot="app-frame-page-head"] [data-slot="page-head"]')].find((el) => el.offsetParent !== null) ?? null
+
+/**
+ * Where a control the frame drew is, while a layer that belongs to it is
+ * open. A menu or a popover needs a trigger to stand by, and the frame
+ * draws these controls itself; so an unseen trigger is laid over the
+ * control while the layer is open.
+ */
+function useBoxOf(find: () => HTMLElement | null, open: boolean): CSSProperties {
+  const [box, setBox] = useState<CSSProperties>({})
+  useLayoutEffect(() => {
+    if (!open) return
+    const r = find()?.getBoundingClientRect()
+    setBox(r ? { left: r.left, top: r.top, width: r.width, height: r.height } : {})
+    // `find` reads the document; it is the same question every time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+  return { position: "fixed", pointerEvents: "none", opacity: 0, ...box }
+}
+
+/**
+ * The list of every kind to make, opened by the sidebar's NEW ITEM, the
+ * rail's create button and the phone's: a menu under the button on a
+ * desktop, a sheet on a phone.
+ */
+function CreateMenu({ open, onOpenChange, onPick, onNotice }: { open: boolean; onOpenChange: (open: boolean) => void; onPick: (template: string) => void; onNotice?: (text: string) => void }) {
+  const box = useBoxOf(sidebarCreate, open)
+  return <NewItemMenu open={open} onOpenChange={onOpenChange} onPick={onPick} onNotice={onNotice} trigger={<button type="button" aria-hidden="true" tabIndex={-1} style={box} />} />
+}
+
+/**
+ * The Items head where the sidebar's groups don't show (brief X1): the
+ * shell lays the scope and type count over the screen's own head as its
+ * overline, makes the whole head the switcher, and puts the chip row under
+ * it. At the expanded width with the sidebar open, a screen's head is its own.
+ */
+function VaultListHead({ collapsed, rows, sharingMark, children }: { collapsed: boolean; rows: ItemSummary[] | null; sharingMark: number; children: ReactNode }) {
+  const { nav, go, navigate } = usePlaces()
+  const frame = useAppFrame()
+  const { vaults } = useVaults()
+  const groups = useSidebarGroups(collapsed)
+  const [switching, setSwitching] = useState(false)
+  const items = nav.area === "vault" && sectionOf(nav) === "items"
+  const box = useBoxOf(pageHead, switching)
+  const scoped = useMemo(() => (rows && nav.scope ? inScope(rows, nav.scope, vaults) : rows), [rows, nav.scope, vaults])
+  const counts = useMemo(() => (scoped ? countViews(scoped) : null), [scoped])
+  const types = useMemo(() => (scoped ? countTypes(scoped) : null), [scoped])
+
+  if (groups || !items) return <PageHeadProvider value={null}>{children}</PageHeadProvider>
+
+  // The scope as the breadcrumb names it, without its group: `FAMILY // FINANCE`, `#WORK`.
+  const scopeWords = nav.scope
+    ? crumbsOf({ area: "vault", view: "all", scope: nav.scope }, vaults, "desktop", false)
+        .slice(1)
+        .map((c) => c.label)
+        .join(" // ")
+    : ""
+  const scopeName = scopeWords || "All vaults"
+  // A sideways swipe (or an arrow key on the head) steps the scope: All vaults, then each vault.
+  const stops = ["all", ...vaults.map((v) => vaultPlace(v.id))]
+  const at = Math.max(0, stops.indexOf(nav.scope?.vault ? vaultPlace(nav.scope.vault) : "all"))
+  const step = (by: number) => {
+    const next = stops[(at + by + stops.length) % stops.length]
+    if (next) go(next)
+  }
+  const pick = (view: ListView) => navigate({ ...nav, area: "vault", view })
+  // A chip whose view is empty here is left out of the row (brief X1) and listed under MORE instead, so no
+  // view the sidebar offers is out of reach where the sidebar's groups don't show. Codes is its own tab.
+  const main = MAIN_VIEWS.filter((v) => v !== "codes")
+  const chips: ListView[] = ["all", ...main.filter((v) => (counts?.[v] ?? 0) > 0)]
+  const more = [...main.filter((v) => !chips.includes(v)), ...MORE_VIEWS.filter((v) => (counts?.[v] ?? 0) > 0)]
+  // A view from More joins the row while it is the one showing.
+  if (!chips.includes(nav.view)) chips.push(nav.view)
+
+  const head: PageHeadFromShell = {
+    overline: types === null ? scopeName : `${scopeName} // ${countWords(types)} ${types === 1 ? "type" : "types"}`,
+    title: nav.view === "all" ? "Items" : VIEW_LABELS[nav.view],
+    count: counts ? counts[nav.view] : undefined,
+    switcher: { label: "Switch vault", "aria-haspopup": "dialog", onClick: () => setSwitching(true), onSwipe: (direction) => step(direction === "next" ? 1 : -1) },
+    below: (
+      <FilterChipGroup
+        type="single"
+        scroll
+        label="Show"
+        value={nav.view}
+        onValueChange={(v) => pick(v as ListView)}
+        action={
+          <AdaptiveMenu
+            title="Show"
+            overline={`Items // ${scopeName}`}
+            align="end"
+            trigger={
+              <FilterChip kind="trigger" aria-label="More kinds and lists">
+                More
+              </FilterChip>
+            }
+          >
+            {more.length > 0 && (
+              <AdaptiveMenuGroup label={`Types ${countWords(more.length)}`}>
+                {more.map((v) => (
+                  <AdaptiveMenuItem key={v} icon={viewIcon(v)} count={counts?.[v]} current={nav.view === v} onSelect={() => pick(v)}>
+                    {VIEW_LABELS[v]}
+                  </AdaptiveMenuItem>
+                ))}
+              </AdaptiveMenuGroup>
+            )}
+            <AdaptiveMenuGroup label="Kept aside">
+              {ASIDE_VIEWS.map((v) => (
+                <AdaptiveMenuItem key={v} icon={viewIcon(v)} count={counts?.[v]} current={nav.view === v} onSelect={() => pick(v)}>
+                  {VIEW_LABELS[v]}
+                </AdaptiveMenuItem>
+              ))}
+            </AdaptiveMenuGroup>
+          </AdaptiveMenu>
+        }
+      >
+        {chips.map((v) => (
+          // Only the active chip shows its count, as drawn.
+          <FilterChip key={v} value={v} count={nav.view === v && counts ? countWords(counts[v]) : undefined}>
+            {v === "all" ? "All" : VIEW_LABELS[v]}
+          </FilterChip>
+        ))}
+      </FilterChipGroup>
+    ),
+  }
+
+  return (
+    <PageHeadProvider value={head}>
+      {children}
+      <AdaptivePopover
+        open={switching}
+        onOpenChange={setSwitching}
+        overline={`Vaults // ${countWords(vaults.length)}`}
+        title="Switch vault"
+        align="start"
+        height={frame.phone ? "content" : undefined}
+        trigger={<button type="button" aria-hidden="true" tabIndex={-1} style={box} />}
+      >
+        <div className="flex flex-col gap-6">
+          <OrganizationNav variant="switcher" rows={rows ?? []} nav={nav} onNavigate={navigate} sharingMark={sharingMark} onPicked={() => setSwitching(false)} />
+        </div>
+      </AdaptivePopover>
+    </PageHeadProvider>
+  )
+}
+

@@ -124,7 +124,7 @@ export function PasskeysBlock({
               <ItemContent>
                 <ItemTitle>
                   <Badge variant="secondary">
-                    <Icon name="passkey" data-icon="inline-start" />
+                    <Icon name="locked" data-icon="inline-start" />
                     passkey
                   </Badge>
                   {g.rp}
@@ -138,7 +138,7 @@ export function PasskeysBlock({
               <ItemContent>
                 <ItemTitle>
                   <Badge variant="secondary">
-                    <Icon name="passkey" data-icon="inline-start" />
+                    <Icon name="locked" data-icon="inline-start" />
                     passkey
                   </Badge>
                   {p.rp_id}

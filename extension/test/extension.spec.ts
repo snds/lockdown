@@ -429,17 +429,32 @@ test("every popup result has one row anatomy with its action trailing, at 13 px 
   expect(geometry.action.right).toBeLessThanOrEqual(geometry.row.right);
   // The subtitle is one line, cut short rather than wrapped.
   expect(geometry.sub.height).toBeLessThan(28);
-  // Every word the popup draws, but the badges, is 13 px or more (the
-  // screen-reader-only heading and the glyphs' ligatures are not drawn).
+  // Every word the popup reads as text is 13 px or more. The one smaller
+  // size is unicron's label role, its overline (Geist Mono, capitals,
+  // 11 px): from unicron 1.0 a button's label and a field's label are set
+  // in it, as a badge always was (docs/plan/62-unicron-1-0.md §6). So a
+  // word under 13 px must be in that role, and nothing is under 11 px.
+  // The screen-reader-only heading is not drawn.
   await p.getByRole("searchbox").fill("local");
   await expect(results.getByRole("listitem").first()).toBeVisible();
-  const small = await p.evaluate(() =>
+  const words = await p.evaluate(() =>
     Array.from(document.querySelectorAll("main *"))
-      .filter((el) => !el.closest('[data-slot="badge"], [aria-hidden="true"], .sr-only') && Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.textContent!.trim()))
-      .map((el) => [el.textContent!.trim(), parseFloat(getComputedStyle(el).fontSize)] as const)
-      .filter(([, px]) => px < 13),
+      .filter((el) => !el.closest('[aria-hidden="true"], .sr-only') && Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.textContent!.trim()))
+      .map((el) => {
+        const css = getComputedStyle(el);
+        return { text: el.textContent!.trim(), px: parseFloat(css.fontSize), label: css.textTransform === "uppercase" && /Geist Mono/.test(css.fontFamily) };
+      }),
   );
-  expect(small).toEqual([]);
+  // At least one result's title, its line and its action's label.
+  expect(words.length).toBeGreaterThanOrEqual(3);
+  expect(words.filter((w) => w.px < 11)).toEqual([]);
+  expect(words.filter((w) => w.px < 13 && !w.label)).toEqual([]);
+  // A result's own words, its title and the line under it, are reading text, never labels.
+  const reading = await results.evaluate((list) =>
+    Array.from(list.querySelectorAll('[data-slot="item-title"], [data-slot="item-description"]')).map((el) => parseFloat(getComputedStyle(el).fontSize)),
+  );
+  expect(reading.length).toBeGreaterThanOrEqual(2);
+  expect(reading.filter((px) => px < 13)).toEqual([]);
   await p.close();
 });
 

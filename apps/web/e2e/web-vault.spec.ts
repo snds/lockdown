@@ -5,6 +5,14 @@ import path from "node:path"
 
 import { expect, test, type Page } from "@playwright/test"
 
+import { LOGIN as LOGIN_ENTRY, add, closeManager, editor, field, firstField, generateWithOptions, generatorMake, generatorStrength, makeTemplate, newItem, save, templateNamed } from "./steps/editor.ts"
+import { exportSwitch, guestCode, hideGuestCard, itemAction, openItem, plainText, row, rows, section, showGuestCard } from "./steps/items.ts"
+import { alert, go, lock, root, vaultOpen } from "./steps/nav.ts"
+import { search } from "./steps/search.ts"
+import { signOut, theme } from "./steps/settings.ts"
+import { askForSecret, linkDone, newLink, openAnswer, shareText, showAnswer } from "./steps/sharing.ts"
+import { answerRequest, linkTitle, linkValue, openLink, requestAsk, requestSent, sharedHeading, showLinkValue, signIn as signInWith, signInForm, signInTab, unlock, unlockForm } from "./steps/unlock.ts"
+
 /**
  * The web vault in Chromium against the real server (e2e/serve.mjs). The
  * account is registered the way a person's computer does it (the
@@ -71,15 +79,7 @@ function watch(page: Page) {
   return { problems, origins }
 }
 
-async function signIn(page: Page, secretKey: string, login = LOGIN) {
-  const form = page.getByRole("form", { name: "Sign in" })
-  await form.getByLabel("Login name").fill(login)
-  await form.getByLabel("Master password").fill(PASSWORD)
-  await form.getByLabel("Secret Key").fill(secretKey)
-  await form.getByRole("button", { name: "Sign in" }).click()
-}
-
-const sidebar = (page: Page) => page.getByRole("navigation", { name: "Sidebar" })
+const signIn = (page: Page, secretKey: string, login = LOGIN) => signInWith(page, login, PASSWORD, secretKey)
 
 test("sign in as a new device, find, create, edit, find, lock, unlock and sign out", async ({ browser, baseURL }) => {
   const context = await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] })
@@ -93,68 +93,78 @@ test("sign in as a new device, find, create, edit, find, lock, unlock and sign o
   expect(headers["content-security-policy"]).toContain("default-src 'none'")
   expect(headers["content-security-policy"]).toContain("frame-ancestors 'none'")
   expect(headers["cross-origin-opener-policy"]).toBe("same-origin")
-  const html = await res!.text()
-  expect(html).toMatch(/<script[^>]+integrity="sha384-/)
+  const source = await res!.text()
+  expect(source).toMatch(/<script[^>]+integrity="sha384-/)
 
   // The password alone doesn't open a new device.
-  const form = page.getByRole("form", { name: "Sign in" })
-  await form.getByLabel("Login name").fill(LOGIN)
-  await form.getByLabel("Master password").fill(PASSWORD)
-  await form.getByLabel("Secret Key").fill("A1-NOT-THE-KEY")
-  await form.getByRole("button", { name: "Sign in" }).click()
-  await expect(form.getByRole("alert")).toBeVisible({ timeout: 90_000 })
+  await signIn(page, "A1-NOT-THE-KEY")
+  await expect(alert(signInForm(page))).toBeVisible({ timeout: 90_000 })
 
   // With the kit's Secret Key it does, and the desktop's login is there.
   await signIn(page, secretKey)
-  await expect(page.getByRole("heading", { name: "All items" })).toBeVisible({ timeout: 90_000 })
-  await expect(page.getByRole("button", { name: /Bank from the desktop/ }).first()).toBeVisible()
+  await expect(vaultOpen(page)).toBeVisible({ timeout: 90_000 })
+  await expect(row(page, /Bank from the desktop/)).toBeVisible()
 
   // Create a login.
-  await page.getByRole("button", { name: "New item" }).click()
-  await page.getByRole("menuitem", { name: /^\W*\w*\s*Login$/ }).first().click()
-  const editor = page.getByRole("dialog")
-  await editor.getByLabel("Title").fill("Example mail")
-  await editor.getByLabel("Username").fill("me@example.com")
-  await editor.getByLabel("Password", { exact: true }).fill("a-long-unique-password-1")
-  await editor.getByLabel("Website").first().fill("https://mail.example.com")
-  await editor.getByRole("button", { name: "Add", exact: true }).click()
-  await expect(editor).toBeHidden()
-  const row = page.getByRole("button", { name: /Example mail/ }).first()
-  await expect(row).toBeVisible()
+  await newItem(page, LOGIN_ENTRY, true)
+  const created = editor(page)
+  await field(created, "Title").fill("Example mail")
+  await field(created, "Username").fill("me@example.com")
+  await field(created, "Password", true).fill("a-long-unique-password-1")
+  await firstField(created, "Website").fill("https://mail.example.com")
+  await add(created)
+  await expect(created).toBeHidden()
+  const made = row(page, /Example mail/)
+  await expect(made).toBeVisible()
 
   // Edit it.
-  await row.click()
-  await page.getByRole("button", { name: "Edit", exact: true }).click()
-  const edit = page.getByRole("dialog")
-  await edit.getByLabel("Title").fill("Example mail (work)")
-  await edit.getByRole("button", { name: "Save", exact: true }).click()
+  await made.click()
+  await itemAction(page, "Edit")
+  const edit = editor(page)
+  await field(edit, "Title").fill("Example mail (work)")
+  await save(edit)
   await expect(edit).toBeHidden()
 
   // Find it, and only it.
-  const search = page.getByRole("searchbox", { name: "Search" })
-  await search.fill("work")
-  await expect(page.getByRole("button", { name: /Example mail \(work\)/ }).first()).toBeVisible()
-  await search.fill("nothing like this anywhere")
-  await expect(page.getByRole("button", { name: /Example mail/ })).toHaveCount(0)
-  await search.fill("")
+  const find = search(page)
+  await find.fill("work")
+  await expect(row(page, /Example mail \(work\)/)).toBeVisible()
+  await find.fill("nothing like this anywhere")
+  await expect(rows(page, /Example mail/)).toHaveCount(0)
+  await find.fill("")
 
   // Lock: the keys go; the password opens it again.
-  await sidebar(page).getByRole("button", { name: "Lock" }).click()
-  const unlock = page.getByRole("form", { name: "Unlock" })
-  await expect(unlock).toBeVisible()
-  await unlock.getByLabel("Master password").fill("not the password at all")
-  await unlock.getByRole("button", { name: "Unlock" }).click()
-  await expect(page.getByRole("alert")).toContainText("didn't match")
-  await unlock.getByLabel("Master password").fill(PASSWORD)
-  await unlock.getByRole("button", { name: "Unlock" }).click()
-  await expect(page.getByRole("button", { name: /Example mail \(work\)/ }).first()).toBeVisible({ timeout: 60_000 })
+  await lock(page)
+  await expect(unlockForm(page)).toBeVisible()
+  await unlock(page, "not the password at all")
+  await expect(alert(page)).toContainText("didn't match")
+  await unlock(page, PASSWORD)
+  await expect(row(page, /Example mail \(work\)/)).toBeVisible({ timeout: 60_000 })
+
+  // The theme (doc 62 §3): this browser prefers light, so the page starts on stone, with System on.
+  await go(page, "appearance")
+  const html = root(page)
+  await expect(html).toHaveAttribute("data-theme", "lockdown")
+  await expect(html).not.toHaveClass(/(^|\s)dark(\s|$)/)
+  await expect(theme(page, "System")).toBeChecked()
+  // Graphite changes the whole page at once.
+  await theme(page, "Graphite").click()
+  await expect(html).toHaveClass(/(^|\s)dark(\s|$)/)
+  await expect(theme(page, "Graphite")).toBeChecked()
 
   // Sign out: the edit reaches the server first, then the tab forgets it all.
-  await sidebar(page).getByRole("button", { name: "Settings" }).click()
-  await page.getByRole("button", { name: "Sign out of this tab" }).click()
-  await expect(page.getByRole("tab", { name: "Sign in" })).toBeVisible()
+  await go(page, "this-browser")
+  await signOut(page)
+  await expect(signInTab(page)).toBeVisible()
   const listed = lockdown(["sync"]) && lockdown(["list"])
   expect(listed).toContain("Example mail (work)")
+
+  // The choice is the browser's, not the account's: it outlives the sign-out and a reload, and
+  // the page's own bundle applies it at the start, under the policy (no inline script).
+  await page.reload()
+  await expect(signInTab(page)).toBeVisible()
+  await expect(html).toHaveClass(/(^|\s)dark(\s|$)/)
+  expect(await page.evaluate(() => window.localStorage.getItem("lockdown.theme"))).toBe("graphite")
 
   expect([...origins]).toEqual([new URL(baseURL!).origin])
   expect(problems).toEqual([])
@@ -168,26 +178,20 @@ test("a share link and a request link work in a browser with no account", async 
   const ownerWatch = watch(tab)
   await tab.goto("/vault/")
   await signIn(tab, linksSecretKey, LINKS_LOGIN)
-  await expect(tab.getByRole("heading", { name: "All items" })).toBeVisible({ timeout: 90_000 })
-  await sidebar(tab).getByRole("button", { name: "Links" }).click()
+  await expect(vaultOpen(tab)).toBeVisible({ timeout: 90_000 })
+  await go(tab, "links")
 
   // A text link, with a password, that opens once.
-  const share = tab.getByRole("form", { name: "Share some text" })
-  await share.getByLabel("What it is").fill("Cabin Wi-Fi")
-  await share.getByLabel("The text").fill("pine-needles-42")
-  await share.getByLabel("A password for it").fill("told you on the phone")
-  await share.getByRole("button", { name: "Make the link" }).click()
-  const shareLink = (await tab.getByTestId("new-link").textContent())!.trim()
+  await shareText(tab, "Cabin Wi-Fi", "pine-needles-42", "told you on the phone")
+  const shareLink = (await newLink(tab).textContent())!.trim()
   expect(shareLink).toMatch(new RegExp(`^${origin}/s/[0-9a-f-]+#`))
-  await tab.getByRole("button", { name: "Done" }).click()
+  await linkDone(tab)
 
   // A request link.
-  const ask = tab.getByRole("form", { name: "Ask for a secret" })
-  await ask.getByLabel("What you're asking for").fill("The alarm code")
-  await ask.getByRole("button", { name: "Make the request link" }).click()
-  const requestLink = (await tab.getByTestId("new-link").textContent())!.trim()
+  await askForSecret(tab, "The alarm code")
+  const requestLink = (await newLink(tab).textContent())!.trim()
   expect(requestLink).toMatch(new RegExp(`^${origin}/r/[0-9a-f-]+#`))
-  await tab.getByRole("button", { name: "Done" }).click()
+  await linkDone(tab)
 
   // Someone with no account opens the share link: the server's /s/ page
   // hands over to the web vault, and the key never leaves the fragment.
@@ -198,35 +202,28 @@ test("a share link and a request link work in a browser with no account", async 
   page.on("request", (r) => sent.push(r.url()))
   await page.goto(shareLink)
   await expect(page).toHaveURL(/\/vault\/s\/[0-9a-f-]+$/)
-  await expect(page.getByRole("heading", { name: "Someone shared something with you" })).toBeVisible({ timeout: 60_000 })
-  const form = page.getByRole("form", { name: "Open the link" })
-  await form.getByLabel("The link's password").fill("not it")
-  await form.getByRole("button", { name: "Open" }).click()
-  await expect(page.getByRole("alert")).toContainText("password")
-  await form.getByLabel("The link's password").fill("told you on the phone")
-  await form.getByRole("button", { name: "Open" }).click()
-  await expect(page.getByRole("heading", { name: "Cabin Wi-Fi" })).toBeVisible({ timeout: 60_000 })
-  await page.getByRole("button", { name: "Show Text" }).click()
-  await expect(page.getByTestId("value-0")).toHaveText("pine-needles-42")
+  await expect(sharedHeading(page)).toBeVisible({ timeout: 60_000 })
+  await openLink(page, "not it")
+  await expect(alert(page)).toContainText("password")
+  await openLink(page, "told you on the phone")
+  await expect(linkTitle(page, "Cabin Wi-Fi")).toBeVisible({ timeout: 60_000 })
+  await showLinkValue(page, "Text")
+  await expect(linkValue(page, 0)).toHaveText("pine-needles-42")
   const key = shareLink.split("#")[1]!
   expect(sent.filter((u) => u.includes(key))).toEqual([])
 
   // And answers the request.
   await page.goto(requestLink)
-  await expect(page.getByText("The alarm code")).toBeVisible({ timeout: 60_000 })
-  const answer = page.getByRole("form", { name: "Answer the request" })
-  await answer.getByLabel("What it is").fill("Alarm")
-  await answer.getByLabel("The secret").fill("8642")
-  await answer.getByRole("button", { name: "Send" }).click()
-  await expect(page.getByRole("heading", { name: "Sent" })).toBeVisible({ timeout: 60_000 })
+  await expect(requestAsk(page, "The alarm code")).toBeVisible({ timeout: 60_000 })
+  await answerRequest(page, "Alarm", "8642")
+  await expect(requestSent(page)).toBeVisible({ timeout: 60_000 })
 
   // The asker reads it in the vault.
-  await sidebar(tab).getByRole("button", { name: "Devices" }).click()
-  await sidebar(tab).getByRole("button", { name: "Links" }).click()
-  await tab.getByRole("button", { name: "Open the answer" }).click()
-  const opened = tab.getByRole("group", { name: "The answer" })
+  await go(tab, "devices")
+  await go(tab, "links")
+  const opened = await openAnswer(tab)
   await expect(opened).toContainText("Alarm")
-  await opened.getByRole("button", { name: /^Show / }).click()
+  await showAnswer(opened)
   await expect(opened).toContainText("8642")
 
   expect([...origins]).toEqual([origin])
@@ -242,54 +239,46 @@ test("vault depth in the browser: a variant, a template of your own, generator o
   const { problems, origins } = watch(page)
   await page.goto("/vault/")
   await signIn(page, secretKey)
-  await expect(page.getByRole("heading", { name: "All items" })).toBeVisible({ timeout: 90_000 })
+  await expect(vaultOpen(page)).toBeVisible({ timeout: 90_000 })
 
   // A passport: a variant of the identity kind, drawn from its own template.
-  await page.getByRole("button", { name: "New item" }).click()
-  await page.getByRole("menuitem", { name: /Passport$/ }).click()
-  let editor = page.getByRole("dialog")
-  await editor.getByLabel("Title").fill("My passport")
-  await editor.getByLabel("Passport number", { exact: true }).fill("X1234567")
-  await editor.getByLabel("Issuing country").fill("GB")
-  await editor.getByRole("button", { name: "Add", exact: true }).click()
-  await expect(editor).toBeHidden()
-  await page.getByRole("button", { name: /My passport/ }).first().click()
-  await expect(page.getByRole("region", { name: "Passport" })).toContainText("Issuing country")
+  await newItem(page, /Passport$/)
+  let dialog = editor(page)
+  await field(dialog, "Title").fill("My passport")
+  await field(dialog, "Passport number", true).fill("X1234567")
+  await field(dialog, "Issuing country").fill("GB")
+  await add(dialog)
+  await expect(dialog).toBeHidden()
+  await openItem(page, /My passport/)
+  await expect(section(page, "Passport")).toContainText("Issuing country")
 
   // A template of your own, then an item from it.
-  await page.getByRole("button", { name: "New item" }).click()
-  await page.getByRole("menuitem", { name: /Make a template/ }).click()
-  const manager = page.getByRole("dialog")
-  await manager.getByRole("button", { name: "New template" }).click()
-  await manager.getByLabel("Name").fill("Gym locker")
-  await manager.getByLabel("Field 1's label").fill("Locker")
-  await manager.getByRole("button", { name: "Save template" }).click()
-  await expect(manager.getByText("Gym locker")).toBeVisible()
-  await manager.getByRole("button", { name: "Close", exact: true }).first().click()
-  await page.getByRole("button", { name: "New item" }).click()
-  await page.getByRole("menuitem", { name: /Gym locker$/ }).click()
-  editor = page.getByRole("dialog")
-  await editor.getByLabel("Locker", { exact: true }).fill("41")
-  await editor.getByRole("button", { name: "Add", exact: true }).click()
-  await expect(editor).toBeHidden()
-  await expect(page.getByRole("button", { name: /Gym locker/ }).first()).toBeVisible()
+  await newItem(page, /Make a template/)
+  const manager = editor(page)
+  await makeTemplate(manager, "Gym locker", "Locker")
+  await expect(templateNamed(manager, "Gym locker")).toBeVisible()
+  await closeManager(manager)
+  await newItem(page, /Gym locker$/)
+  dialog = editor(page)
+  await field(dialog, "Locker", true).fill("41")
+  await add(dialog)
+  await expect(dialog).toBeHidden()
+  await expect(row(page, /Gym locker/)).toBeVisible()
 
   // A Wi-Fi network whose password the core makes as a passphrase, then its guest card.
-  await page.getByRole("button", { name: "New item" }).click()
-  await page.getByRole("menuitem", { name: /Wi-Fi network$/ }).click()
-  editor = page.getByRole("dialog")
-  await editor.getByLabel("Network name").fill("cabin-net")
-  await editor.getByRole("button", { name: "Generate password" }).click()
-  await editor.getByRole("button", { name: "Options" }).click()
-  await editor.getByLabel("Make").selectOption("words")
-  await expect(editor.getByRole("status")).toContainText("bits")
-  await editor.getByRole("button", { name: "Add", exact: true }).click()
-  await expect(editor).toBeHidden()
-  await page.getByRole("button", { name: /cabin-net/ }).first().click()
-  await page.getByRole("button", { name: "Guest card" }).click()
-  await expect(page.getByRole("img", { name: "The code to join cabin-net" })).toBeVisible()
-  await page.getByRole("button", { name: "Hide" }).click()
-  await expect(page.getByRole("img", { name: "The code to join cabin-net" })).toBeHidden()
+  await newItem(page, /Wi-Fi network$/)
+  dialog = editor(page)
+  await field(dialog, "Network name").fill("cabin-net")
+  await generateWithOptions(dialog)
+  await generatorMake(dialog).selectOption("words")
+  await expect(generatorStrength(dialog)).toContainText("bits")
+  await add(dialog)
+  await expect(dialog).toBeHidden()
+  await openItem(page, /cabin-net/)
+  await showGuestCard(page)
+  await expect(guestCode(page, "cabin-net")).toBeVisible()
+  await hideGuestCard(page)
+  await expect(guestCode(page, "cabin-net")).toBeHidden()
 
   expect([...origins]).toEqual([new URL(baseURL!).origin])
   expect(problems).toEqual([])
@@ -302,24 +291,23 @@ test("a crown jewel's opt-in says plain exports leave it out and locked backups 
   const { problems, origins } = watch(page)
   await page.goto("/vault/")
   await signIn(page, secretKey)
-  await expect(page.getByRole("heading", { name: "All items" })).toBeVisible({ timeout: 90_000 })
+  await expect(vaultOpen(page)).toBeVisible({ timeout: 90_000 })
 
   // A wallet is a crown jewel by its kind.
-  await page.getByRole("button", { name: "New item" }).click()
-  await page.getByRole("menuitem", { name: /Crypto wallet$/ }).click()
-  const editor = page.getByRole("dialog")
-  await editor.getByLabel("Title").fill("Cold wallet")
-  await editor.getByLabel("Recovery phrase", { exact: true }).fill("abandon ability able about above absent absorb abstract absurd abuse access accident")
-  await editor.getByRole("button", { name: "Add", exact: true }).click()
-  await expect(editor).toBeHidden()
-  await page.getByRole("button", { name: /Cold wallet/ }).first().click()
+  await newItem(page, /Crypto wallet$/)
+  const dialog = editor(page)
+  await field(dialog, "Title").fill("Cold wallet")
+  await field(dialog, "Recovery phrase", true).fill("abandon ability able about above absent absorb abstract absurd abuse access accident")
+  await add(dialog)
+  await expect(dialog).toBeHidden()
+  await openItem(page, /Cold wallet/)
 
   // The shared item view's words: plain exports leave it out unless opted in; locked backups carry it.
-  const optIn = page.getByRole("region", { name: "Exports and backups" })
-  await expect(optIn.getByRole("switch", { name: "Include in exports and backups" })).not.toBeChecked()
+  const optIn = section(page, "Exports and backups")
+  await expect(exportSwitch(optIn)).not.toBeChecked()
   await expect(optIn).toContainText("Crown jewels stay out of plain exports unless you include them here, one by one.")
   await expect(optIn).toContainText("Locked backups carry them unless you turn that off in Settings, Backups.")
-  await expect(page.getByText("abandon ability")).toHaveCount(0)
+  await expect(plainText(page, "abandon ability")).toHaveCount(0)
 
   expect([...origins]).toEqual([new URL(baseURL!).origin])
   expect(problems).toEqual([])

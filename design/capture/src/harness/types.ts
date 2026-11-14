@@ -61,6 +61,26 @@ export interface StateDef {
    * arming before the picture is taken. The review build arms as usual.
    */
   hold_clock?: boolean
+  /**
+   * An in-page frame arms its buttons by `Date.now()`, so its state runs on
+   * the real clock. Every other state is captured with the clock pinned, so
+   * a countdown or a code reads the same in every run.
+   */
+  live_clock?: boolean
+  /**
+   * The screen is finished and reviewed: `pnpm shots:built` takes it for
+   * review as `<kind>/<area>--<screen>__<phone|desktop>__<graphite|stone>.png`.
+   * `drawn` has a Figma frame, `undrawn` a brief. One state per screen:
+   * two states may not name the same place.
+   */
+  built?: Built
+}
+
+/** Where a finished screen's review pictures go. Lower-case words joined by hyphens. */
+export interface Built {
+  area: string
+  screen: string
+  kind: "drawn" | "undrawn"
 }
 
 /** What the capture and the start screen read: everything but the code. */
@@ -76,6 +96,8 @@ export interface StateMeta {
   frame: string | null
   trusted: string[]
   hold_clock: boolean
+  live_clock: boolean
+  built: Built | null
 }
 
 export const WIDTHS = [1280, 900, 390]

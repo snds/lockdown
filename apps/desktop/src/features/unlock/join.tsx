@@ -174,7 +174,7 @@ export function JoinScreen({ onBack, onOpened }: { onBack: () => void; onOpened:
         <legend className="sr-only">How to add this computer</legend>
         {WAYS.map((w) => (
           <label key={w.way} htmlFor={`join-way-${w.way}`} data-row="" className="flex cursor-pointer items-start gap-3 rounded-lg border px-3 has-checked:border-ring has-checked:bg-surface-selected">
-            <input id={`join-way-${w.way}`} type="radio" name="join-way" value={w.way} checked={way === w.way} onChange={() => setWay(w.way)} className="mt-1 size-4 accent-primary" />
+            <input id={`join-way-${w.way}`} type="radio" name="join-way" value={w.way} checked={way === w.way} onChange={() => setWay(w.way)} className="mt-1 size-4 accent-foreground" />
             <span className="flex flex-col">
               <span className="font-medium">{w.label}</span>
               {w.help && <span className="text-sm text-muted-foreground">{w.help}</span>}

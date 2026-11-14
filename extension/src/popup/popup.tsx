@@ -190,23 +190,23 @@ function OpenLockdown({ state, onChange, say, primary = false }: { state: LinkSt
 
 /** Each kind's glyph, as the app's list draws it (decorative: the words say the kind). */
 const KIND_ICONS: Record<string, IconName> = {
-  login: "key",
-  passkey: "passkey",
-  code: "timer",
+  login: "password",
+  passkey: "locked",
+  code: "time",
   "wi-fi": "wifi",
   "ssh-key": "terminal",
   "api-credential": "api",
-  document: "description",
-  identity: "badge",
-  card: "credit_card",
-  "bank-account": "account_balance",
-  note: "sticky_note_2",
-  "crypto-wallet": "account_balance_wallet",
-  server: "dns",
-  database: "database",
+  document: "document",
+  identity: "user--identification",
+  card: "wallet",
+  "bank-account": "finance",
+  note: "document",
+  "crypto-wallet": "wallet",
+  server: "bare-metal-server",
+  database: "data--base",
   "software-licence": "license",
-  membership: "card_membership",
-  custom: "category",
+  membership: "credentials",
+  custom: "categories",
 }
 
 /**
@@ -285,7 +285,7 @@ function SiteSection({ site, say }: { site: Site; say: Say }) {
               {m.logins.map((c) => (
                 <Row
                   key={c.item_id}
-                  glyph="key"
+                  glyph="password"
                   title={c.title || m.host}
                   badge={c.asked && <Badge variant="secondary">From quick access</Badge>}
                   subtitle={c.crown_jewel ? "protected" : c.username}
@@ -453,7 +453,7 @@ function Aliases({ site, say }: { site: Site; say: Say }) {
           {services.map((svc) => (
             <Row
               key={svc.item_id}
-              glyph="alternate_email"
+              glyph="at"
               title={svc.name}
               subtitle={svc.domain ? `on ${svc.domain}` : "a new address that forwards to you"}
               action={
@@ -539,7 +539,7 @@ function Search({ lookalike, say }: { lookalike: string[]; say: Say }) {
             return (
               <Row
                 key={item.item_id}
-                glyph={KIND_ICONS[item.kind] ?? "category"}
+                glyph={KIND_ICONS[item.kind] ?? "categories"}
                 title={item.title || "Untitled"}
                 badge={item.exact === false && <Badge variant="outline">Close match</Badge>}
                 subtitle={item.crown_jewel ? `${item.kind} · protected` : [item.username, item.host || item.subtitle].filter(Boolean).join(" · ") || item.kind}

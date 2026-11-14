@@ -20,7 +20,7 @@ export function SplitWarning({ checks }: { checks: readonly MirrorCheck[] | unde
   return (
     <div role="alert" className="flex flex-col gap-1 rounded-md border border-destructive p-3 text-sm text-destructive">
       <p className="flex items-center gap-2 font-medium">
-        <Icon name="warning" />
+        <Icon name="warning--alt" />
         This server's public log doesn't match {found.length === 1 ? "a mirror" : `${found.length} mirrors`}.
       </p>
       <p>

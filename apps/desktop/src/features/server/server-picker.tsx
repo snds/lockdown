@@ -68,7 +68,7 @@ export function ServerPicker({ candidates, chosen, onChoose, onCheck, onLookAgai
                 checked={chosen === c.address}
                 disabled={!ready}
                 onChange={() => onChoose(c.address)}
-                className="mt-1 size-4 accent-primary"
+                className="mt-1 size-4 accent-foreground"
               />
               <span className="flex min-w-0 flex-col">
                 <span className="truncate font-medium">{hostOf(c.address)}</span>
