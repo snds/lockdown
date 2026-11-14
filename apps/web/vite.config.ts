@@ -6,6 +6,8 @@ import react from "@vitejs/plugin-react"
 import type { Plugin } from "vite"
 import { defineConfig } from "vitest/config"
 
+import { buildStamp } from "./build-stamp.ts"
+
 const here = import.meta.dirname
 const desktop = path.resolve(here, "../desktop/src")
 const wasm = path.resolve(here, "wasm/lockdown_web.wasm")
@@ -79,7 +81,9 @@ if (process.env.NODE_ENV === "production" && !existsSync(wasm)) {
 
 export default defineConfig({
   base: "/vault/",
-  plugins: [sonnerWithoutInlineStyle(), react(), tailwindcss(), subresourceIntegrity()],
+  // `buildStamp` runs once the files are written, so the id it makes covers
+  // them as they are served (docs/plan/66-shared-feed.md §4).
+  plugins: [sonnerWithoutInlineStyle(), react(), tailwindcss(), subresourceIntegrity(), buildStamp()],
   define: {
     __LOCKDOWN_WASM_SHA384__: JSON.stringify(wasmHash()),
   },
