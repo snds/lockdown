@@ -146,7 +146,8 @@ Older docs name the old files (`22-security-depth.md`, `23-bridges.md`, `45-desk
 | Check | Result |
 |---|---|
 | Every state's steps, set-up, answers and mount, before and after the split | 283 states, 0 differences |
-| `pnpm shots` strict, against the `found-1` set | see the hand-off for this slice: the numbers are from the run on the committed tree |
+| `pnpm shots` strict, against the `found-1` set | 1,070 pictures (1,050 and the 20 of the five new states), 0 failures. Of the 1,050: 891 identical, 144 within 50 pixels, 13 that differed more under machine load and were identical or within 50 pixels when taken again, and the two of `extension-popup-code`, which now draw the same code in every run (§1, the clock) |
+| Lane mode of the check script, in a second worktree | every step passes with no cargo build; the shared cargo target is the same size to the byte before and after; the web end-to-end run used its own port |
 | `shots:built` with one state marked | exactly four files at twice the density, named as §1 says; a file and a manifest already in the folder untouched |
 | Desktop, web (unit and end to end), capture, extension, `cargo fmt` | every step passes; desktop 299, web 60 and 13, extension 80 |
 
