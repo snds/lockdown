@@ -32,6 +32,9 @@ import { count as countWords, countName } from "@/lib/format"
 
 import { BottomRow } from "./bottom-row"
 import { CrumbProvider, useCrumbExtra } from "./crumbs"
+import { PushedBottomRow, PushedChromeProvider } from "./detail-bottom-row"
+import { useAppKeys } from "./keys"
+import { KeysDialog } from "./keys-dialog"
 import { PageHeadProvider, type PageHeadFromShell } from "./page-head"
 import {
   ASIDE_VIEWS,
@@ -118,8 +121,6 @@ function useDeviceFlag(key: string, initial: boolean): [boolean, (next: boolean)
   return [value, set]
 }
 
-const typing = (el: EventTarget | null) => el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
-
 /**
  * Lockdown's shell, as one tree of unicron's frame parts (redesign brief §3
  * and X1, doc 64). The frame picks the shell from the window's width, so
@@ -161,21 +162,9 @@ export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, t
   }, [section, nav])
   const leave = useCallback(() => onNavigate(lastSection.current), [onNavigate])
 
-  // `/` opens Search and ⌘, (Ctrl+,) opens Settings, from anywhere but a field (cross-app decisions §6).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.altKey) return
-      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !typing(e.target)) {
-        e.preventDefault()
-        go("search")
-      } else if (e.key === "," && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
-        e.preventDefault()
-        go("settings")
-      }
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [go])
+  // `/` Search, ⌘, (Ctrl+,) Settings and `?` the keys list, from anywhere but a field or an open layer (brief X6).
+  const [keysOpen, setKeysOpen] = useState(false)
+  useAppKeys({ search: () => go("search"), settings: () => go("settings"), keys: () => setKeysOpen(true) })
 
   // A new item is filed where the list is looking (the scope when New item was pressed).
   const create = (kind: string) =>
@@ -198,6 +187,7 @@ export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, t
     <PlacesProvider value={places}>
       <ShellContext.Provider value={shell}>
         <CrumbProvider>
+          <PushedChromeProvider>
           <AppFrame layout={layout}>
             <Sidebar collapsed={collapsed} onCollapsedChange={setCollapsed} rows={rows} toFix={toFix} sharingMark={sharingMark} settingsMark={settingsMark} onLock={onLock} onCreate={() => setCreating(true)} />
             <StatusLine surface={surface}>{status}</StatusLine>
@@ -208,8 +198,11 @@ export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, t
               </VaultListHead>
             </AppFrameMain>
             <BottomRow toFix={toFix} onCreate={() => setCreating(true)} onQuickCreate={create} onReselect={reselect} />
+            <PushedBottomRow />
             <CreateMenu open={creating} onOpenChange={setCreating} onPick={create} onNotice={onNotice} />
           </AppFrame>
+          </PushedChromeProvider>
+          <KeysDialog open={keysOpen} onOpenChange={setKeysOpen} />
           <ItemEditor
             target={editor}
             onClose={() => setEditor(null)}

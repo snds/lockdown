@@ -10,7 +10,7 @@ import { as } from "../host/core"
 import type { StateDef, Step } from "../harness/types"
 import { WIDE, d } from "./defs"
 import { open } from "./steps/screens"
-import { DIALOG, MENU, go, lock, openMore, openSwitcher } from "./steps/shell"
+import { DIALOG, MENU, go, lock, openKeys, openMore, openSwitcher } from "./steps/shell"
 import { openItem, reveal } from "./steps/vault"
 
 const reminders = (password: boolean, drill: boolean, kitTest: boolean) => ({
@@ -95,6 +95,16 @@ export const SHELL_STATES: StateDef[] = [
     notes: "Settings from the profile button: this device's rows, then every other section; Lock in the top bar (doc 64, D722, D727).",
     built: { area: "shell", screen: "settings-list", kind: "undrawn" },
     steps: [...open, ...go("settings"), { see: 'nav[aria-label="Settings sections"]' }],
+  }),
+  d({
+    id: "shell-keys",
+    widths: WIDE,
+    screen: "Keys",
+    state: "The keys list",
+    brief_row: null,
+    notes: "`?` opens the keys list: KEYS, Keyboard shortcuts, a Field Row per key with the key as a Kbd, no primary (brief X6, doc 65). Desktop only: a phone has no keys.",
+    built: { area: "shell", screen: "keys", kind: "undrawn" },
+    steps: [...open, ...openKeys()],
   }),
   d({
     id: "desktop-item-wallet-gate",

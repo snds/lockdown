@@ -1,5 +1,6 @@
 import { AppFrameTopRow, AppLockup, FloatButton, TopBar, useAppFrame, type NavMarkProp } from "@unicron/ui"
 
+import { useHeldTopBarActions } from "./detail-bottom-row"
 import { place, usePlaces } from "./places"
 
 interface TopRowProps {
@@ -16,13 +17,27 @@ interface TopRowProps {
  * Once the page has scrolled the frame keeps the mark, shows the place as
  * a small centred title (the switcher, where the head is one) and draws a
  * hairline. A pushed screen gets the top bar instead: back, the title once
- * its own head has scrolled away, and on Settings the Lock button.
+ * its own head has scrolled away (the large title collapses into it), the
+ * actions the screen handed up (`useDetailTopBar`, up to two), and on
+ * Settings the Lock button after them. On a short screen the frame keeps
+ * the top bar at the top of the content and moves the row's buttons to the
+ * trailing column.
  */
 export function TopRow({ onLeave, onLock, settingsMark }: TopRowProps) {
   const frame = useAppFrame()
   const { nav, go } = usePlaces()
+  // What the pushed screen handed up for its top bar (edit, more): before Lock on Settings.
+  const held = useHeldTopBarActions()
   if (!frame.phone) return null
   const lock = <FloatButton label="Lock" icon="locked" size="l" onClick={onLock} />
+  const settingsActions = held ? (
+    <>
+      {held}
+      {lock}
+    </>
+  ) : (
+    lock
+  )
   if (frame.detailOpen) {
     // An open item, or an open Settings section: back to its list.
     return (
@@ -33,7 +48,7 @@ export function TopRow({ onLeave, onLock, settingsMark }: TopRowProps) {
           // A Settings section's own head is a level below: the bar carries the page's name.
           title={nav.area === "settings" ? place("settings")?.label : undefined}
           titleAs={nav.area === "settings" ? "h1" : undefined}
-          actions={nav.area === "settings" ? lock : undefined}
+          actions={nav.area === "settings" ? settingsActions : (held ?? undefined)}
         />
       </AppFrameTopRow>
     )
@@ -41,13 +56,13 @@ export function TopRow({ onLeave, onLock, settingsMark }: TopRowProps) {
   if (nav.area === "settings")
     return (
       <AppFrameTopRow>
-        <TopBar onBack={onLeave} title={place("settings")?.label} titleAs="h1" actions={lock} />
+        <TopBar onBack={onLeave} title={place("settings")?.label} titleAs="h1" actions={settingsActions} />
       </AppFrameTopRow>
     )
   if (nav.area === "search" || nav.area === "sharing")
     return (
       <AppFrameTopRow>
-        <TopBar onBack={onLeave} />
+        <TopBar onBack={onLeave} actions={held ?? undefined} />
       </AppFrameTopRow>
     )
   return (

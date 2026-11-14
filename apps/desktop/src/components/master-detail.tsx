@@ -2,6 +2,7 @@ import { createContext, useContext, type ReactNode } from "react"
 
 import { AppFrameColumn, AppFrameDetail, AppFrameInset, AppFrameList, EmptyState, useAppFrame, type IconName } from "@unicron/ui"
 
+import { useDetailTopBarHandUp } from "@/app/detail-bottom-row"
 import { ScreenHead } from "@/app/page-head"
 
 interface MasterDetailProps {
@@ -30,6 +31,16 @@ interface MasterDetailProps {
  * its detail over it; the way back is the shell's (the phone's top bar, the
  * status line's leading slot at medium width), which the frame hands
  * `onBack`. Each column scrolls by itself.
+ *
+ * On a book-pose fold (a foldable held open like a book) the frame splits
+ * list and detail at the hinge whatever the width, each in one half, and
+ * "Nothing open." stands in the far half until a row is chosen (brief X6,
+ * contract 5.1b #10). A phone on its side keeps the pushed detail; its bars
+ * stand in the trailing column.
+ *
+ * A pushed detail on a phone hands its top-bar actions up with
+ * `useDetailTopBar` and its bottom row with `useDetailBottomRow`
+ * (`app/detail-bottom-row.tsx`).
  */
 export function MasterDetail({ header, title, list, detail, onBack, emptyLabel }: MasterDetailProps) {
   const frame = useAppFrame()
@@ -54,6 +65,17 @@ export function MasterDetail({ header, title, list, detail, onBack, emptyLabel }
       </AppFrameDetail>
     </>
   )
+}
+
+/**
+ * A pushed screen's top-bar actions on a phone (brief 3.3): up to two
+ * neutral `FloatButton`s (size `l`) after the small centred title, such as
+ * Edit and More. Returns whether the top bar draws them, so the screen can
+ * leave out its own buttons for the same actions; beside the list they stay
+ * in the screen. Pass the same element while nothing about it changes.
+ */
+export function useDetailTopBar(actions: ReactNode): boolean {
+  return useDetailTopBarHandUp(actions)
 }
 
 const EmbeddedContext = createContext(false)

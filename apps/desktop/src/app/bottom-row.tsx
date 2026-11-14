@@ -5,6 +5,7 @@ import { AppFrameBottomRow, DropdownMenu, DropdownMenuContent, DropdownMenuTrigg
 import { QuickCreateItems } from "@/features/vault/new-item-menu"
 import { countName } from "@/lib/format"
 
+import { usePushed } from "./detail-bottom-row"
 import { SECTIONS_BAR, sectionOf, usePlaces, type Section } from "./places"
 
 interface BottomRowProps {
@@ -23,13 +24,17 @@ interface BottomRowProps {
  * the tab bar of Items, Codes and Health, and create. Scrolled, the frame
  * shrinks the bar to the active tab. Search keeps the row with its button
  * current and no tab active. A pushed screen (an item, Sharing, Settings)
- * has no tab bar; found-4 gives an open item its own row.
+ * has no tab bar; its own row is `PushedBottomRow`, filled by the screen
+ * (`useDetailBottomRow`). On a short screen the frame stands the row in the
+ * trailing column with the tab bar turned vertical, and while the on-screen
+ * keyboard is up the frame hides it.
  */
 export function BottomRow({ toFix, onCreate, onQuickCreate, onReselect }: BottomRowProps) {
   const frame = useAppFrame()
   const { nav, go } = usePlaces()
   const [quick, setQuick] = useState(false)
-  if (!frame.phone || frame.detailOpen || nav.area === "settings" || nav.area === "sharing") return null
+  const pushed = usePushed()
+  if (!frame.phone || pushed) return null
   const searching = nav.area === "search"
   return (
     <AppFrameBottomRow

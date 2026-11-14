@@ -19,8 +19,12 @@ export const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 /** A name that starts with these words (a row's title before its details, an entry before its count). */
 export const starts = (s: string) => new RegExp(`^${esc(s)}(\\s|,|$)`)
 
-/** The unlocked app has drawn: the list's heading ("All items" beside the sidebar, "Items" where the head is the switcher). The same wait on the desktop and in the web vault. */
-export const VAULT_OPEN: Step = { wait: /^(All items|Items)$/, role: "heading" }
+/**
+ * The unlocked app has drawn: the list's heading ("All items" beside the sidebar, "Items" where the head is the
+ * switcher). On a short screen (844 × 390) the head draws its small form, whose heading holds the switcher
+ * button, so the heading reads "Items, Switch vault" there. The same wait on the desktop and in the web vault.
+ */
+export const VAULT_OPEN: Step = { wait: /^(All items|Items)(, Switch vault)?$/, role: "heading" }
 
 const SIDEBAR = 'nav[aria-label="Sidebar"]'
 const SECTIONS = 'nav[aria-label="Settings sections"]'
@@ -205,6 +209,9 @@ export const lock = (): Step[] => [
     phone: [settings, { click: "Lock", role: "button" }],
   }),
 ]
+
+/** Opens the keys list with `?` (brief X6), from the page, not a field. Desktop widths: a phone has no keys. */
+export const openKeys = (): Step[] => [{ run: () => (document.activeElement as HTMLElement | null)?.blur() }, { key: "?" }, { wait: "Keyboard shortcuts", role: "dialog" }]
 
 /** Answers the gate a protected action raises, with the password it asks for. */
 export const answerGate = (password: string): Step[] => [{ fill: /password/i, value: password }, { click: /^(Confirm|Continue|Unlock)$/ }]
