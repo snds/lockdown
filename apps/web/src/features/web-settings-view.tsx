@@ -20,7 +20,7 @@ import { Embedded } from "@/components/master-detail"
 import { describeError, useClient } from "@/core/client"
 import type { Density, LockState, RevealGesture, Status } from "@/core/types"
 import { DevicesView } from "@/features/devices/devices-view"
-import { SettingsPlaces } from "@/features/settings/settings-view"
+import { SettingsPlaces } from "@/features/settings/settings-places"
 import { ServerChecks } from "@/features/server/server-checks"
 import { ThemeSetting } from "@/features/settings/theme-setting"
 

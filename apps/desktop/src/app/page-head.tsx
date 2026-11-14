@@ -40,11 +40,12 @@ export const PageHeadProvider = PageHeadContext.Provider
 /**
  * A screen's page head, ready for `AppFramePageHead`: what the screen
  * says, with what the shell knows about the place laid over it (the
- * switcher, its overline, the chip row). Spread the result:
- * `<AppFramePageHead {...usePageHead({ title: "Codes", count })} />`.
+ * switcher, its overline, the chip row). `ScreenHead` draws it; a screen
+ * that needs more of `AppFramePageHead` reads the values and passes them by
+ * name (never as a spread: the design-system ratchet counts one).
  * The title is display/compact on a phone and the title role in a pane.
  */
-export function usePageHead(own: PageHeadOwn): AppFramePageHeadProps {
+export function usePageHead(own: PageHeadOwn): AppFramePageHeadProps & { title: string } {
   const shell = useContext(PageHeadContext)
   const frame = useAppFrame()
   return {
@@ -60,7 +61,12 @@ export function usePageHead(own: PageHeadOwn): AppFramePageHeadProps {
   }
 }
 
-/** A screen's head, drawn: `usePageHead` on `AppFramePageHead`. */
+/**
+ * A screen's head, drawn: `usePageHead` on `AppFramePageHead`. Each prop is
+ * passed by name: a spread onto a unicron part is something the design-system
+ * ratchet counts.
+ */
 export function ScreenHead(props: PageHeadOwn) {
-  return <AppFramePageHead {...usePageHead(props)} />
+  const head = usePageHead(props)
+  return <AppFramePageHead size={head.size} overline={head.overline} title={head.title} count={head.count} meta={head.meta} actions={head.actions} switcher={head.switcher} below={head.below} gap={head.gap} />
 }

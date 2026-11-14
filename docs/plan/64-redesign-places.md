@@ -8,7 +8,7 @@ _Slice: `found-3` of the 2026-11 redesign, on `claude/keen-ritchie-q2hgb2`, buil
 - **Do:**
   - Move with `usePlaces().go("<place id>")`. Never build a `Nav` by hand in a screen.
   - Name a deeper place in the breadcrumb with `useCrumb(["Ticketmaster"])`.
-  - Draw a screen's head with `usePageHead({ overline, title, count, meta, actions, switcher })` on `AppFramePageHead`, or `PaneHeader` for a title and actions. The shell lays the vault switcher and the chips over it where they apply.
+  - Draw a screen's head with `ScreenHead` (`{ overline, title, count, meta, actions, switcher }`), or `PaneHeader` for a title and actions. The shell lays the vault switcher and the chips over it where they apply. `usePageHead` gives the same values to a screen that needs more of `AppFramePageHead`; pass them by name, never as a spread (the ratchet counts one).
   - Use `MasterDetail` for a list beside a detail and `PageColumn` for a screen that is one column. Both are the frame's own columns.
   - Open the editor with `useShell().edit(target)`. The shell mounts the one `ItemEditor` for new items.
   - Write counts, countdowns and row dates with `lib/format.ts`.
@@ -108,7 +108,7 @@ In the rail and on a phone the three sections stand for the places inside them. 
 | Web: Links, People | Sharing → Links, People |
 | Web: `#/devices` | Opens Settings → Devices |
 
-**Settings** (`features/settings/settings-view.tsx`, `SettingsPlaces`) is unicron's `SettingsFrame` over the sections the table lists: 14 in four groups on the desktop, 4 in the web vault.
+**Settings** (`features/settings/settings-places.tsx`, mounted by `settings-view.tsx` and the web's `web-settings-view.tsx`) is unicron's `SettingsFrame` over the sections the table lists: 14 in four groups on the desktop, 4 in the web vault.
 
 | Group | Sections |
 |---|---|
@@ -134,7 +134,7 @@ Each section mounts today's component. Devices, Recovery and Status are today's 
 | `QuickCreateItems`, `NewItemMenu` (`trigger`, `open`) | `features/vault/new-item-menu.tsx` |
 | `EditorTarget.website` | `features/vault/item-editor.tsx` |
 | `toFixCount(report, rows)` | `features/security/security-model.ts` |
-| `SettingsPlaces` | `features/settings/settings-view.tsx` |
+| `SettingsPlaces` | `features/settings/settings-places.tsx` |
 | `SharingView` `section`, `onSection`, `vault` | `features/sharing/sharing-view.tsx` |
 
 **Words.** Counts follow one rule: `04`, `248`, `1,204`, and `99+` on a mark. A count's accessible name is the number and its noun ("61 items", "3 to fix"). Countdowns are `MM:SS`, and `NN S` under a minute. A row's date is `Today 09:02`, `Yesterday 18:40`, `MON 09:02`, `NOV 02`, then `2026.10.02`.

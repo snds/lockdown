@@ -11,7 +11,7 @@ import { MasterDetail, PageColumn, PaneHeader } from "@/components/master-detail
 import { ClientProvider } from "@/core/client"
 import type { ItemSummary, VaultView } from "@/core/types"
 import { VaultsProvider } from "@/features/organization/vaults-context"
-import { SettingsPlaces } from "@/features/settings/settings-view"
+import { SettingsPlaces } from "@/features/settings/settings-places"
 import { SharingClientProvider, type SharingOverview } from "@/features/sharing/sharing-client"
 import { SharingView } from "@/features/sharing/sharing-view"
 import { VIEW_LABELS } from "@/features/vault/list-model"

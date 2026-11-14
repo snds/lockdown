@@ -110,9 +110,11 @@ export const vaultOpen = (page: Page): Locator => page.getByRole("heading", { na
 
 /** Locks the vault from the shell: beside Settings in the sidebar and its rail, in Settings' top bar on a phone. */
 export async function lock(page: Page) {
-  if ((await shell(page)) === "phone") await settings(page)
-  else await sidebar(page).getByRole("button", { name: "Lock", exact: true }).click()
-  if ((await shell(page)) === "phone") await page.getByRole("button", { name: "Lock", exact: true }).click()
+  // Which shell is drawn is read once: once the vault locks no sidebar is drawn, which would read as a phone.
+  if ((await shell(page)) === "phone") {
+    await settings(page)
+    await page.getByRole("button", { name: "Lock", exact: true }).click()
+  } else await sidebar(page).getByRole("button", { name: "Lock", exact: true }).click()
 }
 
 /** The error a page, a form or a dialog shows. */

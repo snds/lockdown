@@ -1,10 +1,8 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 
 import { useTheme } from "next-themes"
 
 import {
-  AppFrameInset,
-  AppFramePageHead,
   Button,
   Field,
   FieldDescription,
@@ -14,15 +12,13 @@ import {
   Input,
   NativeSelect,
   NativeSelectOption,
-  SettingsFrame,
   Switch,
   ToggleGroup,
   ToggleGroupItem,
-  useAppFrame,
 } from "@unicron/ui"
 
 import { useSettings } from "@/app/settings"
-import { deviceName, settingsSections, usePlaces, type SettingsSection } from "@/app/places"
+import { usePlaces } from "@/app/places"
 import { Embedded } from "@/components/master-detail"
 import { describeError, useClient } from "@/core/client"
 import type { ApprovalRoute, Density, LockState, RevealGesture, Status } from "@/core/types"
@@ -32,7 +28,6 @@ import { ClockSetting } from "@/features/bridges/clock"
 import { ExportDialog } from "@/features/export/export-dialog"
 import { ImportWizard } from "@/features/import/import-wizard"
 import { DevicesView } from "@/features/devices/devices-view"
-import { isMac } from "@/features/palette/palette-model"
 import { RecoveryView } from "@/features/recovery/recovery-view"
 import { SecuritySettings } from "@/features/security/security-settings"
 import { StatusView } from "@/features/status/status-view"
@@ -43,6 +38,7 @@ import { ServerSettings } from "@/features/server/server-settings"
 import { useFirstRunClient, type QuickUnlock } from "@/features/unlock/first-run-client"
 import { AboutSection } from "@/features/updates/about-section"
 
+import { SettingsPlaces } from "./settings-places"
 import { ThemeSetting, type ThemeChoice } from "./theme-setting"
 
 /** The Theme row's words for next-themes' own: Stone is its light, Graphite its dark. */
@@ -339,53 +335,6 @@ export function SettingsView({ status, onStatus, lock, onLock, onChanged, onNoti
       />
       <ExportDialog open={transfer === "export"} onClose={() => setTransfer(null)} onNotice={onNotice} />
     </>
-  )
-}
-
-/** The Settings groups' overlines; the device's is its real kind (cross-app decisions §5). */
-const GROUP_TITLES = { account: "Account", vault: "Vault", lockdown: "Lockdown" } as const
-
-interface SettingsPlacesProps {
-  /** On a phone and at medium width: the device's own rows, drawn first, above the list of every other section (brief T0). */
-  overview?: ReactNode
-  /** The open section's content. */
-  children: (shown: SettingsSection) => ReactNode
-}
-
-/**
- * Settings as places (brief T0, doc 64): unicron's `SettingsFrame` over the
- * sections `places.ts` lists for this build, with the open one read from
- * and written to the shell's `Nav`. The desktop app and the web vault both
- * mount it and give it their own sections' content. With room for two
- * columns the section list stands beside the open section; narrower, the
- * device's rows come first, then the list, and a section is a pushed screen.
- */
-export function SettingsPlaces({ overview, children }: SettingsPlacesProps) {
-  const { nav, surface, go } = usePlaces()
-  const frame = useAppFrame()
-  const device = deviceName(surface, isMac())
-  const all = settingsSections(surface)
-  // Narrower than two columns the device's rows are the overview, so its section is not listed twice.
-  const listed = frame.split || !overview ? all : all.filter((p) => p.nav.section !== "this-device")
-  const sections = listed.map((p) => ({
-    value: p.nav.section as string,
-    label: p.nav.section === "this-device" ? device : p.label,
-    icon: p.icon,
-    group: p.settingsGroup === "device" ? device : GROUP_TITLES[p.settingsGroup ?? "account"],
-    description: p.description,
-  }))
-  const open = nav.section && listed.some((p) => p.nav.section === nav.section) ? nav.section : null
-  const shown = open ?? (frame.split ? (listed[0]?.nav.section ?? null) : null)
-  return (
-    <SettingsFrame
-      sections={sections}
-      value={open}
-      onValueChange={(value) => go(value ? `settings-${value}` : "settings")}
-      overview={overview ? <AppFrameInset>{overview}</AppFrameInset> : undefined}
-      head={frame.phone ? undefined : <AppFramePageHead title="Settings" size="sm" gap="sm" />}
-    >
-      {shown ? <AppFrameInset>{children(shown)}</AppFrameInset> : null}
-    </SettingsFrame>
   )
 }
 
