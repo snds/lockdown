@@ -73,7 +73,7 @@ export function SharingView({ rows, onOpenItem, onChanged, onNotice }: SharingVi
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-(--c-section-gap) p-(--c-page-gutter-narrow) md:p-(--c-page-gutter)">
       <PaneHeader title="Sharing">
         <Button size="sm" variant="outline" onClick={changed} disabled={loading}>
-          {loading ? <Spinner data-icon="inline-start" /> : <Icon name="refresh" data-icon="inline-start" />}
+          {loading ? <Spinner data-icon="inline-start" /> : <Icon name="renew" data-icon="inline-start" />}
           Refresh
         </Button>
       </PaneHeader>

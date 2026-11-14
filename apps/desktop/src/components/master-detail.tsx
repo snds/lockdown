@@ -42,7 +42,7 @@ export function MasterDetail({ header, title, list, detail, onBack, emptyIcon, e
           <>
             <div className="flex h-12 shrink-0 items-center gap-1 px-2 md:hidden">
               <Button variant="ghost" size="icon" onClick={onBack} aria-label="Back">
-                <Icon name="arrow_back" />
+                <Icon name="arrow--left" />
               </Button>
               <h1 className="sr-only">{title}</h1>
             </div>

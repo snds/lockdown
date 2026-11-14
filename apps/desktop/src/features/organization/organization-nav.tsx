@@ -16,8 +16,8 @@ import {
   Icon,
   IconButton,
   Separator,
+  toast,
 } from "@unicron/ui"
-import { toast } from "sonner"
 
 import { NavRow, type Nav } from "@/app/shell"
 import { describeError, useClient } from "@/core/client"
@@ -156,13 +156,13 @@ export function OrganizationNav({ rows, nav, onNavigate }: OrganizationNavProps)
           <li key={v.id} className="flex flex-col gap-1">
             <div className="flex items-center gap-1">
               <div className="min-w-0 flex-1">
-                <NavRow icon={v.sharing ? (v.sharing.kind === "family" ? "home" : v.sharing.kind === "emergency" ? "emergency" : "group") : "shelves"} label={v.sharing && !v.sharing.owned && v.sharing.owner ? `${v.name} · ${v.sharing.owner}` : v.name} count={counts.byVault.get(v.id)} current={nav.area === "vault" && same(nav.scope, { vault: v.id })} onClick={() => go({ vault: v.id })} />
+                <NavRow icon={v.sharing ? (v.sharing.kind === "family" ? "home" : v.sharing.kind === "emergency" ? "asterisk" : "user--multiple") : "user--avatar"} label={v.sharing && !v.sharing.owned && v.sharing.owner ? `${v.name} · ${v.sharing.owner}` : v.name} count={counts.byVault.get(v.id)} current={nav.area === "vault" && same(nav.scope, { vault: v.id })} onClick={() => go({ vault: v.id })} />
               </div>
               <DropdownMenu>
-                <DropdownMenuTrigger render={<IconButton label={`${v.name} options`} icon="more_horiz" size="icon-sm" variant="ghost" />} />
+                <DropdownMenuTrigger render={<IconButton label={`${v.name} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" />} />
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => newFolder(v, null)}>
-                    <Icon name="create_new_folder" />
+                    <Icon name="folder--add" />
                     New folder
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => renameVault(v)}>
@@ -171,7 +171,7 @@ export function OrganizationNav({ rows, nav, onNavigate }: OrganizationNavProps)
                   </DropdownMenuItem>
                   <DropdownMenuSub>
                     <DropdownMenuSubTrigger>
-                      <Icon name="delete" />
+                      <Icon name="trash-can" />
                       Keep trashed items
                     </DropdownMenuSubTrigger>
                     <DropdownMenuSubContent>
@@ -196,7 +196,7 @@ export function OrganizationNav({ rows, nav, onNavigate }: OrganizationNavProps)
                   <li key={f.id} className="flex items-center gap-1">
                     <div className="min-w-0 flex-1">
                       <NavRow
-                        icon={nav.scope?.folder === f.id ? "folder_open" : "folder"}
+                        icon={nav.scope?.folder === f.id ? "folder--open" : "folder"}
                         label={f.name}
                         depth={f.depth + 1}
                         count={counts.byFolder.get(f.id)}
@@ -205,10 +205,10 @@ export function OrganizationNav({ rows, nav, onNavigate }: OrganizationNavProps)
                       />
                     </div>
                     <DropdownMenu>
-                      <DropdownMenuTrigger render={<IconButton label={`${f.name} options`} icon="more_horiz" size="icon-sm" variant="ghost" />} />
+                      <DropdownMenuTrigger render={<IconButton label={`${f.name} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" />} />
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => newFolder(v, f.id)}>
-                          <Icon name="create_new_folder" />
+                          <Icon name="folder--add" />
                           New folder inside
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => renameFolder(v, f.id, f.name, f.parent)}>
@@ -217,13 +217,13 @@ export function OrganizationNav({ rows, nav, onNavigate }: OrganizationNavProps)
                         </DropdownMenuItem>
                         {f.parent && (
                           <DropdownMenuItem onClick={() => void client.changeFolder(v.id, f.id, f.name, null).then(done("Moved to the top.")).catch(fail)}>
-                            <Icon name="drive_file_move" />
+                            <Icon name="folder--move-to" />
                             Move to the top
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem variant="destructive" onClick={() => removeFolder(v, f.id, f.name)}>
-                          <Icon name="delete" />
+                          <Icon name="trash-can" />
                           Remove
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -242,17 +242,17 @@ export function OrganizationNav({ rows, nav, onNavigate }: OrganizationNavProps)
             {tags.map((t) => (
               <li key={t.tag} className="flex items-center gap-1">
                 <div className="min-w-0 flex-1">
-                  <NavRow icon="sell" label={t.name} depth={t.depth} count={t.count} current={nav.area === "vault" && nav.scope?.tag === t.tag} onClick={() => go({ tag: t.tag })} />
+                  <NavRow icon="tag" label={t.name} depth={t.depth} count={t.count} current={nav.area === "vault" && nav.scope?.tag === t.tag} onClick={() => go({ tag: t.tag })} />
                 </div>
                 <DropdownMenu>
-                  <DropdownMenuTrigger render={<IconButton label={`#${t.tag} options`} icon="more_horiz" size="icon-sm" variant="ghost" />} />
+                  <DropdownMenuTrigger render={<IconButton label={`#${t.tag} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" />} />
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={() => renameTag(t.tag)}>
                       <Icon name="edit" />
                       Rename
                     </DropdownMenuItem>
                     <DropdownMenuItem variant="destructive" onClick={() => removeTag(t.tag)}>
-                      <Icon name="delete" />
+                      <Icon name="trash-can" />
                       Take off every item
                     </DropdownMenuItem>
                   </DropdownMenuContent>

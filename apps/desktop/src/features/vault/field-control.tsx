@@ -134,7 +134,7 @@ export function FieldControl({ row, onChange, onDiscard, context = NO_CONTEXT, l
     const actions = (
       <>
         {words && <IconButton label={`Generate ${row.label.toLowerCase()}`} tooltip={`Generate: ${words}`} icon="password" onClick={() => onChange({ secret: "generate", text: "" })} />}
-        {row.exists && !required && <IconButton label={`Remove ${row.label.toLowerCase()}`} icon="delete" onClick={() => onChange({ secret: "remove", text: "" })} />}
+        {row.exists && !required && <IconButton label={`Remove ${row.label.toLowerCase()}`} icon="trash-can" onClick={() => onChange({ secret: "remove", text: "" })} />}
         {discard}
       </>
     )
@@ -156,7 +156,7 @@ export function FieldControl({ row, onChange, onDiscard, context = NO_CONTEXT, l
           crownJewel ? (
             <>
               {description && <>{description} </>}
-              <Icon name="lock" data-icon="inline-start" />
+              <Icon name="locked" data-icon="inline-start" />
               Kept as a crown jewel: showing, copying or changing it always asks it's you first.
             </>
           ) : (

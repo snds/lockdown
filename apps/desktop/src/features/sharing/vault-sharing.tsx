@@ -64,7 +64,7 @@ export function VaultsSection({ vaults, contacts, online, onChanged, onNotice }:
             </ItemContent>
             <ItemActions>
               <Button variant="outline" size="sm" disabled={!online} onClick={() => setOpen(v)}>
-                <Icon name="group" data-icon="inline-start" />
+                <Icon name="user--multiple" data-icon="inline-start" />
                 {v.sharing && !v.sharing.owned ? "Who has it" : "Manage sharing"}
               </Button>
             </ItemActions>
@@ -248,7 +248,7 @@ export function VaultSharingDialog({ vault, contacts, onClose, onNotice }: Vault
                       </NativeSelect>
                     </Field>
                     <Button type="submit" size="sm" disabled={busy}>
-                      <Icon name="person_add" data-icon="inline-start" />
+                      <Icon name="user--follow" data-icon="inline-start" />
                       Add
                     </Button>
                   </>

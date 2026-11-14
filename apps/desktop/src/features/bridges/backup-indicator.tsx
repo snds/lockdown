@@ -39,7 +39,7 @@ export function BackupIndicator({ onOpen }: { onOpen: () => void }) {
   return (
     <Button variant="ghost" size="sm" onClick={onOpen} aria-label={`${text}. Open backup settings`}>
       <span className={late ? "text-attention-text" : "text-muted-foreground"}>
-        <Icon name={late ? "warning" : "backup"} />
+        <Icon name={late ? "warning--alt" : "cloud--upload"} />
       </span>
       <span className={late ? "text-attention-text" : "text-muted-foreground"}>{text}</span>
     </Button>

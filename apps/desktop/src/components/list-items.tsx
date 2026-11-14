@@ -2,11 +2,14 @@ import { Children, Fragment, isValidElement, type ReactElement, type ReactNode }
 
 /**
  * Each child of a `role="list"` container in its own `role="listitem"`
- * wrapper (design review R7). unicron's `ItemGroup` is a list, and so is a
- * list Lockdown marks itself, but a detail block holds whatever its kind
+ * wrapper (design review R7). A detail block holds whatever its kind
  * draws (a secret field, a code, a passkey list, a sentence), none of them a
  * list item. A list whose children aren't items is no list to a screen
  * reader, so every child gets one.
+ *
+ * The container is a plain `role="list"` element, not unicron's `ItemGroup`:
+ * from unicron 1.0 an `Item` inside an `ItemGroup` takes the list-item role
+ * itself, which would put an item inside this wrapper's item.
  *
  * Fragments are opened, so `<>{a}{b}</>` is two items, not one; empty
  * children (`null`, `false`) are left out, so a block never announces an

@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { toast } from "sonner"
+import { toast } from "@unicron/ui"
 
 import { useClient } from "@/core/client"
 import type { LockState } from "@/core/types"

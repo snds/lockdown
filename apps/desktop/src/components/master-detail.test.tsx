@@ -10,7 +10,7 @@ const tree = (detail: ReactNode | null) => (
     list={<p>rows</p>}
     detail={detail}
     onBack={() => {}}
-    emptyIcon="key"
+    emptyIcon="password"
     emptyLabel="Pick an item."
   />
 )

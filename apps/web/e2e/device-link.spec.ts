@@ -88,7 +88,8 @@ test("a tab with nothing on it joins through a signed-in tab's device link", asy
 
   // The first tab approves behind its password gate.
   await compare.getByRole("button", { name: "Approve" }).click()
-  await first.getByLabel("Account password").fill(PASSWORD)
+  // By its exact name: from unicron 1.0 the gate's field has a "Show Account password" button beside it.
+  await first.getByLabel("Account password", { exact: true }).fill(PASSWORD)
   await first.getByRole("button", { name: "Confirm" }).click()
   await expect(compare).toBeHidden({ timeout: 60_000 })
 

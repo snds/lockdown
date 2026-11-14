@@ -170,7 +170,7 @@ function ProviderCard({
           {p.warnings.map((w) => (
             <li key={w} className="flex gap-2">
               <span className="text-attention-text">
-                <Icon name="warning" />
+                <Icon name="warning--alt" />
               </span>
               <span>{w}</span>
             </li>

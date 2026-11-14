@@ -42,7 +42,7 @@ export function GuideButton({ itemId, onNotice }: { itemId: string; onNotice: (t
   return (
     <>
       <Button size="sm" variant="outline" onClick={() => void open()} disabled={busy}>
-        {busy ? <Spinner data-icon="inline-start" /> : <Icon name="menu_book" data-icon="inline-start" />}
+        {busy ? <Spinner data-icon="inline-start" /> : <Icon name="book" data-icon="inline-start" />}
         Set-up guide
       </Button>
       <SetupGuideDialog guide={guide} onClose={() => setGuide(null)} onNotice={onNotice} />
@@ -89,13 +89,13 @@ export function SetupGuideDialog({
               <div className="flex flex-wrap gap-2">
                 {guide.recovery_url && (
                   <Button size="sm" variant="ghost" onClick={() => open(guide.recovery_url ?? "")}>
-                    <Icon name="open_in_new" data-icon="inline-start" />
+                    <Icon name="launch" data-icon="inline-start" />
                     Account recovery page
                   </Button>
                 )}
                 {guide.passkey_url && (
                   <Button size="sm" variant="ghost" onClick={() => open(guide.passkey_url ?? "")}>
-                    <Icon name="open_in_new" data-icon="inline-start" />
+                    <Icon name="launch" data-icon="inline-start" />
                     About passkeys there
                   </Button>
                 )}
@@ -110,7 +110,7 @@ export function SetupGuideDialog({
               </LabelledAction>
               {guide.setup_url && (
                 <Button onClick={() => open(guide.setup_url ?? "")}>
-                  <Icon name="open_in_new" data-icon="inline-start" />
+                  <Icon name="launch" data-icon="inline-start" />
                   Set it up
                 </Button>
               )}

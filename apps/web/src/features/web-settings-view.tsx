@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react"
+import { useState, useSyncExternalStore, type ReactNode } from "react"
 
 import {
   Button,
@@ -11,6 +11,7 @@ import {
   Switch,
   ToggleGroup,
   ToggleGroupItem,
+  toast,
 } from "@unicron/ui"
 
 import { useSettings } from "@/app/settings"
@@ -18,7 +19,9 @@ import { PaneHeader } from "@/components/master-detail"
 import { describeError, useClient } from "@/core/client"
 import type { Density, LockState, RevealGesture } from "@/core/types"
 import { ServerChecks } from "@/features/server/server-checks"
-import { toast } from "sonner"
+import { ThemeSetting } from "@/features/settings/theme-setting"
+
+import { setThemeChoice, subscribeTheme, themeChoice } from "../theme"
 
 const IDLE_CHOICES: Array<[string, number | null]> = [
   ["1 minute", 60],
@@ -59,6 +62,8 @@ export function WebSettingsView({ server, login, onLock, onSignOut }: WebSetting
   const { settings, update } = useSettings()
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // The ground is a choice kept in this browser (src/theme.ts), not a setting of the vault (doc 62 §3).
+  const theme = useSyncExternalStore(subscribeTheme, themeChoice)
 
   const save = async (change: Parameters<typeof update>[0]) => {
     setBusy(true)
@@ -137,6 +142,7 @@ export function WebSettingsView({ server, login, onLock, onSignOut }: WebSetting
       </Section>
 
       <Section title="Appearance">
+        <ThemeSetting value={theme} onChange={setThemeChoice} />
         <Field orientation="horizontal">
           <FieldLabel id="density-label">Density</FieldLabel>
           <ToggleGroup aria-labelledby="density-label" value={[settings.density]} onValueChange={(v) => v[0] && void save({ density: v[0] as Density })} disabled={busy}>

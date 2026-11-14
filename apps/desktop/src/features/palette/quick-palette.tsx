@@ -190,7 +190,7 @@ function PaletteBody({ onOpenChange, rows, onOpen, onNotice, inline = false }: Q
                 <span className="flex min-w-0 flex-col">
                   <span className="flex items-center gap-1 truncate">
                     {r.title || hostOf(r.site) || kindLabel(r.kind)}
-                    {r.favourite && <Icon name="star" fill label="favourite" />}
+                    {r.favourite && <Icon name="star--filled" label="favourite" />}
                     {r.crown_jewel && <CrownJewelMark size="sm" />}
                     {!r.exact && <span className="text-xs text-muted-foreground">Close match</span>}
                   </span>
@@ -201,7 +201,7 @@ function PaletteBody({ onOpenChange, rows, onOpen, onNotice, inline = false }: Q
                     </span>
                   )}
                 </span>
-                {r.copy && <CommandItemAction label={`Copy ${r.copy.label}`} icon="content_copy" onAction={() => copy(r)} />}
+                {r.copy && <CommandItemAction label={`Copy ${r.copy.label}`} icon="copy" onAction={() => copy(r)} />}
               </CommandItem>
             ))}
           </CommandGroup>
@@ -211,13 +211,13 @@ function PaletteBody({ onOpenChange, rows, onOpen, onNotice, inline = false }: Q
         <div className="flex flex-wrap items-center gap-2 border-t px-2 py-1.5" role="group" aria-label={`More for ${activeRow.title || "this item"}`}>
           {activeRow.copy?.how === "code" && (
             <Button variant="ghost" size="sm" onClick={() => void showCode(activeRow)}>
-              <Icon name="pin" data-icon="inline-start" />
+              <Icon name="string-integer" data-icon="inline-start" />
               Show code <span className="text-muted-foreground">{keys.code}</span>
             </Button>
           )}
           {canFill(activeRow) && (
             <Button variant="ghost" size="sm" onClick={() => void fill(activeRow)}>
-              <Icon name="open_in_browser" data-icon="inline-start" />
+              <Icon name="launch" data-icon="inline-start" />
               Fill in the browser <span className="text-muted-foreground">{keys.fill}</span>
             </Button>
           )}

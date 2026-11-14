@@ -149,12 +149,29 @@ test("sign in as a new device, find, create, edit, find, lock, unlock and sign o
   await unlock.getByRole("button", { name: "Unlock" }).click()
   await expect(page.getByRole("button", { name: /Example mail \(work\)/ }).first()).toBeVisible({ timeout: 60_000 })
 
-  // Sign out: the edit reaches the server first, then the tab forgets it all.
+  // The theme (doc 62 §3): this browser prefers light, so the page starts on stone, with System on.
   await sidebar(page).getByRole("button", { name: "Settings" }).click()
+  const root = page.locator("html")
+  await expect(root).toHaveAttribute("data-theme", "lockdown")
+  await expect(root).not.toHaveClass(/(^|\s)dark(\s|$)/)
+  await expect(page.getByRole("radio", { name: "System" })).toBeChecked()
+  // Graphite changes the whole page at once.
+  await page.getByRole("radio", { name: "Graphite" }).click()
+  await expect(root).toHaveClass(/(^|\s)dark(\s|$)/)
+  await expect(page.getByRole("radio", { name: "Graphite" })).toBeChecked()
+
+  // Sign out: the edit reaches the server first, then the tab forgets it all.
   await page.getByRole("button", { name: "Sign out of this tab" }).click()
   await expect(page.getByRole("tab", { name: "Sign in" })).toBeVisible()
   const listed = lockdown(["sync"]) && lockdown(["list"])
   expect(listed).toContain("Example mail (work)")
+
+  // The choice is the browser's, not the account's: it outlives the sign-out and a reload, and
+  // the page's own bundle applies it at the start, under the policy (no inline script).
+  await page.reload()
+  await expect(page.getByRole("tab", { name: "Sign in" })).toBeVisible()
+  await expect(root).toHaveClass(/(^|\s)dark(\s|$)/)
+  expect(await page.evaluate(() => window.localStorage.getItem("lockdown.theme"))).toBe("graphite")
 
   expect([...origins]).toEqual([new URL(baseURL!).origin])
   expect(problems).toEqual([])

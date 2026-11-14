@@ -137,7 +137,7 @@ export function AwayBlock({ itemId, title, away, canEdit, onChanged }: AwayBlock
         <h3 className="text-xs font-medium text-muted-foreground uppercase">Signed in elsewhere</h3>
         {canEdit && (
           <Button variant="ghost" size="sm" onClick={() => setLogging(true)}>
-            <Icon name="tv" data-icon="inline-start" />
+            <Icon name="screen" data-icon="inline-start" />
             Signing in on a TV?
           </Button>
         )}

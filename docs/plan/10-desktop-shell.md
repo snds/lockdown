@@ -157,28 +157,34 @@ A call on a locked vault answers `{ code: "locked" }`; the UI shows the unlock s
 
 ## 4. The app-extension layer
 
-`apps/desktop/src/styles/app-extension.css`, after `@unicron/ui/styles`. Tier-2 aliases only, swapped in `.dark`, exposed through its own `@theme inline` block. No raw values.
+`apps/desktop/src/styles/app-extension.css`, after `@unicron/ui/styles`. Tier-2 aliases only, exposed through its own `@theme inline` block. No raw values. From unicron 1.0 (doc 62 §4) every role points at a **core role**, never at `--g-neutral-*` or an accent ramp (those ramps are not themed), so each is the same on both grounds and is declared once, on `:root, .light, .dark, [data-theme]`; there is no `.dark` block. The app's theme is `data-theme="lockdown"` in each page's HTML; the `dark` class picks graphite, no class is stone.
 
-| Role | Light | Dark | Used for |
-|---|---|---|---|
-| `--surface-chrome` | `--g-neutral-50` | `--g-neutral-900` | rail and list pane |
-| `--surface-canvas` | `--g-neutral-0` | `--g-neutral-950` | detail pane |
-| `--surface-selected` | `--g-neutral-100` | `--g-neutral-800` | the selected row |
-| `--surface-locked` | `--g-neutral-100` | `--g-neutral-900` | the wash behind the unlock screen |
-| `--secure` | `--g-green-500` | `--g-green-500` | fill: locked / secure / verified, always with a word |
-| `--secure-foreground` | `--g-neutral-0` | `--g-neutral-0` | a label on that fill |
-| `--secure-text` | `--g-green-600` | `--g-green-300` | the same as words (Status's facts) |
-| `--danger` | `--destructive` | `--destructive` | revoke, trash |
-| `--attention-text` | `--attention-foreground` (the core's; `--g-amber-600`) | `--attention-foreground` (the core's; `--g-amber-300`) | needs attention as words (sidebar entry, Status) |
-| `--area-codes` | `--g-blue-500` | `--g-blue-500` | fill: the Codes view |
-| `--area-codes-foreground` | `--g-neutral-0` | `--g-neutral-0` | a label on that fill |
-| `--area-codes-text` | `--g-blue-600` | `--g-blue-300` | the same as words (the Codes sidebar entry) |
+| Role | Points at | Used for |
+|---|---|---|
+| `--surface-chrome` | `--surface-ground` | rail and list pane |
+| `--surface-canvas` | `--surface-ground` | detail pane |
+| `--surface-locked` | `--surface-ground` | the wash behind the unlock screen |
+| `--surface-selected` | `--primary-soft` | the selected row |
+| `--danger` | `--critical-text` | revoke, trash |
+| `--secure` | `--text-body` | **legacy, no new use.** Was the "verified" green fill; the word carries it now |
+| `--secure-foreground` | `--surface-ground` | **legacy, no new use.** A label on that fill |
+| `--secure-text` | `--text-body` | **legacy, no new use.** The same as words (Status's facts) |
+| `--attention-text` | the core's `--attention-foreground` on stone (amber 600, as before), `--warning` on graphite (amber 300, as before) | **legacy, no new use.** Needs attention as words (sidebar entry, Status) |
+| `--area-codes` | `--secondary-live` | **legacy, no new use.** Was the Codes fill |
+| `--area-codes-foreground` | `--surface-ground` | **legacy, no new use.** A label on that fill |
+| `--area-codes-text` | `--secondary-live` | **legacy, no new use.** The same as words (the Codes sidebar entry) |
 
-The six components take no app-extension tokens: their roles (`warning`, `info`, `protected`) and knobs (`--c-crown-jewel-*`, `--c-secret-field-*`, `--c-code-*`, `--c-large-type-*`, `--c-approval-*`, `--c-risk-tier-*`) ship in `@unicron/tokens` 0.2.0, and nothing here redefines them.
+The three legacy families keep their names so that no class silently stops drawing; each goes when the screens that name it are rebuilt (doc 62 §4.1, proposed D701). A new "verified" is a neutral Badge with the word; a new state word is a warning Badge; the live blue is for a code counting down. The layer no longer re-points `--sidebar`: the core's is `--surface-ground` already.
 
-**The core's attention family (`@unicron/ui` 0.24.0, `@unicron/tokens` 0.16.0).** Since tokens 0.15.0 the core has status roles of its own, `success`, `attention` and `running`, each with `-foreground` (the hue as words) and `-surface`, exposed as `--color-*`. This layer used to declare `--attention` (a fill, on `--warning`) and `--attention-foreground` (its label) itself; loaded after the core, they would have replaced the core's for every component that draws them (`StatusOrb`, `Indicator`, `AgentPrompt`), and the two `-foreground`s mean different things. It now declares neither. The one needs-attention fill, the password meter's "fair", is the core's `bg-warning`, which `--attention` always aliased; `--attention-text` names the core's `--attention-foreground`, on the same amber 600 / 300 steps. Nothing changes on screen.
+The six components take no app-extension tokens: their roles and knobs (`--c-crown-jewel-*`, `--c-secret-field-*`, `--c-code-*`, `--c-large-type-*`, `--c-approval-*`, `--c-risk-tier-*`) ship in `@unicron/tokens`, and nothing here redefines them. The master-password meter reads the secret field's own meter knobs (`--c-secret-field-meter-weak`, `-fair`, `-strong`), so it draws as unicron's meter does.
 
-The UI uses `bg-surface-*`, `text-secure-text`, `text-attention-text` and `text-area-codes-text` from this layer (a hue as words is always its `-text` role; the base role is for fills, §11); everything else is unicron's defaults. The tier-3 knobs gained density (D92): `--c-row-height`, `--c-row-pad-y`, `--c-row-gap`, `--c-group-pad-y`, each a multiple of Tailwind's `--spacing` from the unicron stylesheet (comfortable rows 10 units = 40 px, compact 8 = 32 px), switched by `:root[data-density="compact"]` and applied to any element marked `data-row` or `data-group-header`; no raw lengths, no `className` on a primitive.
+**The core's attention family (`@unicron/ui` 0.24.0, `@unicron/tokens` 0.16.0).** Since tokens 0.15.0 the core has status roles of its own, `success`, `attention` and `running`, each with `-foreground` (the hue as words) and `-surface`, exposed as `--color-*`. This layer used to declare `--attention` (a fill, on `--warning`) and `--attention-foreground` (its label) itself; loaded after the core, they would have replaced the core's for every component that draws them (`StatusOrb`, `Indicator`, `AgentPrompt`), and the two `-foreground`s mean different things. It now declares neither. At 0.24 `--attention-text` named the core's `--attention-foreground`, on the same amber 600 / 300 steps, and the password meter's "fair" became the core's `bg-warning`.
+
+**At unicron 1.0** the core's `attention` became the needs-you yellow, which says only "this waits on you" (its `-foreground` is that yellow on graphite). A needs-attention word is not that, so on graphite `--attention-text` moved to `--warning`, the core's warning ink: amber 300, as before. On stone it stays `--attention-foreground`, amber 600: the core's `--warning` there is amber 550, a fill, and as words on the ground it is 4.0:1, under the floor for text (doc 62 §4.1). The meter's "fair" is still `--warning`, now through the secret field's meter knob.
+
+**Before unicron 1.0** (kept for the record): the surfaces were neutral steps (`chrome` 50 / 900, `canvas` 0 / 950, `selected` 100 / 800, `locked` 100 / 900, light / dark); `--secure` was green 500 with a white label and green 600 / 300 as words; `--area-codes` was blue 500 with a white label and blue 600 / 300 as words; `--attention-text` was the core's `--attention-foreground` (amber 600 / 300); `--danger` was `--destructive`.
+
+The UI uses `bg-surface-*`, `text-secure-text`, `text-attention-text` and `text-area-codes-text` from this layer (a hue as words is always its `-text` role; the base role is for fills, §11); everything else is unicron's defaults. The tier-3 knobs gained density (D92): `--c-row-height`, `--c-row-pad-y`, `--c-row-gap`, `--c-group-pad-y`, each a multiple of Tailwind's `--spacing` from the unicron stylesheet (comfortable rows 10 units = 40 px, compact 8 = 32 px, as first built; doc 39 made comfortable 12 units and compact 10), switched by `:root[data-density="compact"]` and applied to any element marked `data-row` or `data-group-header`; no raw lengths, no `className` on a primitive.
 
 ## 5. The brief's screens, as built
 

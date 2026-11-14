@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react"
 
+import { useTheme } from "next-themes"
+
 import {
   Button,
   Field,
@@ -30,6 +32,11 @@ import { ServerChecks } from "@/features/server/server-checks"
 import { ServerSettings } from "@/features/server/server-settings"
 import { useFirstRunClient, type QuickUnlock } from "@/features/unlock/first-run-client"
 import { AboutSection } from "@/features/updates/about-section"
+
+import { ThemeSetting, type ThemeChoice } from "./theme-setting"
+
+/** The Theme row's words for next-themes' own: Stone is its light, Graphite its dark. */
+const THEME_OF: Record<ThemeChoice, string> = { system: "system", stone: "light", graphite: "dark" }
 
 interface SettingsViewProps {
   status: Status
@@ -67,6 +74,8 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
   const frc = useFirstRunClient()
   const [quick, setQuick] = useState<QuickUnlock | null>(null)
   const [name, setName] = useState<string | null>(null)
+  // The ground is a choice kept on this device by next-themes, not a setting of the vault (doc 62 §3).
+  const { theme, setTheme } = useTheme()
 
   useEffect(() => {
     if (!frc) return
@@ -178,6 +187,7 @@ export function SettingsView({ status, lock, onLock, onChanged, onNotice }: Sett
       </Section>
 
       <Section title="Appearance">
+        <ThemeSetting value={theme === "light" ? "stone" : theme === "dark" ? "graphite" : "system"} onChange={(choice) => setTheme(THEME_OF[choice])} />
         <FieldGroup>
           <Field orientation="horizontal">
             <FieldLabel id="density-label">Density</FieldLabel>

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 
-import { Spinner, Toaster, TooltipProvider } from "@unicron/ui"
-import { toast } from "sonner"
+import { Spinner, Toaster, TooltipProvider, toast } from "@unicron/ui"
 
 import { GateProvider } from "@/app/gate"
 import { useLockWatch } from "@/app/lock-watch"
@@ -60,7 +59,7 @@ function warnOnSplit(lines: readonly string[]) {
 /** The screens the web vault has beside the vault's views. */
 const WEB_SCREENS: ReadonlyArray<ShellScreen> = [
   ["sharing", "link", "Links"],
-  ["people", "group", "People"],
+  ["people", "user--multiple", "People"],
   ["devices", "devices", "Devices"],
   ["security", "security", "Security"],
   ["settings", "settings", "Settings"],

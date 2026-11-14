@@ -8,8 +8,8 @@ import { usePqStatusClient, type PqStatus } from "./pq-status-client"
 
 /** The icon carries the state with the words; colour never does it alone. */
 const ICONS: Record<PqStatus["state"], IconName> = {
-  on: "verified_user",
-  waiting: "hourglass_top",
+  on: "security",
+  waiting: "hourglass",
   unknown: "help",
 }
 

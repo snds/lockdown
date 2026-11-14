@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { toast } from "sonner"
+import { toast } from "@unicron/ui"
 
 import { ClientProvider, type Client } from "@/core/client"
 import type { CodeView } from "@/core/types"
@@ -169,13 +169,13 @@ describe("the Codes view on unicron's CodeDisplay", () => {
     const next = await screen.findByRole("button", { name: "Next code" })
     expect(next).toBeEnabled()
     expect(list.textContent).toContain("969")
-    expect(list.querySelector('[data-slot="code-display-counter"]')).toHaveTextContent("#3")
+    expect(list.querySelector('[data-slot="code-display-counter"]')).toHaveTextContent("Counter 3")
     const user = userEvent.setup()
     await user.click(next)
     await waitFor(() => expect(advanceCode).toHaveBeenCalledWith("h1", "code.0", {}))
     await waitFor(() => expect(list.textContent).toContain("338"))
     expect(list.textContent).toContain("314")
-    expect(list.querySelector('[data-slot="code-display-counter"]')).toHaveTextContent("#4")
+    expect(list.querySelector('[data-slot="code-display-counter"]')).toHaveTextContent("Counter 4")
     // The copy after it goes by id, so the core copies the code for the stored counter.
     await user.click(list.querySelector('[data-slot="code-display-copy"]') as HTMLElement)
     await waitFor(() => expect(copyCode).toHaveBeenCalledWith("h1", "code.0", 30, "code", {}))

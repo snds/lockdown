@@ -37,23 +37,23 @@ export const KIND_LABELS: Record<string, string> = {
 const KIND_ORDER = Object.keys(KIND_LABELS)
 
 export const KIND_ICONS: Record<string, IconName> = {
-  login: "key",
-  passkey: "passkey",
-  code: "timer",
+  login: "password",
+  passkey: "locked",
+  code: "time",
   "wi-fi": "wifi",
   "ssh-key": "terminal",
   "api-credential": "api",
-  document: "description",
-  identity: "badge",
-  card: "credit_card",
-  "bank-account": "account_balance",
-  note: "sticky_note_2",
-  "crypto-wallet": "account_balance_wallet",
-  server: "dns",
-  database: "database",
+  document: "document",
+  identity: "user--identification",
+  card: "wallet",
+  "bank-account": "finance",
+  note: "document",
+  "crypto-wallet": "wallet",
+  server: "bare-metal-server",
+  database: "data--base",
   "software-licence": "license",
-  membership: "card_membership",
-  custom: "category",
+  membership: "credentials",
+  custom: "categories",
 }
 
 export function kindLabel(kind: string): string {
@@ -61,7 +61,7 @@ export function kindLabel(kind: string): string {
 }
 
 export function kindIcon(kind: string): IconName {
-  return KIND_ICONS[kind] ?? "category"
+  return KIND_ICONS[kind] ?? "categories"
 }
 
 /** The sidebar's words for each view. */

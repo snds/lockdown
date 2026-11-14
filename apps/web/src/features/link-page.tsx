@@ -1,7 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react"
 
-import { Button, Field, FieldDescription, FieldError, FieldGroup, FieldLabel, Input, Spinner, Toaster } from "@unicron/ui"
-import { toast } from "sonner"
+import { Button, Field, FieldDescription, FieldError, FieldGroup, FieldLabel, Input, Spinner, Toaster, toast } from "@unicron/ui"
 
 import { describeError } from "@/core/client"
 import { encodeSecret } from "@/core/secret-bytes"

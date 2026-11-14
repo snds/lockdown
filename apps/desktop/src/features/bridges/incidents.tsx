@@ -181,7 +181,7 @@ function IncidentDialog({
             )}
             <ol aria-label="Steps" className="flex flex-col gap-3">
               {view.steps.map((s, n) => (
-                <li key={s.id} className={`flex flex-col gap-1 rounded-md border p-3 ${n === firstOpen ? "border-primary" : ""}`}>
+                <li key={s.id} className={`flex flex-col gap-1 rounded-md border p-3 ${n === firstOpen ? "border-foreground" : ""}`}>
                   <div className="flex items-start gap-2">
                     <Checkbox
                       id={`step-${s.id}`}
@@ -221,7 +221,7 @@ function IncidentDialog({
                   {ACTION_LABELS[s.action] && (
                     <div className="ml-7">
                       <Button size="sm" variant="outline" onClick={() => onAction(s.action)}>
-                        <Icon name="arrow_forward" data-icon="inline-start" />
+                        <Icon name="arrow--right" data-icon="inline-start" />
                         {ACTION_LABELS[s.action]}
                       </Button>
                     </div>

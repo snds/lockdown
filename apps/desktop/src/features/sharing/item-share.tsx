@@ -60,7 +60,7 @@ export function ItemShare({ item, title, onNotice }: ItemShareProps) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => setOpen("person")}>
-            <Icon name="person_add" data-icon="inline-start" />
+            <Icon name="user--follow" data-icon="inline-start" />
             With someone…
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setOpen("link")}>
@@ -257,7 +257,7 @@ export function AccessNote({ access }: { access: Access }) {
   return (
     <p className="flex items-center gap-2 text-sm">
       <Badge variant="secondary">
-        <Icon name="group" data-icon="inline-start" />
+        <Icon name="user--multiple" data-icon="inline-start" />
         Shared with you
       </Badge>
       <span className="text-muted-foreground">{RIGHT_WORDS[access]}</span>

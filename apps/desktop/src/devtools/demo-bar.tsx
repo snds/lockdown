@@ -27,7 +27,7 @@ export function DemoBar({ pack, leaving, onLeave }: { pack?: string; leaving: bo
     }
   }, [])
   return createPortal(
-    <div ref={bar} role="region" aria-label="Demo" data-devtools-bar="" className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 bg-primary px-4 py-2 text-sm text-primary-foreground">
+    <div ref={bar} role="region" aria-label="Demo" data-devtools-bar="" className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 bg-foreground px-4 py-2 text-sm text-background">
       <p>
         <strong>You're exploring the demo.</strong> Nothing here is real.
         {pack && <span className="sr-only"> Its data is from {pack}.</span>}

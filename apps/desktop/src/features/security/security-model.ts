@@ -18,13 +18,13 @@ export const SEVERITY_TEXT: Record<Severity, string> = {
 
 /** One icon per kind of finding (decorative; the words carry the meaning). */
 export const KIND_ICONS: Record<Finding["kind"], IconName> = {
-  breached: "gpp_bad",
-  reused: "content_copy",
+  breached: "rule--cancelled",
+  reused: "copy",
   weak: "password",
-  missing_2fa: "lock_person",
-  lookalike: "report",
+  missing_2fa: "user--access-locked",
+  lookalike: "warning--hex",
   new_sign_in: "devices",
-  exposed_email: "mail",
+  exposed_email: "email",
 }
 
 /** Open findings by severity, in the core's order. */

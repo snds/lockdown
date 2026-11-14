@@ -115,7 +115,8 @@ test("a TV's code read by the tab's camera opens the real page after the passwor
   await dialog.getByRole("button", { name: "Sign in on www.youtube.com" }).click()
   // The Approve gate: this tab's route is the password (unicron's gate
   // still calls it the account password).
-  await page.getByLabel("Account password").fill(PASSWORD)
+  // By its exact name: from unicron 1.0 the field has a "Show Account password" button beside it.
+  await page.getByLabel("Account password", { exact: true }).fill(PASSWORD)
   await page.getByRole("button", { name: "Confirm" }).click()
   const tv = await opened
   await expect.poll(() => tv.url()).toBe("https://www.youtube.com/activate?user_code=WDJB-MJHT")

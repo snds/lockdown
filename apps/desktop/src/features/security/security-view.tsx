@@ -139,7 +139,7 @@ export function SecurityView({ onOpenItem, onDevices, onRecovery, onChanged, onN
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-(--c-section-gap) p-(--c-page-gutter-narrow) md:p-(--c-page-gutter)">
       <PaneHeader title="Security">
         <Button size="sm" variant="outline" onClick={() => void check()} disabled={checking}>
-          {checking ? <Spinner data-icon="inline-start" /> : <Icon name="refresh" data-icon="inline-start" />}
+          {checking ? <Spinner data-icon="inline-start" /> : <Icon name="renew" data-icon="inline-start" />}
           {checking ? "Checking…" : "Check now"}
         </Button>
       </PaneHeader>
@@ -173,7 +173,7 @@ export function SecurityView({ onOpenItem, onDevices, onRecovery, onChanged, onN
             <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon">
-                  <Icon name="verified_user" />
+                  <Icon name="security" />
                 </EmptyMedia>
                 <EmptyTitle>All clear</EmptyTitle>
                 <EmptyDescription>
@@ -208,7 +208,7 @@ export function SecurityView({ onOpenItem, onDevices, onRecovery, onChanged, onN
             <section aria-label="Dismissed" className="flex flex-col gap-2">
               <div>
                 <Button size="sm" variant="ghost" onClick={() => setShowDismissed((s) => !s)} aria-expanded={showDismissed}>
-                  <Icon name={showDismissed ? "keyboard_arrow_up" : "keyboard_arrow_down"} data-icon="inline-start" />
+                  <Icon name={showDismissed ? "chevron--up" : "chevron--down"} data-icon="inline-start" />
                   {showDismissed ? "Hide" : "Show"} dismissed and snoozed ({report.dismissed.length})
                 </Button>
               </div>

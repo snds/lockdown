@@ -69,7 +69,7 @@ describe("the post-quantum status line", () => {
     expect(within(line).getByText(/couldn't fake/)).toBeInTheDocument()
     expect(line).toHaveAttribute("data-state", "on")
     // The state is in the icon too, not in a colour alone.
-    expect(line.textContent).toContain("verified_user")
+    expect(line.querySelector("svg[data-slot=icon]")).toHaveAttribute("data-icon-name", "security")
     expect(within(line).queryByRole("list")).not.toBeInTheDocument()
   })
 
@@ -79,10 +79,10 @@ describe("the post-quantum status line", () => {
     const line = await screen.findByRole("status", { name: "Quantum-safe signatures" })
     expect(within(line).getByText("Quantum-safe signatures: waiting for Old phone and Kitchen tablet")).toBeInTheDocument()
     expect(within(line).getByText(/need the latest Lockdown/)).toBeInTheDocument()
-    expect(line.textContent).toContain("hourglass_top")
+    expect(line.querySelector("svg[data-slot=icon]")).toHaveAttribute("data-icon-name", "hourglass")
     const devices = within(line).getByRole("list", { name: "Devices to update" })
     const links = within(devices).getAllByRole("button")
-    expect(links.map((b) => b.textContent?.replace("devices", "").trim())).toEqual(["Old phone", "Kitchen tablet"])
+    expect(links.map((b) => b.textContent?.trim())).toEqual(["Old phone", "Kitchen tablet"])
     await userEvent.setup().click(links[1]!)
     expect(onDevice).toHaveBeenCalledWith("d-kitchen")
   })
@@ -99,7 +99,7 @@ describe("the post-quantum status line", () => {
     let line = await screen.findByRole("status", { name: "Quantum-safe signatures" })
     expect(within(line).getByText("Quantum-safe signatures: can't check right now")).toBeInTheDocument()
     expect(line).toHaveAttribute("data-state", "unknown")
-    expect(line.textContent).toContain("help")
+    expect(line.querySelector("svg[data-slot=icon]")).toHaveAttribute("data-icon-name", "help")
     expect(within(line).queryByRole("button")).not.toBeInTheDocument()
     unmount()
 

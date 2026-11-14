@@ -38,24 +38,24 @@ interface AppShellProps {
 export type ShellScreen = readonly [Area, IconName, string]
 
 const VIEWS: Array<[ListView, IconName]> = [
-  ["all", "inventory_2"],
+  ["all", "folder"],
   ["favourites", "star"],
-  ["passkeys", "passkey"],
-  ["codes", "timer"],
+  ["passkeys", "locked"],
+  ["codes", "time"],
   ["wi-fi", "wifi"],
-  ["contacts", "contact_page"],
-  ["expiring", "schedule"],
-  ["attention", "warning"],
+  ["contacts", "user--profile"],
+  ["expiring", "event--schedule"],
+  ["attention", "warning--alt"],
   ["archived", "archive"],
-  ["deleted", "delete"],
+  ["deleted", "trash-can"],
 ]
 
 const SCREENS: ReadonlyArray<ShellScreen> = [
   ["security", "security", "Security"],
-  ["sharing", "group", "Sharing"],
+  ["sharing", "user--multiple", "Sharing"],
   ["devices", "devices", "Devices"],
-  ["recovery", "health_and_safety", "Recovery"],
-  ["status", "shield", "Status"],
+  ["recovery", "health-cross", "Recovery"],
+  ["status", "security", "Status"],
   ["settings", "settings", "Settings"],
 ]
 
@@ -107,7 +107,7 @@ export function AppShell({ nav, personas, counts, onNavigate, onLock, organizati
         ))}
         <div className="md:mt-auto">
           {footer && <div className="hidden md:block">{footer}</div>}
-          <NavRow icon="lock" label="Lock" current={false} onClick={onLock} />
+          <NavRow icon="locked" label="Lock" current={false} onClick={onLock} />
         </div>
       </nav>
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">{children}</main>

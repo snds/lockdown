@@ -93,7 +93,7 @@ export function PeopleSection({ contacts, online, onChanged, onNotice }: PeopleS
           <Input id="lookup-login" name="login" type="email" autoComplete="off" disabled={!online} placeholder="name@example.com" />
         </Field>
         <Button type="submit" variant="outline" size="sm" disabled={!online || busy}>
-          <Icon name="person_search" data-icon="inline-start" />
+          <Icon name="search" data-icon="inline-start" />
           Look up
         </Button>
       </form>
@@ -109,7 +109,7 @@ export function PeopleSection({ contacts, online, onChanged, onNotice }: PeopleS
                   {c.login}
                   {c.verified ? (
                     <Badge variant="secondary">
-                      <Icon name="verified" data-icon="inline-start" />
+                      <Icon name="checkmark--outline" data-icon="inline-start" />
                       Fingerprint compared
                     </Badge>
                   ) : (
@@ -229,7 +229,7 @@ function CompareDialog({ contact, onClose, onVerified }: { contact: ContactView 
           <CameraView label="The camera's picture of their QR code" onFrame={onFrame} onError={setError} />
         ) : (
           <Button variant="outline" size="sm" onClick={() => setScanning(true)}>
-            <Icon name="qr_code_scanner" data-icon="inline-start" />
+            <Icon name="qr-code" data-icon="inline-start" />
             Scan their QR code
           </Button>
         )}

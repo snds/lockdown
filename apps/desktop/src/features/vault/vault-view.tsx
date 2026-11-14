@@ -106,7 +106,7 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
     <PaneHeader title={paneTitle}>
       <DropdownMenu>
         <DropdownMenuTrigger render={<Button variant="ghost" size="sm" aria-label="Sort and group" />}>
-          <Icon name="sort" data-icon="inline-start" />
+          <Icon name="arrows--vertical" data-icon="inline-start" />
           Sort
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -129,7 +129,7 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
-      <IconButton label="Quick access" icon="bolt" shortcut={isMac() ? "⌘K" : "Ctrl+K"} onClick={onPalette} />
+      <IconButton label="Quick access" icon="flash" shortcut={isMac() ? "⌘K" : "Ctrl+K"} onClick={onPalette} />
       <IconButton label="Find duplicates" icon="merge" onClick={() => setDuplicates(true)} />
       <NewItemMenu onPick={(kind) => setEditor({ kind, item: null, vaultId: scope?.vault ?? vaults.find((v) => v.folders.some((f) => f.id === scope?.folder))?.id, folder: scope?.folder, tags: scope?.tag ? [scope.tag] : undefined })} onNotice={onNotice} />
     </PaneHeader>
@@ -141,10 +141,10 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
         <Input type="search" placeholder="Search titles, sites, usernames" aria-label="Search" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
         <ToggleGroup aria-label="Group rows" value={[groupBy]} onValueChange={(v) => v[0] && setGroupBy(v[0] as GroupBy)} size="sm">
           <ToggleGroupItem value="kind" aria-label="Group by kind">
-            <Icon name="view_agenda" />
+            <Icon name="show-data--cards" />
           </ToggleGroupItem>
           <ToggleGroupItem value="none" aria-label="No groups">
-            <Icon name="view_list" />
+            <Icon name="list" />
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
@@ -172,7 +172,7 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
         <Empty>
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              <Icon name={view === "all" ? "key" : view === "attention" ? "check" : kindIcon(view === "deleted" ? "custom" : view)} />
+              <Icon name={view === "all" ? "password" : view === "attention" ? "checkmark" : kindIcon(view === "deleted" ? "custom" : view)} />
             </EmptyMedia>
             <EmptyTitle>{query ? "No matches" : emptyTitle}</EmptyTitle>
             <EmptyDescription>{query ? "Try fewer letters." : emptyText}</EmptyDescription>
@@ -255,7 +255,7 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
           ) : null
         }
         onBack={() => setSelected(null)}
-        emptyIcon="key"
+        emptyIcon="password"
         emptyLabel="Pick an item to see its fields. Hidden values stay masked until you reveal them."
       />
       <ItemEditor

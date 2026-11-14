@@ -92,7 +92,7 @@ export function EmergencySection({ grants, contacts, vaults, online, onGrants, o
       </p>
       <div>
         <Button variant="outline" size="sm" disabled={!online} onClick={() => setAdding(true)}>
-          <Icon name="emergency" data-icon="inline-start" />
+          <Icon name="asterisk" data-icon="inline-start" />
           Add an emergency contact…
         </Button>
       </div>

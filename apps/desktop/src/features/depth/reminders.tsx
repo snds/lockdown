@@ -187,7 +187,7 @@ export function DrillSection() {
           <Item key={`${c.what}-${i}`} role="listitem" size="sm" variant="outline" data-row="">
             <ItemContent>
               <ItemTitle>
-                <Icon name={c.ok ? "check_circle" : "error"} aria-label={c.ok ? "fine" : "needs you"} />
+                <Icon name={c.ok ? "checkmark--outline" : "warning"} aria-label={c.ok ? "fine" : "needs you"} />
                 {c.words}
               </ItemTitle>
             </ItemContent>

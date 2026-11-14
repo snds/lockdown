@@ -1,8 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import { ThemeProvider } from "next-themes"
 
-import { Toaster, TooltipProvider } from "@unicron/ui"
-import { toast } from "sonner"
+import { Toaster, TooltipProvider, toast } from "@unicron/ui"
 
 import { GateProvider } from "@/app/gate"
 import { useLockWatch } from "@/app/lock-watch"

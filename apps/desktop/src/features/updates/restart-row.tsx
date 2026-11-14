@@ -22,7 +22,7 @@ export function RestartRow({ onError }: { onError: (text: string) => void }) {
       aria-label={`Restart to update to version ${status.offered ?? ""}. Lockdown locks first.`}
       onClick={() => updates.restart().catch((e) => onError(describeError(e)))}
     >
-      <Icon name="restart_alt" data-icon="inline-start" />
+      <Icon name="restart" data-icon="inline-start" />
       <span className="flex-1 truncate text-left">Restart to update</span>
     </Button>
   )

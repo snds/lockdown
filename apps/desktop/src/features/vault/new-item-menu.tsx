@@ -1,7 +1,8 @@
 import { useState } from "react"
 
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Icon, type IconName } from "@unicron/ui"
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Icon } from "@unicron/ui"
 
+import { templateIcon } from "@/app/template-model"
 import { useTemplates } from "@/app/templates"
 import type { TemplateView } from "@/core/types"
 
@@ -52,7 +53,7 @@ export function NewItemMenu({ onPick, onNotice = () => {} }: { onPick: (template
               <DropdownMenuLabel>{name}</DropdownMenuLabel>
               {list.map((t) => (
                 <DropdownMenuItem key={t.id ?? t.kind} onClick={() => onPick(t.id ?? t.kind)}>
-                  <Icon name={(t.icon as IconName | undefined) ?? kindIcon(t.kind)} data-icon="inline-start" />
+                  <Icon name={templateIcon(t.icon, kindIcon(t.kind))} data-icon="inline-start" />
                   {t.name}
                 </DropdownMenuItem>
               ))}
@@ -64,12 +65,12 @@ export function NewItemMenu({ onPick, onNotice = () => {} }: { onPick: (template
               <DropdownMenuLabel>Your templates</DropdownMenuLabel>
               {userTemplates.map((t) => (
                 <DropdownMenuItem key={t.id} onClick={() => onPick(`user:${t.id}`)}>
-                  <Icon name={(t.icon || "category") as IconName} data-icon="inline-start" />
+                  <Icon name={templateIcon(t.icon, "categories")} data-icon="inline-start" />
                   {t.name}
                 </DropdownMenuItem>
               ))}
               <DropdownMenuItem onClick={() => setManaging(true)}>
-                <Icon name="edit_note" data-icon="inline-start" />
+                <Icon name="edit" data-icon="inline-start" />
                 {userTemplates.length ? "Change your templates…" : "Make a template…"}
               </DropdownMenuItem>
             </DropdownMenuGroup>
