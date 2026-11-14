@@ -120,8 +120,8 @@ export function SearchView({ rows, selected, onSelect, onChanged, onNotice }: Se
             onEdit={(item) => edit({ kind: item.template ?? item.kind, item })}
             onTrashed={() => {
               onSelect(null)
+              // The pane says it itself, with UNDO (Q14).
               bump()
-              onNotice("Moved to the trash.")
             }}
             onChanged={(text) => {
               bump()

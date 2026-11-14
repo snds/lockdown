@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react"
 
-import { Button } from "@unicron/ui"
+import { Button, Prose } from "@unicron/ui"
 
 import { useClient } from "@/core/client"
 
@@ -9,14 +9,16 @@ import { parseMarkdown, type Block, type Inline } from "./markdown"
 /**
  * A secure note's body drawn from its Markdown (`markdown.ts`): every node
  * becomes a React element, so text is escaped by React and no HTML in the
- * note is ever run. A link is a button that opens the default browser
- * through the shell's `open_site` (http and https only), never this window.
+ * note is ever run. unicron's `Prose` (body) draws the elements from the
+ * type roles (brief I2), so this file sets no look of its own. A link is a
+ * button that opens the default browser through the shell's `open_site`
+ * (http and https only), never this window.
  */
 export function MarkdownView({ text }: { text: string }) {
   const client = useClient()
   const blocks = useMemo(() => parseMarkdown(text), [text])
   const open = (href: string) => void client.openSite(href).catch(() => {})
-  return <div className="flex flex-col gap-3 text-sm leading-relaxed">{blocks.map((b, i) => block(b, i, open))}</div>
+  return <Prose variant="body">{blocks.map((b, i) => block(b, i, open))}</Prose>
 }
 
 function inline(nodes: Inline[], open: (href: string) => void): ReactNode[] {
@@ -33,11 +35,7 @@ function inline(nodes: Inline[], open: (href: string) => void): ReactNode[] {
       case "del":
         return <del key={i}>{inline(n.children, open)}</del>
       case "code":
-        return (
-          <code key={i} className="rounded bg-muted px-1 font-mono text-xs">
-            {n.text}
-          </code>
-        )
+        return <code key={i}>{n.text}</code>
       case "link":
         // A button, not an anchor: nothing in a note can navigate this window.
         return n.href.startsWith("mailto:") ? (
@@ -51,21 +49,12 @@ function inline(nodes: Inline[], open: (href: string) => void): ReactNode[] {
   })
 }
 
-const HEADING_CLASS: Record<number, string> = {
-  1: "text-xl font-semibold tracking-tight",
-  2: "text-lg font-semibold tracking-tight",
-  3: "text-base font-semibold",
-  4: "text-sm font-semibold",
-  5: "text-sm font-medium",
-  6: "text-sm font-medium text-muted-foreground",
-}
-
 function block(b: Block, key: number, open: (href: string) => void): ReactNode {
   switch (b.t) {
     case "heading": {
       const Tag = `h${Math.min(6, b.level + 2)}` as "h3"
       return (
-        <Tag key={key} className={HEADING_CLASS[b.level]}>
+        <Tag key={key}>
           {inline(b.children, open)}
         </Tag>
       )
@@ -73,17 +62,17 @@ function block(b: Block, key: number, open: (href: string) => void): ReactNode {
     case "paragraph":
       return <p key={key}>{inline(b.children, open)}</p>
     case "rule":
-      return <hr key={key} className="border-border" />
+      return <hr key={key} />
     case "code":
       return (
         // A long line scrolls sideways, so the block takes focus for the keyboard (review R18).
-        <pre key={key} tabIndex={0} className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs">
+        <pre key={key} tabIndex={0}>
           <code>{b.text}</code>
         </pre>
       )
     case "quote":
       return (
-        <blockquote key={key} className="flex flex-col gap-2 border-l-2 pl-3 text-muted-foreground">
+        <blockquote key={key}>
           {b.children.map((c, i) => block(c, i, open))}
         </blockquote>
       )
@@ -91,19 +80,19 @@ function block(b: Block, key: number, open: (href: string) => void): ReactNode {
       const items = b.items.map((it, i) => (
         <li key={i}>
           {it.checked !== null && (
-            <span role="img" aria-label={it.checked ? "done" : "not done"} className="mr-1">
-              {it.checked ? "☑" : "☐"}
+            <span role="img" aria-label={it.checked ? "done" : "not done"}>
+              {it.checked ? "☑ " : "☐ "}
             </span>
           )}
           {inline(it.children, open)}
         </li>
       ))
       return b.ordered ? (
-        <ol key={key} start={b.start} className="list-decimal pl-5">
+        <ol key={key} start={b.start}>
           {items}
         </ol>
       ) : (
-        <ul key={key} className="list-disc pl-5">
+        <ul key={key}>
           {items}
         </ul>
       )

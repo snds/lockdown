@@ -1,7 +1,7 @@
-import { useRef, useState } from "react"
+import { useRef, useState, type ReactNode } from "react"
 import { toast } from "@unicron/ui"
 
-import { CodeDisplay, type CodeDisplayDensity, type CodeDisplayWarning } from "@unicron/ui/security/code-display"
+import { CodeDisplay, type CodeDisplayDensity, type CodeDisplayLayout, type CodeDisplayWarning } from "@unicron/ui/security/code-display"
 
 import { useGate } from "@/app/gate"
 import { useSettings } from "@/app/settings"
@@ -14,10 +14,22 @@ interface ItemCodeDisplayProps {
   /** The host clock and this code's end, from `useCodes`. */
   now: number
   expiresAt: number | null
+  /** @deprecated Use `layout`. */
   density?: CodeDisplayDensity
+  /** Where the code sits: `field` on an item (brief I3), `row` or `tile` on Codes. Wins over `density`. */
+  layout?: CodeDisplayLayout
+  /** The field layout's label: the issuer, or "One-time code". */
+  label?: string
+  /** The code's hairline above it, when it opens a group. */
+  rule?: "top" | "none"
+  /** Rows behind the code's trailing ⋯ (LA5): "Show large type". */
+  menu?: ReactNode
 }
 
 const KNOWN_WARNINGS: readonly CodeDisplayWarning[] = ["issuer-equals-login"]
+
+/** The deprecated densities as the layouts they draw (unicron's own mapping). */
+const LAYOUT_OF: Record<CodeDisplayDensity, CodeDisplayLayout> = { detail: "field", list: "row", compact: "compact" }
 
 const digitsOf = (n: number): 5 | 6 | 8 | undefined => (n === 5 || n === 6 || n === 8 ? n : undefined)
 
@@ -36,7 +48,7 @@ const digitsOf = (n: number): 5 | 6 | 8 | undefined => (n === 5 || n === 6 || n 
  * There is no haptic on desktop, so `onHaptic` is left out. The core does
  * not measure clock skew yet, so the skew notice stays dormant.
  */
-export function ItemCodeDisplay({ code, now, expiresAt, density = "detail" }: ItemCodeDisplayProps) {
+export function ItemCodeDisplay({ code, now, expiresAt, density = "detail", layout, label, rule, menu }: ItemCodeDisplayProps) {
   const client = useClient()
   const gate = useGate()
   const { settings } = useSettings()
@@ -93,7 +105,10 @@ export function ItemCodeDisplay({ code, now, expiresAt, density = "detail" }: It
       period={code.period}
       now={timed ? now : undefined}
       expiresAt={timed && expiresAt !== null ? expiresAt : undefined}
-      density={density}
+      layout={layout ?? LAYOUT_OF[density]}
+      label={label}
+      rule={rule}
+      menu={menu}
       issuer={code.issuer ?? undefined}
       account={code.account ?? (code.issuer ? undefined : code.title)}
       warnings={code.warnings.filter((w): w is CodeDisplayWarning => (KNOWN_WARNINGS as readonly string[]).includes(w))}

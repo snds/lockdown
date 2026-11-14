@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 
 import { PasskeyClientProvider, type PasskeyClient, type PasskeyView } from "./passkey-client"
 import { PasskeysBlock } from "./passkeys-block"
-import { dateLocal } from "@/lib/format"
+import { dateLocal, fullDate } from "@/lib/format"
 
 const view = (over: Partial<PasskeyView> = {}): PasskeyView => ({
   credential_id: "Y3JlZC0x",
@@ -44,24 +44,41 @@ function mount(client: PasskeyClient, onChanged = vi.fn(), canEdit = true) {
   return onChanged
 }
 
+const details = async (user: ReturnType<typeof userEvent.setup>, rp = "example.com") => {
+  await user.click(await screen.findByRole("button", { name: `Details of the passkey for ${rp}` }))
+  return screen.findByRole("dialog", { name: rp })
+}
+
 describe("the passkeys on an item", () => {
-  it("names the provider and its ID, the backup flags, the dates, and never a key", async () => {
+  it("a row as the frames draw it (who made it, when, its account); the details name the provider and its ID, the backup flag, the dates, and never a key", async () => {
     mount(fake({ list: () => Promise.resolve([view()]) }))
     const row = await screen.findByRole("listitem", { name: "Passkey for example.com" })
+    expect(row).toHaveTextContent(`Lockdown // ${fullDate(1_760_000_000)}`)
     expect(row).toHaveTextContent("sean@example.com (Sean)")
-    expect(row).toHaveTextContent("Lockdown · ES256 (P-256) · synced with your vault")
-    expect(row).toHaveTextContent("last used on this computer: never")
-    expect(row).toHaveTextContent("Provider ID 07017dfd-2717-4c97-92c2-b3d6513f46ce")
-    expect(screen.getByText(/kept by the provider, never shown/)).toBeInTheDocument()
+    const dialog = await details(userEvent.setup())
+    expect(dialog).toHaveTextContent("Lockdown")
+    expect(dialog).toHaveTextContent("07017dfd-2717-4c97-92c2-b3d6513f46ce")
+    expect(dialog).toHaveTextContent("With your vault")
+    expect(dialog).toHaveTextContent("Never on this computer")
+    expect(dialog).toHaveTextContent("ES256 (P-256)")
+    expect(dialog).toHaveTextContent(/kept by the provider, never shown/)
+  })
+
+  it("syncs: no device names and no count (W9), only whether it syncs", async () => {
+    mount(fake({ list: () => Promise.resolve([view({ backed_up: false, last_used: 1_760_000_500 })]) }))
+    const dialog = await details(userEvent.setup())
+    expect(dialog).toHaveTextContent("This device only")
+    expect(dialog).toHaveTextContent(`${fullDate(1_760_000_500)} // on this computer`)
+    expect(dialog).not.toHaveTextContent(/devices/)
   })
 
   it("a passkey a site hid shows why, and Undo offers it again", async () => {
     const restore = vi.fn(() => Promise.resolve(3))
     const onChanged = mount(fake({ list: () => Promise.resolve([view({ hidden: { reason: "The site said it no longer knows this passkey", at: 1_760_000_100 } })]), restore }))
     const row = await screen.findByRole("listitem", { name: "Passkey for example.com" })
-    expect(within(row).getByText("hidden by the site")).toBeInTheDocument()
+    expect(within(row).getByText("Hidden by the site")).toBeInTheDocument()
     expect(row).toHaveTextContent("Lockdown hid it rather than deleting it")
-    await userEvent.setup().click(within(row).getByRole("button", { name: "Undo" }))
+    await userEvent.setup().click(within(row).getByRole("button", { name: /^Undo/ }))
     await waitFor(() => expect(restore).toHaveBeenCalledWith("i1", "Y3JlZC0x"))
     expect(onChanged).toHaveBeenCalledWith("The passkey for example.com is offered again.")
   })
@@ -70,23 +87,24 @@ describe("the passkeys on an item", () => {
     const remove = vi.fn(() => Promise.resolve(4))
     const onChanged = mount(fake({ list: () => Promise.resolve([view({ only_sign_in: true })]), remove }))
     const user = userEvent.setup()
-    await user.click(await screen.findByRole("button", { name: "Delete" }))
-    const dialog = await screen.findByRole("dialog")
-    expect(dialog).toHaveTextContent('This is the only way into "Example" that Lockdown holds')
-    await user.click(within(dialog).getByRole("button", { name: "Cancel" }))
+    await details(user)
+    await user.click(screen.getByRole("button", { name: /^Delete passkey/ }))
+    expect(await screen.findByText(/This is the only way into "Example" that Lockdown holds/)).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Cancel" }))
     expect(remove).not.toHaveBeenCalled()
-    await user.click(screen.getByRole("button", { name: "Delete" }))
-    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete anyway" }))
+    await user.click(screen.getByRole("button", { name: /^Delete passkey/ }))
+    await user.click(await screen.findByRole("button", { name: "Delete anyway" }))
     await waitFor(() => expect(remove).toHaveBeenCalledWith("i1", "Y3JlZC0x", {}))
     expect(onChanged).toHaveBeenCalledWith("The passkey for example.com was deleted.")
   })
 
-  it("an ordinary delete says the site keeps it until removed there", async () => {
+  it("an ordinary delete says the site keeps it until removed there; no provider ID when there is none", async () => {
     mount(fake({ list: () => Promise.resolve([view({ provider: "Another provider (imported)", aaguid: null, created: null })]) }))
-    const row = await screen.findByRole("listitem", { name: "Passkey for example.com" })
-    expect(row).not.toHaveTextContent("Provider ID")
-    await userEvent.setup().click(within(row).getByRole("button", { name: "Delete" }))
-    expect(await screen.findByRole("dialog")).toHaveTextContent("The site still lists it until you remove it there")
+    const user = userEvent.setup()
+    const dialog = await details(user)
+    expect(dialog).not.toHaveTextContent("Provider ID")
+    await user.click(within(dialog).getByRole("button", { name: /^Delete passkey/ }))
+    expect(await screen.findByText(/The site still lists it until you remove it there/)).toBeInTheDocument()
   })
 })
 
@@ -96,7 +114,7 @@ describe("a passkey the site added by itself after a password sign-in", () => {
     const upgradeSeen = vi.fn(() => Promise.resolve(1))
     mount(fake({ list: () => Promise.resolve([view({ rp_id: "github.com", upgrade: { site: "github.com", at } })]), upgradeSeen }))
     const row = await screen.findByRole("listitem", { name: "Passkey for github.com" })
-    expect(within(row).getByText("added by the site")).toBeInTheDocument()
+    expect(within(row).getByText("Added by the site")).toBeInTheDocument()
     expect(row).toHaveTextContent(`Added by github.com on ${dateLocal(at)}, after a password sign-in.`)
     await waitFor(() => expect(upgradeSeen).toHaveBeenCalledWith("i1"))
     expect(upgradeSeen).toHaveBeenCalledTimes(1)
@@ -115,8 +133,9 @@ describe("a passkey on an item shared without edit", () => {
   it("offers neither Undo nor Delete, and still lists it", async () => {
     mount(fake({ list: () => Promise.resolve([view({ hidden: { reason: "The site said it no longer knows this passkey", at: 1_760_000_100 } })]) }), vi.fn(), false)
     const row = await screen.findByRole("listitem", { name: "Passkey for example.com" })
-    expect(within(row).getByText("hidden by the site")).toBeInTheDocument()
-    expect(within(row).queryByRole("button", { name: "Undo" })).not.toBeInTheDocument()
-    expect(within(row).queryByRole("button", { name: "Delete" })).not.toBeInTheDocument()
+    expect(within(row).getByText("Hidden by the site")).toBeInTheDocument()
+    expect(within(row).queryByRole("button", { name: /^Undo/ })).not.toBeInTheDocument()
+    const dialog = await details(userEvent.setup())
+    expect(within(dialog).queryByRole("button", { name: /^Delete passkey/ })).not.toBeInTheDocument()
   })
 })

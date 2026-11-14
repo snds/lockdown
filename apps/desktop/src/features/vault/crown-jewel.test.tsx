@@ -141,7 +141,7 @@ describe("the crown-jewel treatment on this host (D98, D101)", () => {
       <ClientProvider value={client}>
         <GateProvider>
           <ItemCrownJewel title="Ledger">
-            <ItemField itemId="i1" field={field} largeType="Recovery phrase · Ledger" onNotice={() => {}} />
+            <ItemField itemId="i1" field={field} largeType="Recovery phrase · Ledger" largeTypeAction onNotice={() => {}} />
           </ItemCrownJewel>
         </GateProvider>
       </ClientProvider>,

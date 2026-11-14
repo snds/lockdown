@@ -237,7 +237,6 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
               onTrashed={() => {
                 setSelected(null)
                 bump()
-                onNotice("Moved to the trash.")
               }}
               onChanged={(text) => {
                 bump()
@@ -254,7 +253,7 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
         }
         onBack={() => setSelected(null)}
         emptyIcon="password"
-        emptyLabel="Pick an item to see its fields. Hidden values stay masked until you reveal them."
+        emptyLabel="Pick an item to see it here."
       />
       <ItemEditor
         target={editor}

@@ -10,9 +10,12 @@ export const row = (page: Page, title: RegExp): Locator => rows(page, title).fir
 /** An item's title anywhere it is drawn. */
 export const titled = (page: Page, title: string): Locator => page.getByText(title)
 
-/** Opens an item from the list. */
+/** Opens an item from the list, with its Details (shut by default, brief I4) open too, so every part of it can be read. */
 export async function openItem(page: Page, title: RegExp) {
   await row(page, title).click()
+  const details = page.locator("button[aria-expanded]").filter({ hasText: /^Details/ })
+  await details.waitFor()
+  if ((await details.getAttribute("aria-expanded")) !== "true") await details.click()
 }
 
 /** Presses one of the open item's own actions. */

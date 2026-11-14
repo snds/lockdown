@@ -63,11 +63,15 @@ function grid(): Uint8Array {
   return g
 }
 
+beforeEach(() => localStorage.clear())
+
 describe("vault depth in the detail (docs/plan/21-vault-depth.md)", () => {
-  it("offers large type on a login's password too", async () => {
+  it("offers large type on a login's password too, as the first row of the field's ⋯ (D242, LA5)", async () => {
     mount(fakeClient({ ...base, show: () => Promise.resolve(item("login", [plain("user", "username", "me"), hidden("pw", "password")])) }))
-    const methods = await screen.findByRole("region", { name: "Sign-in methods" })
-    expect(within(methods).getByRole("button", { name: "Show large type" })).toBeInTheDocument()
+    const signIn = await screen.findByRole("region", { name: "Sign-in" })
+    await userEvent.setup({ pointerEventsCheck: 0 }).click(within(signIn).getByRole("button", { name: "More actions for Password" }))
+    const rows = await screen.findAllByRole("menuitem")
+    expect(rows[0]).toHaveTextContent("Show large type")
   })
 
   it("draws a variant from its own template (D231)", async () => {
@@ -143,6 +147,8 @@ describe("vault depth in the detail (docs/plan/21-vault-depth.md)", () => {
     const clearAway = vi.fn<Client["clearAway"]>(() => Promise.resolve(3))
     const away = [{ place: "Hotel TV", at: 100, remind_at: 200, due: true }]
     const { onChanged } = mount(fakeClient({ ...base, logAway, clearAway, show: () => Promise.resolve(item("login", [hidden("pw", "password")], { away })) }))
+    // Signed in elsewhere is in Details, shut by default (brief I4).
+    await userEvent.click(await screen.findByRole("button", { name: /^Details/ }))
     const block = await screen.findByRole("region", { name: "Signed in elsewhere" })
     expect(within(block).getByText("Hotel TV")).toBeInTheDocument()
     expect(within(block).getByText("Sign out now")).toBeInTheDocument()
