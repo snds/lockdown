@@ -141,7 +141,11 @@ impl LocalServer {
         let _guard = Self::take_lock(&self.lock)?;
         let router = self.router.clone();
         self.runtime.block_on(async move {
-            let response = router.oneshot(request).await.map_err(|e| e.to_string())?;
+            // The router's error type is `Infallible`: there is no error to turn into text.
+            let response = match router.oneshot(request).await {
+                Ok(response) => response,
+                Err(never) => match never {},
+            };
             let status = response.status().as_u16();
             let bytes = axum::body::to_bytes(response.into_body(), MAX_ANSWER)
                 .await
