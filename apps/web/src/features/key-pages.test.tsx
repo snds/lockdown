@@ -28,7 +28,8 @@ describe("the key pages the desktop opens", () => {
     render(<SecondFactorPage link={link} id="p" credentials={credentials} />)
     expect(await screen.findByText(/Sam's laptop is signing in/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Use my security key" }))
-    expect(await screen.findByRole("status")).toHaveTextContent("Go back to the Lockdown app")
+    expect(await screen.findByRole("heading", { level: 1, name: "Done." })).toBeInTheDocument()
+    expect(screen.getByText(/Go back to the Lockdown app/)).toHaveAttribute("role", "status")
     expect(link.call).toHaveBeenCalledWith("page_sign_in_answer", {
       pendingId: "p",
       answer: { credentialId: [9], clientDataJson: [1], authenticatorData: [2], signature: [3] },
@@ -45,16 +46,31 @@ describe("the key pages the desktop opens", () => {
     render(<SecurityKeyPage link={link} id="k" credentials={credentials} />)
     await screen.findByText(/For me@example.com/)
     await userEvent.type(screen.getByLabelText("Name"), "Blue key")
-    await userEvent.click(screen.getByRole("button", { name: "Add the key" }))
-    expect(await screen.findByRole("status")).toHaveTextContent("Added")
+    await userEvent.click(screen.getByRole("button", { name: "Add key" }))
+    expect(await screen.findByRole("heading", { level: 1, name: "Added." })).toBeInTheDocument()
+    expect(screen.getByText(/You can close this tab/)).toHaveAttribute("role", "status")
     expect(link.call).toHaveBeenCalledWith("page_key_finish", { pendingId: "k", answer: { name: "Blue key", clientDataJson: [6], attestationObject: [7] } })
   })
 
-  it("says so when the sign-in is no longer waiting", async () => {
+  it("says so when the sign-in is no longer waiting, and offers no key to use", async () => {
     const link = fakeLink({})
     render(<SecondFactorPage link={link} id="p" credentials={{} as CredentialsContainer} />)
+    // Brief W2: a request that is gone is a critical Empty State in the server's words, with Try again.
     expect(await screen.findByRole("alert")).toHaveTextContent("no page_sign_in_request")
-    expect(screen.getByRole("button", { name: "Use my security key" })).toBeDisabled()
+    expect(screen.getByRole("heading", { level: 1, name: "This request isn't waiting." })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Use my security key" })).toBeNull()
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }))
+    await waitFor(() => expect(link.call).toHaveBeenCalledTimes(2))
+  })
+
+  it("keeps the key button's label while the key is in use (cross-app decisions §9)", async () => {
+    const link = fakeLink({ page_sign_in_request: getReq })
+    const credentials = { get: vi.fn(() => new Promise(() => {})) } as unknown as CredentialsContainer
+    render(<SecondFactorPage link={link} id="p" credentials={credentials} />)
+    await userEvent.click(await screen.findByRole("button", { name: "Use my security key" }))
+    const busy = screen.getByRole("button", { name: /Use my security key$/ })
+    expect(busy).toHaveAttribute("aria-busy", "true")
+    expect(busy).toHaveTextContent("Use my security key")
   })
 })
 

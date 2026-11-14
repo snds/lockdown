@@ -23,24 +23,34 @@ import { DIALOG, go } from "./steps/shell"
 const PERSON_LOGIN = PERSON.login
 
 export const SCREENS_STATES: StateDef[] = [
-  d({ id: "desktop-unlock-locked", screen: "Unlock", state: "Locked", brief_row: "Unlock", notes: "The name, the master password and the way back in with the kit. No server words. The washed shell stands behind.", steps: [{ wait: "Unlock", role: "button" }] }),
+  d({
+    id: "desktop-unlock-locked",
+    screen: "Unlock",
+    state: "Locked",
+    brief_row: "Unlock",
+    notes: "Mobile / 13, Desktop / 10 (brief F1): the focus frame alone, LOCKED and the name in the overline, \"Lockdown is locked.\", the master password, Unlock (a float button on a phone) and the way back in with the kit. Touch ID is left out: this build has no quick unlock. No vault names, no server words, no wash.",
+    built: { area: "locked", screen: "locked", kind: "drawn" },
+    steps: [{ wait: "Lockdown is locked.", role: "heading" }, { wait: "Unlock", role: "button" }],
+  }),
   d({
     id: "desktop-unlock-idle",
     screen: "Unlock",
     state: "Locked after idle",
     brief_row: "Unlock",
-    notes: "Locked by the idle timer: the screen says why.",
+    notes: "Locked by the idle timer: the overline says so, with the timer that fired as the core reports it (brief F1).",
+    built: { area: "locked", screen: "idle", kind: "undrawn" },
     setup: (w) => {
       w.lock = { ...w.lock, reason: "idle" }
     },
-    steps: [{ wait: /Locked after a while without you/ }],
+    steps: [{ wait: /^Locked \/\/ Idle 10:00/ }],
   }),
   d({
     id: "desktop-unlock-error",
     screen: "Unlock",
     state: "Wrong password",
     brief_row: "Unlock",
-    notes: "A wrong master password, in the core's words.",
+    notes: "A wrong master password, in the core's words, under the field (brief F1).",
+    built: { area: "locked", screen: "wrong-password", kind: "undrawn" },
     steps: [{ fill: "Master password", value: "Tidal-Vesper-Orbit-84" }, { click: "Unlock", role: "button" }, { wait: /That isn't the master password/ }],
   }),
   d({
@@ -65,7 +75,16 @@ export const SCREENS_STATES: StateDef[] = [
       { wait: "Choose a new master password", role: "heading" },
     ],
   }),
-  d({ id: "desktop-unlock-starting", screen: "Unlock", state: "Loading", brief_row: "Unlock", notes: "The core has not answered `probe` yet: a spinner on the wash.", answers: () => ({ probe: () => forever() }), steps: [{ pause: 300 }] }),
+  d({
+    id: "desktop-unlock-starting",
+    screen: "Unlock",
+    state: "Loading",
+    brief_row: "Unlock",
+    notes: "The core has not answered `probe` yet: the lockup and one skeleton bar (brief F1).",
+    built: { area: "locked", screen: "starting", kind: "undrawn" },
+    answers: () => ({ probe: () => forever() }),
+    steps: [{ see: '[data-slot="skeleton"]' }, { pause: 300 }],
+  }),
   d({
     id: "desktop-unlock-cant-start",
     screen: "Unlock",
@@ -79,18 +98,20 @@ export const SCREENS_STATES: StateDef[] = [
           "Lockdown couldn't create its folder /Users/sam/Library/Application Support/snds/lockdown: macOS didn't allow it. Check that your user account can write to /Users/sam/Library/Application Support/snds, then try again.",
         ),
     }),
-    steps: [{ wait: "Lockdown can't start" }],
+    built: { area: "locked", screen: "cant-start", kind: "undrawn" },
+    steps: [{ wait: "Lockdown can't start.", role: "heading" }],
   }),
   d({
     id: "desktop-unlock-not-enrolled",
     screen: "Unlock",
     state: "Not enrolled",
     brief_row: "Unlock",
-    notes: "An identity exists on this computer but doesn't list this device.",
+    notes: "An identity exists on this computer but doesn't list this device: the title, today's paragraph, no action (brief F1).",
+    built: { area: "locked", screen: "not-enrolled", kind: "undrawn" },
     setup: (w) => {
       w.device = { identity: true, deviceKey: false }
     },
-    steps: [{ wait: "This device isn't enrolled yet" }],
+    steps: [{ wait: "This device isn't enrolled yet.", role: "heading" }],
   }),
   d({
     id: "desktop-first-run-welcome",
@@ -288,15 +309,16 @@ export const SCREENS_STATES: StateDef[] = [
   }),
 
   // --- the web vault -----------------------------------------------------------------
-  w({ id: "web-sign-in", screen: "Sign in", state: "Password and Secret Key", brief_row: "Sign in", notes: "This tab becomes one of your devices until you sign out.", setup: signedOut, steps: [{ wait: "Login name" }] }),
-  w({ id: "web-sign-in-device", screen: "Sign in", state: "With a device", brief_row: "Sign in", notes: "Join with a code or QR from a signed-in device.", setup: signedOut, steps: [{ click: "With a device", role: "tab" }, { pause: 300 }] }),
-  w({ id: "web-sign-in-new", screen: "Sign in", state: "No account yet?", brief_row: "Sign in", notes: "The web vault never creates accounts (D176).", setup: signedOut, steps: [{ click: "No account yet?", role: "tab" }, { pause: 300 }] }),
+  w({ id: "web-sign-in", screen: "Sign in", state: "Password and Secret Key", brief_row: "Sign in", notes: "Brief W1: the focus frame, WEB VAULT // the host, \"Sign in.\", the three tabs; login name, master password, Secret Key, Sign in.", built: { area: "sign-in", screen: "password", kind: "undrawn" }, setup: signedOut, steps: [{ wait: "Login name" }] }),
+  w({ id: "web-sign-in-device", screen: "Sign in", state: "With a device", brief_row: "Sign in", notes: "Join with a code or QR from a signed-in device (today's JoinWithDevice; screens-3 restyles it).", setup: signedOut, steps: [{ click: "With a device", role: "tab" }, { pause: 300 }] }),
+  w({ id: "web-sign-in-new", screen: "Sign in", state: "No account yet?", brief_row: "Sign in", notes: "The web vault never creates accounts (D176): two paragraphs, no button.", built: { area: "sign-in", screen: "no-account", kind: "undrawn" }, setup: signedOut, steps: [{ click: "No account yet?", role: "tab" }, { pause: 300 }] }),
   w({
     id: "web-sign-in-error",
     screen: "Sign in",
     state: "Wrong password or Secret Key",
     brief_row: "Sign in",
-    notes: "The server refused the sign-in; the words come from the core.",
+    notes: "The server refused the sign-in: its words in one compact critical Banner over Sign in (brief W1).",
+    built: { area: "sign-in", screen: "refused", kind: "undrawn" },
     setup: signedOut,
     answers: () => ({ web_sign_in: () => fail("refused", "That login name, password and Secret Key don't open an account on this server.") }),
     steps: [{ fill: "Login name", value: PERSON.login }, { fill: "Master password", value: "not it" }, { fill: "Secret Key", value: "A3-K7QF2M" }, { click: "Sign in", role: "button", within: '[role="tabpanel"]' }, { wait: /don't open an account/ }],
@@ -306,7 +328,8 @@ export const SCREENS_STATES: StateDef[] = [
     screen: "Sign in",
     state: "Rate limited",
     brief_row: "Sign in",
-    notes: "Too many tries: the server's wait, in words.",
+    notes: "Too many tries: the server's wait, in words, in the compact critical Banner (brief W1).",
+    built: { area: "sign-in", screen: "rate-limited", kind: "undrawn" },
     setup: signedOut,
     answers: () => ({ web_sign_in: () => fail("refused", "Too many sign-in attempts for this login. Try again in 15 minutes.") }),
     steps: [{ fill: "Login name", value: PERSON.login }, { fill: "Master password", value: "x" }, { fill: "Secret Key", value: "A3" }, { click: "Sign in", role: "button", within: '[role="tabpanel"]' }, { wait: /Too many sign-in attempts/ }],
@@ -316,35 +339,37 @@ export const SCREENS_STATES: StateDef[] = [
     screen: "Sign in",
     state: "Waiting for a security key",
     brief_row: "Security-key or email wait",
-    notes: "The account asks for a security key on a device it has never seen (D250).",
+    notes: "The account asks for a security key on a device it has never seen (D250): \"Use your security key.\", Use my security key, Cancel (brief W1).",
+    built: { area: "sign-in", screen: "security-key", kind: "undrawn" },
     setup: signedOut,
     answers: () => ({ web_sign_in: () => fail("approval_needed", "This account asks for a security key on a new device.", "security_key") }),
-    steps: [{ fill: "Login name", value: PERSON.login }, { fill: "Master password", value: "x" }, { fill: "Secret Key", value: "A3" }, { click: "Sign in", role: "button", within: '[role="tabpanel"]' }, { pause: 800 }],
+    steps: [{ fill: "Login name", value: PERSON.login }, { fill: "Master password", value: "x" }, { fill: "Secret Key", value: "A3" }, { click: "Sign in", role: "button", within: '[role="tabpanel"]' }, { wait: "Use your security key.", role: "heading" }, { pause: 300 }],
   }),
   w({
     id: "web-sign-in-email-wait",
     screen: "Sign in",
     state: "Waiting for an email approval",
     brief_row: "Security-key or email wait",
-    notes: "The server emailed a link to approve this tab (D300); the address is masked.",
+    notes: "The server emailed a link to approve this tab (D300); the address is masked. \"Check your email.\", a live line, Cancel (brief W1).",
+    built: { area: "sign-in", screen: "email-wait", kind: "undrawn" },
     setup: signedOut,
     answers: () => ({ web_sign_in: () => fail("approval_needed", "we emailed s••@rivera.example a link to approve this tab", "email"), web_sign_in_continue: () => forever() }),
-    steps: [{ fill: "Login name", value: PERSON.login }, { fill: "Master password", value: "x" }, { fill: "Secret Key", value: "A3" }, { click: "Sign in", role: "button", within: '[role="tabpanel"]' }, { pause: 800 }],
+    steps: [{ fill: "Login name", value: PERSON.login }, { fill: "Master password", value: "x" }, { fill: "Secret Key", value: "A3" }, { click: "Sign in", role: "button", within: '[role="tabpanel"]' }, { wait: "Check your email.", role: "heading" }, { pause: 300 }],
   }),
   w({ id: "web-starting", screen: "Sign in", state: "Starting", brief_row: "Sign in", notes: "The worker has not answered yet.", answers: () => ({ web_state: () => forever() }), steps: [{ pause: 300 }] }),
   w({ id: "web-cant-start", screen: "Sign in", state: "Can't start", brief_row: "Sign in", notes: "The core module failed its integrity check.", answers: () => ({ web_state: () => fail("stopped", "The vault's core module didn't match its published hash, so it wasn't run. Reload the page; if this stays, tell the server's operator.") }), steps: [{ wait: "The web vault can't start" }] }),
-  w({ id: "web-unlock", screen: "Unlock", state: "Locked", brief_row: "Unlock", notes: "Signed in, locked: the password only (D174).", steps: [{ wait: "Unlock", role: "button" }] }),
-  w({ id: "web-unlock-wrong", screen: "Unlock", state: "Wrong password", brief_row: "Unlock", notes: "The password didn't match.", steps: [{ fill: /password/i, value: "wrong" }, { click: "Unlock", role: "button" }, { wait: /didn't match/ }] }),
+  w({ id: "web-unlock", screen: "Unlock", state: "Locked", brief_row: "Unlock", notes: "Signed in, locked: the password only (D174). Brief W1 as F1, with Sign out of this tab.", built: { area: "web-unlock", screen: "locked", kind: "undrawn" }, steps: [{ wait: "Lockdown is locked.", role: "heading" }, { wait: "Unlock", role: "button" }] }),
+  w({ id: "web-unlock-wrong", screen: "Unlock", state: "Wrong password", brief_row: "Unlock", notes: "The password didn't match: the core's words under the field.", built: { area: "web-unlock", screen: "wrong-password", kind: "undrawn" }, steps: [{ fill: "Master password", value: "wrong" }, { click: "Unlock", role: "button" }, { wait: /didn't match/ }] }),
   w({ id: "web-settings", screen: "Settings", state: "Tab settings", brief_row: "Settings", notes: "Lock timers, clipboard, density, reveal, This server, the trust note; Sign out of this tab.", steps: [...webOpen, ...go("settings")] }),
-  w({ id: "web-link-share", screen: "Link page", state: "Share link: before opening", brief_row: "Link page (`/s/…`, `/r/…`)", notes: "Opening counts a view; one view left.", mount: () => linkPage("share"), steps: [{ pause: 500 }] }),
-  w({ id: "web-link-share-opened", screen: "Link page", state: "Share link: opened", brief_row: "Link page (`/s/…`, `/r/…`)", notes: "The link's values, one at a time.", mount: () => linkPage("share"), steps: [{ click: /^Open/, role: "button" }, { pause: 500 }] }),
-  w({ id: "web-link-request", screen: "Link page", state: "Request link", brief_row: "Link page (`/s/…`, `/r/…`)", notes: "Answer a request for a secret.", mount: () => linkPage("request"), steps: [{ pause: 500 }] }),
-  w({ id: "web-key-second-factor", screen: "Key pages", state: "Confirm a sign-in with a key", brief_row: "Key pages", notes: "The page the desktop opens when a new device waits for a security key.", mount: () => {
+  w({ id: "web-link-share", screen: "Link page", state: "Share link: before opening", brief_row: "Link page (`/s/…`, `/r/…`)", notes: "Brief W2: the views left and the last day as mono lines; Open link. No way into a vault.", built: { area: "link-page", screen: "share", kind: "undrawn" }, mount: () => linkPage("share"), steps: [{ wait: "Open link", role: "button" }, { pause: 300 }] }),
+  w({ id: "web-link-share-opened", screen: "Link page", state: "Share link: opened", brief_row: "Link page (`/s/…`, `/r/…`)", notes: "The info Banner, then one row per value: a Field Row for text, a SecretField for a secret.", built: { area: "link-page", screen: "share-opened", kind: "undrawn" }, mount: () => linkPage("share"), steps: [{ click: /^Open/, role: "button" }, { wait: "Rivera-Guest" }, { pause: 300 }] }),
+  w({ id: "web-link-request", screen: "Link page", state: "Request link", brief_row: "Link page (`/s/…`, `/r/…`)", notes: "Answer a request for a secret: what they asked for, What it is, the secret, Send.", built: { area: "link-page", screen: "request", kind: "undrawn" }, mount: () => linkPage("request"), steps: [{ wait: "Send", role: "button" }, { pause: 300 }] }),
+  w({ id: "web-key-second-factor", screen: "Key pages", state: "Confirm a sign-in with a key", brief_row: "Key pages", notes: "The page the desktop opens when a new device waits for a security key (brief W2).", built: { area: "key-page", screen: "second-factor", kind: "undrawn" }, mount: () => {
     followColorScheme()
     return <SecondFactorPage link={fakeLink} id={uid("pending", 1)} credentials={waitingCredentials} />
-  }, steps: [{ pause: 500 }] }),
-  w({ id: "web-key-add", screen: "Key pages", state: "Add a security key", brief_row: "Key pages", notes: "Adding a security key to the account.", mount: () => {
+  }, steps: [{ wait: "Use my security key", role: "button" }, { pause: 300 }] }),
+  w({ id: "web-key-add", screen: "Key pages", state: "Add a security key", brief_row: "Key pages", notes: "Adding a security key to the account: Name, Add key (brief W2).", built: { area: "key-page", screen: "add", kind: "undrawn" }, mount: () => {
     followColorScheme()
     return <SecurityKeyPage link={fakeLink} id={uid("pending", 2)} credentials={waitingCredentials} />
-  }, steps: [{ pause: 500 }] }),
+  }, steps: [{ wait: "Add key", role: "button" }, { pause: 300 }] }),
 ]

@@ -11,7 +11,7 @@ export const unlock: Step[] = [{ fill: "Master password", value: MASTER_PASSWORD
 /** Opens the unlocked desktop app. */
 export const open: Step[] = [...unlock, VAULT_OPEN]
 /** Opens the unlocked web vault: a tab that is signed in asks for the password only. */
-export const webOpen: Step[] = [{ fill: /password/i, value: "correct horse battery staple" }, { click: "Unlock", role: "button" }, VAULT_OPEN]
+export const webOpen: Step[] = [{ fill: "Master password", value: "correct horse battery staple" }, { click: "Unlock", role: "button" }, VAULT_OPEN]
 
 /** The first run's create path to the kit (doc 39 §1.9 screens 0–2). */
 export const create: Step[] = [
