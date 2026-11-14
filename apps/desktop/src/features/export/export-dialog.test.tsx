@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
 import { GateProvider } from "@/app/gate"
@@ -63,7 +63,7 @@ describe("the export dialog", () => {
     await user.type(screen.getByLabelText("The same password again"), "long enough pw")
     await user.click(screen.getByRole("button", { name: "Choose where to save…" }))
     // The core's gate: here, a plain confirm.
-    await user.click(await screen.findByRole("button", { name: "Confirm" }))
+    await user.click(within(await screen.findByRole("dialog", { name: "Export the vault?" })).getByRole("button", { name: "Export" }))
     expect(await screen.findByText("Saved to /home/ada/out.")).toBeInTheDocument()
     expect(exportChoose).toHaveBeenCalledWith("lockdown", true)
     const input = exportSave.mock.calls.at(-1)![0]
@@ -80,7 +80,7 @@ describe("the export dialog", () => {
     expect(await screen.findByText(/Tick the box/)).toBeInTheDocument()
     await user.click(screen.getByRole("checkbox", { name: /I understand this file won't be protected/ }))
     await user.click(screen.getByRole("button", { name: "Choose where to save…" }))
-    await user.click(await screen.findByRole("button", { name: "Confirm" }))
+    await user.click(within(await screen.findByRole("dialog", { name: "Export the vault?" })).getByRole("button", { name: "Export" }))
     expect(await screen.findByText(/This file isn't protected/)).toBeInTheDocument()
     expect(exportSave.mock.calls.at(-1)![0]).toMatchObject({ format: "csv", plainConfirmed: true, password: undefined })
   })

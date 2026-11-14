@@ -4,14 +4,16 @@
 // Banners), needs-you, the gate, the lock and the reminders. Same App, same
 // fixture; each state is a few steps deep.
 
+import { addNeedsYou } from "@/app/needs-you"
 import { LIVE_EVENT } from "@/features/sessions/live-client"
 
+import { PASSKEY_REQUEST } from "../fixture/shape"
 import { ago } from "../fixture/time"
 import { as } from "../host/core"
 import type { StateDef, Step } from "../harness/types"
 import { WIDE, d } from "./defs"
 import { open } from "./steps/screens"
-import { DIALOG, MENU, checkAgain, go, lock, openKeys, openMore, openSwitcher, scrollContent } from "./steps/shell"
+import { DIALOG, MENU, NEEDS_YOU, checkAgain, go, lock, openKeys, openLayer, openMore, openSwitcher, scrollContent } from "./steps/shell"
 import { openItem, reveal } from "./steps/vault"
 
 const reminders = (password: boolean, drill: boolean, kitTest: boolean) => ({
@@ -112,7 +114,8 @@ export const SHELL_STATES: StateDef[] = [
     screen: "Item detail",
     state: "Crown jewel: password asked",
     brief_row: "Item detail",
-    notes: "Revealing a crown jewel's field asks for the full master password (D98, D101).",
+    notes: "Revealing a crown jewel's field asks for the master password: unicron's gate, CONFIRM IT'S YOU, the reason, the field, CONFIRM and CANCEL; a question 480 on a desktop, a sheet on a phone (D98, D101, brief X5; D763).",
+    built: { area: "gate", screen: "master-password", kind: "undrawn" },
     setup: (w) => {
       w.settings = { ...w.settings, reveal: "toggle" }
     },
@@ -139,9 +142,64 @@ export const SHELL_STATES: StateDef[] = [
     answers: () => ({ expiry_reminders: as("expiry_reminders_due") }),
     steps: [...open, { wait: "Dismiss" }, rest],
   }),
-  d({ id: "desktop-reminder-kit-test", screen: "Reminders", state: "Test your recovery kit", brief_row: "Reminders", notes: "Right after the first run: test the kit, or skip with \"I understand an untested kit can fail\" (D251).", answers: () => ({ reminders: () => reminders(false, false, true) }), steps: [...open, DIALOG] }),
-  d({ id: "desktop-reminder-password", screen: "Reminders", state: "Your password, once more", brief_row: "Reminders", notes: "Every 14 days where unlock never asks for the password (D252).", answers: () => ({ reminders: () => reminders(true, false, false) }), steps: [...open, DIALOG] }),
-  d({ id: "desktop-reminder-drill", screen: "Reminders", state: "Time for the drill", brief_row: "Reminders", notes: "The yearly drill (D253).", answers: () => ({ reminders: () => reminders(false, true, false) }), steps: [...open, DIALOG] }),
+  // The reminders are needs-you rows 7 to 9 (brief X3, Q4, doc 68): the block on a desktop, the strip on a phone. Ids kept from the dialog they replaced.
+  d({ id: "desktop-reminder-kit-test", screen: "Reminders", state: "Test your recovery kit", brief_row: "Reminders", notes: "Right after the first run: RECOVERY KIT // NOT TESTED, TEST IT NOW, and SKIP, which asks with one yes, \"I understand an untested kit can fail\" (D251, D760).", answers: () => ({ reminders: () => reminders(false, false, true) }), steps: [...open, NEEDS_YOU, rest] }),
+  d({ id: "desktop-reminder-password", screen: "Reminders", state: "Your password, once more", brief_row: "Reminders", notes: "Every 14 days where unlock never asks for the password: MASTER PASSWORD // 14 DAYS, TYPE IT and TOMORROW (D252, D760).", answers: () => ({ reminders: () => reminders(true, false, false) }), steps: [...open, NEEDS_YOU, rest] }),
+  d({ id: "desktop-reminder-drill", screen: "Reminders", state: "Time for the drill", brief_row: "Reminders", notes: "The yearly drill: RECOVERY DRILL // DUE, RUN DRILL and NEXT WEEK (D253, D760).", answers: () => ({ reminders: () => reminders(false, true, false) }), steps: [...open, NEEDS_YOU, rest] }),
+  d({
+    id: "shell-needs-you-block",
+    widths: WIDE,
+    screen: "Needs you",
+    state: "The block, with one more waiting",
+    brief_row: null,
+    notes: "The kit test and the password are both due: one block at the top of the detail pane, RECOVERY KIT // NOT TESTED // +1, TEST IT NOW solid and SKIP as text, over an open login (brief X3, Desktop / 01's place; D761).",
+    built: { area: "needs-you", screen: "block", kind: "undrawn" },
+    answers: () => ({ reminders: () => reminders(true, false, true) }),
+    steps: [...open, ...openItem("Northwind Mail"), NEEDS_YOU, rest],
+  }),
+  d({
+    id: "shell-needs-you-strip",
+    widths: PHONE,
+    screen: "Needs you",
+    state: "The strip on a phone",
+    brief_row: null,
+    notes: "On a phone it is the status strip in the needs-you tone: the title over the line, OPEN beside it (a sheet with both actions). No close, no swipe away (brief X3; D761).",
+    built: { area: "needs-you", screen: "strip", kind: "undrawn" },
+    answers: () => ({ reminders: () => reminders(true, false, true) }),
+    steps: [...open, NEEDS_YOU, rest],
+  }),
+  d({
+    id: "shell-needs-you-under-dialog",
+    screen: "Needs you",
+    state: "A sign-in request under an open layer",
+    brief_row: null,
+    notes:
+      "A request that runs out arrives while a layer is open: the compact line, SIGN-IN REQUEST // 01:57 LEFT and REVIEW, stands on the layer's top edge, and the block (or strip) behind the scrim hides (brief X3, LA8; D762). The request is the fixture's own (PASSKEY_REQUEST), added by the harness: the sign-in source is edges-1's, not yet wired.",
+    built: { area: "needs-you", screen: "under-dialog", kind: "undrawn" },
+    answers: () => ({ reminders: () => reminders(false, false, true) }),
+    steps: [
+      ...open,
+      NEEDS_YOU,
+      ...openLayer(),
+      {
+        run: () => {
+          addNeedsYou({
+            id: `passkey:${PASSKEY_REQUEST.request_id}`,
+            priority: 1,
+            shows: "every",
+            title: "Sign-in request",
+            line: PASSKEY_REQUEST.text,
+            action: { label: "Review", onClick: () => {} },
+            textAction: { label: "Decline", onClick: () => {} },
+            expiresAt: Date.now() + PASSKEY_REQUEST.expires_in_secs * 1000,
+            expiredWords: "Sign-in request ran out",
+          })
+        },
+      },
+      { see: '[data-needs-you-layer] [data-slot="needs-you"], [data-needs-you-layer] [data-slot="accessory"]' },
+      { pause: 300 },
+    ],
+  }),
   d({
     id: "desktop-live-session-ended",
     screen: "Shell",
@@ -160,7 +218,7 @@ export const SHELL_STATES: StateDef[] = [
     built: { area: "messages", screen: "banner-split", kind: "undrawn" },
     steps: [...open, { emit: LIVE_EVENT, payload: { kind: "synced", pulled: 2, lines: ["Split view: the mirror at kt.witness.example disagrees."] } }, { wait: "See status", role: "button" }, rest],
   }),
-  d({ id: "desktop-locked-wash-narrow", screen: "Unlock", state: "Locked, behind the wash", brief_row: "Vault", notes: "The vault locked: the wash and skeleton rows, nothing readable (brief §4).", steps: [...open, ...lock(), { wait: "Unlock", role: "button" }] }),
+  d({ id: "desktop-locked-wash-narrow", screen: "Unlock", state: "Locked", brief_row: "Vault", notes: "The vault locked: the unlock screen alone, nothing of the shell (Q15, D764; the id is kept from the wash it replaced).", steps: [...open, ...lock(), { wait: "Unlock", role: "button" }] }),
   d({
     id: "desktop-passkey-upgrade-toast",
     screen: "Shell",

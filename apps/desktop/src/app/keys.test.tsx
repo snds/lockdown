@@ -233,13 +233,13 @@ describe("Escape never confirms", () => {
       </ClientProvider>,
     )
     await user.click(screen.getByRole("button", { name: "Export" }))
-    // The plain confirm is a dialog; the password gate is unicron's CrownJewelGate.
+    // The window check is unicron's ConfirmDialog (its yes is the action's verb, "Continue" when the core names none); the password gate is unicron's CrownJewelGate.
     const dialog = await waitFor(() => {
       const layer = document.querySelector<HTMLElement>('[role="dialog"], [role="alertdialog"]')
       expect(layer).not.toBeNull()
       return layer!
     })
-    if (detail === "window") act(() => within(dialog).getByRole("button", { name: "Confirm" }).focus())
+    if (detail === "window") act(() => within(dialog).getByRole("button", { name: "Continue" }).focus())
     else await user.type(dialog.querySelector<HTMLInputElement>('input[type="password"]')!, "hunter2")
     await user.keyboard("{Escape}")
     await waitFor(() => expect(onDone).toHaveBeenCalledWith("Cancelled; nothing happened."))

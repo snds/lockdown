@@ -37,6 +37,7 @@ import { CrumbProvider, useCrumbExtra } from "./crumbs"
 import { PushedBottomRow, PushedChromeProvider } from "./detail-bottom-row"
 import { useAppKeys } from "./keys"
 import { KeysDialog } from "./keys-dialog"
+import { NeedsYouStrip, useNeedsYouTop } from "./needs-you"
 import { PageHeadProvider, type PageHeadFromShell } from "./page-head"
 import {
   ASIDE_VIEWS,
@@ -150,6 +151,7 @@ export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, t
   // The sidebar as its rail by choice (⌘\), kept on this device.
   const [collapsed, setCollapsed] = useDeviceFlag(SIDEBAR_KEY, false)
   const { vaults } = useVaults()
+  const needsYou = useNeedsYouTop().top !== null
 
   const go = useCallback(
     (id: string) => {
@@ -209,7 +211,9 @@ export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, t
                 {children}
               </VaultListHead>
             </AppFrameMain>
-            <StatusStrip />
+            {/* The strip's slot: a needs-you first (brief X3), the live status otherwise (X2). */}
+            <NeedsYouStrip />
+            <StatusStrip outranked={needsYou} />
             <BottomRow toFix={toFix} onCreate={() => setCreating(true)} onQuickCreate={create} onReselect={reselect} />
             <PushedBottomRow />
             <CreateMenu open={creating} onOpenChange={setCreating} onPick={create} onNotice={onNotice} />

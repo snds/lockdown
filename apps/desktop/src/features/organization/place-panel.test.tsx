@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 
@@ -80,7 +80,7 @@ describe("assigning from the list and the detail", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Stop keeping as a crown jewel" }))
     await user.click(await screen.findByRole("button", { name: "Stop protecting it" }))
     // The core asked; the window's confirm stands in on a device with nothing else.
-    await user.click(await screen.findByRole("button", { name: /Confirm/ }))
+    await user.click(within(await screen.findByRole("dialog", { name: "Go ahead?" })).getByRole("button", { name: "Continue" }))
     await waitFor(() => expect(onReplaced).toHaveBeenCalledWith("plain-id", "No longer a crown jewel."))
   })
 })

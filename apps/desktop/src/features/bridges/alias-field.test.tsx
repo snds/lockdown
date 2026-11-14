@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 
@@ -54,7 +54,9 @@ describe("the bridges views", () => {
     mount(<AliasField site="https://Shop.example/signup" onAddress={onAddress} />, bridges)
     const user = userEvent.setup()
     await user.click(await screen.findByRole("button", { name: "New alias from SimpleLogin" }))
-    const confirm = await screen.findByRole("button", { name: /confirm/i })
+    // The window check: "Use your alias service's key?", its yes the action's own verb (doc 68).
+    const question = await screen.findByRole("dialog", { name: "Use your alias service's key?" })
+    const confirm = within(question).getByRole("button", { name: "Use" })
     await user.click(confirm)
     await waitFor(() => expect(onAddress).toHaveBeenCalledWith("shop.x1@simplelogin.com"))
     expect(aliasGenerate).toHaveBeenLastCalledWith("k1", "shop.example", expect.objectContaining({ confirmed: true }))

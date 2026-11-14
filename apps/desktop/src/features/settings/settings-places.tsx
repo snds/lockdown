@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 
 import { AppFrameInset, AppFramePageHead, SettingsFrame, useAppFrame } from "@unicron/ui"
 
+import { NeedsYouSlot, useNeedsYouBlock } from "@/app/needs-you"
 import { deviceName, settingsSections, usePlaces, type SettingsSection } from "@/app/places"
 import { isMac } from "@/features/palette/palette-model"
 
@@ -26,6 +27,7 @@ interface SettingsPlacesProps {
 export function SettingsPlaces({ overview, children }: SettingsPlacesProps) {
   const { nav, surface, go } = usePlaces()
   const frame = useAppFrame()
+  const needsYou = useNeedsYouBlock()
   const device = deviceName(surface, isMac())
   const all = settingsSections(surface)
   // Narrower than two columns the device's rows are the overview, so its section is not listed twice.
@@ -47,7 +49,19 @@ export function SettingsPlaces({ overview, children }: SettingsPlacesProps) {
       overview={overview ? <AppFrameInset>{overview}</AppFrameInset> : undefined}
       head={frame.phone ? undefined : <AppFramePageHead title="Settings" size="sm" gap="sm" />}
     >
-      {shown ? <AppFrameInset>{children(shown)}</AppFrameInset> : null}
+      {shown ? (
+        <AppFrameInset>
+          {/* What waits on the person, at the top of the section (brief X3). */}
+          {needsYou ? (
+            <div className="flex flex-col gap-6">
+              <NeedsYouSlot />
+              {children(shown)}
+            </div>
+          ) : (
+            children(shown)
+          )}
+        </AppFrameInset>
+      ) : null}
     </SettingsFrame>
   )
 }

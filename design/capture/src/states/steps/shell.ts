@@ -247,3 +247,12 @@ export const scrollContent = (px: number): Step[] => [
     },
   },
 ]
+
+/** The needs-you, drawn: the block on a desktop, the strip on a phone (brief X3, doc 68). */
+export const NEEDS_YOU: Step = { see: "[data-needs-you-row]" }
+
+/**
+ * Opens a layer over the page, the way each shell has one at hand: the keys list (a dialog) on a desktop,
+ * Switch vault (a sheet) on a phone.
+ */
+export const openLayer = (): Step[] => [by({ sidebar: openKeys(), rail: openKeys(), phone: switcher })]

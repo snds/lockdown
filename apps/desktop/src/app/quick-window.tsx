@@ -14,6 +14,9 @@ import { HygieneClientProvider } from "@/features/hygiene/hygiene-client"
 import { QuickPalette } from "@/features/palette/quick-palette"
 import { QuickClientProvider, useQuickClient } from "@/features/quick/quick-client"
 
+/** How often the open window asks whether the vault locked, as the main window's lock watch does. */
+const LOCK_POLL_MS = 3000
+
 /**
  * The quick-access window the system-wide shortcut opens
  * (docs/plan/26-desktop-finish.md §2): only the palette, its search in
@@ -48,6 +51,23 @@ function QuickRoot() {
       void off.then((f) => f())
     }
   }, [refresh])
+
+  // A lock while the window is open closes it (brief X5, Lock): the palette never stays over a locked vault.
+  useEffect(() => {
+    if (locked !== false) return
+    const t = window.setInterval(() => {
+      client
+        .lockState()
+        .then((s) => {
+          if (!s.locked) return
+          setLocked(true)
+          setRows([])
+          void quick.hide()
+        })
+        .catch(() => {})
+    }, LOCK_POLL_MS)
+    return () => window.clearInterval(t)
+  }, [locked, client, quick])
 
   const unlock = () =>
     client

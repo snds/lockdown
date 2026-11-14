@@ -103,28 +103,6 @@ describe("dialog actions at 390 px (R1)", () => {
     expectStackedPrimaryLast(expectWords("Revoke", dialog))
   })
 
-  it("the plain confirm on a computer with no built-in check: Cancel, then Confirm", async () => {
-    // The core asks for the window's confirm the first time, then takes the call.
-    const call = vi
-      .fn<() => Promise<void>>()
-      .mockRejectedValueOnce({ code: "approval_needed", message: "Revoke the old phone.", detail: "window" })
-      .mockResolvedValue(undefined)
-    function Asker() {
-      const gate = useGate()
-      return <button onClick={() => void gate.run(call).catch(() => {})}>Ask</button>
-    }
-    render(
-      <ClientProvider value={fakeClient({ approvalRoute: () => Promise.resolve({ route: "window", method: "window" }) })}>
-        <GateProvider>
-          <Asker />
-        </GateProvider>
-      </ClientProvider>,
-    )
-    await userEvent.setup().click(screen.getByRole("button", { name: "Ask" }))
-    const dialog = await screen.findByRole("dialog")
-    expectWords("Cancel", dialog)
-    expectStackedPrimaryLast(expectWords("Confirm", dialog))
-  })
 })
 
 /*
@@ -183,6 +161,30 @@ describe("unicron's own dialog actions at 390 px (R1)", () => {
     remove = applySheets()
   })
   afterEach(() => remove())
+
+  it("the window gate on a computer with no built-in check keeps Cancel and the action's own verb (doc 68)", async () => {
+    // The core asks for the window's confirm the first time, then takes the call. From doc 68 it is
+    // unicron's ConfirmDialog: "Revoke the old phone?" with Cancel and Revoke.
+    const call = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce({ code: "approval_needed", message: "confirm in this window to revoke the old phone", detail: "window" })
+      .mockResolvedValue(undefined)
+    function Asker() {
+      const gate = useGate()
+      return <button onClick={() => void gate.run(call).catch(() => {})}>Ask</button>
+    }
+    render(
+      <ClientProvider value={fakeClient({ approvalRoute: () => Promise.resolve({ route: "window", method: "window" }) })}>
+        <GateProvider>
+          <Asker />
+        </GateProvider>
+      </ClientProvider>,
+    )
+    await userEvent.setup().click(screen.getByRole("button", { name: "Ask" }))
+    const dialog = await screen.findByRole("dialog", { name: "Revoke the old phone?" })
+    expectComputedWords("Cancel", dialog)
+    expectComputedWords("Revoke", dialog)
+  })
 
   it("the crown-jewel gate keeps Cancel and Confirm", async () => {
     render(<CrownJewelGate open level="password" reason="Show the recovery phrase." onConfirm={() => {}} />)

@@ -87,7 +87,7 @@ describe("the crown-jewel treatment on this host (D98, D101)", () => {
     await waitFor(() => expect(confirmButton()).toBeEnabled())
     await user.click(confirmButton())
 
-    const again = await screen.findByText(/Password incorrect\. 2 tries left\./)
+    const again = await screen.findByText("That isn't the master password. 2 tries left.")
     expect(again).toBeInTheDocument()
     await user.type(screen.getByLabelText("Account password"), "correct horse")
     await waitFor(() => expect(confirmButton()).toBeEnabled())

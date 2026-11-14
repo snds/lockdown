@@ -3,11 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Spinner, Tabs, TabsList, TabsTrigger, Toaster, TooltipProvider, toast } from "@unicron/ui"
 
 import { MessageBoardProvider, criticalBanner, firstCritical, useNews, type CriticalSources } from "@/app/banners"
-import { GateProvider } from "@/app/gate"
+import { GateProvider, useGate } from "@/app/gate"
 import { useIdleCountdown, useLockWatch } from "@/app/lock-watch"
 import { notify, savedWords } from "@/app/notify"
 import { StatusProvider, clockWords, useLiveWork, type LiveStatus, type StatusFact } from "@/app/status"
 import { LockedProvider } from "@/app/locked"
+import { WaitingHost, type NeedsYouPlace } from "@/app/needs-you"
 import { SettingsProvider } from "@/app/settings"
 import { navFor, sharingTabs, type SharingTab } from "@/app/places"
 import { AppShell, type Nav } from "@/app/shell"
@@ -20,7 +21,6 @@ import { useExpiryReminder } from "@/features/organization/expiry"
 import { useAwayReminder } from "@/features/vault/use-away-reminder"
 import { VaultsProvider } from "@/features/organization/vaults-context"
 import { QuickPalette } from "@/features/palette/quick-palette"
-import { LockedWash } from "@/features/unlock/locked-wash"
 import { toFixCount } from "@/features/security/security-model"
 import { SearchView } from "@/features/vault/search-view"
 import { VaultView } from "@/features/vault/vault-view"
@@ -117,10 +117,13 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
   }, [session])
   useEffect(refreshWeb, [refreshWeb])
 
+  const { dismiss: dismissGate } = useGate()
+  // Lock (brief X5): the content goes, and every layer with it, the gate and the palette included.
   const onLockState = useCallback(
     (state: LockState) => {
       setLock(state)
       if (state.locked && status) {
+        dismissGate()
         setReason(state.reason)
         setStatus(null)
         setRows(null)
@@ -128,7 +131,7 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
         refreshWeb()
       }
     },
-    [status, refreshWeb],
+    [status, refreshWeb, dismissGate],
   )
   useLockWatch(onLockState)
   const idle = useIdleCountdown(status ? lock : null)
@@ -229,6 +232,8 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
     client
       .lock()
       .then(() => {
+        dismissGate()
+        setPalette(false)
         setReason("requested")
         setStatus(null)
         setRows(null)
@@ -267,6 +272,9 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
   }, [])
   const sync = useCallback(() => void syncThenList(), [syncThenList])
   const vaultsValue = useMemo(() => ({ vaults, reload: sync }), [vaults, sync])
+  // Where the person is, for what waits on one item or on Sharing only (brief X3). The web vault has no source yet.
+  const itemOpen = nav.area === "vault" || nav.area === "search" ? selected : null
+  const needsYouPlace = useMemo<NeedsYouPlace>(() => ({ sharing: nav.area === "sharing", item: itemOpen }), [nav.area, itemOpen])
   const openItem = useCallback((id: string) => {
     setNav({ area: "vault", view: "all" })
     setSelected(id)
@@ -322,9 +330,8 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
   }
   if (!status) {
     return (
-      <div className="relative h-full">
-        <LockedWash />
-        <div className="absolute inset-0 overflow-y-auto">
+      // Locked or signed out: that screen alone, nothing of the shell (Q15; changes D107's wash).
+      <div className="h-full overflow-y-auto">
           {web.signed_in && web.locked && web.login ? (
             <WebUnlockScreen session={session} login={web.login} reason={reason} onUnlocked={opened} onSignedOut={refreshWeb} />
           ) : web.signed_in ? (
@@ -334,7 +341,6 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
           ) : (
             <SignInScreen session={session} server={server} onSignedIn={opened} credentials={navigator.credentials} />
           )}
-        </div>
         {/* The open shell holds its own, inside the frame. */}
         <Toaster position="bottom-center" />
       </div>
@@ -342,6 +348,7 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
   }
   return (
     <LockedProvider value={lock?.locked ?? false}>
+      <WaitingHost place={needsYouPlace}>
       <VaultsProvider value={vaultsValue}>
         <StatusProvider live={live} fallback={syncedLine}>
         <MessageBoardProvider critical={critical} news={news.news} onDismissNews={news.dismiss}>
@@ -417,6 +424,7 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
           onNotice={notice}
         />
       </VaultsProvider>
+      </WaitingHost>
     </LockedProvider>
   )
 }

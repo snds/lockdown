@@ -4,11 +4,12 @@ import { ThemeProvider } from "next-themes"
 import { Toaster, TooltipProvider, toast } from "@unicron/ui"
 
 import { MessageBoardProvider, criticalBanner, firstCritical, useNews, type CriticalSources } from "@/app/banners"
-import { GateProvider } from "@/app/gate"
+import { GateProvider, useGate } from "@/app/gate"
 import { useIdleCountdown, useLockWatch } from "@/app/lock-watch"
 import { notify, savedWords } from "@/app/notify"
 import { StatusProvider, useLiveWork, type LiveStatus, type StatusFact } from "@/app/status"
 import { LockedProvider } from "@/app/locked"
+import { WaitingHost, type NeedsYouPlace } from "@/app/needs-you"
 import { SettingsProvider, useSettings } from "@/app/settings"
 import { TemplatesProvider, useTemplates } from "@/app/templates"
 import { navFor } from "@/app/places"
@@ -35,7 +36,6 @@ import { SecurityView } from "@/features/security/security-view"
 import { SettingsView } from "@/features/settings/settings-view"
 import { useSharingClient } from "@/features/sharing/sharing-client"
 import { SharingLocalOnly, SharingView } from "@/features/sharing/sharing-view"
-import { LockedWash } from "@/features/unlock/locked-wash"
 import { UnlockScreen } from "@/features/unlock/unlock-screen"
 import { SearchView } from "@/features/vault/search-view"
 import { VaultView } from "@/features/vault/vault-view"
@@ -100,10 +100,14 @@ function Root() {
   // Health is read again after a pull runs its check.
   const [healthRead, setHealthRead] = useState(0)
   const news = useNews()
+  const { dismiss: dismissGate } = useGate()
 
+  // Lock (brief X5): no question, no animation. The content goes first (the locked branch below draws the
+  // unlock screen alone), then every layer closes with it: the gate, the palette, every dialog and sheet.
   const onLockState = useCallback((state: LockState) => {
     setLock(state)
     if (state.locked) {
+      dismissGate()
       setStatus(null)
       setRows(null)
       setReport(null)
@@ -111,7 +115,7 @@ function Root() {
       setPalette(false)
       setSigningIn(false)
     }
-  }, [])
+  }, [dismissGate])
   useLockWatch(onLockState)
   const idle = useIdleCountdown(status ? lock : null)
   // Typed secrets go when the window hides or stays out of focus (docs/plan/26-desktop-finish.md §7).
@@ -190,7 +194,15 @@ function Root() {
     client.status().then(setStatus).catch((e) => toast.error(describeError(e)))
     void reload()
   }
-  const lockNow = () => client.lock().then(() => setStatus(null)).catch((e) => toast.error(describeError(e)))
+  const lockNow = () =>
+    client
+      .lock()
+      .then(() => {
+        dismissGate()
+        setPalette(false)
+        setStatus(null)
+      })
+      .catch((e) => toast.error(describeError(e)))
   const notice = useCallback((text: string) => {
     notify(text)
   }, [])
@@ -226,6 +238,9 @@ function Root() {
     setSelected(id)
   }, [])
   const vaultsValue = useMemo(() => ({ vaults, reload: () => void reload() }), [vaults, reload])
+  // Where the person is, for what waits on one item or on Sharing only (brief X3).
+  const itemOpen = nav.area === "vault" || nav.area === "search" ? selected : null
+  const needsYouPlace = useMemo<NeedsYouPlace>(() => ({ sharing: nav.area === "sharing", item: itemOpen }), [nav.area, itemOpen])
 
   // News that can wait (brief X2 table 5): one dismissable info Banner on All items, not a toast (D753).
   const { add: addNews, clear: clearNews } = news
@@ -322,14 +337,11 @@ function Root() {
   )
 
   if (!status) {
-    // Locked: the shell's shape stays, washed, with nothing readable in it;
-    // the unlock screen sits over it (brief §4).
+    // Locked: the unlock screen alone. Nothing of the shell is drawn, not even its shape (Q15, changes D107's
+    // wash; brief 4.0 "Locked means nothing readable is drawn").
     return (
-      <div className="relative h-full">
-        <LockedWash />
-        <div className="absolute inset-0 overflow-y-auto">
-          <UnlockScreen reason={lock?.reason ?? null} onOpened={setStatus} />
-        </div>
+      <div className="h-full overflow-y-auto">
+        <UnlockScreen reason={lock?.reason ?? null} onOpened={setStatus} />
         {devtools}
         {/* The open shell holds its own, inside the frame. */}
         <Toaster position="bottom-center" />
@@ -338,6 +350,7 @@ function Root() {
   }
   return (
     <LockedProvider value={lock?.locked ?? false}>
+      <WaitingHost place={needsYouPlace}>
       <VaultsProvider value={vaultsValue}>
       <StatusProvider live={live} fallback={healthLine}>
       <MessageBoardProvider critical={critical} news={news.news} onDismissNews={news.dismiss}>
@@ -432,9 +445,11 @@ function Root() {
       <OncePage page={once} onClose={() => setOnce(null)} />
       <PairingDialog onNotice={notice} />
       <PasskeyApprovalDialog onNotice={notice} />
+      {/* The reminders are needs-you rows 7 to 9 (brief X3, Q4), not a dialog after unlock. */}
       <RemindersPrompt onNotice={notice} onChanged={refreshStatus} />
       {devtools}
       </VaultsProvider>
+      </WaitingHost>
     </LockedProvider>
   )
 }

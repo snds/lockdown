@@ -2,6 +2,8 @@ import { createContext, useContext, type ReactNode } from "react"
 
 import { AppFramePageHead, useAppFrame, type AppFramePageHeadProps, type PageHeadSwitcher } from "@unicron/ui"
 
+import { useNeedsYouUnderHead } from "./needs-you"
+
 /** What a screen says about its own head. */
 export interface PageHeadOwn {
   /** The mono caps line above, `//` between its parts. */
@@ -50,6 +52,15 @@ export const PageHeadProvider = PageHeadContext.Provider
 export function usePageHead(own: PageHeadOwn): AppFramePageHeadProps & { title: string } {
   const shell = useContext(PageHeadContext)
   const frame = useAppFrame()
+  // On a page (Health, Sharing, Codes), what waits on the person sits under the head, above anything else (brief X3).
+  const needsYou = useNeedsYouUnderHead()
+  const below =
+    needsYou && shell?.below ? (
+      <div className="flex flex-col gap-4">
+        {shell.below}
+        {needsYou}
+      </div>
+    ) : (needsYou ?? shell?.below)
   return {
     size: frame.phone ? "md" : "sm",
     overline: shell?.overline ?? own.overline,
@@ -64,8 +75,8 @@ export function usePageHead(own: PageHeadOwn): AppFramePageHeadProps & { title: 
         </>
       ) : (own.actions ?? shell?.actions),
     switcher: shell?.switcher ?? own.switcher,
-    below: shell?.below,
-    gap: frame.phone || shell?.below ? "md" : "sm",
+    below,
+    gap: frame.phone || below ? "md" : "sm",
   }
 }
 

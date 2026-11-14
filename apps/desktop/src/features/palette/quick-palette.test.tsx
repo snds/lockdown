@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState } from "react"
 
@@ -196,8 +196,10 @@ describe("the quick-access palette (D111)", () => {
     const user = userEvent.setup()
     const wallet = await screen.findByRole("option", { description: "Copy recovery phrase, Control Enter" })
     await user.click(wallet.querySelector<HTMLElement>('[data-slot="command-item-action"]')!)
-    expect(await screen.findByRole("heading", { name: "Are you sure?" })).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "Confirm" }))
+    // The window check asks with the action's own verb (doc 68).
+    const question = await screen.findByRole("dialog", { name: "Copy this protected value?" })
+    expect(within(question).getByText(/nothing is checked here/)).toBeInTheDocument()
+    await user.click(within(question).getByRole("button", { name: "Copy" }))
     await waitFor(() => expect(copySecret).toHaveBeenLastCalledWith("j1", "seed", 30, { confirmed: true }))
     expect(onNotice).toHaveBeenCalledWith("Copied the recovery phrase. The clipboard clears in 30 seconds.")
   })

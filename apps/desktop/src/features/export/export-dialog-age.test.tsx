@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 
@@ -51,7 +51,8 @@ describe("the export dialog's age choice", () => {
     expect(await screen.findByText(/Paste the age public key/)).toBeInTheDocument()
     await user.type(screen.getByLabelText("The public keys it opens with"), "age1aaa\nage1bbb")
     await user.click(screen.getByRole("button", { name: "Choose where to save…" }))
-    await user.click(await screen.findByRole("button", { name: /confirm/i }))
+    // The window check: "Export the vault?" with its own verb (doc 68).
+    await user.click(within(await screen.findByRole("dialog", { name: "Export the vault?" })).getByRole("button", { name: "Export" }))
     await waitFor(() => expect(exportSaveAge).toHaveBeenLastCalledWith({ target: 9, recipients: ["age1aaa", "age1bbb"], vault: null }, expect.objectContaining({ confirmed: true })))
     expect(exportChoose).toHaveBeenCalledWith("age", true)
   })

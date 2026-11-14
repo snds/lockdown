@@ -3,6 +3,7 @@ import { createContext, useContext, type ReactNode } from "react"
 import { AppFrameColumn, AppFrameDetail, AppFrameInset, AppFrameList, EmptyState, useAppFrame, type IconName } from "@unicron/ui"
 
 import { useDetailTopBarHandUp } from "@/app/detail-bottom-row"
+import { NeedsYouSlot, UnderPageHead, useNeedsYouBlock } from "@/app/needs-you"
 import { ScreenHead } from "@/app/page-head"
 import { useShellRefresh } from "@/app/status"
 
@@ -48,13 +49,27 @@ export function MasterDetail({ header, title, list, detail, onBack, emptyLabel }
   // A pull down on the phone's list runs the place's refresh (brief 3.3); its plain path is "Check again".
   const refresh = useShellRefresh()
   const hasDetail = detail !== null
+  // What waits on the person (brief X3) sits at the top of the main content column: the detail beside
+  // the list, or the one column that shows where the detail is pushed. A phone shows the strip instead.
+  const needsYou = useNeedsYouBlock()
+  const needsYouInDetail = frame.split || hasDetail
   return (
     <>
       <AppFrameList onRefresh={refresh}>
         {header}
+        {needsYou && !needsYouInDetail && (
+          <AppFrameInset>
+            <NeedsYouSlot />
+          </AppFrameInset>
+        )}
         {list}
       </AppFrameList>
       <AppFrameDetail open={hasDetail} onBack={onBack}>
+        {needsYou && needsYouInDetail && (
+          <AppFrameInset>
+            <NeedsYouSlot />
+          </AppFrameInset>
+        )}
         {hasDetail ? (
           <>
             {!frame.split && <h1 className="sr-only">{title}</h1>}
@@ -114,7 +129,10 @@ export function PageColumn({ children }: { children: ReactNode }) {
     <AppFrameColumn onRefresh={refresh}>
       {/* The column's own edge is the page's line, and the frame keeps the phone's 16: a screen adds no gutter of its own. */}
       <AppFrameInset>
-        <div className="[--c-page-gutter-narrow:0px] [--c-page-gutter:0px]">{children}</div>
+        {/* A page's needs-you block goes under its head (brief X3): the head draws it. */}
+        <UnderPageHead>
+          <div className="[--c-page-gutter-narrow:0px] [--c-page-gutter:0px]">{children}</div>
+        </UnderPageHead>
       </AppFrameInset>
     </AppFrameColumn>
   )
