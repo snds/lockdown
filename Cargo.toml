@@ -170,7 +170,7 @@ thiserror = "2.0"
 # The local store (03-architecture §11 q.1, decided in 07-workspace §4):
 # plain SQLite holding ciphertext only. `bundled` compiles SQLite in, so
 # every platform links the same version.
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 tempfile = "3"
 
 # Binaries.
