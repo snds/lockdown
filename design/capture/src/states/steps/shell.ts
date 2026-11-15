@@ -41,6 +41,39 @@ function shell(): Shell {
 /** A step for each shell, picked when it runs. */
 const by = (paths: Record<Shell, Step[]>): Step => ({ run: () => runSteps(paths[shell()]) })
 
+/** Steps for the whole desktop shell only (the sidebar beside list and detail); nothing at a rail or on a phone. */
+export const onDesktop = (steps: Step[]): Step => by({ sidebar: steps, rail: [], phone: [] })
+
+/**
+ * The app's three sections stay in view in the whole sidebar (brief X1, 3.2): Health's row ends above the
+ * pinned footer, with the trees closed, at the window the state is taken in. A sidebar that pushes it under
+ * the footer stops the state, so `pnpm shots --strict` fails on it.
+ */
+export const sectionsInView: Step = onDesktop([
+  {
+    run: async () => {
+      const side = document.querySelector<HTMLElement>(`${SIDEBAR}[data-slot="app-frame-sidebar"]`)
+      const health = Array.from(side?.querySelectorAll<HTMLElement>('[data-slot="nav-item-main"]') ?? []).find((el) => /^Health(,|$)/.test(el.getAttribute("aria-label") ?? ""))
+      const footer = side?.querySelector<HTMLElement>('[data-slot="app-frame-sidebar-footer"]')
+      if (!health || !footer) throw new Error("no Health row or sidebar footer")
+      if (health.getBoundingClientRect().bottom > footer.getBoundingClientRect().top) throw new Error("Health is under the sidebar's footer")
+    },
+  },
+])
+
+/**
+ * The picture as a person with a pointer sees it after a click: the selected row in view, no focus ring.
+ * The driver's clicks are synthetic, so the browser draws the ring a keyboard would get.
+ */
+export const asClicked: Step = {
+  run: async () => {
+    document.querySelector<HTMLElement>('main [data-slot="list-row"][data-selected]')?.scrollIntoView({ block: "center" })
+    const focused = document.activeElement
+    if (focused instanceof HTMLElement && focused !== document.body) focused.blur()
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+  },
+}
+
 /** One of the three sections: a sidebar row, a rail item, or a tab. */
 const section = (label: string): Step =>
   by({

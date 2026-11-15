@@ -318,7 +318,7 @@ describe.each(SIZES)("every place, by keyboard, at the %s width (%i px)", (width
     }
     if (width === "expanded") {
       // One shared vault's members: from the vault's own menu.
-      await press(user, screen.getByRole("button", { name: "Family options" }))
+      await press(user, within(sidebar()).getByRole("treeitem", { name: /^Family/ }), "{Shift>}{F10}{/Shift}")
       await press(user, () => within(screen.getByRole("menu")).getByRole("menuitem", { name: "Members" }))
       await waitFor(() => expect(where()).toBe(membersPlace("v2")))
       expectCurrent(/^Sharing/)
@@ -370,6 +370,8 @@ describe.each(SIZES)("every place, by keyboard, at the %s width (%i px)", (width
       expect(where()).toBe(p.id)
       expect(screen.getByText(`section ${p.nav.section}`)).toBeInTheDocument()
       expectCurrent(width === "compact" ? null : /^Settings$/)
+      // A pushed section names itself in the screen's one h1: the phone's top bar, an unseen heading at medium (brief 4.0).
+      if (width !== "expanded") expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual([p.label])
     }
     // ⌘, opens Settings from anywhere.
     await go.items()
@@ -521,10 +523,10 @@ describe("the phone's rows (brief 3.3)", () => {
     render(<Harness />)
     const create = screen.getByRole("button", { name: "New item" })
     await press(user, create)
-    const sheet = await screen.findByRole("dialog", { name: "New item" })
+    const sheet = await screen.findByRole("dialog", { name: "What are you saving?" })
     expect(await within(sheet).findByRole("group", { name: "Sign-ins and money" })).toBeInTheDocument()
     await user.keyboard("{Escape}")
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New item" })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "What are you saving?" })).toBeNull())
     // Quick create is never gesture-only: Shift+Enter opens it.
     await press(user, screen.getByRole("button", { name: "New item" }), "{Shift>}{Enter}{/Shift}")
     const quick = await screen.findByRole("menu", { name: "Quick create" })

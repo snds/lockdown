@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 
-import { AppFrameAccessory, StatusItem, type IconName } from "@unicron/ui"
+import { AppFrameAccessory, StatusItem, useAppFrame, type IconName } from "@unicron/ui"
 
 /*
  * Channel 1 of the five (cross-app decisions §1, brief X2): what the app is
@@ -165,6 +165,9 @@ export function StatusLineItems() {
 export function StatusStrip({ outranked = false }: { outranked?: boolean }) {
   const row = useStatusRow()
   const live = useLive()
+  const frame = useAppFrame()
+  // Where the frame draws the strip compact, inside the bottom row (the frame's own rule for AppFrameAccessory).
+  const inRow = frame.layout === "rail" || frame.minimized
   if (outranked || !row || row.kind === "screen") return null
   if (row.kind === "idle")
     return (
@@ -173,7 +176,9 @@ export function StatusStrip({ outranked = false }: { outranked?: boolean }) {
         meta="Locking in"
         countdown={row.left}
         title="No activity"
-        action={{ label: "Stay", onClick: live.onStay }}
+        // In the bottom row (scrolled, or a phone on its side) the strip is compact and keeps only an action with a
+        // glyph; with one, STAY stays reachable everywhere the strip shows (a Unicron gap: compact drops a worded action).
+        action={{ label: "Stay", icon: inRow ? "unlocked" : undefined, onClick: live.onStay }}
         progress={{ value: row.left, max: IDLE_WARN_SECS, segments: IDLE_WARN_SECS }}
         announce={IDLE_ANNOUNCE}
       />

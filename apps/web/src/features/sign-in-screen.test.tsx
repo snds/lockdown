@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
@@ -6,7 +6,7 @@ import type { Status } from "@/core/types"
 
 import type { WebSession } from "../core/web-client"
 import { SignInScreen } from "./sign-in-screen"
-import { WebUnlockScreen } from "./web-unlock-screen"
+import { NotSyncedQuestion, WebUnlockScreen } from "./web-unlock-screen"
 
 function session(over: Partial<WebSession> = {}): WebSession {
   return {
@@ -62,9 +62,61 @@ describe("the web vault's sign-in", () => {
     await userEvent.type(screen.getByLabelText("Master password"), "correct horse")
     await userEvent.type(screen.getByLabelText("Secret Key"), "A1-ABC")
     await userEvent.click(screen.getByRole("button", { name: "Sign in" }))
-    expect(await screen.findByText(/^The server emailed a link to s•••@example\.com/)).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { level: 1, name: "Check your email." })).toBeInTheDocument()
+    expect(screen.getByText(/^The server emailed a link to s•••@example\.com/)).toBeInTheDocument()
     expect(s.signInWaiting).not.toHaveBeenCalled()
     await vi.waitFor(() => expect(onSignedIn).toHaveBeenCalledWith(opened), { timeout: 6000 })
+  })
+
+  it("puts a refused sign-in in one compact critical Banner, in the server's words", async () => {
+    const s = session({ signIn: vi.fn(async () => Promise.reject({ code: "refused", message: "Too many sign-in attempts for this login. Try again in 15 minutes." })) })
+    render(<SignInScreen session={s} server="https://vault.example" onSignedIn={vi.fn()} />)
+    await userEvent.type(screen.getByLabelText("Login name"), "me")
+    await userEvent.type(screen.getByLabelText("Master password"), "x")
+    await userEvent.type(screen.getByLabelText("Secret Key"), "A1")
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }))
+    const banner = await screen.findByRole("alert")
+    expect(banner).toHaveTextContent("Too many sign-in attempts")
+    expect(banner).toHaveAttribute("data-slot", "banner")
+  })
+
+  it("keeps Sign in's label while it works", async () => {
+    const s = session({ signIn: vi.fn(() => new Promise<Status>(() => {})) })
+    render(<SignInScreen session={s} server="https://vault.example" onSignedIn={vi.fn()} />)
+    await userEvent.type(screen.getByLabelText("Login name"), "me")
+    await userEvent.type(screen.getByLabelText("Master password"), "x")
+    await userEvent.type(screen.getByLabelText("Secret Key"), "A1")
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }))
+    const busy = screen.getByRole("button", { name: /Sign in$/ })
+    expect(busy).toHaveAttribute("aria-busy", "true")
+    expect(busy).toHaveTextContent("Sign in")
+  })
+
+  it("names the web vault and its server in the overline, with the frame's title", () => {
+    render(<SignInScreen session={session()} server="https://vault.example" onSignedIn={vi.fn()} />)
+    expect(screen.getByRole("heading", { level: 1, name: "Sign in." })).toBeInTheDocument()
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Sign in", "With a device", "No account yet?"])
+  })
+
+  it("says another device ended the session, and signs the tab out", async () => {
+    const s = session()
+    const onSignedOut = vi.fn()
+    render(<WebUnlockScreen session={s} login="me@example.com" reason="requested" sessionEnded onUnlocked={vi.fn()} onSignedOut={onSignedOut} />)
+    expect(screen.getByText(/session was ended from another of your devices/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Sign out of this tab" }))
+    expect(s.signOut).toHaveBeenCalled()
+    expect(onSignedOut).toHaveBeenCalled()
+  })
+
+  it("asks before signing out with changes not yet synced, focus on Cancel", async () => {
+    const onSignOut = vi.fn()
+    const onCancel = vi.fn()
+    render(<NotSyncedQuestion open reason="The server can't be reached." onSignOut={onSignOut} onCancel={onCancel} />)
+    expect(await screen.findByRole("heading", { name: "Not synced, so still signed in." })).toBeInTheDocument()
+    expect(screen.getByText("The server can't be reached.")).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus())
+    await userEvent.click(screen.getByRole("button", { name: "Sign out anyway" }))
+    expect(onSignOut).toHaveBeenCalled()
   })
 
   it("explains where an account comes from instead of making one", async () => {
@@ -77,7 +129,9 @@ describe("the web vault's sign-in", () => {
     const s = session()
     const onUnlocked = vi.fn()
     render(<WebUnlockScreen session={s} login="me@example.com" reason="hidden" onUnlocked={onUnlocked} onSignedOut={vi.fn()} />)
-    expect(screen.getByText(/out of view/)).toBeInTheDocument()
+    // Brief W1 as F1: the reason and the login in the overline, the frame's title.
+    expect(screen.getByText("Locked // Out of view // me@example.com")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { level: 1, name: "Lockdown is locked." })).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText("Master password"), "correct horse")
     await userEvent.click(screen.getByRole("button", { name: "Unlock" }))
     expect(s.unlock).toHaveBeenCalledWith("correct horse")

@@ -1,21 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldLabel,
-  Input,
-  Spinner,
-} from "@unicron/ui"
+import { AdaptiveDialog, Button, DigitGroups, ListRow, SectionHeader, TextField } from "@unicron/ui"
 
-import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
 
 import { POLL_MS, phraseDigits, useDepthClient, type PhraseCheckView, type PhraseIncoming } from "./depth-client"
@@ -46,88 +32,112 @@ function useCheck(onEnd: (v: PhraseCheckView) => void) {
   return { check, setCheck, stop }
 }
 
-/** The outcome in a sentence, or the waiting spinner. */
-function CheckState({ check }: { check: PhraseCheckView }) {
-  if (check.state === "waiting") return <Spinner />
+/** The one line that follows a check: waiting, matched, or the core's words when it fails (brief S2). */
+function CheckLine({ check }: { check: PhraseCheckView }) {
+  if (check.state === "waiting" || check.state === "matched")
+    return (
+      <p role="status" className="type-body text-text-body">
+        {check.words}
+      </p>
+    )
   return (
-    <p role={check.state === "matched" ? "status" : "alert"} className={check.state === "matched" ? "text-sm" : "text-sm text-destructive"}>
+    <p role="alert" className="type-body text-critical-text">
       {check.words}
     </p>
   )
 }
 
 /**
- * "Check with a phrase" (docs/plan/22-security-depth.md §9): this app shows
- * nine digits to say to the other person; they type them into theirs; the
- * two apps prove to each other, through the server but out of its reach,
- * that each holds the other's real keys. A match verifies them here.
+ * "Check with a phrase" (docs/plan/22-security-depth.md §9, brief S2): this
+ * app shows nine digits to say to the other person; they type them into
+ * theirs; the two apps prove to each other, through the server but out of
+ * its reach, that each holds the other's real keys. A match verifies them
+ * here. A question-size dialog on a desktop, a sheet on a phone; the check
+ * starts when it opens and is called off when it closes before the end.
  */
-export function PhraseInvite({ login, onVerified }: { login: string; onVerified: () => void }) {
+export function SayPhrase({ login, open, onClose, onVerified }: { login: string; open: boolean; onClose: () => void; onVerified: () => void }) {
   const depth = useDepthClient()
   const [error, setError] = useState<string | null>(null)
-  const { check, setCheck, stop } = useCheck(
-    useCallback((v: PhraseCheckView) => v.state === "matched" && onVerified(), [onVerified]),
-  )
-  if (!depth) return null
-
-  const start = async () => {
+  const { check, setCheck, stop } = useCheck(useCallback((v: PhraseCheckView) => v.state === "matched" && onVerified(), [onVerified]))
+  const started = useRef(false)
+  useEffect(() => {
+    if (!open || !depth || started.current) return
+    started.current = true
     setError(null)
-    try {
-      setCheck(await depth.phraseInvite(login))
-    } catch (e) {
-      setError(describeError(e))
-    }
-  }
+    depth
+      .phraseInvite(login)
+      .then(setCheck)
+      .catch((e) => setError(describeError(e)))
+  }, [open, depth, login, setCheck])
+  if (!depth) return null
   const close = () => {
     stop()
-    if (check) void depth.phraseCancel(check.verify_id).catch(() => undefined)
+    if (check?.state === "waiting") void depth.phraseCancel(check.verify_id).catch(() => undefined)
+    started.current = false
     setCheck(null)
+    setError(null)
+    onClose()
   }
+  const waiting = check === null || check.state === "waiting"
+  return (
+    <AdaptiveDialog
+      open={open}
+      onOpenChange={(o) => !o && close()}
+      size="question"
+      overline={`Key check // ${login}`}
+      title={`Tell ${login} this phrase`}
+      description="Say it in person or on a call you trust, never in a message. It works once."
+      footer={
+        <Button type="button" variant={waiting ? "secondary" : "default"} onClick={close}>
+          {waiting ? "Cancel" : "Done"}
+        </Button>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {check?.phrase && <DigitGroups value={check.phrase} size="lg" label="Phrase" />}
+        {check && <CheckLine check={check} />}
+        {error && (
+          <p role="alert" className="type-body text-critical-text">
+            {error}
+          </p>
+        )}
+      </div>
+    </AdaptiveDialog>
+  )
+}
 
+/** A button that starts a phrase check with someone, and its dialog. */
+export function PhraseInvite({ login, onVerified, variant = "secondary", disabled, disabledReason }: {
+  login: string
+  onVerified: () => void
+  variant?: "secondary" | "ghost"
+  disabled?: boolean
+  disabledReason?: string
+}) {
+  const depth = useDepthClient()
+  const [open, setOpen] = useState(false)
+  if (!depth) return null
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => void start()}>
+      <Button type="button" variant={variant} disabled={disabled} disabledReason={disabled ? disabledReason : undefined} onClick={() => setOpen(true)}>
         Check with a phrase
       </Button>
-      {error && (
-        <span role="alert" className="text-sm text-destructive">
-          {error}
-        </span>
-      )}
-      <Dialog open={check !== null} onOpenChange={(o) => !o && close()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Tell {login} this phrase</DialogTitle>
-            <DialogDescription>
-              Say it in person or on a call you trust, never in a message. They open Sharing, find your check, and type it. It works once.
-            </DialogDescription>
-          </DialogHeader>
-          {check?.phrase && (
-            <p className="text-center font-mono text-4xl tracking-[0.25em]" aria-label="Phrase">
-              {check.phrase}
-            </p>
-          )}
-          {check && <CheckState check={check} />}
-          <LabelledActions>
-            <LabelledAction kind={check?.state === "waiting" ? "cancel" : "confirm"} onClick={close}>
-              {check?.state === "waiting" ? "Cancel" : "Done"}
-            </LabelledAction>
-          </LabelledActions>
-        </DialogContent>
-      </Dialog>
+      <SayPhrase login={login} open={open} onClose={() => setOpen(false)} onVerified={onVerified} />
     </>
   )
 }
 
-/** The checks others opened with this person, each answered with the phrase they said. */
+/**
+ * KEY CHECKS FOR YOU (brief S2): the checks others opened with this
+ * person, a row each with TYPE THEIR PHRASE. The answer is a question-size
+ * form: one field, one try.
+ */
 export function PhraseIncomingList({ online, onVerified }: { online: boolean; onVerified: () => void }) {
   const depth = useDepthClient()
   const [incoming, setIncoming] = useState<PhraseIncoming[]>([])
   const [answering, setAnswering] = useState<PhraseIncoming | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const { check, setCheck, stop } = useCheck(
-    useCallback((v: PhraseCheckView) => v.state === "matched" && onVerified(), [onVerified]),
-  )
+  const { check, setCheck, stop } = useCheck(useCallback((v: PhraseCheckView) => v.state === "matched" && onVerified(), [onVerified]))
 
   useEffect(() => {
     if (!depth || !online) return
@@ -158,52 +168,68 @@ export function PhraseIncomingList({ online, onVerified }: { online: boolean; on
   }
   const close = () => {
     stop()
+    const done = answering?.verify_id
     setAnswering(null)
     setCheck(null)
     setError(null)
-    setIncoming((all) => all.filter((i) => i.verify_id !== answering?.verify_id))
+    if (check) setIncoming((all) => all.filter((i) => i.verify_id !== done))
   }
+  const ended = check !== null && check.state !== "waiting"
 
   return (
-    <div className="flex flex-col gap-2" aria-label="Key checks for you">
-      {incoming.map((i) => (
-        <p key={i.verify_id} className="flex items-center justify-between gap-2 text-sm">
-          <span>{i.login} wants to check keys with you.</span>
-          <Button size="sm" variant="outline" onClick={() => setAnswering(i)}>
-            Type their phrase
-          </Button>
-        </p>
-      ))}
-      <Dialog open={answering !== null} onOpenChange={(o) => !o && close()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Check keys with {answering?.login}</DialogTitle>
-            <DialogDescription>Type the nine digits they told you. You get one try; if it's wrong, they start a new check.</DialogDescription>
-          </DialogHeader>
-          {check ? (
-            <CheckState check={check} />
-          ) : (
-            <form id="phrase-answer" onSubmit={(e) => void submit(e)}>
-              <Field>
-                <FieldLabel htmlFor="phrase-input">Their phrase</FieldLabel>
-                <Input id="phrase-input" name="phrase" inputMode="numeric" autoComplete="off" />
-                <FieldDescription>Spaces and dashes don't matter.</FieldDescription>
-              </Field>
-            </form>
-          )}
-          {error && <FieldError role="alert">{error}</FieldError>}
-          <LabelledActions>
-            <LabelledAction kind="cancel" onClick={close}>
-              {check && check.state !== "waiting" ? "Done" : "Cancel"}
-            </LabelledAction>
+    <section aria-label="Key checks for you" className="flex flex-col">
+      <SectionHeader title="Key checks for you" count={incoming.length} />
+      <div role="list" aria-label="Key checks for you">
+        {incoming.map((i) => (
+          <ListRow
+            key={i.verify_id}
+            role="listitem"
+            size="compact"
+            title={i.login}
+            meta="Wants to check keys with you"
+            action={
+              <Button type="button" size="sm" variant="secondary" onClick={() => setAnswering(i)}>
+                Type their phrase
+              </Button>
+            }
+          />
+        ))}
+      </div>
+      <AdaptiveDialog
+        open={answering !== null}
+        onOpenChange={(o) => !o && close()}
+        size="question"
+        overline={answering ? `Key check // ${answering.login}` : undefined}
+        title={`Check keys with ${answering?.login ?? ""}`}
+        description="Type the nine digits they told you."
+        footer={
+          <>
+            <Button type="button" variant={ended ? "default" : "ghost"} onClick={close}>
+              {ended ? "Done" : "Cancel"}
+            </Button>
             {!check && (
-              <LabelledAction kind="confirm" type="submit" form="phrase-answer">
+              <Button type="submit" form="phrase-answer">
                 Check
-              </LabelledAction>
+              </Button>
             )}
-          </LabelledActions>
-        </DialogContent>
-      </Dialog>
-    </div>
+          </>
+        }
+      >
+        {check ? (
+          <CheckLine check={check} />
+        ) : (
+          <form id="phrase-answer" aria-label="Answer their check" onSubmit={(e) => void submit(e)}>
+            <TextField
+              label="Their phrase"
+              name="phrase"
+              inputMode="numeric"
+              autoComplete="off"
+              helper="You get one try. If it's wrong, they start a new check."
+              error={error ?? undefined}
+            />
+          </form>
+        )}
+      </AdaptiveDialog>
+    </section>
   )
 }

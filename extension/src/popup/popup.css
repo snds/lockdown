@@ -1,16 +1,29 @@
 /*
- * The popup on the shared design system (docs/plan/26-desktop-finish.md §9):
- * Tailwind, unicron's tokens (the same release as the desktop app, from 1.0
- * with Lockdown's theme, picked by `data-theme="lockdown"` in popup.html),
- * Geist and Geist Mono as files in the extension's own package, and the
- * primitives' classes. Icons are inline SVG. Nothing of the in-page frame
- * uses this sheet; it stays plain (static/ui.css).
+ * The popup on the shared design system (docs/plan/26-desktop-finish.md §9,
+ * brief B1 in docs/plan/87-redesign-popup.md): Tailwind, unicron 1.0's tokens
+ * (the vendored pre-release the desktop app builds with, Lockdown's theme
+ * picked by `data-theme="lockdown"` in popup.html, graphite or stone from the
+ * browser's scheme), Geist and Geist Mono as files in the extension's own
+ * package, and the primitives' classes. Icons are inline SVG. Nothing of the
+ * in-page frame uses this sheet; it stays plain (static/ui.css).
  */
 @import "@unicron/ui/styles";
 @source "./";
 
 @layer base {
   body {
-    background: var(--background);
+    background: var(--surface-ground);
   }
+}
+
+/*
+ * A stand-in for a Unicron gap (brief B1): a row's mono line is the
+ * person's own words (a username, a site), so it is drawn as written, in the
+ * plain meta role, never in the capitals of the overline. The plain meta
+ * role is 12 px; the popup keeps reading text at 13 px or more (R16), so
+ * here it is 13 px on the same 20 px line. Take this out when Unicron has a
+ * 13 px mono row role.
+ */
+[data-slot="list-row"][data-meta-style="plain"] [data-slot="list-row-meta"] {
+  --type-meta-size: 0.8125rem;
 }

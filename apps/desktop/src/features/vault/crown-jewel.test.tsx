@@ -141,7 +141,7 @@ describe("the crown-jewel treatment on this host (D98, D101)", () => {
       <ClientProvider value={client}>
         <GateProvider>
           <ItemCrownJewel title="Ledger">
-            <ItemField itemId="i1" field={field} largeType="Recovery phrase · Ledger" onNotice={() => {}} />
+            <ItemField itemId="i1" field={field} largeType="Recovery phrase · Ledger" largeTypeAction onNotice={() => {}} />
           </ItemCrownJewel>
         </GateProvider>
       </ClientProvider>,
@@ -159,5 +159,34 @@ describe("the crown-jewel treatment on this host (D98, D101)", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled())
     await user.click(screen.getByRole("button", { name: "Cancel" }))
     await waitFor(() => expect(large()).toBeEnabled())
+  })
+  it("a crown jewel's large type asks it's you first, then shows the value in the viewer (brief I9)", async () => {
+    const { client, reveal } = crownJewelClient()
+    render(
+      <ClientProvider value={client}>
+        <GateProvider>
+          <ItemCrownJewel title="Ledger">
+            <ItemField itemId="i1" field={field} largeType="Recovery phrase · Ledger" onNotice={() => {}} />
+          </ItemCrownJewel>
+        </GateProvider>
+      </ClientProvider>,
+    )
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    await user.click(await screen.findByRole("button", { name: "More actions for Recovery phrase" }))
+    const rows = await screen.findAllByRole("menuitem")
+    expect(rows[0]).toHaveTextContent("Show large type")
+    await user.click(rows[0]!)
+    // Nothing is read before the gate: the core refuses without the proof, and the gate asks.
+    expect(await screen.findByText("Confirm it's you")).toBeInTheDocument()
+    await user.type(screen.getByLabelText("Account password"), "correct horse")
+    await waitFor(() => expect(confirmButton()).toBeEnabled())
+    await user.click(confirmButton())
+    await waitFor(() => expect(reveal).toHaveBeenLastCalledWith("i1", "phrase", { password: "correct horse" }))
+    expect(await screen.findByRole("img", { name: /^a, b, a, pause/ })).toBeInTheDocument()
+    // Read once with the proof, and not again: the gate asked once.
+    await new Promise((r) => setTimeout(r, 200))
+    expect(reveal).toHaveBeenLastCalledWith("i1", "phrase", { password: "correct horse" })
+    expect(screen.queryByText("Confirm it's you")).toBeNull()
+    expect(reveal).toHaveBeenCalledTimes(2)
   })
 })

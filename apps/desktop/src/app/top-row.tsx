@@ -1,7 +1,9 @@
 import { AppFrameTopRow, AppLockup, FloatButton, TopBar, useAppFrame, type NavMarkProp } from "@unicron/ui"
 
 import { useHeldTopBarActions } from "./detail-bottom-row"
-import { place, usePlaces } from "./places"
+import { isMac } from "@/features/palette/palette-model"
+
+import { deviceName, place, usePlaces } from "./places"
 
 interface TopRowProps {
   /** Leaves a pushed place (Search, Sharing, Settings) for the section the person came from. */
@@ -25,7 +27,7 @@ interface TopRowProps {
  */
 export function TopRow({ onLeave, onLock, settingsMark }: TopRowProps) {
   const frame = useAppFrame()
-  const { nav, go } = usePlaces()
+  const { nav, surface, go } = usePlaces()
   // What the pushed screen handed up for its top bar (edit, more): before Lock on Settings.
   const held = useHeldTopBarActions()
   if (!frame.phone) return null
@@ -45,8 +47,9 @@ export function TopRow({ onLeave, onLock, settingsMark }: TopRowProps) {
         <TopBar
           onBack={frame.back?.onBack}
           backLabel={frame.back?.label}
-          // A Settings section's own head is a level below: the bar carries the page's name.
-          title={nav.area === "settings" ? place("settings")?.label : undefined}
+          // A pushed Settings section: the bar's small title is the section's own name, the screen's one h1
+          // (brief 3.3: the large title collapses into it).
+          title={nav.area === "settings" ? sectionTitle(nav.section, surface) : undefined}
           titleAs={nav.area === "settings" ? "h1" : undefined}
           actions={nav.area === "settings" ? settingsActions : (held ?? undefined)}
         />
@@ -72,4 +75,11 @@ export function TopRow({ onLeave, onLock, settingsMark }: TopRowProps) {
       actions={<FloatButton label="Settings" icon="user--avatar" size="l" mark={settingsMark} onClick={() => go("settings")} />}
     />
   )
+}
+
+/** The name of the Settings section that shows, as its row says it ("This Mac" for the device's own); Settings while none is open. */
+function sectionTitle(section: string | undefined, surface: Parameters<typeof deviceName>[0]): string | undefined {
+  if (!section) return place("settings")?.label
+  if (section === "this-device") return deviceName(surface, isMac())
+  return place(`settings-${section}`)?.label ?? place("settings")?.label
 }

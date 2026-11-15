@@ -1,75 +1,92 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 
-import {
-  Badge,
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemTitle,
-  Spinner,
-} from "@unicron/ui"
+import { Badge, Banner, Button, ConfirmDialog, FieldRow, FieldRowAction, SectionHeader, Spinner, useViewport } from "@unicron/ui"
 
-import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
-import { shortId, whenLocal } from "@/lib/format"
+import { fullDate, rowDate, shortId } from "@/lib/format"
 
 import { clientWords } from "./client-words"
-import { useLiveClient, type LiveClient, type SessionView } from "./live-client"
+import { useLiveClient, type SessionView } from "./live-client"
 import { useLive } from "./use-live"
+
+/** Where the account is signed in, read once and again whenever the live channel says it changed. */
+export interface SessionList {
+  sessions: SessionView[] | null
+  error: string | null
+  reload: () => Promise<void>
+}
+
+/**
+ * The account's live sessions, for the Signed in section and for the device
+ * rows above it (a device's last use is its newest session's, brief T2).
+ * `null` where the host has no live client (no account server to ask).
+ * `enabled` false reads nothing: a section handed its list by its screen
+ * does not ask twice.
+ */
+export function useSessionList(enabled = true): SessionList | null {
+  const live = useLiveClient()
+  const [sessions, setSessions] = useState<SessionView[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const on = useRef(enabled && live !== null)
+  useLayoutEffect(() => {
+    on.current = enabled && live !== null
+  })
+
+  const reload = useCallback(async () => {
+    if (!live || !on.current) return
+    try {
+      setSessions(await live.sessionList())
+      setError(null)
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }, [live])
+  useEffect(() => {
+    void reload()
+  }, [reload, enabled])
+  useLive((n) => {
+    if (n.kind === "sessions" && on.current) void reload()
+  })
+  return live ? { sessions, error, reload } : null
+}
+
+/** A session's device, by its name in the identity's records or by the first part of its id. */
+export function sessionDevice(s: SessionView): string {
+  return s.device_name ?? `Device ${shortId(s.device_id)}`
+}
 
 interface SessionsSectionProps {
   onNotice: (text: string) => void
+  /** The list the screen already reads (Devices); left out, the section reads its own. */
+  list?: SessionList | null
 }
 
 type Ending = { kind: "one"; session: SessionView } | { kind: "others" }
 
-function deviceLabel(s: SessionView): string {
-  return s.device_name ?? `Device ${shortId(s.device_id)}`
-}
-
 /**
- * Where the account is signed in (`account-alerts`): every live session on
- * the server with its device, address, client and times, this device's
- * marked. **End** stops that session's token at once; that device has to
- * log in again with the password. Ending a session doesn't revoke the
- * device: revoking is above, behind a fresh check.
+ * Signed in (`account-alerts`; brief T2): every live session on the server,
+ * a Field Row each, with its device, when it was last used, its app,
+ * address and sign-in date; this device's marked. **End** stops that
+ * session's token at once, and that device has to sign in again with the
+ * password; **End all others** does it to every session but this one. Each
+ * asks first and takes no gate: ending a session takes access away (D221,
+ * brief X5). Ending a session doesn't revoke the device: revoking is above.
  */
-export function SessionsSection({ onNotice }: SessionsSectionProps) {
+export function SessionsSection({ onNotice, list }: SessionsSectionProps) {
   const live = useLiveClient()
-  return live ? <Sessions live={live} onNotice={onNotice} /> : null
+  const own = useSessionList(list === undefined)
+  const shown = list === undefined ? own : list
+  if (!live || !shown) return null
+  return <Sessions list={shown} onNotice={onNotice} end={live} />
 }
 
-function Sessions({ live, onNotice }: SessionsSectionProps & { live: LiveClient }) {
-  const [sessions, setSessions] = useState<SessionView[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+function Sessions({ list, onNotice, end: live }: { list: SessionList; onNotice: (text: string) => void; end: NonNullable<ReturnType<typeof useLiveClient>> }) {
+  const { sessions, reload } = list
   const [ending, setEnding] = useState<Ending | null>(null)
+  // A phone puts the label over the value, so a date or a name is never cut (FieldRow `stacked`).
+  const rowSize = useViewport().widthClass === "compact" ? "stacked" : "default"
+  const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-
-  const load = useCallback(
-    () =>
-      live
-        .sessionList()
-        .then((s) => {
-          setSessions(s)
-          setError(null)
-        })
-        .catch((e) => setError(describeError(e))),
-    [live],
-  )
-  useEffect(() => {
-    void load()
-  }, [load])
-  useLive((n) => {
-    if (n.kind === "sessions") void load()
-  })
 
   const end = async (what: Ending) => {
     setBusy(true)
@@ -77,13 +94,15 @@ function Sessions({ live, onNotice }: SessionsSectionProps & { live: LiveClient 
     try {
       if (what.kind === "one") {
         await live.sessionEnd(what.session.id)
-        onNotice(`Ended the session on ${deviceLabel(what.session)}. It has to log in again.`)
+        onNotice(`Ended the session on ${sessionDevice(what.session)}`)
       } else {
         const n = await live.sessionEndOthers()
-        onNotice(n === 1 ? "Ended 1 other session." : `Ended ${n} other sessions.`)
+        onNotice(n === 1 ? "Ended 1 other session" : `Ended ${n} other sessions`)
       }
-      await load()
+      setEnding(null)
+      await reload()
     } catch (e) {
+      setEnding(null)
       setError(describeError(e))
     } finally {
       setBusy(false)
@@ -91,74 +110,60 @@ function Sessions({ live, onNotice }: SessionsSectionProps & { live: LiveClient 
   }
 
   const others = sessions?.filter((s) => !s.current) ?? []
+  const shownError = error ?? list.error
+  // Nothing signed in on the server (a fresh account between syncs): the section says nothing at all.
+  if (sessions && sessions.length === 0 && !shownError) return null
   return (
-    <section aria-labelledby="sessions-title" className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <h2 id="sessions-title" className="text-sm font-medium">
-          Signed in
-        </h2>
-        {others.length > 0 && (
-          <Button size="sm" variant="ghost-destructive" onClick={() => setEnding({ kind: "others" })} disabled={busy}>
-            End all other sessions
-          </Button>
-        )}
-      </div>
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      {!sessions && !error && <Spinner />}
-      <ItemGroup role="list" aria-label="Sessions">
+    <section aria-label="Signed in" className="flex flex-col">
+      <SectionHeader
+        title="Signed in"
+        count={sessions?.length}
+        action={
+          others.length > 0 ? (
+            <Button size="sm" variant="ghost-destructive" onClick={() => setEnding({ kind: "others" })} disabled={busy}>
+              End all others
+            </Button>
+          ) : undefined
+        }
+      />
+      {shownError && <Banner size="compact" title={shownError} />}
+      {!sessions && !shownError && <Spinner />}
+      <div role="list" aria-label="Sessions">
         {sessions?.map((s) => (
-          <Item key={s.id} role="listitem" size="sm" variant="outline">
-            <ItemContent>
-              <ItemTitle>
-                {deviceLabel(s)}
-                {s.current && <Badge variant="secondary">this device</Badge>}
-              </ItemTitle>
-              <ItemDescription>
-                {[clientWords(s.client), s.address ? `from ${s.address}` : null, `signed in ${whenLocal(s.created_at)}`, `last used ${whenLocal(s.last_seen)}`]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </ItemDescription>
-            </ItemContent>
-            {!s.current && (
-              <ItemActions>
-                <Button size="sm" variant="ghost-destructive" onClick={() => setEnding({ kind: "one", session: s })} disabled={busy} aria-label={`End the session on ${deviceLabel(s)}`}>
-                  End
-                </Button>
-              </ItemActions>
-            )}
-          </Item>
-        ))}
-      </ItemGroup>
-      <Dialog open={ending !== null} onOpenChange={(o) => !o && setEnding(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{ending?.kind === "one" ? `End the session on ${deviceLabel(ending.session)}?` : "End every other session?"}</DialogTitle>
-            <DialogDescription>
-              The server stops taking that session at once. The device stays enrolled and keeps what it has; it needs the master password to sign in
-              again. If you don't know the device, revoke it too.
-            </DialogDescription>
-          </DialogHeader>
-          <LabelledActions>
-            <LabelledAction kind="cancel" onClick={() => setEnding(null)}>
-              Cancel
-            </LabelledAction>
-            <LabelledAction
-              kind="destructive"
-              onClick={() => {
-                const what = ending
-                setEnding(null)
-                if (what) void end(what)
-              }}
+          <div role="listitem" key={s.id}>
+            <FieldRow
+              size={rowSize}
+              label={sessionDevice(s)}
+              badge={s.current ? <Badge>This device</Badge> : undefined}
+              description={[clientWords(s.client), s.address ? `from ${s.address}` : null, `signed in ${fullDate(s.created_at)}`].filter(Boolean).join(" // ")}
+              action={
+                s.current ? undefined : (
+                  <FieldRowAction
+                    variant="ghost-destructive"
+                    onClick={() => setEnding({ kind: "one", session: s })}
+                    disabled={busy}
+                    aria-label={`End the session on ${sessionDevice(s)}`}
+                  >
+                    End
+                  </FieldRowAction>
+                )
+              }
             >
-              End
-            </LabelledAction>
-          </LabelledActions>
-        </DialogContent>
-      </Dialog>
+              {`last used ${rowDate(s.last_seen)}`}
+            </FieldRow>
+          </div>
+        ))}
+      </div>
+      <ConfirmDialog
+        open={ending !== null}
+        onOpenChange={(o) => !o && !busy && setEnding(null)}
+        overline={ending?.kind === "one" ? sessionDevice(ending.session) : "Signed in"}
+        title={ending?.kind === "one" ? `End the session on ${sessionDevice(ending.session)}?` : "End every other session?"}
+        description="It signs out at once and needs the master password to sign in again. The device stays one of yours; revoke it too if you don't know it."
+        confirmLabel={ending?.kind === "others" ? "End all others" : "End"}
+        tone="destructive"
+        onConfirm={() => (ending ? end(ending) : undefined)}
+      />
     </section>
   )
 }

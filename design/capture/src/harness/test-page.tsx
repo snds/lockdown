@@ -47,7 +47,7 @@ export function TestPage({ mode, name, covered }: { mode: Mode; name: string; co
           name={`ld-extframe:${mode}:${name}:${dark ? "dark" : "light"}`}
           src={src}
           scrolling="no"
-          style={{ position: "absolute", ...place, width: WIDTH[mode], height, border: 0, borderRadius: 10, boxShadow: "0 6px 24px rgba(0,0,0,.28)", colorScheme: dark ? "dark" : "light" }}
+          style={{ position: "absolute", ...place, width: WIDTH[mode], height, border: 0, borderRadius: 2, boxShadow: "0 6px 24px rgba(0,0,0,.28)", colorScheme: dark ? "dark" : "light" }}
         />
         {covered && (
           <div

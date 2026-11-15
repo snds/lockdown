@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from "react"
 import { createPortal } from "react-dom"
 
-import { Button, Checkbox, Icon, Label, Spinner } from "@unicron/ui"
+import { Banner, Button, Checkbox, Icon, Label, NavItem, NavSection, SectionHeader } from "@unicron/ui"
 import { LargeTypeView } from "@unicron/ui/security/large-type-view"
 
 import { describeError, useClient } from "@/core/client"
@@ -10,27 +10,33 @@ import { useCaptureProtect } from "@/features/hygiene/hygiene-client"
 import { ImportWizard } from "@/features/import/import-wizard"
 import { usePaper, usePrinting } from "@/features/paper/paper-client"
 import { kitValues, type ShownPage } from "@/features/status/once-page"
+import { countName } from "@/lib/format"
 
 import { useDemoEntry } from "./demo-entry"
 import { hostOf, useFirstRunClient, type Candidate, type FirstRunClient, type QuickUnlock } from "./first-run-client"
 import { JoinScreen } from "./join"
 import { EMPTY_VALUES, checkValues, decodePage, useMasterStrength, type MasterPasswordValues } from "./master-password"
 import { MasterPasswordFields } from "./master-password-fields"
-import { WelcomeActions, WelcomeColumn, WelcomeScreen } from "./welcome"
+import { WelcomeActions, WelcomeColumn, WelcomeScreen, stepFolio, useFormFill } from "./welcome"
 
 /**
- * The first run (docs/plan/39-first-run.md §1.9; D94: one sentence per
- * screen, detail behind Learn more; D95: the proofs once, at account
- * creation). No server words anywhere on the create path:
+ * The first run (brief F2; docs/plan/39-first-run.md §1.9; D94: one
+ * sentence per screen, detail behind Learn more; D95: the proofs once, at
+ * account creation). Every screen is the focus frame, with the step folio
+ * (`Step 01 // 04`) where it is a step. No server words anywhere on the
+ * create path:
  *
- * 0. Welcome: what Lockdown is; **Create a new vault**, or **I already
- *    use Lockdown** (screen J), and **Explore the demo** in a build that
- *    has one.
+ * 0. Welcome: what Lockdown is; **New vault**, or **I already use
+ *    Lockdown** (screen J), and **Explore demo** in a build that has one.
  * 1. Your name and master password, with the expectations set plainly.
  * 2. Your recovery kit: Save as PDF, Print, and where to keep it.
- * 3. Unlock with Touch ID? (only where this build can offer it).
- * 4. Bring your passwords (optional).
+ * 3. Unlock with Touch ID? (only where this computer has it; its yes is
+ *    disabled with the core's reason where it doesn't work yet).
+ * 4. Bring your passwords (optional: Not now).
  * 5. The proof moment, then the vault.
+ *
+ * Skip is "Not now" and next is "Continue" (cross-app decisions §4). One
+ * primary per step. A working button keeps its label.
  */
 export type FirstRunScreen = "welcome" | "password" | "kit" | "quick" | "import" | "proof" | "join"
 
@@ -41,6 +47,9 @@ interface FirstRunProps {
   /** The kit page to show when starting at the kit (a new one, made on resume). */
   kit?: ShownPage | null
 }
+
+/** This computer has Touch ID or Windows Hello, working or not yet (brief F2). */
+const hasQuick = (q: QuickUnlock | null): q is QuickUnlock => q !== null && q.kind !== "none"
 
 export function FirstRun({ onOpened, start = "welcome", kit: resumed = null }: FirstRunProps) {
   const client = useClient()
@@ -53,7 +62,8 @@ export function FirstRun({ onOpened, start = "welcome", kit: resumed = null }: F
   useEffect(() => {
     frc?.quickUnlock().then(setQuick, () => setQuick(null))
   }, [frc])
-  const steps = quick?.available ? 4 : 3
+  // The folio counts three steps where the computer has no quick unlock.
+  const steps = hasQuick(quick) ? 4 : 3
   const stage = (s: Parameters<FirstRunClient["stage"]>[0]) => frc?.stage(s).catch(() => {})
   const finish = async () => {
     await stage("done")
@@ -90,7 +100,7 @@ export function FirstRun({ onOpened, start = "welcome", kit: resumed = null }: F
           onContinue={() => {
             void stage("kit_saved")
             setKit(null)
-            setScreen(quick?.available ? "quick" : "import")
+            setScreen(hasQuick(quick) ? "quick" : "import")
           }}
         />
       )
@@ -116,7 +126,22 @@ export function FirstRun({ onOpened, start = "welcome", kit: resumed = null }: F
         />
       )
     case "proof":
-      return <ProofScreen onOpen={() => void finish()} />
+      return <ProofScreen onOpen={finish} />
+  }
+}
+
+/** Where discovery found a server, in words (brief F2, Welcome). */
+function foundWords(found: Candidate): string {
+  const host = hostOf(found.address)
+  switch (found.sources[0]?.kind) {
+    case "policy":
+      return `Your organization set a server: ${host}`
+    case "network":
+      return `We found a Lockdown server on your network: ${host}`
+    case "settings":
+      return `Your settings name a Lockdown server: ${host}`
+    default:
+      return `We found a Lockdown server on this computer: ${host}`
   }
 }
 
@@ -139,20 +164,9 @@ function Welcome({ frc, onCreate, onJoin }: { frc: FirstRunClient; onCreate: () 
       live = false
     }
   }, [frc])
-  const foundLine = found
-    ? found.sources[0]?.kind === "policy"
-      ? `Your organization set a server: ${hostOf(found.address)}`
-      : found.sources[0]?.kind === "network"
-        ? `We found a Lockdown server on your network: ${hostOf(found.address)}`
-        : found.sources[0]?.kind === "settings"
-          ? `Your settings name a Lockdown server: ${hostOf(found.address)}`
-          : `We found a Lockdown server on this computer: ${hostOf(found.address)}`
-    : null
   return (
     <WelcomeColumn>
       <WelcomeScreen
-        mark="welcome"
-        centered
         title="Every way you sign in. Locked down, even from us."
         sentence="Lockdown keeps your passwords, passkeys and one-time codes in one vault on this computer."
         learnMore={{
@@ -165,27 +179,22 @@ function Welcome({ frc, onCreate, onJoin }: { frc: FirstRunClient; onCreate: () 
           ],
         }}
       />
+      {/* What discovery found: news, not a door of its own; I already use Lockdown is the way to it. */}
+      {found ? <Banner tone="info" size="compact" title={foundWords(found)} /> : null}
       <WelcomeActions>
-        <Button size="lg" onClick={onCreate}>
-          Create a new vault
+        <Button size="lg" block onClick={onCreate}>
+          New vault
         </Button>
-        <Button size="lg" variant="outline" onClick={onJoin}>
+        <Button size="lg" block variant="secondary" onClick={onJoin}>
           I already use Lockdown
         </Button>
-      </WelcomeActions>
-      <div className="flex flex-col items-center gap-(--c-welcome-gap-tight) text-center">
-        {foundLine && (
-          <Button variant="link" size="inline" onClick={onJoin}>
-            {foundLine}
-          </Button>
-        )}
         {/* Only in a build with the demo (docs/plan/40-devtools.md §3). */}
         {demo && (
-          <Button variant="link" size="inline" onClick={demo.explore} disabled={demo.busy}>
-            {demo.busy ? "Opening the demo…" : "Explore the demo"}
+          <Button size="lg" block variant="ghost" onClick={demo.explore} loading={demo.busy}>
+            Explore demo
           </Button>
         )}
-      </div>
+      </WelcomeActions>
     </WelcomeColumn>
   )
 }
@@ -197,6 +206,7 @@ const PASSWORD_LEARN_MORE = [
   "Your name is only a label for the lock screen. It isn't an email address and isn't sent anywhere.",
 ]
 
+
 /** Screen 1: the name and the master password, with the expectations set. */
 function PasswordScreen({ frc, steps, onBack, onMade }: { frc: FirstRunClient; steps: number; onBack: () => void; onMade: (page: OncePage, name: string) => void }) {
   const [values, setValues] = useState<MasterPasswordValues>(EMPTY_VALUES)
@@ -204,8 +214,10 @@ function PasswordScreen({ frc, steps, onBack, onMade }: { frc: FirstRunClient; s
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
   const strength = useMasterStrength(values, true)
+  const fill = useFormFill()
   const submit = async (e: FormEvent) => {
     e.preventDefault()
+    if (busy) return
     const found = checkValues(values, true, strength)
     setErrors(found)
     setFailure(null)
@@ -226,33 +238,29 @@ function PasswordScreen({ frc, steps, onBack, onMade }: { frc: FirstRunClient; s
     }
   }
   return (
-    <WelcomeColumn>
+    <WelcomeColumn folio={stepFolio([1, steps])}>
       <WelcomeScreen
-        step={[1, steps]}
         title="Choose your master password"
         sentence="This is the one password to remember: it opens your vault, and Lockdown can't see it or reset it."
         learnMore={{ title: "Your master password", paragraphs: PASSWORD_LEARN_MORE }}
       />
-      <form onSubmit={submit} className="flex flex-col gap-(--c-welcome-gap)" noValidate>
+      <form onSubmit={submit} className={fill} noValidate aria-label="Choose your master password">
         <MasterPasswordFields idPrefix="fr" values={values} onChange={setValues} errors={errors} withName readOnly={busy} strength={strength} />
-        {failure && (
-          <p role="alert" className="text-sm text-destructive">
-            {failure}
-          </p>
-        )}
+        <p className="type-caption text-text-secondary">If you forget it, only your recovery kit gets you back in. You'll make the kit next.</p>
+        {/* A form that could not save: a compact critical Banner over its buttons (brief 4.0). */}
+        {failure ? <Banner tone="critical" size="compact" title={failure} /> : null}
         <WelcomeActions>
-          <Button size="lg" type="submit" disabled={busy}>
-            {busy ? <Spinner data-icon="inline-start" /> : null}
-            {busy ? "Setting up your vault…" : "Continue"}
+          <Button size="lg" block type="submit" loading={busy}>
+            Create my vault
           </Button>
-          <Button size="lg" type="button" variant="outline" onClick={onBack} disabled={busy}>
+          <Button size="lg" block type="button" variant="secondary" onClick={onBack} disabled={busy}>
             Back
           </Button>
           {busy ? (
-            <p className="text-center text-sm text-muted-foreground">This takes a few seconds.</p>
-          ) : (
-            <p className="text-center text-sm text-muted-foreground">If you forget it, only your recovery kit gets you back in. You'll make the kit next.</p>
-          )}
+            <p role="status" className="type-caption text-text-secondary">
+              This takes a few seconds.
+            </p>
+          ) : null}
         </WelcomeActions>
       </form>
     </WelcomeColumn>
@@ -269,6 +277,7 @@ const typed = (value: string) => value.replace(/-/g, "")
 export function KitScreen({ page, name, step, onContinue }: { page: ShownPage | null; name?: string; step?: [number, number]; onContinue: () => void }) {
   const paper = usePaper()
   const { print, printing } = usePrinting()
+  const boxId = useId()
   const [shown, setShown] = useState(true)
   const [checked, setChecked] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -310,10 +319,10 @@ export function KitScreen({ page, name, step, onContinue }: { page: ShownPage | 
   // screen is: the print rule keeps the app off the paper while a
   // `data-print-page` is up, so the browser's own Print prints the kit too.
   const printKit = () => void print()
+  const kitName = name ? `Recovery kit for ${name}` : "Your recovery kit"
   return (
-    <WelcomeColumn>
+    <WelcomeColumn folio={step ? stepFolio(step) : undefined}>
       <WelcomeScreen
-        step={step}
         title="Save your recovery kit"
         sentence="If you forget your master password, this page is the only way back into your vault."
         learnMore={{
@@ -325,52 +334,51 @@ export function KitScreen({ page, name, step, onContinue }: { page: ShownPage | 
           ],
         }}
       />
-      <section aria-label={name ? `Recovery kit for ${name}` : "Your recovery kit"} className="flex flex-col gap-(--c-welcome-gap-tight) rounded-xl border bg-card p-(--c-page-gutter-narrow)">
-        <h2 className="font-medium">{name ? `Recovery kit for ${name}` : "Your recovery kit"}</h2>
+      <section aria-label={kitName} className="flex flex-col gap-4">
+        <SectionHeader title={kitName} />
         {shown && values.secretKey && <LargeTypeView print getSecret={secretKey} title="Secret Key" groupSize={4} />}
         {shown && values.recoveryCode && <LargeTypeView print getSecret={recoveryCode} title="Recovery code" groupSize={4} />}
         {!shown && (
-          <div className="flex flex-col items-start gap-2">
-            <p className="text-sm text-muted-foreground">The kit is hidden while you're away from it.</p>
-            <Button variant="link" size="inline" onClick={() => setShown(true)}>
-              Show again
-            </Button>
+          <div className="flex flex-col items-start gap-1">
+            <p className="type-body text-text-secondary">The kit is hidden while you're away from it.</p>
+            <div className="-ms-4">
+              <Button variant="ghost" onClick={() => setShown(true)}>
+                Show again
+              </Button>
+            </div>
           </div>
         )}
-      </section>
-      <p className="text-base">Keep it somewhere safe away from this computer, such as a drawer at home or with your important papers.</p>
-      {saved && (
-        <p role="status" className="text-sm">
-          Saved. A PDF on this computer alone won't help if this computer is lost: print it, or copy it somewhere else safe.
-        </p>
-      )}
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      <WelcomeActions>
-        {paper.saveKitPdf && (
-          <Button size="lg" variant={checked ? "outline" : "default"} onClick={() => void save()} disabled={saving || !text}>
-            {saving ? <Spinner data-icon="inline-start" /> : null}
-            {saving ? "Saving…" : "Save as PDF"}
+        <p className="type-body text-text-body">Keep it somewhere safe away from this computer, such as a drawer at home or with your important papers.</p>
+        <div className="grid grid-cols-2 gap-3">
+          {paper.saveKitPdf ? (
+            <Button block variant="secondary" onClick={() => void save()} loading={saving} disabled={!text}>
+              Save as PDF
+            </Button>
+          ) : null}
+          <Button block variant="secondary" onClick={printKit} loading={printing} disabled={!text}>
+            Print
           </Button>
-        )}
-        <Button size="lg" variant="outline" onClick={printKit} disabled={printing || !text}>
-          Print
-        </Button>
-        <div className="flex items-center gap-2 py-2">
-          <Checkbox id="fr-kit-saved" checked={checked} onCheckedChange={(c) => setChecked(c === true)} />
-          <Label htmlFor="fr-kit-saved">I saved, printed or wrote down the kit</Label>
         </div>
-        <Button size="lg" variant={checked ? "default" : "outline"} onClick={onContinue} disabled={!checked}>
+        {saved && (
+          <p role="status" className="type-caption text-text-secondary">
+            Saved. A PDF on this computer alone won't help if this computer is lost: print it, or copy it somewhere else safe.
+          </p>
+        )}
+        {error ? <Banner tone="critical" size="compact" title={error} /> : null}
+        <div className="flex items-center gap-3">
+          <Checkbox id={boxId} checked={checked} onCheckedChange={(c) => setChecked(c === true)} />
+          <Label htmlFor={boxId}>I saved, printed or wrote down the kit</Label>
+        </div>
+      </section>
+      <WelcomeActions>
+        <Button size="lg" block onClick={onContinue} disabled={!checked} disabledReason={checked ? undefined : "Save, print or write down the kit first."}>
           Continue
         </Button>
       </WelcomeActions>
       {text &&
         createPortal(
           <div data-print-page="" className="hidden print:block">
-            <pre className="font-mono text-sm leading-relaxed whitespace-pre-wrap">{text}</pre>
+            <pre className="type-code-inline whitespace-pre-wrap">{text}</pre>
           </div>,
           document.body,
         )}
@@ -378,13 +386,13 @@ export function KitScreen({ page, name, step, onContinue }: { page: ShownPage | 
   )
 }
 
-/** Screen 3: Touch ID or Windows Hello, where this build can offer it. */
+/** Screen 3: Touch ID or Windows Hello, where this computer has it. */
 function QuickScreen({ quick, step, onDone }: { quick: QuickUnlock | null; step: [number, number]; onDone: () => void }) {
   const hello = quick?.kind === "windows_hello"
+  const ready = quick?.available === true
   return (
-    <WelcomeColumn>
+    <WelcomeColumn folio={stepFolio(step)}>
       <WelcomeScreen
-        step={step}
         title={hello ? "Unlock with Windows Hello?" : "Unlock with Touch ID?"}
         sentence={
           hello
@@ -401,15 +409,14 @@ function QuickScreen({ quick, step, onDone }: { quick: QuickUnlock | null; step:
           ],
         }}
       />
-      <Icon name="fingerprint-recognition" aria-hidden="true" />
+      <p className="type-caption text-text-secondary">You can change this later in Settings → Lock.</p>
       <WelcomeActions>
-        <Button size="lg" onClick={onDone} disabled={!quick?.available}>
+        <Button size="lg" block onClick={onDone} disabled={!ready} disabledReason={ready ? undefined : (quick?.why ?? "It doesn't work on this computer yet.")}>
           {hello ? "Use Windows Hello" : "Use Touch ID"}
         </Button>
-        <Button size="lg" variant="outline" onClick={onDone}>
+        <Button size="lg" block variant="secondary" onClick={onDone}>
           Not now
         </Button>
-        <p className="text-center text-sm text-muted-foreground">You can change this later in Settings → Lock.</p>
       </WelcomeActions>
     </WelcomeColumn>
   )
@@ -418,7 +425,7 @@ function QuickScreen({ quick, step, onDone }: { quick: QuickUnlock | null; step:
 /** The importers first run lists, in this order, when this build has them. */
 const FIRST_RUN_FORMATS = ["1pux", "bitwarden", "csv", "kdbx", "proton", "dashlane", "lastpass", "keeper", "enpass", "cxf"]
 
-/** Screen 4: bring passwords in from the app used now, or skip. */
+/** Screen 4: bring passwords in from the app used now, or Not now. */
 function ImportScreen({ step, onDone }: { step: [number, number]; onDone: () => void }) {
   const client = useClient()
   const [formats, setFormats] = useState<ImportFormatView[]>([])
@@ -431,9 +438,8 @@ function ImportScreen({ step, onDone }: { step: [number, number]; onDone: () => 
       .catch(() => setFormats([]))
   }, [client])
   return (
-    <WelcomeColumn>
+    <WelcomeColumn folio={stepFolio(step)}>
       <WelcomeScreen
-        step={step}
         title="Bring your passwords"
         sentence="Move your passwords in from the app you use now, or skip this and add them as you go."
         learnMore={{
@@ -445,32 +451,25 @@ function ImportScreen({ step, onDone }: { step: [number, number]; onDone: () => 
         }}
       />
       {brought !== null && (
-        <p role="status" className="text-base">
-          {brought} {brought === 1 ? "item" : "items"} brought in. Delete the exported file now: it isn't protected.
+        <p role="status" className="type-body text-text-body">
+          {countName(brought, "item")} brought in. Delete the exported file now: it isn't protected.
         </p>
       )}
-      <ul className="flex flex-col divide-y rounded-xl border" aria-label="Apps Lockdown can bring passwords in from">
+      <NavSection title="Bring them in from">
         {formats.map((f) => (
-          <li key={f.id}>
-            <button type="button" data-row="" className="flex w-full items-center gap-3 px-4 text-left hover:bg-muted/50" onClick={() => setOpen(f.id)}>
-              <span className="flex flex-1 flex-col">
-                <span className="font-medium">{f.name}</span>
-                <span className="text-sm text-muted-foreground">{f.how}</span>
-              </span>
-              <Icon name="chevron--right" aria-hidden="true" />
-            </button>
-          </li>
+          <NavItem key={f.id} label={f.name} description={f.how} icon="document--import" onClick={() => setOpen(f.id)} />
         ))}
-      </ul>
-      <div className="text-center">
-        <Button variant="link" size="inline" onClick={() => setOpen("auto")}>
-          {brought === null ? "Other apps and authenticator files" : "Bring in another"}
-        </Button>
-      </div>
+        <NavItem label={brought === null ? "Other apps and authenticator files" : "Bring in another"} icon="add" onClick={() => setOpen("auto")} />
+      </NavSection>
       <WelcomeActions>
-        <Button size="lg" variant={brought === null ? "outline" : "default"} onClick={onDone}>
-          {brought === null ? "Skip for now" : "Continue"}
+        <Button size="lg" block onClick={onDone} disabled={brought === null} disabledReason={brought === null ? "Nothing brought in yet. Pick an app above, or Not now." : undefined}>
+          Continue
         </Button>
+        {brought === null ? (
+          <Button size="lg" block variant="secondary" onClick={onDone}>
+            Not now
+          </Button>
+        ) : null}
       </WelcomeActions>
       <ImportWizard
         key={open ?? "closed"}
@@ -483,29 +482,41 @@ function ImportScreen({ step, onDone }: { step: [number, number]; onDone: () => 
   )
 }
 
+/** The three things true from now on (D95). */
+const PROOFS = [
+  "Your master password never leaves this computer.",
+  "Lockdown has never seen the Secret Key on your kit.",
+  "Your vault's history is signed on this computer, so a swapped or older copy is caught.",
+]
+
 /** Screen 5: the proof moment (D95), once. */
-export function ProofScreen({ onOpen }: { onOpen: () => void }) {
+export function ProofScreen({ onOpen }: { onOpen: () => void | Promise<void> }) {
+  const [busy, setBusy] = useState(false)
+  const openVault = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      await onOpen()
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
     <WelcomeColumn>
       <WelcomeScreen title="Locked, even from us" sentence="Three things are true from now on; Status can check them again any time." />
-      <ul className="flex flex-col gap-(--c-welcome-gap-tight) text-base">
-        {[
-          "Your master password never leaves this computer.",
-          "Lockdown has never seen the Secret Key on your kit.",
-          "Your vault's history is signed on this computer, so a swapped or older copy is caught.",
-        ].map((line) => (
+      <ul className="flex flex-col gap-4">
+        {PROOFS.map((line) => (
           <li key={line} className="flex items-start gap-3">
-            <Icon name="checkmark--outline" aria-hidden="true" />
-            <span>{line}</span>
+            <Icon name="checkmark" aria-hidden="true" />
+            <span className="type-body text-text-body">{line}</span>
           </li>
         ))}
       </ul>
       <WelcomeActions>
-        <Button size="lg" onClick={onOpen}>
-          Open the vault
+        <Button size="lg" block onClick={() => void openVault()} loading={busy}>
+          Open vault
         </Button>
       </WelcomeActions>
     </WelcomeColumn>
   )
 }
-

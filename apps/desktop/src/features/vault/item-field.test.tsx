@@ -5,6 +5,8 @@ import { SettingsProvider } from "@/app/settings"
 import { ClientProvider, type Client } from "@/core/client"
 import type { FieldView, Settings } from "@/core/types"
 
+import { SecretFieldRemoteButton, useSecretFieldRemote } from "@unicron/ui/security/secret-field"
+
 import { ItemField } from "./item-field"
 
 const field: FieldView = { field_id: "pw", label: "Password", kind: "hidden", hidden: true, value: null, mask: "••••••••" }
@@ -146,5 +148,80 @@ describe("ItemField on unicron's SecretField (the host contract)", () => {
     expect(alert).toHaveTextContent("The vault is locked.")
     expect(alert).not.toHaveTextContent("Couldn't copy this field")
     expect(reveal).not.toHaveBeenCalled()
+  })
+})
+
+describe("ItemField's other rows (brief I2, LA5)", () => {
+  function WithRemote() {
+    const remote = useSecretFieldRemote()
+    return (
+      <>
+        <ItemField itemId="i1" field={field} onNotice={() => {}} remote={remote} />
+        <SecretFieldRemoteButton remote={remote} action="reveal" />
+        <SecretFieldRemoteButton remote={remote} action="copy" />
+      </>
+    )
+  }
+  const mountRemote = (client: Client) =>
+    render(
+      <ClientProvider value={client}>
+        <SettingsProvider>
+          <WithRemote />
+        </SettingsProvider>
+      </ClientProvider>,
+    )
+
+  it("the phone's eye follows the Reveal setting: hold", async () => {
+    mountRemote(fakeClient({ reveal: secret, getSettings: () => Promise.resolve(settingsWith("hold")) }))
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Hold to show Password" })).toHaveLength(2))
+    expect(screen.getAllByRole("button", { name: "Copy Password" })).toHaveLength(2)
+  })
+
+  it("the phone's eye follows the Reveal setting: tap, and it shows the value in the field's own row", async () => {
+    const { container } = mountRemote(fakeClient({ reveal: secret, getSettings: () => Promise.resolve(settingsWith("toggle")) }))
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Show Password" })).toHaveLength(2))
+    await userEvent.setup().click(screen.getAllByRole("button", { name: "Show Password" })[1]!)
+    await waitFor(() => expect(container.querySelector('[data-slot="secret-field"]')).toHaveTextContent(SECRET))
+  })
+
+  it("Show large type is the first row of the hidden field's ⋯, and reads through the core", async () => {
+    const reveal = vi.fn(secret)
+    render(
+      <ClientProvider value={fakeClient({ reveal, getSettings: () => Promise.resolve(settingsWith("hold")) })}>
+        <SettingsProvider>
+          <ItemField itemId="i1" field={field} largeType="Password · Thing" onNotice={() => {}} />
+        </SettingsProvider>
+      </ClientProvider>,
+    )
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    await user.click(await screen.findByRole("button", { name: "More actions for Password" }))
+    const rows = await screen.findAllByRole("menuitem")
+    expect(rows[0]).toHaveTextContent("Show large type")
+    await user.click(rows[0]!)
+    await waitFor(() => expect(reveal).toHaveBeenCalledWith("i1", "pw", {}))
+  })
+
+  it("a plain value says Copied in its own row and raises no toast; a yes or no is a word; a website has Open and Copy", async () => {
+    const onNotice = vi.fn()
+    const client = fakeClient({ getSettings: () => Promise.resolve(settingsWith("hold")) })
+    render(
+      <ClientProvider value={client}>
+        <SettingsProvider>
+          <ItemField itemId="i1" field={{ field_id: "user", label: "Username", kind: "text", hidden: false, value: "sam", mask: null }} onNotice={onNotice} />
+          <ItemField itemId="i1" field={{ field_id: "h", label: "Hidden network", kind: "boolean", hidden: false, value: "false", mask: null }} control="boolean" onNotice={onNotice} />
+          <ItemField itemId="i1" field={{ field_id: "url.0", label: "Website", kind: "url", hidden: false, value: "https://a.example.test", mask: null }} onNotice={onNotice} />
+        </SettingsProvider>
+      </ClientProvider>,
+    )
+    const user = userEvent.setup()
+    // After user-event's own clipboard stub, so this one is what the row writes to.
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
+    await user.click(screen.getAllByRole("button", { name: /^Copy/ })[0]!)
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("sam"))
+    expect(await screen.findByRole("button", { name: /^Copied/ })).toBeInTheDocument()
+    expect(onNotice).not.toHaveBeenCalled()
+    expect(screen.getByText("No")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^Open/ })).toBeInTheDocument()
   })
 })

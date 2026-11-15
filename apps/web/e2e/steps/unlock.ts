@@ -11,10 +11,11 @@ export const signInForm = (page: Page): Locator => page.getByRole("form", { name
 /** Signs in as a new device: the login name, the password and the kit's Secret Key. */
 export async function signIn(page: Page, login: string, password: string, secretKey: string) {
   const form = signInForm(page)
-  await form.getByLabel("Login name").fill(login)
-  await form.getByLabel("Master password").fill(password)
-  await form.getByLabel("Secret Key").fill(secretKey)
-  await form.getByRole("button", { name: "Sign in" }).click()
+  // Exact labels: each SecretField has its own "Show …" button, which a loose match would also find.
+  await form.getByLabel("Login name", { exact: true }).fill(login)
+  await form.getByLabel("Master password", { exact: true }).fill(password)
+  await form.getByLabel("Secret Key", { exact: true }).fill(secretKey)
+  await form.getByRole("button", { name: "Sign in", exact: true }).click()
 }
 
 /** The sign-in page is showing: its first tab. */
@@ -39,8 +40,8 @@ export const joinApproved = (page: Page): Locator => page.getByText(/Approved\./
 
 /** Finishes a join with the login name and the password alone. */
 export async function finishJoin(page: Page, login: string, password: string) {
-  await page.getByLabel("Login name").fill(login)
-  await page.getByLabel("Master password").fill(password)
+  await page.getByLabel("Login name", { exact: true }).fill(login)
+  await page.getByLabel("Master password", { exact: true }).fill(password)
   await page.getByRole("button", { name: "Finish" }).click()
 }
 
@@ -51,31 +52,32 @@ export const unlockForm = (page: Page): Locator => page.getByRole("form", { name
 /** Answers the unlock screen. */
 export async function unlock(page: Page, password: string) {
   const form = unlockForm(page)
-  await form.getByLabel("Master password").fill(password)
-  await form.getByRole("button", { name: "Unlock" }).click()
+  await form.getByLabel("Master password", { exact: true }).fill(password)
+  await form.getByRole("button", { name: "Unlock", exact: true }).click()
 }
 
 // --- a share or request link, opened with no account ---------------------------------
 
-export const sharedHeading = (page: Page): Locator => page.getByRole("heading", { name: "Someone shared something with you" })
+export const sharedHeading = (page: Page): Locator => page.getByRole("heading", { name: "Someone shared something with you." })
 
 /** Opens a share link with its password. */
 export async function openLink(page: Page, password: string) {
   const form = page.getByRole("form", { name: "Open the link" })
-  await form.getByLabel("The link's password").fill(password)
-  await form.getByRole("button", { name: "Open" }).click()
+  await form.getByLabel("The link's password", { exact: true }).fill(password)
+  await form.getByRole("button", { name: "Open link", exact: true }).click()
 }
 
 /** The opened link's title. */
 export const linkTitle = (page: Page, title: string): Locator => page.getByRole("heading", { name: title })
 
-/** Shows one of the opened link's values. */
+/** Shows one of the opened link's values: its SecretField's own Show (the link page reveals by a press, not a hold). */
 export async function showLinkValue(page: Page, label: string) {
-  await page.getByRole("button", { name: `Show ${label}` }).click()
+  await page.getByRole("button", { name: `Show ${label}`, exact: true }).click()
 }
 
-/** The opened link's value at `index`, shown. */
-export const linkValue = (page: Page, index: number): Locator => page.getByTestId(`value-${index}`)
+/** The opened link's value at `index`, shown: the SecretField's revealed text, or a plain value's Field Row value. */
+export const linkValue = (page: Page, index: number): Locator =>
+  page.getByTestId(`value-${index}`).locator('[data-slot="secret-field-revealed"], [data-slot="field-row-value"]')
 
 /** What a request link asks for. */
 export const requestAsk = (page: Page, text: string): Locator => page.getByText(text)
@@ -83,9 +85,9 @@ export const requestAsk = (page: Page, text: string): Locator => page.getByText(
 /** Answers a request link. */
 export async function answerRequest(page: Page, what: string, secret: string) {
   const answer = page.getByRole("form", { name: "Answer the request" })
-  await answer.getByLabel("What it is").fill(what)
-  await answer.getByLabel("The secret").fill(secret)
-  await answer.getByRole("button", { name: "Send" }).click()
+  await answer.getByLabel("What it is (optional)", { exact: true }).fill(what)
+  await answer.getByLabel("The secret", { exact: true }).fill(secret)
+  await answer.getByRole("button", { name: "Send", exact: true }).click()
 }
 
-export const requestSent = (page: Page): Locator => page.getByRole("heading", { name: "Sent" })
+export const requestSent = (page: Page): Locator => page.getByRole("heading", { name: "Sent." })

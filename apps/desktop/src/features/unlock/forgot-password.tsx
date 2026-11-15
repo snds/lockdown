@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react"
 
-import { Button, Field, FieldDescription, FieldError, FieldLabel, Input, Spinner } from "@unicron/ui"
+import { Banner, Button } from "@unicron/ui"
+import { SecretField } from "@unicron/ui/security/secret-field"
 
 import { describeError } from "@/core/client"
 import type { Status } from "@/core/types"
@@ -8,13 +9,15 @@ import type { Status } from "@/core/types"
 import { useFirstRunClient } from "./first-run-client"
 import { EMPTY_VALUES, checkValues, useMasterStrength, type MasterPasswordValues } from "./master-password"
 import { MasterPasswordFields } from "./master-password-fields"
-import { WelcomeActions, WelcomeColumn, WelcomeGroup, WelcomeScreen } from "./welcome"
+import { WelcomeActions, WelcomeColumn, WelcomeScreen, useFormFill } from "./welcome"
 
 /**
  * "Forgot your password? Use your recovery kit" (docs/plan/39-first-run.md
- * §1.10): K1 takes the kit's two lines, K2 a new master password. The core
- * checks the kit when it saves; a kit that doesn't open this vault comes
- * back to K1 with its words.
+ * §1.10; brief F4): K1 takes the kit's two lines, K2 a new master password,
+ * each in the focus frame with no folio. The core checks the kit when it
+ * saves; a kit that doesn't open this vault comes back to K1 with its
+ * words, as a compact critical Banner. Save new password keeps its label
+ * while it works.
  */
 export function ForgotPassword({ name, onBack, onOpened }: { name: string | null; onBack: () => void; onOpened: (s: Status) => void }) {
   const frc = useFirstRunClient()
@@ -26,6 +29,7 @@ export function ForgotPassword({ name, onBack, onOpened }: { name: string | null
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const strength = useMasterStrength({ ...values, name: name ?? "" }, true)
+  const fill = useFormFill()
   if (!frc) return null
 
   const save = async (e: FormEvent) => {
@@ -36,7 +40,11 @@ export function ForgotPassword({ name, onBack, onOpened }: { name: string | null
     setBusy(true)
     setError(null)
     try {
-      const status = await frc.resetWithKit({ secretKey: secretKey.trim(), recoveryCode: recoveryCode.trim(), password: values.password })
+      const status = await frc.resetWithKit({
+        secretKey: secretKey.trim(),
+        recoveryCode: recoveryCode.trim(),
+        password: values.password,
+      })
       setValues(EMPTY_VALUES)
       setSecretKey("")
       setRecoveryCode("")
@@ -54,60 +62,72 @@ export function ForgotPassword({ name, onBack, onOpened }: { name: string | null
     }
   }
 
-  if (step === "k1")
+  // A kit that didn't open the vault, or a save that failed: a compact critical Banner over the buttons (brief 4.0).
+  const failure = error ? <Banner tone="critical" size="compact" title={error} /> : null
+
+  if (step === "k1") {
+    const missing = !secretKey.trim() || !recoveryCode.trim()
     return (
-      <WelcomeColumn locked>
+      <WelcomeColumn>
         <WelcomeScreen title="Use your recovery kit" sentence="Type the Secret Key and recovery code from your kit to choose a new master password." />
         <form
           onSubmit={(e) => {
             e.preventDefault()
+            if (missing) return
             setError(null)
             setStep("k2")
           }}
-          className="flex flex-col gap-(--c-welcome-gap)"
+          className={fill}
+          aria-label="Use your recovery kit"
         >
-          <WelcomeGroup>
-            <Field>
-              <FieldLabel htmlFor="k1-secret-key">Secret Key</FieldLabel>
-              <Input id="k1-secret-key" value={secretKey} onChange={(e) => setSecretKey(e.target.value)} autoComplete="off" />
-              <FieldDescription>It starts with A1-.</FieldDescription>
-            </Field>
-          </WelcomeGroup>
-          <WelcomeGroup>
-            <Field>
-              <FieldLabel htmlFor="k1-recovery-code">Recovery code</FieldLabel>
-              <Input id="k1-recovery-code" value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} autoComplete="off" />
-            </Field>
-          </WelcomeGroup>
-          {error && <FieldError role="alert">{error}</FieldError>}
+          <div className="flex flex-col gap-6">
+            <SecretField
+              mode="edit"
+              id="k1-secret-key"
+              label="Secret Key"
+              name="secret-key"
+              mono
+              value={secretKey}
+              onChange={setSecretKey}
+              autoComplete="off"
+              description="It starts with A1-."
+            />
+            <SecretField
+              mode="edit"
+              id="k1-recovery-code"
+              label="Recovery code"
+              name="recovery-code"
+              mono
+              value={recoveryCode}
+              onChange={setRecoveryCode}
+              autoComplete="off"
+            />
+          </div>
+          {failure}
           <WelcomeActions>
-            <Button size="lg" type="submit" disabled={!secretKey.trim() || !recoveryCode.trim()}>
-              Check the kit
+            <Button size="lg" block type="submit" disabled={missing} disabledReason={missing ? "Type both lines from your kit first." : undefined}>
+              Check kit
             </Button>
-            <Button size="lg" type="button" variant="outline" onClick={onBack}>
+            <Button size="lg" block type="button" variant="secondary" onClick={onBack}>
               Back
             </Button>
           </WelcomeActions>
         </form>
       </WelcomeColumn>
     )
+  }
 
   return (
-    <WelcomeColumn locked>
+    <WelcomeColumn>
       <WelcomeScreen title="Choose a new master password" sentence="Your old password stops working once you save the new one." />
-      <form onSubmit={save} className="flex flex-col gap-(--c-welcome-gap)" noValidate>
+      <form onSubmit={save} className={fill} noValidate aria-label="Choose a new master password">
         <MasterPasswordFields idPrefix="k2" values={values} onChange={setValues} errors={errors} withName={false} readOnly={busy} strength={strength} />
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
+        {failure}
         <WelcomeActions>
-          <Button size="lg" type="submit" disabled={busy}>
-            {busy ? <Spinner data-icon="inline-start" /> : null}
-            {busy ? "Saving…" : "Save new password"}
+          <Button size="lg" block type="submit" loading={busy}>
+            Save new password
           </Button>
-          <Button size="lg" type="button" variant="outline" onClick={() => setStep("k1")} disabled={busy}>
+          <Button size="lg" block type="button" variant="secondary" onClick={() => setStep("k1")} disabled={busy}>
             Back
           </Button>
         </WelcomeActions>

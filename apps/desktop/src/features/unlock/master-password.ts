@@ -36,8 +36,8 @@ export function useMasterStrength(values: MasterPasswordValues, withName: boolea
   return useStrength(values.password, name ? [name] : [], true)
 }
 
-/** Tracks Caps Lock from the key events of a password field. */
-export function useCapsLock(): [boolean, (e: KeyboardEvent<HTMLInputElement>) => void] {
+/** Tracks Caps Lock from the key events of a password field, or of a box around one (they bubble). */
+export function useCapsLock(): [boolean, (e: KeyboardEvent<Element>) => void] {
   const [on, setOn] = useState(false)
   return [on, (e) => setOn(e.getModifierState?.("CapsLock") ?? false)]
 }

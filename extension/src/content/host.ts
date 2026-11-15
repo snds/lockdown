@@ -14,7 +14,7 @@ export function makeHost(src: string, label: string, width: number, height: numb
   frame.title = label
   frame.setAttribute("scrolling", "no")
   frame.style.cssText =
-    "all: initial; display: block; width: 100%; height: 100%; border: 0; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.28); color-scheme: normal; background: transparent;"
+    "all: initial; display: block; width: 100%; height: 100%; border: 0; border-radius: 2px; box-shadow: 0 6px 24px rgba(0,0,0,.28); color-scheme: normal; background: transparent;"
   root.append(frame)
   document.documentElement.append(host)
   try {

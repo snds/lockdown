@@ -143,7 +143,7 @@ const SECTIONS: ReadonlyArray<[SettingsSection, string, IconName, SettingsGroup,
   ["aliases", "Email aliases", "email", "vault", "The service that makes an address for each login.", DESKTOP],
   ["codes", "Codes", "time", "vault", "The clock one-time codes are worked out from.", DESKTOP],
   ["security-checks", "Security checks", "security", "vault", "What Health checks, and with whom.", DESKTOP],
-  ["about", "About", "information", "lockdown", "The version, updates and licenses.", DESKTOP],
+  ["about", "About", "information", "lockdown", "The version that runs, and its updates.", DESKTOP],
 ]
 
 /** Every place with a fixed address. A vault, a folder, a tag and a shared vault's members are made by `placeFor`. */

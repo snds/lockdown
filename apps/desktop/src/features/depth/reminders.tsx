@@ -1,27 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 
-import {
-  AdaptiveDialog,
-  Badge,
-  Button,
-  ConfirmDialog,
-  Field,
-  FieldDescription,
-  FieldLabel,
-  Icon,
-  Item,
-  ItemContent,
-  ItemGroup,
-  ItemTitle,
-  NativeSelect,
-  NativeSelectOption,
-} from "@unicron/ui"
+import { AdaptiveDialog, Badge, Banner, Button, ConfirmDialog, FieldRow, FilterChip, FilterChipGroup, ListRow, SectionHeader } from "@unicron/ui"
 import { SecretField } from "@unicron/ui/security/secret-field"
 
 import { useNeedsYouSource, type NeedsYouEntry } from "@/app/needs-you"
 import { describeError } from "@/core/client"
-import { dateLocal } from "@/lib/format"
 import { KitDialog } from "@/features/account/kit-dialog"
+import { SaveError, useGroupLevel, useRowSize } from "@/features/settings/setting-rows"
 
 import { PASSWORD_DAYS, useDepthClient, type DrillCheck, type RemindersView } from "./depth-client"
 
@@ -52,7 +37,12 @@ export const SKIP_WORDS = "I understand an untested kit can fail"
  *
  * Each leaves when it is answered; the next due one then shows.
  */
-export function RemindersPrompt({ onNotice, onChanged }: { onNotice: (text: string) => void; onChanged: () => void }) {
+export function RemindersPrompt({ onNotice, onChanged, hasAccount = true }: {
+  onNotice: (text: string) => void
+  onChanged: () => void
+  /** An account to sign in to: the drill's optional password shows only then (a local vault has none). */
+  hasAccount?: boolean
+}) {
   const depth = useDepthClient()
   const [reminders, setReminders] = useState<RemindersView | null>(null)
   const [kit, setKit] = useState(false)
@@ -188,7 +178,7 @@ export function RemindersPrompt({ onNotice, onChanged }: { onNotice: (text: stri
       </AdaptiveDialog>
       <KitDialog
         kind={kit ? "kit-verify" : null}
-        hasAccount
+        hasAccount={hasAccount}
         onClose={() => setKit(false)}
         onDone={(lines) => {
           setKit(false)
@@ -201,79 +191,124 @@ export function RemindersPrompt({ onNotice, onChanged }: { onNotice: (text: stri
   )
 }
 
-/**
- * The drill's checks and the password reminder's interval, on the
- * Recovery screen: the kit, the Secret Key kept here, each emergency
- * contact's keys, and the crown jewels they would get.
- */
-export function DrillSection() {
+/** What the Recovery section reads about the drill: its checks and the reminders (the last drill's date, the password interval). */
+export interface RecoveryFacts {
+  checks: DrillCheck[] | null
+  reminders: RemindersView | null
+  /** A failed read of the checks, in the core's words. */
+  error: string | null
+  reload: () => void
+  setReminders: (r: RemindersView) => void
+}
+
+/** Reads the drill's checks and the reminders once, and again on `reload` (after a drill, a new kit). */
+export function useRecoveryFacts(): RecoveryFacts {
   const depth = useDepthClient()
   const [checks, setChecks] = useState<DrillCheck[] | null>(null)
   const [reminders, setReminders] = useState<RemindersView | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  const load = useCallback(() => {
+  const reload = useCallback(() => {
     if (!depth) return
     depth
       .drillChecks()
-      .then(setChecks)
+      .then((c) => {
+        setChecks(c)
+        setError(null)
+      })
       .catch((e) => setError(describeError(e)))
     depth
       .reminders()
       .then(setReminders)
       .catch(() => undefined)
   }, [depth])
-  useEffect(load, [load])
+  useEffect(reload, [reload])
+  return { checks, reminders, error, reload, setReminders }
+}
 
-  if (!depth) return null
-  const drilled = reminders?.drill.last_drilled_at
+/**
+ * WHAT THE DRILL CHECKS NN (brief T3): one row per check the core lists
+ * (the kit, the Secret Key kept here, each emergency contact's keys, the
+ * crown jewels they would get), its words and a Badge OK or CHECK. A read
+ * that failed after one that worked keeps the rows under a critical Banner
+ * with TRY AGAIN; with nothing to show, the Banner stands alone.
+ */
+export function DrillSection({ facts }: { facts: RecoveryFacts }) {
+  const level = useGroupLevel()
+  const { checks, error, reload } = facts
+  if (!checks && !error) return null
   return (
-    <section aria-labelledby="drill-title" className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <h2 id="drill-title" className="text-sm font-medium">
-          What the drill checks
-        </h2>
-        {drilled ? <Badge variant="secondary">last passed {dateLocal(drilled)}</Badge> : null}
-      </div>
+    <section aria-label="What the drill checks" className="flex flex-col">
+      <SectionHeader level={level} title="What the drill checks" count={checks ? checks.length : undefined} />
       {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+        <Banner
+          tone="critical"
+          size="compact"
+          title={error}
+          action={
+            <Button variant="secondary" size="sm" onClick={reload}>
+              Try again
+            </Button>
+          }
+        />
       )}
-      <ItemGroup role="list" aria-label="Drill checks">
-        {checks?.map((c, i) => (
-          <Item key={`${c.what}-${i}`} role="listitem" size="sm" variant="outline" data-row="">
-            <ItemContent>
-              <ItemTitle>
-                <Icon name={c.ok ? "checkmark--outline" : "warning"} aria-label={c.ok ? "fine" : "needs you"} />
-                {c.words}
-              </ItemTitle>
-            </ItemContent>
-          </Item>
-        ))}
-      </ItemGroup>
-      {reminders?.password.applies && (
-        <Field>
-          <FieldLabel htmlFor="password-reminder-days">Ask for the master password every</FieldLabel>
-          <NativeSelect
-            id="password-reminder-days"
-            value={String(reminders.password.every_days)}
-            onChange={(e) =>
-              void depth
-                .setPasswordReminderDays(Number(e.target.value))
-                .then(setReminders)
-                .catch((err) => setError(describeError(err)))
-            }
-          >
-            {PASSWORD_DAYS.map((d) => (
-              <NativeSelectOption key={d} value={String(d)}>
-                {d} days
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-          <FieldDescription>Only here, where unlocking doesn't ask for it.</FieldDescription>
-        </Field>
+      {checks && (
+        <ul role="list" aria-label="Drill checks" className="flex flex-col">
+          {checks.map((c, i) => (
+            <ListRow
+              key={`${c.what}-${i}`}
+              render={<li />}
+              size="compact"
+              title={c.words}
+              badge={<Badge tone={c.ok ? "neutral" : "warning"}>{c.ok ? "OK" : "Check"}</Badge>}
+            />
+          ))}
+        </ul>
       )}
     </section>
+  )
+}
+
+/**
+ * MASTER PASSWORD REMINDER (brief T3): how often Lockdown asks for the
+ * master password, only where unlocking does not ask for it. Three short
+ * choices, so chips in the row (cross-app decisions §5); picking one saves
+ * it at once, silently, and a refusal keeps the old one with one critical
+ * line under the row.
+ */
+export function PasswordReminderSetting({ facts }: { facts: RecoveryFacts }) {
+  const depth = useDepthClient()
+  const size = useRowSize()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const password = facts.reminders?.password
+  if (!depth || !password?.applies) return null
+  const pick = async (days: number) => {
+    setBusy(true)
+    setError(null)
+    try {
+      facts.setReminders(await depth.setPasswordReminderDays(days))
+    } catch (e) {
+      setError(describeError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="flex flex-col">
+      <FieldRow size={size} label="Master password reminder" description="Only here, where unlocking doesn't ask for it.">
+        <FilterChipGroup
+          label="Ask for the master password every"
+          value={String(password.every_days)}
+          onValueChange={(next) => next && next !== String(password.every_days) && !busy && void pick(Number(next))}
+        >
+          {PASSWORD_DAYS.map((d) => (
+            <FilterChip key={d} value={String(d)}>
+              {`${d} days`}
+            </FilterChip>
+          ))}
+        </FilterChipGroup>
+      </FieldRow>
+      <SaveError text={error} />
+    </div>
   )
 }

@@ -98,7 +98,7 @@ export function status(world: World): Status {
     data: "/Users/sam/Library/Application Support/Lockdown",
     profile_id: uid("profile", 1),
     manager: null,
-    recovery: "kit made, drilled 5 months ago",
+    recovery: "drilled",
     device_id: DEVICES[0]!.id,
     device_name: PERSON.device,
     persona_id: uid("persona", 1),

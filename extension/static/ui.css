@@ -1,88 +1,160 @@
 /* The extension's in-page frames: the fill menu, the save prompt and the
-   passkey sheet. Plain CSS, since a frame has no Tailwind. Opaque, a minimum
-   size, and never a page's look (03-architecture §9). The popup is React on
-   unicron (src/popup/popup.css); the popup rules further down are from its
-   plain version and draw nothing today.
+   passkey sheet (briefs B2 and B3; docs/plan/86-redesign-extension-frames.md).
+   Plain CSS, since a frame has no Tailwind and loads nothing a page could
+   influence. Opaque, a minimum size, and never a page's look
+   (03-architecture §9).
 
-   Colours alias unicron's roles from tokens.css (loaded first; generated
-   from @unicron/tokens by scripts/tokens-css.mjs), so the frames draw from
-   the same set as the popup and the app and meet WCAG AA in light and dark
-   (design review R4): text 4.5:1 on its surface, control edges 3:1. Every
-   name here is prefixed `--ld-`, since unicron's `--muted` and `--accent`
-   are surfaces, not inks. */
+   Every colour, corner, stroke and type role is unicron's, from tokens.css
+   (loaded first; generated from @unicron/tokens/plain.css by
+   scripts/tokens-css.mjs), so the frames draw from the same set as the popup
+   and the app: light (stone) by default, graphite while the browser prefers
+   dark. The classes are Lockdown's own (undrawn brief 1.3); the pixel sizes
+   below are the frame's layout (B2's 32 px header, 48 px rows), since the
+   plain sheet carries no spacing. */
 :root {
-  --ld-surface: var(--popover);
-  --ld-ink: var(--popover-foreground);
-  /* Secondary text: hosts, usernames, "Protected", sub-lines. */
-  --ld-ink-muted: var(--muted-foreground);
-  /* Dividers between rows; decoration, not a control's edge. */
-  --ld-line: var(--border);
-  /* A control's edge (outlined buttons, fields): unicron's input role, 3:1. */
-  --ld-control-line: var(--input);
-  --ld-hover: var(--accent);
-  --ld-primary: var(--primary);
-  --ld-primary-ink: var(--primary-foreground);
-  /* Links are the ink, underlined, as unicron's link is. */
-  --ld-link: var(--popover-foreground);
-  --ld-focus: var(--ring);
-  --ld-stop-ink: var(--destructive);
-  --ld-stop-surface: color-mix(in oklab, var(--destructive) 12%, var(--popover));
-  font: 14px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
-  color: var(--ld-ink);
-  background: var(--ld-surface);
+  font-family: var(--font-sans);
+  color: var(--text-body);
+  background: var(--surface-raised);
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--ld-surface); color: var(--ld-ink); }
-body.frame { overflow: hidden; height: 100vh; border: 1px solid var(--ld-line); border-radius: 10px; }
-body.popup { width: 360px; min-height: 120px; padding: 12px; }
-button { font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid transparent; padding: 6px 10px; min-height: 32px; }
-button:focus-visible, input:focus-visible { outline: 2px solid var(--ld-focus); outline-offset: 2px; }
-button.primary { background: var(--ld-primary); color: var(--ld-primary-ink); }
-button.secondary { background: transparent; color: var(--ld-ink); border-color: var(--ld-control-line); }
-button.link { background: transparent; color: var(--ld-link); padding: 4px; min-height: 24px; text-decoration: underline; }
-button:disabled { opacity: 0.6; cursor: default; }
+body {
+  margin: 0;
+  background: var(--surface-raised);
+  color: var(--text-body);
+  font-family: var(--type-caption-family);
+  font-weight: var(--type-caption-weight);
+  font-size: var(--type-caption-size);
+  letter-spacing: var(--type-caption-tracking);
+  line-height: 1.3;
+}
+/* A hairline in the label ink, so the edge holds on a page of any colour;
+   the host element keeps its shadow (content/host.ts). */
+body.frame { overflow: hidden; height: 100vh; border: var(--stroke-rule) solid var(--text-label); border-radius: var(--radius); }
+
+/* --- buttons: the label role of unicron's Button, mono caps -------------- */
+button {
+  position: relative;
+  font-family: var(--type-overline-family);
+  font-weight: var(--type-overline-weight);
+  font-size: var(--type-overline-size);
+  letter-spacing: var(--type-overline-tracking);
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--text-body);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius);
+  padding: 0 12px;
+  min-height: 32px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+/* The focus ring: a 2 px ink outline, 2 px clear of the control. */
+button:focus-visible { outline: var(--stroke-emphasis) solid var(--ring); outline-offset: var(--stroke-emphasis); }
+button:hover { background: var(--state-hover); }
+button:active { background: var(--state-pressed); }
+button.primary { background: var(--primary-fill); color: var(--primary-on-fill); }
+button.primary:hover, button.primary:active { background: color-mix(in oklab, var(--primary-fill) 90%, var(--text-body)); }
+/* Secondary: transparent, a 1 px ink edge drawn inside the box. */
+button.secondary { box-shadow: inset 0 0 0 var(--stroke-rule) var(--text-body); }
+/* A text button: no box until the pointer is on it, and a little shorter, so
+   it fits under a row of boxed buttons in the 150 px frames. */
+button.link { min-height: 28px; }
+/* Covered (or busy): half strength, and no pointer. */
+button:disabled { opacity: 0.5; cursor: default; }
+button:disabled:hover { background: transparent; }
+button.primary:disabled:hover { background: var(--primary-fill); }
+
 /* Arming (design review R17; D159, D206): a control waiting out its 400 ms
-   keeps its full colours and draws an underline that fills, so it reads as
-   about to work rather than off; the click still counts only once armed.
-   Covered, it looks disabled (above); armed, plainly enabled. Under reduced
-   motion the underline is drawn whole, without moving. */
-button { position: relative; }
+   keeps its full colours and a 2 px rule under its label fills from the
+   left, so it reads as about to work rather than off; the click still counts
+   only once armed. Covered, it drops to half strength (above); armed, it is
+   plainly enabled. Under reduced motion the rule is drawn whole and does not
+   move. The 400 ms is the frame's own rule (frame.ts SETTLE_MS), not a motion
+   token. */
 button[data-arming]:disabled { opacity: 1; cursor: progress; }
 button[data-arming]::after {
-  content: ""; position: absolute; left: 10px; right: 10px; bottom: 3px; height: 2px;
-  border-radius: 1px; background: currentColor; transform-origin: left center;
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: 4px; height: var(--stroke-emphasis);
+  background: currentColor; transform-origin: left center;
   animation: ld-arm 400ms linear var(--ld-arm-at, 0ms) both;
 }
 @keyframes ld-arm { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @media (prefers-reduced-motion: reduce) {
-  button[data-arming]::after { animation: none; transform: none; opacity: 0.6; }
+  button[data-arming]::after { animation: none; transform: none; }
 }
-.head { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--ld-line); }
-.brand { font-size: inherit; font-weight: 600; margin: 0; }
-.host { color: var(--ld-ink-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.close { background: transparent; color: var(--ld-ink-muted); min-height: 24px; padding: 0 6px; }
-.msg { margin: 8px 10px; overflow-wrap: anywhere; }
-.msg.stop, .warn { background: var(--ld-stop-surface); color: var(--ld-stop-ink); border-radius: 6px; padding: 8px 10px; }
-.list { overflow-y: auto; max-height: calc(100vh - 44px); }
-.item { display: flex; flex-direction: column; align-items: flex-start; width: 100%; text-align: left; background: transparent; color: var(--ld-ink); border-radius: 0; border-bottom: 1px solid var(--ld-line); padding: 8px 10px; }
-.item:hover, .item:focus-visible { background: var(--ld-hover); }
-.title { font-weight: 600; display: flex; gap: 6px; align-items: center; }
-.sub { color: var(--ld-ink-muted); font-size: 12px; }
+
+/* --- the header: 32 px, the mark, LOCKDOWN, the host, close -------------- */
+.head { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 4px 0 12px; border-bottom: var(--stroke-rule) solid var(--line-rule); }
+.mark {
+  display: inline-flex; flex: none; align-items: center; justify-content: center; width: 16px; height: 16px;
+  border-radius: var(--radius); background: var(--primary-fill); color: var(--primary-on-fill);
+  font-family: var(--type-overline-family); font-weight: 700; font-size: var(--type-overline-size); line-height: 1;
+}
+.brand {
+  margin: 0; flex: none;
+  font-family: var(--type-brand-wordmark-family); font-weight: var(--type-brand-wordmark-weight);
+  font-size: var(--type-brand-wordmark-size); letter-spacing: var(--type-brand-wordmark-tracking);
+  line-height: 1; text-transform: uppercase; color: var(--text-body);
+}
+/* The host in mono, cut in the middle: the start gives way, the end stays. */
+.host {
+  display: flex; flex: 1; min-width: 0; justify-content: flex-end; white-space: nowrap;
+  font-family: var(--type-meta-family); font-weight: var(--type-meta-weight);
+  font-size: var(--type-meta-size); letter-spacing: var(--type-meta-tracking); color: var(--text-label);
+}
+.host-start { overflow: hidden; text-overflow: ellipsis; }
+.host-end { flex: none; }
+.close { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; min-height: 24px; height: 24px; padding: 0; color: var(--text-label); }
+.close svg { width: 16px; height: 16px; }
+
+/* --- words ---------------------------------------------------------------- */
+/* A message: one sentence in the caption role. */
+.msg { margin: 8px 12px; overflow-wrap: anywhere; }
+/* The question of a prompt or a second press: the UI emphasis role. */
+.msg.ask {
+  font-family: var(--type-ui-emphasis-family); font-weight: var(--type-ui-emphasis-weight);
+  font-size: var(--type-ui-emphasis-size); letter-spacing: var(--type-ui-emphasis-tracking); line-height: 1.3;
+}
+/* A stop: the sentence on the critical soft fill, in critical ink. */
+.msg.stop { background: var(--critical-soft); color: var(--critical-text); border-radius: var(--radius); padding: 8px 12px; }
+.stop-word { font-weight: 600; }
+/* A mono line under the words: a username, the passkey's account. */
+.sub {
+  font-family: var(--type-meta-family); font-weight: var(--type-meta-weight);
+  font-size: var(--type-meta-size); letter-spacing: var(--type-meta-tracking); color: var(--text-label);
+}
 .sub.block { display: block; margin-top: 4px; }
-.badge { font-weight: 400; font-size: 11px; color: var(--ld-ink-muted); border: 1px solid var(--ld-line); border-radius: 4px; padding: 0 4px; }
-.actions { display: flex; gap: 8px; padding: 0 10px 10px; }
-h1 { font-size: 16px; margin: 0 0 8px; }
-h2 { font-size: 13px; margin: 12px 0 4px; color: var(--ld-ink-muted); font-weight: 600; }
-.search { width: 100%; padding: 8px 10px; border: 1px solid var(--ld-control-line); border-radius: 6px; background: var(--ld-surface); color: var(--ld-ink); font: inherit; margin-top: 8px; }
-.rows { list-style: none; margin: 8px 0 0; padding: 0; }
-.row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--ld-line); }
-.row .text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-.row .text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.code { font: 600 28px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.08em; margin: 8px 0; }
-.live { color: var(--ld-ink-muted); margin: 8px 0 0; min-height: 1em; }
-/* Bridges in the popup (docs/plan/23-bridges.md): "Fix this page" and "Hide my email". */
-details.fix { margin: 8px 0 0; }
-details.fix summary { cursor: pointer; color: var(--ld-link); text-decoration: underline; padding: 4px 0; }
-.fix-body .row .text select { margin-top: 4px; font: inherit; min-height: 28px; border-radius: 6px; border: 1px solid var(--ld-control-line); background: transparent; color: var(--ld-ink); }
-.fix-body label.check { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
-.fix-body button.primary { margin-top: 8px; }
+/* The pairing code, in the code display role. */
+.msg.code {
+  margin: 4px 12px;
+  font-family: var(--type-code-display-family); font-weight: var(--type-code-display-weight);
+  font-size: var(--type-code-display-size); letter-spacing: var(--type-code-display-tracking); line-height: 1.2;
+}
+/* Buttons side by side; a long text button wraps to its own line. */
+.actions { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 0; padding: 0 12px 6px; }
+
+/* --- the list: 48 px rows, each a button ---------------------------------- */
+.list { overflow-y: auto; max-height: calc(100vh - 34px); }
+.item {
+  display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 2px;
+  width: 100%; height: 48px; padding: 0 12px; text-align: left; text-transform: none; letter-spacing: 0;
+  border-radius: 0; border-bottom: var(--stroke-rule) solid var(--line-rule);
+}
+.item::after { left: 12px; right: 12px; }
+/* A full-width row draws its focus ring inside its box, where the frame can't clip it. */
+.item:focus-visible { outline-offset: calc(-1 * var(--stroke-emphasis)); }
+.title {
+  display: flex; align-items: baseline; gap: 8px; min-width: 0; white-space: nowrap; overflow: hidden;
+  font-family: var(--type-ui-emphasis-family); font-weight: var(--type-ui-emphasis-weight);
+  font-size: var(--type-ui-emphasis-size); letter-spacing: var(--type-ui-emphasis-tracking); line-height: 20px; color: var(--text-body);
+}
+.title-text { overflow: hidden; text-overflow: ellipsis; }
+/* One mono caps word after the title: PASSKEY, RELATED SITE, SAME SITE. */
+.badge {
+  flex: none;
+  font-family: var(--type-overline-family); font-weight: var(--type-overline-weight);
+  font-size: var(--type-overline-size); letter-spacing: var(--type-overline-tracking); text-transform: uppercase; color: var(--text-label);
+}
+.item .sub { line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* "Use another device or security key", under the list. */
+.list > button.link, .msg + button.link, .actions + button.link { margin: 4px 0; }

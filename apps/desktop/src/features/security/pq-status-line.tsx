@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 
-import { Button, Icon, Item, ItemContent, ItemDescription, ItemMedia, ItemTitle, type IconName } from "@unicron/ui"
+import { Button, FieldRow, FieldRowValue, Icon, type IconName } from "@unicron/ui"
 
 import { useLive } from "@/features/sessions/use-live"
 
@@ -21,7 +21,8 @@ interface PqStatusLineProps {
 }
 
 /**
- * Where the stronger, quantum-safe signatures stand for this account
+ * Where the stronger, quantum-safe signatures stand for this account, as a
+ * row of Health's Protections
  * (D346; docs/plan/30-pq-status-line.md): on, waiting for the devices
  * named (each a link to the Devices screen), or can't check right now.
  * The words are the core's, read again after every live sync. A failed
@@ -50,28 +51,37 @@ export function PqStatusLine({ onDevice, refresh = 0 }: PqStatusLineProps) {
 
   if (!client || !status) return null
   const waiting = [...status.without_level_1, ...status.without_level_2]
+  // A row of Health's Protections (brief H1): the core's headline as the value, its explanation under
+  // it, and each device it waits for a text link to that device in Settings.
   return (
-    <Item variant="outline" size="sm" role="status" aria-label="Quantum-safe signatures" data-state={status.state}>
-      <ItemMedia variant="icon">
-        <Icon name={ICONS[status.state]} />
-      </ItemMedia>
-      <ItemContent>
-        <ItemTitle>{status.headline}</ItemTitle>
-        <ItemDescription>{status.explanation}</ItemDescription>
-        {status.state === "waiting" && onDevice && waiting.length > 0 && (
-          <ul aria-label="Devices to update" className="flex flex-wrap gap-1">
-            {waiting.map((d) => (
-              <li key={d.id}>
-                <Button size="sm" variant="link" onClick={() => onDevice(d.id)}>
-                  <Icon name="devices" data-icon="inline-start" />
-                  {d.name}
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </ItemContent>
-    </Item>
+    <div role="status" aria-label="Quantum-safe signatures" data-state={status.state}>
+      <FieldRow
+        label="Quantum-safe signatures"
+        description={
+          <>
+            {status.explanation}
+            {status.state === "waiting" && onDevice && waiting.length > 0 && (
+              <span role="list" aria-label="Devices to update" className="mt-1 flex flex-wrap gap-x-3">
+                {waiting.map((d) => (
+                  <span role="listitem" key={d.id}>
+                    <Button size="inline" variant="link" onClick={() => onDevice(d.id)}>
+                      {d.name}
+                    </Button>
+                  </span>
+                ))}
+              </span>
+            )}
+          </>
+        }
+      >
+        <FieldRowValue truncate="wrap">
+          <span className="inline-flex items-baseline gap-2">
+            <Icon name={ICONS[status.state]} />
+            {status.headline}
+          </span>
+        </FieldRowValue>
+      </FieldRow>
+    </div>
   )
 }
 

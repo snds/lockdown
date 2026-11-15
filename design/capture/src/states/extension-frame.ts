@@ -5,9 +5,25 @@
 
 import tokensCss from "../../../../extension/static/tokens.css?url"
 import uiCss from "../../../../extension/static/ui.css?url"
+// The frames' fonts. The extension ships these files (scripts/build.mjs, from
+// the font packages beside @unicron/ui); the harness takes the same files from
+// its own install of those packages, at the version both lockfiles pin.
+import geistLatin from "../../node_modules/.pnpm/@fontsource-variable+geist@5.3.0/node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2?url"
+import geistLatinExt from "../../node_modules/.pnpm/@fontsource-variable+geist@5.3.0/node_modules/@fontsource-variable/geist/files/geist-latin-ext-wght-normal.woff2?url"
+import monoLatin from "../../node_modules/.pnpm/@fontsource-variable+geist-mono@5.3.0/node_modules/@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2?url"
+import monoLatinExt from "../../node_modules/.pnpm/@fontsource-variable+geist-mono@5.3.0/node_modules/@fontsource-variable/geist-mono/files/geist-mono-latin-ext-wght-normal.woff2?url"
 
 import { background, installChrome } from "../host/chrome"
 import { scenario } from "./extension-scenarios"
+
+/** tokens.css names each font as `fonts/<file>`, beside frame.html in the extension (the
+ *  review build's copy of the sheet is minified, so the quotes may be gone). */
+const FONTS: Record<string, string> = {
+  "geist-latin-wght-normal.woff2": geistLatin,
+  "geist-latin-ext-wght-normal.woff2": geistLatinExt,
+  "geist-mono-latin-wght-normal.woff2": monoLatin,
+  "geist-mono-latin-ext-wght-normal.woff2": monoLatinExt,
+}
 
 /** Any 32 hex digits: the frame accepts only a nonce of that shape. */
 const NONCE = "5f2c9e1ab7d04c3e8f6a1b2c3d4e5f60"
@@ -22,10 +38,16 @@ const NONCE = "5f2c9e1ab7d04c3e8f6a1b2c3d4e5f60"
 async function installSheets(scheme: "light" | "dark") {
   for (const href of [tokensCss, uiCss]) {
     const css = await fetch(new URL(href, document.baseURI)).then((r) => r.text())
+    const fonts = css.replace(/url\(\s*["']?fonts\/([a-z0-9-]+\.woff2)["']?\s*\)/g, (_match, file: string) => {
+      const href = FONTS[file]
+      if (!href) throw new Error(`tokens.css names a font the harness lacks: ${file}`)
+      return `url("${new URL(href, document.baseURI).href}")`
+    })
     const style = document.createElement("style")
-    style.textContent = css.replace(/@media\s*\(prefers-color-scheme:\s*dark\)/g, scheme === "dark" ? "@media all" : "@media not all")
+    style.textContent = fonts.replace(/@media\s*\(prefers-color-scheme:\s*dark\)/g, scheme === "dark" ? "@media all" : "@media not all")
     document.head.append(style)
   }
+  await document.fonts.ready
 }
 
 export async function mountExtensionFrame(frame: { mode: string; scenario: string; scheme: "light" | "dark" }): Promise<void> {

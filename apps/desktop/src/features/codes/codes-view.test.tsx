@@ -6,7 +6,7 @@ import { ClientProvider, type Client } from "@/core/client"
 import type { CodeView } from "@/core/types"
 import { malformedLists } from "@/test/a11y"
 
-import { CodesView } from "./codes-view"
+import { CodesView, SEARCH_FROM } from "./codes-view"
 
 function fakeClient(overrides: Partial<Client>): Client {
   const refuse = () => Promise.reject({ code: "refused", message: "not in this test" })
@@ -32,15 +32,75 @@ const code = (over: Partial<CodeView>): CodeView => ({
 })
 
 describe("the Codes view on unicron's CodeDisplay", () => {
-  it("with no codes, says what adds one today and what the camera is for (design review R5)", async () => {
+  it("with no codes, says so as the page's empty state with ADD CODE, and adds by paste, never by camera (brief C1; review R5)", async () => {
     render(
       <ClientProvider value={fakeClient({ codes: () => Promise.resolve([]) })}>
         <CodesView rows={[]} onChanged={() => {}} />
       </ClientProvider>,
     )
-    expect(await screen.findByText("No codes yet")).toBeInTheDocument()
-    expect(screen.getByText(/Add one from the set-up link the site gives you \(otpauth:\/\/ or steam:\/\/\)\. The camera here is for signing in a TV/)).toBeInTheDocument()
-    expect(screen.queryByText(/comes with the camera later/)).not.toBeInTheDocument()
+    expect(await screen.findByText("No codes yet.")).toBeInTheDocument()
+    expect(screen.getAllByText("Codes // 00").length).toBeGreaterThan(0)
+    expect(screen.getByText("Add one from the set-up link a site gives you.")).toBeInTheDocument()
+    const adds = screen.getAllByRole("button", { name: "Add code" })
+    await userEvent.setup().click(adds[adds.length - 1]!)
+    const dialog = await screen.findByRole("dialog", { name: "Add a code" })
+    expect(within(dialog).getByText("Paste the otpauth:// or steam:// link the site gave you.")).toBeInTheDocument()
+    expect(within(dialog).queryByText(/scan|camera/i)).not.toBeInTheDocument()
+  })
+
+  it("the page head counts the codes through lib/format, with ADD CODE and SIGN IN TV", async () => {
+    render(
+      <ClientProvider value={fakeClient({ codes: () => Promise.resolve([code({}), code({ item_id: "i2", title: "Mail", issuer: "Mail" })]) })}>
+        <CodesView rows={[]} onChanged={() => {}} />
+      </ClientProvider>,
+    )
+    expect(await screen.findByText("Codes // 02")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Codes" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Add code" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Sign in TV" })).toBeInTheDocument()
+  })
+
+  it("reads a code's digits one by one, never as a number", async () => {
+    render(
+      <ClientProvider value={fakeClient({ codes: () => Promise.resolve([code({})]) })}>
+        <CodesView rows={[]} onChanged={() => {}} />
+      </ClientProvider>,
+    )
+    const list = await screen.findByRole("list", { name: "One-time codes" })
+    await waitFor(() => expect(list.querySelector('[data-slot="code-display"]')).toBeInTheDocument())
+    const named = list.querySelector('[aria-label*="Code for GitHub, sean:"]')
+    expect(named?.getAttribute("aria-label")).toContain("4 8 2, 9 1 7")
+    expect(named?.getAttribute("aria-label")).not.toContain("482917")
+  })
+
+  it("searches issuers and accounts from ten codes up, and says when nothing matches", async () => {
+    const many = Array.from({ length: SEARCH_FROM }, (_, i) => code({ item_id: `i${i}`, issuer: i === 3 ? "Fastmail" : `Issuer ${i}`, title: `Item ${i}` }))
+    render(
+      <ClientProvider value={fakeClient({ codes: () => Promise.resolve(many) })}>
+        <CodesView rows={[]} onChanged={() => {}} />
+      </ClientProvider>,
+    )
+    const search = await screen.findByRole("searchbox", { name: "Search codes" })
+    // `paste` puts the words in at once: typing them a key at a time is slow on a loaded machine.
+    const user = userEvent.setup()
+    await user.click(search)
+    await user.paste("fastmail")
+    const list = screen.getByRole("list", { name: "One-time codes" })
+    expect(within(list).getAllByRole("listitem")).toHaveLength(1)
+    await user.clear(search)
+    await user.paste("nothing here")
+    expect(await screen.findByText("No code for nothing here.")).toBeInTheDocument()
+    expect(screen.getByText("Search // 00")).toBeInTheDocument()
+  })
+
+  it("under ten codes there is no search field", async () => {
+    render(
+      <ClientProvider value={fakeClient({ codes: () => Promise.resolve([code({})]) })}>
+        <CodesView rows={[]} onChanged={() => {}} />
+      </ClientProvider>,
+    )
+    await screen.findByRole("list", { name: "One-time codes" })
+    expect(screen.queryByRole("textbox", { name: "Search codes" })).not.toBeInTheDocument()
   })
 
   it("shows the current code and, in its last seconds, the next one from the command output", async () => {
@@ -196,5 +256,35 @@ describe("the Codes view on unicron's CodeDisplay", () => {
     expect(list.textContent).toContain("969")
     expect(screen.getByRole("button", { name: "Next code" })).toBeEnabled()
     shown.mockRestore()
+  })
+
+  it("a code's ⋯ holds Open item, Show large type and Copy; its Copy is the code's own copy (C18)", async () => {
+    const copyCode = vi.fn<Client["copyCode"]>(() => Promise.resolve({ clears_in_secs: 30, copy: 3 }))
+    const onOpenItem = vi.fn()
+    render(
+      <ClientProvider value={fakeClient({ codes: () => Promise.resolve([code({ seconds_left: 20 })]), copyCode })}>
+        <CodesView rows={[]} onChanged={() => {}} onOpenItem={onOpenItem} />
+      </ClientProvider>,
+    )
+    const user = userEvent.setup()
+    const more = await screen.findByRole("button", { name: /More actions for GitHub/ })
+    await user.click(more)
+    expect(await screen.findByRole("menuitem", { name: "Show large type" })).toBeInTheDocument()
+    await user.click(screen.getByRole("menuitem", { name: "Copy" }))
+    await waitFor(() => expect(copyCode).toHaveBeenCalledWith("i1", "code.0", 30, "code", {}))
+    await user.click(screen.getByRole("button", { name: /More actions for GitHub/ }))
+    await user.click(await screen.findByRole("menuitem", { name: "Open item" }))
+    expect(onOpenItem).toHaveBeenCalledWith("i1")
+  })
+
+  it("without a way to open the item, the ⋯ offers no Open item", async () => {
+    render(
+      <ClientProvider value={fakeClient({ codes: () => Promise.resolve([code({})]) })}>
+        <CodesView rows={[]} onChanged={() => {}} />
+      </ClientProvider>,
+    )
+    await userEvent.setup().click(await screen.findByRole("button", { name: /More actions for GitHub/ }))
+    expect(await screen.findByRole("menuitem", { name: "Show large type" })).toBeInTheDocument()
+    expect(screen.queryByRole("menuitem", { name: "Open item" })).not.toBeInTheDocument()
   })
 })

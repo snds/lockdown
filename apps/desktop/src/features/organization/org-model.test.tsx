@@ -1,6 +1,6 @@
 import type { ItemSummary, VaultView } from "@/core/types"
 
-import { expiryBucket, expiryWords, folderTree, inScope, parseTags, rankRows, scopeTitle, tagTree, tagWithin, useScore } from "./org-model"
+import { expiryBucket, expiryWords, folderMenuOffers, folderTree, inScope, parseTags, rankRows, scopeTitle, tagTree, tagWithin, trashDaysWords, useScore, vaultMenuOffers } from "./org-model"
 
 const row = (id: string, over: Partial<ItemSummary> = {}): ItemSummary => ({
   id,
@@ -107,5 +107,33 @@ describe("organization: scopes, trees and ranking", () => {
 
   it("tags typed in one box split on commas and lines, trimmed, without repeats", () => {
     expect(parseTags(" work / clients, family\nFamily,, ")).toEqual(["work/clients", "family"])
+  })
+})
+
+describe("the vault and folder menus (brief V2)", () => {
+  const vault = (over: Partial<VaultView> = {}): VaultView => ({ id: "v", name: "V", primary: false, items: 0, trash_days: 30, folders: [], ...over })
+  const share = (right: "view" | "edit" | "manage", owned: boolean): VaultView["sharing"] => ({ kind: "shared", right, owned, owner: owned ? null : "robin@club.example", people: 2 })
+
+  it("offers your own vault everything, and its sharing as Share… until it is shared", () => {
+    expect(vaultMenuOffers(vault(), true)).toEqual(["new-folder", "rename", "trash-days", "share"])
+    expect(vaultMenuOffers(vault({ sharing: share("manage", true) }), true)).toEqual(["new-folder", "rename", "trash-days", "members"])
+    // No account: no sharing row at all.
+    expect(vaultMenuOffers(vault(), false)).toEqual(["new-folder", "rename", "trash-days"])
+  })
+
+  it("offers a vault shared with you only what its right allows", () => {
+    expect(vaultMenuOffers(vault({ sharing: share("view", false) }), true)).toEqual(["who-has-it"])
+    expect(vaultMenuOffers(vault({ sharing: share("edit", false) }), true)).toEqual(["new-folder", "who-has-it"])
+    expect(vaultMenuOffers(vault({ sharing: share("manage", false) }), true)).toEqual(["new-folder", "rename", "trash-days", "members"])
+  })
+
+  it("offers Move to the top only inside another folder", () => {
+    expect(folderMenuOffers({ id: "a", name: "A", parent: null, path: "A" })).toEqual(["new-folder", "rename", "remove"])
+    expect(folderMenuOffers({ id: "b", name: "B", parent: "a", path: "A / B" })).toEqual(["new-folder", "rename", "move-to-top", "remove"])
+  })
+
+  it("says how long in words", () => {
+    expect(trashDaysWords(7)).toBe("7 days")
+    expect(trashDaysWords(365)).toBe("A year")
   })
 })

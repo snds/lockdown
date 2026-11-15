@@ -1,6 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react"
 
-import { AppFramePageHead, useAppFrame, type AppFramePageHeadProps, type PageHeadSwitcher } from "@unicron/ui"
+import { AppFramePageHead, isExpandedWidth, useAppFrame, type AppFramePageHeadProps, type PageHeadSwitcher } from "@unicron/ui"
 
 import { useNeedsYouUnderHead } from "./needs-you"
 
@@ -47,7 +47,8 @@ export const PageHeadProvider = PageHeadContext.Provider
  * switcher, its overline, the chip row). `ScreenHead` draws it; a screen
  * that needs more of `AppFramePageHead` reads the values and passes them by
  * name (never as a spread: the design-system ratchet counts one).
- * The title is display/compact on a phone and the title role in a pane.
+ * The title is display/compact on a phone and at medium width, and the
+ * display role on a desktop page (Desktop / 06 and 12 draw it 68 px high).
  */
 export function usePageHead(own: PageHeadOwn): AppFramePageHeadProps & { title: string } {
   const shell = useContext(PageHeadContext)
@@ -62,7 +63,7 @@ export function usePageHead(own: PageHeadOwn): AppFramePageHeadProps & { title: 
       </div>
     ) : (needsYou ?? shell?.below)
   return {
-    size: frame.phone ? "md" : "sm",
+    size: pageHeadSize(frame),
     overline: shell?.overline ?? own.overline,
     title: shell?.title ?? own.title,
     count: shell?.count ?? own.count,
@@ -78,6 +79,11 @@ export function usePageHead(own: PageHeadOwn): AppFramePageHeadProps & { title: 
     below,
     gap: frame.phone || below ? "md" : "sm",
   }
+}
+
+/** The page head's size at this width: display on an expanded desktop page, display/compact narrower. */
+export function pageHeadSize(frame: { phone: boolean; width: Parameters<typeof isExpandedWidth>[0] }): "lg" | "md" {
+  return !frame.phone && isExpandedWidth(frame.width) ? "lg" : "md"
 }
 
 /**

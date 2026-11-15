@@ -78,6 +78,13 @@ interface GateContextValue {
    * pressable (design review R4, the crown-jewel field's contrast).
    */
   asking: boolean
+  /**
+   * The last lock came from three wrong passwords at the gate: the unlock
+   * screen says so (LOCKED_WORDS) until the vault opens again.
+   */
+  triesLocked: boolean
+  /** The vault opened again: the unlock screen's sentence goes back to the usual one. */
+  clearTriesLocked: () => void
 }
 
 const GateContext = createContext<GateContextValue>({
@@ -86,6 +93,8 @@ const GateContext = createContext<GateContextValue>({
   route: null,
   dismiss: () => {},
   asking: false,
+  triesLocked: false,
+  clearTriesLocked: () => {},
 })
 
 interface Pending {
@@ -127,6 +136,7 @@ function cancelledFor(reason: string) {
 export function GateProvider({ children }: { children: ReactNode }) {
   const client = useClient()
   const [pending, setPending] = useState<Pending | null>(null)
+  const [triesLocked, setTriesLocked] = useState(false)
   const [route, setRoute] = useState<ApprovalRoute | null>(null)
   const proof = useRef<Proof | null>(null)
 
@@ -174,6 +184,7 @@ export function GateProvider({ children }: { children: ReactNode }) {
             attemptsLeft -= 1
             if (attemptsLeft <= 0) {
               // The last try: the vault locks, as the gate's spec says.
+              setTriesLocked(true)
               await client.lock().catch(() => {})
               throw { code: "locked", message: LOCKED_WORDS }
             }
@@ -231,9 +242,10 @@ export function GateProvider({ children }: { children: ReactNode }) {
 
   const biometricName = route?.route === "platform" ? route.method : null
   const asking = pending !== null
+  const clearTriesLocked = useCallback(() => setTriesLocked(false), [])
   const value = useMemo<GateContextValue>(
-    () => ({ run, requestProof, route, dismiss, asking }),
-    [run, requestProof, route, dismiss, asking],
+    () => ({ run, requestProof, route, dismiss, asking, triesLocked, clearTriesLocked }),
+    [run, requestProof, route, dismiss, asking, triesLocked, clearTriesLocked],
   )
   const words = gateWords(pending?.reason ?? "")
   return (

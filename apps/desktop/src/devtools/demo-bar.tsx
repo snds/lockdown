@@ -1,14 +1,16 @@
 import { useLayoutEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 
-import { Button } from "@unicron/ui"
+import { Banner, Button } from "@unicron/ui"
 
 import "./devtools.css"
 
 /**
- * The bar on every screen while the demo is open (docs/plan/40-devtools.md
- * §3): the sentence and Leave the demo. It sits above the app, and the
- * app's root moves down by the bar's height so nothing hides under it.
+ * The demo's notice on every screen while it is open (docs/plan/40-devtools.md
+ * §3, brief T10): a compact info Banner, "You're exploring the demo.
+ * Nothing here is real.", with LEAVE THE DEMO and no close button. It sits
+ * above the app, pushed screens too, and the app's root moves down by its
+ * height so nothing hides under it.
  */
 export function DemoBar({ pack, leaving, onLeave }: { pack?: string; leaving: boolean; onLeave: () => void }) {
   const bar = useRef<HTMLDivElement>(null)
@@ -27,14 +29,24 @@ export function DemoBar({ pack, leaving, onLeave }: { pack?: string; leaving: bo
     }
   }, [])
   return createPortal(
-    <div ref={bar} role="region" aria-label="Demo" data-devtools-bar="" className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 bg-foreground px-4 py-2 text-sm text-background">
-      <p>
-        <strong>You're exploring the demo.</strong> Nothing here is real.
-        {pack && <span className="sr-only"> Its data is from {pack}.</span>}
-      </p>
-      <Button variant="secondary" size="sm" onClick={onLeave} disabled={leaving}>
-        {leaving ? "Leaving…" : "Leave the demo"}
-      </Button>
+    // A plain box on the ground holds the Banner at the top of the window, so no screen hides under it.
+    <div ref={bar} role="region" aria-label="Demo" data-devtools-bar="" className="bg-surface-ground px-4 pt-2 pb-2">
+      <Banner
+        tone="info"
+        size="compact"
+        title="You're exploring the demo."
+        body={
+          <>
+            Nothing here is real.
+            {pack && <span className="sr-only"> Its data is from {pack}.</span>}
+          </>
+        }
+        action={
+          <Button variant="secondary" size="sm" onClick={onLeave} loading={leaving}>
+            Leave the demo
+          </Button>
+        }
+      />
     </div>,
     document.body,
   )

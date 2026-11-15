@@ -1,5 +1,8 @@
 import { render, screen, waitFor, within } from "@testing-library/react"
 
+import userEvent from "@testing-library/user-event"
+
+import { PlacesProvider } from "@/app/places"
 import { DEFAULT_SETTINGS } from "@/app/settings"
 import { ClientProvider, type Client } from "@/core/client"
 import type { Finding, Playbook, SecurityReport } from "@/core/types"
@@ -75,18 +78,69 @@ const base = (over: Partial<Client>) =>
     ...over,
   })
 
-describe("an item's own security panel", () => {
-  it("warns first and loudest when the website looks like another site", async () => {
-    const client = base({ securityReport: () => Promise.resolve(report([lookalike, finding({ item_id: "i2", id: "weak:i2:pw" })])) })
+describe("an item's own findings in its notice slot (brief I8)", () => {
+  it("warns first and loudest when the website looks like another site: one critical Banner, the rest one line to Health (brief I8, D130)", async () => {
+    const go = vi.fn()
+    const client = base({ securityReport: () => Promise.resolve(report([finding({ item_id: "i2", id: "weak:i2:pw" }), lookalike])) })
     render(
       <ClientProvider value={client}>
-        <ItemSecurity itemId="i2" onNotice={() => {}} />
+        <PlacesProvider value={{ nav: { area: "vault", view: "all" }, surface: "desktop", go, navigate: () => {} }}>
+          <ItemSecurity itemId="i2" onNotice={() => {}} />
+        </PlacesProvider>
       </ClientProvider>,
     )
     const alert = await screen.findByRole("alert")
-    expect(alert).toHaveTextContent("Careful: this website looks like another site")
-    expect(alert).toHaveTextContent("paypa1.com looks a lot like paypal.com.")
-    expect(within(screen.getByRole("list", { name: "Security findings" })).getByText("Easy-to-guess password.")).toBeInTheDocument()
+    expect(alert).toHaveTextContent("Website looks like another site")
+    expect(alert).toHaveTextContent("paypa1.com looks a lot like paypal.com. Don't sign in there unless you're sure it's the real site.")
+    // One Banner only: the easy-to-guess password is not a second one, it is counted in the line.
+    expect(screen.queryByText("Easy-to-guess password")).toBeNull()
+    expect(screen.getAllByRole("alert")).toHaveLength(1)
+    expect(screen.queryByRole("status")).toBeNull()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "01 more in Health" }))
+    expect(go).toHaveBeenCalledWith("health")
+    // WHAT TO DO opens the finding's playbook, where its fix is.
+    await user.click(within(alert).getByRole("button", { name: "What to do" }))
+    expect(await screen.findByRole("dialog")).toHaveTextContent("This website's address looks like another site's")
+  })
+
+  it("an urgent finding is critical and any other a warning; the item's state outranks a finding but never a look-alike", async () => {
+    const urgent = finding({ id: "breached:i1:pw", kind: "breached", severity: "urgent", title: "Password found in a breach", playbook: "breached-password" })
+    const { rerender } = render(
+      <ClientProvider value={base({ securityReport: () => Promise.resolve(report([finding({}), urgent])) })}>
+        <ItemSecurity itemId="i1" onNotice={() => {}} />
+      </ClientProvider>,
+    )
+    expect(await screen.findByRole("alert")).toHaveTextContent("Password found in a breach")
+    expect(screen.getByRole("button", { name: "01 more in Health" })).toBeInTheDocument()
+
+    rerender(
+      <ClientProvider value={base({ securityReport: () => Promise.resolve(report([finding({ id: "weak:i3:pw", item_id: "i3" })])) })}>
+        <ItemSecurity itemId="i3" onNotice={() => {}} />
+      </ClientProvider>,
+    )
+    expect(await screen.findByRole("status")).toHaveTextContent("Easy-to-guess password")
+    expect(screen.queryByRole("alert")).toBeNull()
+
+    // Archived: the state's Banner shows and the finding is counted under it.
+    rerender(
+      <ClientProvider value={base({ securityReport: () => Promise.resolve(report([finding({ id: "weak:i3:pw", item_id: "i3" })])) })}>
+        <ItemSecurity itemId="i3" onNotice={() => {}} state={<p>Archived. It still syncs and exports.</p>} />
+      </ClientProvider>,
+    )
+    expect(await screen.findByText("Archived. It still syncs and exports.")).toBeInTheDocument()
+    expect(screen.queryByText("Easy-to-guess password")).toBeNull()
+    expect(screen.getByRole("button", { name: "01 more in Health" })).toBeInTheDocument()
+
+    // A look-alike outranks the state and an urgent finding, whatever order the report lists them in.
+    rerender(
+      <ClientProvider value={base({ securityReport: () => Promise.resolve(report([finding({ id: "weak:i2:pw", item_id: "i2" }), { ...urgent, id: "breached:i2:pw", item_id: "i2" }, lookalike])) })}>
+        <ItemSecurity itemId="i2" onNotice={() => {}} state={<p>Archived. It still syncs and exports.</p>} />
+      </ClientProvider>,
+    )
+    expect(await screen.findByRole("alert")).toHaveTextContent("Website looks like another site")
+    expect(screen.queryByText("Archived. It still syncs and exports.")).toBeNull()
+    expect(screen.getByRole("button", { name: "02 more in Health" })).toBeInTheDocument()
   })
 
   it("shows nothing for an item with no findings, or when the report doesn't load", async () => {

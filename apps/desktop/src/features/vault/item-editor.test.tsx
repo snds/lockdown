@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
 import { GateProvider } from "@/app/gate"
@@ -11,13 +11,13 @@ import { TEMPLATES } from "@/test/templates-fixture"
 
 import { ItemEditor, type EditorTarget } from "./item-editor"
 
-function mount(client: Client, target: EditorTarget, onSaved = vi.fn()) {
+function mount(client: Client, target: EditorTarget, onSaved = vi.fn(), onClose = () => {}) {
   render(
     <ClientProvider value={client}>
       <SettingsProvider>
         <TemplatesProvider>
           <GateProvider>
-            <ItemEditor target={target} onClose={() => {}} onSaved={onSaved} />
+            <ItemEditor target={target} onClose={onClose} onSaved={onSaved} />
           </GateProvider>
         </TemplatesProvider>
       </SettingsProvider>
@@ -27,6 +27,12 @@ function mount(client: Client, target: EditorTarget, onSaved = vi.fn()) {
 }
 
 const templates = () => Promise.resolve(TEMPLATES)
+
+/** Opens More options, where everything past the essentials is (brief E2). */
+async function moreOptions(user: ReturnType<typeof userEvent.setup>) {
+  const more = await screen.findByRole("button", { name: /More options/ })
+  if (more.getAttribute("aria-expanded") !== "true") await user.click(more)
+}
 
 const card: ItemDetail = {
   id: "c1",
@@ -48,16 +54,24 @@ describe("the generic item editor (D110)", () => {
     const addItem = vi.fn<Client["addItem"]>(() => Promise.resolve("w1"))
     const onSaved = mount(fakeClient({ templates, addItem }), { kind: "wi-fi", item: null })
     const user = userEvent.setup()
-    expect(await screen.findByRole("heading", { name: "New wi-fi network" })).toBeInTheDocument()
+    // The overline names the kind; the title follows the network's name as it is typed (brief E2).
+    expect(await screen.findByRole("heading", { name: "New Wi-Fi network" })).toBeInTheDocument()
     await user.type(screen.getByLabelText("Network name"), "home-net")
+    expect(screen.getByRole("heading", { name: "home-net" })).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Generate password" }))
-    expect(screen.getByText(/A new one is made when you save: 20 characters: letters and digits/)).toBeInTheDocument()
+    // Made when you save: the template's words until the core's preview says more; no value here.
+    expect(screen.getByText("Made when you save")).toBeInTheDocument()
+    expect(screen.getByText("20 characters: letters and digits, none that look alike")).toBeInTheDocument()
     await user.selectOptions(screen.getByLabelText("Security"), "WPA3")
+    // Past the essentials: More options, shut on a new item.
+    expect(screen.queryByRole("switch", { name: "Hidden network" })).not.toBeInTheDocument()
+    await moreOptions(user)
+    expect(screen.getByText("A field left empty is taken off the item.")).toBeInTheDocument()
     await user.click(screen.getByRole("switch", { name: "Hidden network" }))
     // The crown-jewel switch says how to undo it (D148), never that it can't be.
     expect(screen.getByText(/To undo it later, choose Stop keeping as a crown jewel in the item's menu/)).toBeInTheDocument()
     expect(screen.queryByText(/can't be undone/)).not.toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "Add" }))
+    await user.click(screen.getByRole("button", { name: "Save Wi-Fi network" }))
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith("w1", true))
     const sent = addItem.mock.calls[0]![0]
     expect(sent.kind).toBe("wi-fi")
@@ -76,12 +90,16 @@ describe("the generic item editor (D110)", () => {
       .mockRejectedValueOnce({ code: "refused", message: "Expires needs a month as YYYY-MM" })
     const onSaved = mount(fakeClient({ templates, editItem, approvalRoute: () => Promise.resolve({ route: "window", method: "window" }) }), { kind: "card", item: card })
     const user = userEvent.setup()
-    expect(await screen.findByRole("heading", { name: "Edit Everyday card" })).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { name: "Everyday card" })).toBeInTheDocument()
+    expect(screen.getByText("Edit payment card")).toBeInTheDocument()
     expect(screen.getByText("Left empty, it stays as it is.")).toBeInTheDocument()
+    // An edit says once that the old version stays.
+    expect(screen.getByText("Saves a new version. The old one stays in History.")).toBeInTheDocument()
     const holder = screen.getByLabelText("Name on card")
     await user.clear(holder)
     await user.type(holder, "A. N. Person")
     await user.click(screen.getByRole("button", { name: "Save" }))
+    // The core's words, in a compact critical Banner above the footer.
     expect(await screen.findByRole("alert")).toHaveTextContent("Expires needs a month as YYYY-MM")
     await user.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith("c1", false))
@@ -103,6 +121,7 @@ describe("the generic item editor (D110)", () => {
     })
     mount(fakeClient({ templates, addItem }), { kind: "crypto-wallet", item: null })
     const user = userEvent.setup()
+    await moreOptions(user)
     expect(await screen.findByText(/Always kept as a crown jewel/)).toBeInTheDocument()
     expect(screen.queryByRole("switch", { name: "Keep as a crown jewel" })).not.toBeInTheDocument()
     await user.type(screen.getByLabelText("Title"), "Cold wallet")
@@ -117,10 +136,11 @@ describe("the generic item editor (D110)", () => {
     expect(phrase.closest("form")!.checkValidity()).toBe(true)
     await user.click(screen.getByRole("button", { name: "Show Recovery phrase" }))
     expect(phrase).not.toHaveAttribute("data-masked")
-    await user.type(screen.getByLabelText("New field's label"), "Hint")
     await user.click(screen.getByRole("button", { name: "Add field" }))
+    await user.type(screen.getByLabelText("New field's label"), "Hint")
+    await user.click(screen.getByRole("button", { name: /^Add$/ }))
     await user.type(screen.getByLabelText("Hint"), "the blue one")
-    await user.click(screen.getByRole("button", { name: "Add" }))
+    await user.click(screen.getByRole("button", { name: "Save crypto wallet" }))
     await waitFor(() => expect(addItem).toHaveBeenCalled())
     const sent = addItem.mock.calls[0]![0]
     expect(sent.title).toBe("Cold wallet")
@@ -139,7 +159,10 @@ describe("the generic item editor (D110)", () => {
     })
     mount(fakeClient({ templates, passwordStrength }), { kind: "login", item: null })
     const user = userEvent.setup()
-    await user.type(await screen.findByLabelText("Title"), "Forum")
+    await screen.findByRole("heading", { name: "New login" })
+    // A login's title is worked out when left empty, so it waits in More options.
+    await moreOptions(user)
+    await user.type(screen.getByLabelText("Title"), "Forum")
     await user.type(screen.getByLabelText("Username"), "sean")
     const password = screen.getByLabelText("Password")
     await user.type(password, "hunter2")
@@ -170,5 +193,51 @@ describe("the generic item editor (D110)", () => {
   it("says so while the item kinds load, and when they fail", async () => {
     mount(fakeClient({ templates: () => new Promise(() => {}) }), { kind: "note", item: null })
     expect(await screen.findByText("Loading the item kinds…")).toBeInTheDocument()
+  })
+
+  it("puts a login's essentials first: the website from Search, Username, Password, the code behind its switch, the vault", async () => {
+    mount(fakeClient({ templates }), { kind: "login", item: null, website: "github.example" })
+    const user = userEvent.setup()
+    // The title follows the website typed (here, the one Search passed).
+    expect(await screen.findByRole("heading", { name: "github.example" })).toBeInTheDocument()
+    expect(screen.getByLabelText("Website")).toHaveValue("github.example")
+    expect(screen.getByLabelText("Username")).toBeInTheDocument()
+    expect(screen.getByLabelText("Password")).toBeInTheDocument()
+    // No "scan": a code is added by pasting its set-up link (W11).
+    expect(screen.queryByLabelText("One-time code")).not.toBeInTheDocument()
+    await user.click(screen.getByRole("switch", { name: "Add a one-time code" }))
+    expect(screen.getByLabelText("One-time code")).toBeInTheDocument()
+    expect(screen.queryByText(/scan/i)).not.toBeInTheDocument()
+    expect(screen.getByText("Vault")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /More options/ })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.getByRole("button", { name: "Save login" })).toBeInTheDocument()
+  })
+
+  it("asks Discard changes? when closed with typed text, focus on KEEP EDITING, and Escape keeps the form", async () => {
+    const onClose = vi.fn()
+    mount(fakeClient({ templates }), { kind: "note", item: null }, vi.fn(), onClose)
+    const user = userEvent.setup()
+    await user.type(await screen.findByLabelText("Title"), "Locker")
+    await user.click(screen.getByRole("button", { name: "Cancel" }))
+    const question = await screen.findByRole("dialog", { name: "Discard changes?" })
+    const keep = within(question).getByRole("button", { name: "Keep editing" })
+    await waitFor(() => expect(keep).toHaveFocus())
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Discard changes?" })).not.toBeInTheDocument())
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByLabelText("Title")).toHaveValue("Locker")
+    await user.click(screen.getByRole("button", { name: "Cancel" }))
+    await user.click(within(await screen.findByRole("dialog", { name: "Discard changes?" })).getByRole("button", { name: "Discard" }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("closes at once when nothing was typed", async () => {
+    const onClose = vi.fn()
+    mount(fakeClient({ templates }), { kind: "note", item: null }, vi.fn(), onClose)
+    const user = userEvent.setup()
+    await screen.findByLabelText("Title")
+    await user.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole("dialog", { name: "Discard changes?" })).not.toBeInTheDocument()
   })
 })

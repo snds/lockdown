@@ -19,6 +19,27 @@ export function groupByExpiry(rows: ItemSummary[]): RowGroup[] {
   return out
 }
 
+/**
+ * When an expiring item lapses, as the right-hand word of its row on Health
+ * (brief H1): "Expired", "Today", "In 6 days", "In 3 weeks", "In 2 months".
+ * The row's status role sets the capitals.
+ */
+export function expiryStatus(days: number | null | undefined): string {
+  if (days == null) return ""
+  if (days < 0) return "Expired"
+  if (days === 0) return "Today"
+  if (days === 1) return "Tomorrow"
+  if (days < 14) return `In ${days} days`
+  if (days < 60) return `In ${Math.round(days / 7)} weeks`
+  if (days < 730) return `In ${Math.round(days / 30)} months`
+  return `In ${Math.round(days / 365)} years`
+}
+
+/** Expiring rows, soonest first (Health's EXPIRING list). */
+export function soonestFirst(rows: ItemSummary[]): ItemSummary[] {
+  return [...rows].sort((a, b) => (a.expires_in_days ?? 1e9) - (b.expires_in_days ?? 1e9) || a.title.localeCompare(b.title))
+}
+
 /** Where this device last reminded, so a reminder shows once a day. */
 const REMINDED_KEY = "lockdown.expiry-reminded"
 

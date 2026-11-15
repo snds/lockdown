@@ -72,7 +72,7 @@ export function BottomRow({ toFix, onCreate, onQuickCreate, onReselect }: Bottom
             }
           />
           {/* On a short screen the button stands in the trailing column, so the menu opens beside it. */}
-          <DropdownMenuContent width="auto" side={frame.layout === "rail" ? "left" : "top"} align="end" sideOffset={8} scrim aria-label="Quick create">
+          <DropdownMenuContent width="auto" side={frame.layout === "rail" ? "left" : "top"} align="end" sideOffset={8} scrim aria-label="Quick create" data-quick-create="">
             <QuickCreateItems onPick={onQuickCreate} />
           </DropdownMenuContent>
         </DropdownMenu>

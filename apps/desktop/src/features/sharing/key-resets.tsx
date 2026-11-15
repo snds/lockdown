@@ -1,11 +1,10 @@
-import { useState } from "react"
-
-import { Button, Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@unicron/ui"
+import { useMemo, useState } from "react"
 
 import { useGate } from "@/app/gate"
+import { useNeedsYouSource, type NeedsYouEntry } from "@/app/needs-you"
 import { describeError } from "@/core/client"
 
-import { RESET_HINT, letBackInNotice } from "./key-resets-words"
+import { RESET_TITLE, letBackInNotice } from "./key-resets-words"
 import { useSharingClient, type KeyResetView } from "./sharing-client"
 
 interface KeyResetsProps {
@@ -13,64 +12,60 @@ interface KeyResetsProps {
   online: boolean
   onChanged: () => void
   onNotice: (text: string) => void
+  /** A yes that failed, in the core's words; the screen shows it as a critical Banner. */
+  onError?: (words: string) => void
 }
 
 /**
  * People who reset their account and wait on you, as the owner of a vault
  * they are in or of an item shared with them, to let them back in
- * (docs/plan/55-member-key-change.md). One row each, in place, never a
- * dialog: the core's question, Let them back in (through the `Approve`
- * gate, as sharing a vault is) and Not now, which hides the row until the
- * screen is opened again; the question stays until it is answered.
+ * (docs/plan/55-member-key-change.md). Each is needs-you row 6 of brief X3,
+ * on Sharing only: WAITING ON YOU, the core's question (D634), LET THEM
+ * BACK IN through the `Approve` gate, and NOT NOW, which hides it until
+ * Sharing is opened again; the question stays until it is answered. It is
+ * never a dialog, and it never opens one by itself. When something higher
+ * waits, the shell draws it as an ordinary row under WAITING ON YOU instead.
+ * Offline, the yes would fail: nothing is registered until the server is back.
  */
-export function KeyResets({ resets, online, onChanged, onNotice }: KeyResetsProps) {
+export function KeyResets({ resets, online, onChanged, onNotice, onError }: KeyResetsProps) {
+  const [later, setLater] = useState<string[]>([])
+  const shown = online ? resets.filter((r) => !later.includes(r.account_id)) : []
+  return (
+    <>
+      {shown.map((r) => (
+        <KeyReset key={r.account_id} reset={r} onChanged={onChanged} onNotice={onNotice} onError={onError} onLater={() => setLater((l) => [...l, r.account_id])} />
+      ))}
+    </>
+  )
+}
+
+function KeyReset({ reset, onChanged, onNotice, onError, onLater }: { reset: KeyResetView; onChanged: () => void; onNotice: (text: string) => void; onError?: (words: string) => void; onLater: () => void }) {
   const sharing = useSharingClient()
   const gate = useGate()
-  const [later, setLater] = useState<string[]>([])
-  const [busy, setBusy] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const shown = resets.filter((r) => !later.includes(r.account_id))
-  if (shown.length === 0) return null
-
-  const yes = async (r: KeyResetView) => {
-    setBusy(r.account_id)
-    setError(null)
-    try {
-      const login = await gate.run((g) => sharing.letBackIn(r.account_id, g))
-      onNotice(letBackInNotice(login))
-      onChanged()
-    } catch (e) {
-      setError(describeError(e))
-    } finally {
-      setBusy(null)
+  const [busy, setBusy] = useState(false)
+  const entry = useMemo<NeedsYouEntry>(() => {
+    const yes = async () => {
+      setBusy(true)
+      try {
+        const login = await gate.run((g) => sharing.letBackIn(reset.account_id, g))
+        onNotice(letBackInNotice(login))
+        onChanged()
+      } catch (e) {
+        onError?.(describeError(e))
+      } finally {
+        setBusy(false)
+      }
     }
-  }
-
-  return (
-    <section aria-label="Waiting on you" className="flex flex-col gap-2">
-      <ItemGroup role="list" aria-label="Waiting on you">
-        {shown.map((r) => (
-          <Item key={r.account_id} variant="outline" size="sm" role="listitem">
-            <ItemContent>
-              <ItemTitle>{r.words}</ItemTitle>
-              <ItemDescription>{RESET_HINT}</ItemDescription>
-            </ItemContent>
-            <ItemActions>
-              <Button size="sm" disabled={!online || busy !== null} onClick={() => void yes(r)}>
-                Let them back in
-              </Button>
-              <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => setLater((l) => [...l, r.account_id])}>
-                Not now
-              </Button>
-            </ItemActions>
-          </Item>
-        ))}
-      </ItemGroup>
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-    </section>
-  )
+    return {
+      id: `reset:${reset.account_id}`,
+      priority: 6,
+      title: RESET_TITLE,
+      line: reset.words,
+      action: { label: "Let them back in", onClick: () => void yes(), busy },
+      textAction: { label: "Not now", onClick: onLater },
+      shows: "sharing",
+    }
+  }, [reset, busy, gate, sharing, onNotice, onChanged, onError, onLater])
+  useNeedsYouSource(entry)
+  return null
 }

@@ -11,6 +11,8 @@ import { cp, mkdir, readFile, rm, writeFile, access } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
+import { FONTS, fontDir } from "./tokens-css.mjs"
+
 const here = join(dirname(fileURLToPath(import.meta.url)), "..")
 const dist = join(here, "dist")
 
@@ -56,6 +58,11 @@ for (const family of ["chromium", "firefox"]) {
     })
   }
   await cp(join(here, "static"), out, { recursive: true })
+  // The frames' fonts (static/tokens.css names them): Geist and Geist Mono as
+  // files from the extension's own origin, with their licence (SIL OFL 1.1).
+  await mkdir(join(out, "fonts"), { recursive: true })
+  for (const f of FONTS) await cp(join(fontDir(f.pkg), "files", f.file), join(out, "fonts", f.file))
+  for (const pkg of new Set(FONTS.map((f) => f.pkg))) await cp(join(fontDir(pkg), "LICENSE"), join(out, "fonts", `${pkg.split("/")[1]}-LICENSE.txt`))
   // The popup: React on unicron, built by Vite (vite.popup.config.ts).
   await viteBuild({ configFile: join(here, "vite.popup.config.ts"), root: join(here, "src/popup"), build: { outDir: out } })
   await cp(join(here, "pkg", "lockdown_wasm_bg.wasm"), join(out, "lockdown_wasm_bg.wasm"))

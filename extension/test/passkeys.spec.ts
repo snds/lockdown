@@ -141,9 +141,9 @@ test("conditional mediation: the passkey is listed with the logins in the inline
   expect(await page.evaluate(() => (window as unknown as { rp: { conditional: boolean } }).rp.conditional)).toBe(true);
   await page.focus("#user");
   const menu = await lockdownFrame(page, "menu");
-  await expect(menu.getByRole("button", { name: /Passkey · sean@example.com/ })).toBeVisible();
+  await expect(menu.getByRole("button", { name: /passkey sean@example\.com/ })).toBeVisible();
   await expect(menu.getByRole("button", { name: /Local site/ })).toHaveCount(2);
-  await menu.getByRole("button", { name: /Passkey · sean@example.com/ }).click();
+  await menu.getByRole("button", { name: /passkey sean@example\.com/ }).click();
   await expect(menu.locator("body")).toContainText("Sign in to localhost as sean@example.com?");
   await menu.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.locator("#status")).toHaveText("signed in", { timeout: 15_000 });

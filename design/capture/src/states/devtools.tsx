@@ -59,13 +59,13 @@ export const DEVTOOLS_STATES: StateDef[] = [
     screen: "First run",
     state: "With the demo",
     brief_row: "First run: create",
-    notes: "A development build: Explore the demo under the three doors (docs/plan/40-devtools.md §3). Not in a release.",
+    notes: "A development build: Explore demo under the doors (docs/plan/40-devtools.md §3). Not in a release.",
     widths: WIDTHS,
     setup: (w) => {
       w.device = { identity: false, deviceKey: false }
     },
     mount: app,
-    steps: [{ wait: "Explore the demo", role: "button" }],
+    steps: [{ wait: "Explore demo", role: "button" }],
   },
   {
     id: "desktop-devtools-menu",
@@ -84,11 +84,13 @@ export const DEVTOOLS_STATES: StateDef[] = [
     screen: "Developer reset",
     state: "Confirm",
     brief_row: null,
-    notes: "Developer → Reset Lockdown…: what is erased and what stays, the identity's verdict, and the word typed.",
+    notes: "Brief T10: Developer → Reset Lockdown… as a Question (question size; a sheet on a phone): what is erased and what stays, the identity's verdict, and the typed word that armed ERASE AND RESTART.",
+    built: { area: "devtools", screen: "reset", kind: "undrawn" },
     widths: WIDTHS,
     answers: () => ({ "plugin:devtools|reset_plan": () => SAMPLE_PLAN, "plugin:devtools|reset_run": () => undefined }),
     mount: app,
-    steps: [...open, { emit: "devtools://menu", payload: "reset" }, DIALOG, { fill: "Type reset to confirm", value: "reset" }],
+    // The reset's mount is loaded lazily: give it a moment to hear the menu, as the restarting state does.
+    steps: [...open, { pause: 300 }, { emit: "devtools://menu", payload: "reset" }, DIALOG, { fill: "Type reset to confirm", value: "reset" }],
   },
   {
     id: "desktop-devtools-reset-restarting",
@@ -108,7 +110,8 @@ export const DEVTOOLS_STATES: StateDef[] = [
     screen: "Demo",
     state: "Open",
     brief_row: null,
-    notes: "The demo open: its bar on every screen, the default pack's 158 items.",
+    notes: "Brief T10: the demo open: its compact info Banner on every screen (You're exploring the demo. Nothing here is real. LEAVE THE DEMO), the default pack's 158 items.",
+    built: { area: "devtools", screen: "demo", kind: "undrawn" },
     widths: WIDTHS,
     setup: demoWorld,
     answers: demoOpen,

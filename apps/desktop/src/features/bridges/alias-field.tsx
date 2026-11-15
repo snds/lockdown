@@ -1,37 +1,35 @@
 import { useEffect, useState } from "react"
 
-import { Button, Field, FieldDescription, FieldTitle, Icon, NativeSelect, NativeSelectOption, Spinner } from "@unicron/ui"
+import { AdaptiveMenu, AdaptiveMenuItem, Button } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
 import { describeError } from "@/core/client"
+import { notify } from "@/app/notify"
 
 import { useBridges, type AliasConfigured } from "./bridges-client"
 import { siteHost } from "./bridges-model"
 
 /**
- * "Hide your email" in a Login's editor (docs/plan/23-bridges.md §5): a new
- * alias from one of the person's alias services, put into the user name.
+ * "Hide your email" in a Login's editor (docs/plan/23-bridges.md §5; brief
+ * E2): NEW ALIAS, a text action at the end of the Username field, makes a
+ * new alias from one of the person's alias services and puts it in the
+ * user name. With more than one service set up it is a menu of them.
  * Making one asks for the `Use` gate (the service's key is a crown jewel);
- * only the address comes back. Hidden when no service is set up or the
- * host has no bridges client.
+ * only the address comes back. Nothing is drawn when no service is set up
+ * or the host has no bridges client (the web vault). What happened goes
+ * to a toast; a failure is the Username field's error line (`onError`).
  */
-export function AliasField({ site, onAddress }: { site: string; onAddress: (address: string) => void }) {
+export function AliasField({ site, onAddress, onError = () => {} }: { site: string; onAddress: (address: string) => void; onError?: (text: string | null) => void }) {
   const bridges = useBridges()
   const gate = useGate()
   const [services, setServices] = useState<AliasConfigured[]>([])
-  const [pick, setPick] = useState("")
   const [busy, setBusy] = useState(false)
-  const [note, setNote] = useState<string | null>(null)
 
   useEffect(() => {
     let live = true
     bridges
       ?.aliasOverview()
-      .then((o) => {
-        if (!live) return
-        setServices(o.configured)
-        setPick(o.configured[0]?.item_id ?? "")
-      })
+      .then((o) => live && setServices(o.configured))
       .catch(() => live && setServices([]))
     return () => {
       live = false
@@ -39,41 +37,42 @@ export function AliasField({ site, onAddress }: { site: string; onAddress: (addr
   }, [bridges])
 
   if (!bridges || services.length === 0) return null
-  const make = async () => {
+  const make = async (pick: AliasConfigured) => {
     setBusy(true)
-    setNote(null)
+    onError(null)
     try {
-      const made = await gate.run((g) => bridges.aliasGenerate(pick, siteHost(site), g))
+      const made = await gate.run((g) => bridges.aliasGenerate(pick.item_id, siteHost(site), g))
       onAddress(made.address)
-      setNote(
-        `A new ${made.service_name} alias is in the user name: mail to it reaches you.${made.monitoring_problem ? ` ${made.monitoring_problem}` : ""}`,
-      )
+      notify(made.monitoring_problem ? `New ${made.service_name} alias in the user name: ${made.monitoring_problem}` : `New ${made.service_name} alias in the user name`)
     } catch (e) {
-      setNote(describeError(e))
+      // A failed action is a line beside its control, in the core's words, never a toast (brief 4.0).
+      onError(describeError(e))
     } finally {
       setBusy(false)
     }
   }
+  const only = services.length === 1 ? services[0] : undefined
+  if (only)
+    return (
+      <Button type="button" variant="ghost" size="sm" loading={busy} aria-label={`New alias from ${only.service_name}`} onClick={() => void make(only)}>
+        New alias
+      </Button>
+    )
   return (
-    <Field>
-      <FieldTitle>Hide your email address</FieldTitle>
-      <div className="flex gap-2">
-        {services.length > 1 && (
-          <NativeSelect aria-label="Alias service" value={pick} onChange={(e) => setPick(e.target.value)} disabled={busy}>
-            {services.map((s) => (
-              <NativeSelectOption key={s.item_id} value={s.item_id}>
-                {s.service_name}
-                {s.domain ? ` (${s.domain})` : ""}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        )}
-        <Button type="button" variant="outline" size="sm" onClick={() => void make()} disabled={busy}>
-          {busy ? <Spinner data-icon="inline-start" /> : <Icon name="at" data-icon="inline-start" />}
-          New alias{services.length === 1 ? ` from ${services[0]?.service_name}` : ""}
+    <AdaptiveMenu
+      title="New alias from"
+      overline="Hide your email"
+      trigger={
+        <Button type="button" variant="ghost" size="sm" loading={busy}>
+          New alias
         </Button>
-      </div>
-      <FieldDescription>{note ?? "Makes a forwarding address for this site, so the site never sees your real one."}</FieldDescription>
-    </Field>
+      }
+    >
+      {services.map((s) => (
+        <AdaptiveMenuItem key={s.item_id} icon="at" onSelect={() => void make(s)}>
+          {s.domain ? `${s.service_name} (${s.domain})` : s.service_name}
+        </AdaptiveMenuItem>
+      ))}
+    </AdaptiveMenu>
   )
 }

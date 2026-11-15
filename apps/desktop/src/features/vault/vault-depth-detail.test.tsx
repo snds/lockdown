@@ -63,11 +63,15 @@ function grid(): Uint8Array {
   return g
 }
 
+beforeEach(() => localStorage.clear())
+
 describe("vault depth in the detail (docs/plan/21-vault-depth.md)", () => {
-  it("offers large type on a login's password too", async () => {
+  it("offers large type on a login's password too, as the first row of the field's ⋯ (D242, LA5)", async () => {
     mount(fakeClient({ ...base, show: () => Promise.resolve(item("login", [plain("user", "username", "me"), hidden("pw", "password")])) }))
-    const methods = await screen.findByRole("region", { name: "Sign-in methods" })
-    expect(within(methods).getByRole("button", { name: "Show large type" })).toBeInTheDocument()
+    const signIn = await screen.findByRole("region", { name: "Sign-in" })
+    await userEvent.setup({ pointerEventsCheck: 0 }).click(within(signIn).getByRole("button", { name: "More actions for Password" }))
+    const rows = await screen.findAllByRole("menuitem")
+    expect(rows[0]).toHaveTextContent("Show large type")
   })
 
   it("draws a variant from its own template (D231)", async () => {
@@ -95,11 +99,11 @@ describe("vault depth in the detail (docs/plan/21-vault-depth.md)", () => {
     })
     const { relock } = mount(fakeClient({ ...base, wifiQr, show: () => Promise.resolve(item("wi-fi", [plain("wifi.ssid", "Network name", "home-net"), hidden("wifi.passphrase", "password")])) }))
     await userEvent.click(await screen.findByRole("button", { name: "Guest card" }))
-    expect(await screen.findByRole("img", { name: "The code to join home-net" })).toBeInTheDocument()
+    expect(await screen.findByRole("img", { name: "QR code to join home-net" })).toBeInTheDocument()
     expect(wifiQr.mock.calls[0]![0]).toBe("i1")
-    expect(screen.getByText(/hides itself in 60 seconds/)).toBeInTheDocument()
+    expect(screen.getByText("Hides in 01:00")).toBeInTheDocument()
     relock(true)
-    await waitFor(() => expect(screen.queryByRole("img", { name: "The code to join home-net" })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole("img", { name: "QR code to join home-net" })).toBeNull())
     expect(Array.from(held!).every((b) => b === 0)).toBe(true)
   })
 
@@ -108,10 +112,10 @@ describe("vault depth in the detail (docs/plan/21-vault-depth.md)", () => {
     const print = vi.spyOn(window, "print").mockImplementation(() => {})
     mount(fakeClient({ ...base, reveal, wifiQr: () => Promise.resolve(grid()), show: () => Promise.resolve(item("wi-fi", [plain("wifi.ssid", "Network name", "home-net"), hidden("wifi.passphrase", "password")])) }))
     await userEvent.click(await screen.findByRole("button", { name: "Guest card" }))
-    await userEvent.click(await screen.findByRole("button", { name: "Print a card" }))
+    await userEvent.click(await screen.findByRole("button", { name: "Print card" }))
     await waitFor(() => expect(print).toHaveBeenCalled())
     expect(reveal.mock.calls[0]!.slice(0, 2)).toEqual(["i1", "wifi.passphrase"])
-    await waitFor(() => expect(screen.queryByText("k7Hq3mWx")).toBeNull())
+    await waitFor(() => expect(document.body.textContent).not.toContain("k7Hq3mWx"))
     print.mockRestore()
   })
 
@@ -121,16 +125,16 @@ describe("vault depth in the detail (docs/plan/21-vault-depth.md)", () => {
     const browserPrint = vi.spyOn(window, "print").mockImplementation(() => {})
     mount(fakeClient({ ...base, reveal, wifiQr: () => Promise.resolve(grid()), show: () => Promise.resolve(item("wi-fi", [plain("wifi.ssid", "Network name", "home-net"), hidden("wifi.passphrase", "password")])) }), false, vi.fn(), { print })
     await userEvent.click(await screen.findByRole("button", { name: "Guest card" }))
-    await userEvent.click(await screen.findByRole("button", { name: "Print a card" }))
+    await userEvent.click(await screen.findByRole("button", { name: "Print card" }))
     await waitFor(() => expect(print).toHaveBeenCalled())
     expect(browserPrint).not.toHaveBeenCalled()
     // The panel takes the window: the card stays, with the words for the paper.
     window.dispatchEvent(new Event("blur"))
     expect(screen.getByRole("dialog")).toBeInTheDocument()
-    expect(screen.getByText("k7Hq3mWx", { selector: "p" })).toBeInTheDocument()
+    expect(screen.getByRole("dialog").querySelector("[data-print-card]")).toHaveTextContent("k7Hq3mWx")
     // The person is back: the words go; the card itself stays until it hides.
     window.dispatchEvent(new Event("focus"))
-    await waitFor(() => expect(screen.queryByText("k7Hq3mWx")).toBeNull())
+    await waitFor(() => expect(document.body.textContent).not.toContain("k7Hq3mWx"))
     expect(screen.getByRole("dialog")).toBeInTheDocument()
     // And blur hides it again, as before.
     window.dispatchEvent(new Event("blur"))
@@ -143,12 +147,18 @@ describe("vault depth in the detail (docs/plan/21-vault-depth.md)", () => {
     const clearAway = vi.fn<Client["clearAway"]>(() => Promise.resolve(3))
     const away = [{ place: "Hotel TV", at: 100, remind_at: 200, due: true }]
     const { onChanged } = mount(fakeClient({ ...base, logAway, clearAway, show: () => Promise.resolve(item("login", [hidden("pw", "password")], { away })) }))
+    // Signed in elsewhere is in Details, shut by default (brief I4).
+    await userEvent.click(await screen.findByRole("button", { name: /^Details/ }))
     const block = await screen.findByRole("region", { name: "Signed in elsewhere" })
-    expect(within(block).getByText("Hotel TV")).toBeInTheDocument()
-    expect(within(block).getByText("Sign out now")).toBeInTheDocument()
-    await userEvent.click(within(block).getByRole("button", { name: "Signed out" }))
+    // One Field Row per sign-in: where, when it reminds, and DUE once the reminder is due.
+    const row = within(block).getByRole("group", { name: "Signed in elsewhere" })
+    expect(row).toHaveTextContent("Hotel TV // reminds")
+    expect(row).toHaveTextContent("Due")
+    await userEvent.click(within(row).getByRole("button", { name: "Signed out" }))
     await waitFor(() => expect(clearAway.mock.calls[0]!.slice(0, 2)).toEqual(["i1", 100]))
-    await userEvent.click(within(block).getByRole("button", { name: "Signing in on a TV?" }))
+    // Another sign-in is logged from the item's ⋯ menu.
+    await userEvent.click(screen.getByRole("button", { name: "More for this item" }))
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Signing in on a TV?" }))
     // D237's words on the dialog too (design review R5).
     expect(await screen.findByRole("heading", { name: "Signing in on a TV?" })).toBeInTheDocument()
     await userEvent.type(await screen.findByLabelText("Where"), "Rental flat")
@@ -165,10 +175,10 @@ describe("vault depth in the detail (docs/plan/21-vault-depth.md)", () => {
     const storageUsage = () => Promise.resolve({ used: 1_200_000_000, quota: 5_000_000_000, used_words: "1.2 GB", quota_words: "5 GB" })
     const { onChanged } = mount(fakeClient({ ...base, attachChoose, attachChosen, attach, storageUsage, show: () => Promise.resolve(item("note", [], { attachments: [] })) }))
     expect(await screen.findByText("1.2 GB of 5 GB used for files on your server.")).toBeInTheDocument()
-    await userEvent.click(screen.getByRole("button", { name: "Attach a file" }))
+    await userEvent.click(screen.getByRole("button", { name: "Attach" }))
     await waitFor(() => expect(attachChosen.mock.calls[0]!.slice(0, 2)).toEqual(["i1", 7]))
     expect(attach).not.toHaveBeenCalled()
-    expect(onChanged).toHaveBeenCalledWith('Attached "lease.pdf".')
+    expect(onChanged).toHaveBeenCalledWith("Attached lease.pdf")
   })
 
   it("saves a file to the disk through the shell, never as bytes here", async () => {

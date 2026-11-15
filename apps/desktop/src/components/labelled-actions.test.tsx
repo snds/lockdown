@@ -1,12 +1,15 @@
 import { act, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
+import { Dialog, DialogContent, DialogTitle } from "@unicron/ui"
 import { CrownJewelGate } from "@unicron/ui/security/crown-jewel"
 
 import { GateProvider, useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { ClientProvider } from "@/core/client"
 import type { DeviceInfo, Status } from "@/core/types"
 import { DeviceApproval } from "@/features/approvals/approval-sheet"
+import { ARMED_MS, RequestHost } from "@/features/approvals/test-host"
 import { BrowserClientProvider, type BrowserClient, type PendingPairing } from "@/features/browsers/browser-client"
 import { PairingDialog } from "@/features/browsers/pairing-dialog"
 import { DevicesView } from "@/features/devices/devices-view"
@@ -49,61 +52,32 @@ function expectStackedPrimaryLast(primary: HTMLElement) {
   expect(row.lastElementChild).toBe(primary)
 }
 
-const pairing: PendingPairing = { request_id: "a1", code: "653540", name: "Chrome on Linux", family: "chromium", extension_id: "x", expires_in_secs: 110 }
-
 describe("dialog actions at 390 px (R1)", () => {
-  it("pairing a browser: The codes differ, then Pair", async () => {
-    const client: BrowserClient = {
-      status: () => Promise.resolve({ listening: true, problem: null, host_binary: "", browsers: [] }),
-      pending: () => Promise.resolve([pairing]),
-      answer: () => Promise.resolve(),
-      paired: () => Promise.resolve([]),
-      unpair: () => Promise.resolve(),
-      install: () => Promise.resolve([]),
-    }
+  // Devices' revoke moved to unicron's ConfirmDialog (doc 85; below). The row itself is still
+  // used by other dialogs until the fold, so it keeps its own case: Cancel, then the yes, in words.
+  it("the shared action row: Cancel, then Revoke", async () => {
     render(
-      <BrowserClientProvider value={client}>
-        <PairingDialog onNotice={() => {}} />
-      </BrowserClientProvider>,
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Revoke Old phone?</DialogTitle>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={() => {}}>
+              Cancel
+            </LabelledAction>
+            <LabelledAction kind="destructive" onClick={() => {}}>
+              Revoke
+            </LabelledAction>
+          </LabelledActions>
+        </DialogContent>
+      </Dialog>,
     )
-    const dialog = await screen.findByRole("dialog")
-    expectWords("The codes differ", dialog)
-    expectStackedPrimaryLast(expectWords("Pair", dialog))
-  })
-
-  it("a passkey request: Decline, then Approve", async () => {
-    const client = {
-      pending: () => Promise.resolve([{ request_id: "p1", text: "Sign in to shop.example as sam", browser: "Firefox", expires_in_secs: 110 }]),
-      answer: () => Promise.resolve(),
-    } as unknown as PasskeyClient
-    render(
-      <PasskeyClientProvider value={client}>
-        <PasskeyApprovalDialog onNotice={() => {}} />
-      </PasskeyClientProvider>,
-    )
-    const dialog = await screen.findByRole("dialog")
-    expectWords("Decline", dialog)
-    expectStackedPrimaryLast(expectWords("Approve", dialog))
-  })
-
-  it("revoking a device: Cancel, then Revoke", async () => {
-    const devices: DeviceInfo[] = [
-      { id: "d-mine", name: "This laptop", platform: "linux", enrolled_at: 1, revoked_at: null, this_device: true },
-      { id: "d-phone", name: "Old phone", platform: "android", enrolled_at: 1, revoked_at: null, this_device: false },
-    ]
-    const status = { devices: 2, devices_revoked: 0, account: null } as unknown as Status
-    render(
-      <ClientProvider value={fakeClient({ deviceList: () => Promise.resolve(devices) })}>
-        <DevicesView status={status} onChanged={() => {}} onNotice={() => {}} />
-      </ClientProvider>,
-    )
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Revoke" }))
     const dialog = await screen.findByRole("dialog")
     expectWords("Cancel", dialog)
     expectStackedPrimaryLast(expectWords("Revoke", dialog))
   })
-
 })
+
+const pairing: PendingPairing = { request_id: "a1", code: "653540", name: "Chrome on Linux", family: "chromium", extension_id: "x", expires_in_secs: 110 }
 
 /*
  * Two unicron components draw their own actions: the crown-jewel gate and
@@ -162,6 +136,23 @@ describe("unicron's own dialog actions at 390 px (R1)", () => {
   })
   afterEach(() => remove())
 
+  it("revoking a device: Cancel, then Revoke, on unicron's ConfirmDialog (doc 85)", async () => {
+    const devices: DeviceInfo[] = [
+      { id: "d-mine", name: "This laptop", platform: "linux", enrolled_at: 1, revoked_at: null, this_device: true },
+      { id: "d-phone", name: "Old phone", platform: "android", enrolled_at: 1, revoked_at: null, this_device: false },
+    ]
+    const status = { devices: 2, devices_revoked: 0, account: null } as unknown as Status
+    render(
+      <ClientProvider value={fakeClient({ deviceList: () => Promise.resolve(devices) })}>
+        <DevicesView status={status} onChanged={() => {}} onNotice={() => {}} />
+      </ClientProvider>,
+    )
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Revoke" }))
+    const dialog = await screen.findByRole("dialog", { name: "Revoke Old phone?" })
+    expectComputedWords("Cancel", dialog)
+    expectComputedWords("Revoke", dialog)
+  })
+
   it("the window gate on a computer with no built-in check keeps Cancel and the action's own verb (doc 68)", async () => {
     // The core asks for the window's confirm the first time, then takes the call. From doc 68 it is
     // unicron's ConfirmDialog: "Revoke the old phone?" with Cancel and Revoke.
@@ -191,6 +182,48 @@ describe("unicron's own dialog actions at 390 px (R1)", () => {
     const dialog = await screen.findByRole("dialog")
     expectComputedWords("Cancel", dialog)
     expectComputedWords("Confirm", dialog)
+  })
+
+  it("pairing a browser, from its needs-you's REVIEW: Codes differ, then They match (doc 84)", async () => {
+    const client: BrowserClient = {
+      status: () => Promise.resolve({ listening: true, problem: null, host_binary: "", browsers: [] }),
+      pending: () => Promise.resolve([pairing]),
+      answer: () => Promise.resolve(),
+      paired: () => Promise.resolve([]),
+      unpair: () => Promise.resolve(),
+      install: () => Promise.resolve([]),
+    }
+    render(
+      <BrowserClientProvider value={client}>
+        <RequestHost>
+          <PairingDialog onNotice={() => {}} />
+        </RequestHost>
+      </BrowserClientProvider>,
+    )
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Review" }))
+    const dialog = await screen.findByRole("dialog")
+    await act(() => new Promise((r) => setTimeout(r, ARMED_MS)))
+    expectComputedWords("Codes differ", dialog)
+    expectComputedWords("They match", dialog)
+  })
+
+  it("a passkey request, from its needs-you's REVIEW: Decline, then Approve (doc 84)", async () => {
+    const client = {
+      pending: () => Promise.resolve([{ request_id: "p1", text: "Sign in to shop.example as sam", browser: "Firefox", expires_in_secs: 110 }]),
+      answer: () => Promise.resolve(),
+    } as unknown as PasskeyClient
+    render(
+      <PasskeyClientProvider value={client}>
+        <RequestHost>
+          <PasskeyApprovalDialog onNotice={() => {}} />
+        </RequestHost>
+      </PasskeyClientProvider>,
+    )
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Review" }))
+    const dialog = await screen.findByRole("dialog")
+    await act(() => new Promise((r) => setTimeout(r, ARMED_MS)))
+    expectComputedWords("Decline", dialog)
+    expectComputedWords("Approve", dialog)
   })
 
   it("the approval sheet keeps Approve, Deny and This wasn't me", async () => {

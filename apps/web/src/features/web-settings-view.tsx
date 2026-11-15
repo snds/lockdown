@@ -1,41 +1,19 @@
-import { useState, useSyncExternalStore, type ReactNode } from "react"
+import { useSyncExternalStore } from "react"
 
-import {
-  Button,
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-  NativeSelect,
-  NativeSelectOption,
-  Switch,
-  ToggleGroup,
-  ToggleGroupItem,
-  toast,
-} from "@unicron/ui"
+import { Button, FieldRow, SectionHeader, toast } from "@unicron/ui"
 
-import { useSettings } from "@/app/settings"
 import { usePlaces } from "@/app/places"
 import { Embedded } from "@/components/master-detail"
-import { describeError, useClient } from "@/core/client"
-import type { Density, LockState, RevealGesture, Status } from "@/core/types"
+import type { LockState, Status } from "@/core/types"
 import { DevicesView } from "@/features/devices/devices-view"
-import { SettingsPlaces } from "@/features/settings/settings-places"
 import { ServerChecks } from "@/features/server/server-checks"
+import { DensitySetting } from "@/features/settings/density-setting"
+import { SaveError, useRowSize, useSettingSave } from "@/features/settings/setting-rows"
+import { SettingsPlaces } from "@/features/settings/settings-places"
 import { ThemeSetting } from "@/features/settings/theme-setting"
+import { SecurityRows } from "@/features/settings/this-device"
 
 import { setThemeChoice, subscribeTheme, themeChoice } from "../theme"
-
-const IDLE_CHOICES: Array<[string, number | null]> = [
-  ["1 minute", 60],
-  ["5 minutes", 300],
-  ["10 minutes", 600],
-  ["30 minutes", 1800],
-  ["1 hour", 3600],
-  ["4 hours", 14_400],
-]
-
-const CLIPBOARD_CHOICES = [10, 20, 30, 45, 60, 90]
 
 interface WebSettingsViewProps {
   /** For the Devices section: every session signed in to the account. */
@@ -48,164 +26,79 @@ interface WebSettingsViewProps {
   onSignOut: () => void
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+/** A server address as a row shows it: its host. */
+function hostOf(address: string): string {
+  try {
+    return new URL(address).host
+  } catch {
+    return address
+  }
+}
+
+/** THIS WEB VAULT (brief T1, W1): who this tab is signed in as, the trust note (D180), and the way out. */
+function ThisWebVault({ server, login, onSignOut }: { server: string; login: string; onSignOut: () => void }) {
+  const size = useRowSize()
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold">{title}</h2>
-      {children}
-    </section>
+    <div className="flex flex-col">
+      <SectionHeader level={3} title="This web vault" />
+      <FieldRow size={size} label="Signed in as" description={hostOf(server)}>
+        {login}
+      </FieldRow>
+      <div className="flex flex-col gap-4 pt-3">
+        <p className="type-caption text-text-secondary">
+          The page's code comes from that server too, so it can only be as trustworthy as the server that sends it; the desktop app's code comes signed
+          from Lockdown. For crown jewels and recovery, prefer the desktop app. This tab is one of your devices: signing out forgets its key, and another
+          device can then remove it from the list.
+        </p>
+        <div>
+          <Button variant="secondary" onClick={onSignOut}>
+            Sign out of this tab
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
 
 /**
- * The web vault's settings, in four sections (redesign brief T0 and W1:
- * This browser, Appearance, Devices, Server): the lock timers (the core's, as on the
- * desktop), the clipboard timer, density and the reveal gesture, and this
- * tab's place: where it signed in and how to sign out. They hold for this
- * tab; a new sign-in starts from the defaults. Idle has no "never" here:
- * a browser tab is too easy to walk away from.
+ * The web vault's settings, in four sections (brief T0, T1 and W1: This
+ * browser, Appearance, Devices, Server): the lock timers (the core's, as on
+ * the desktop), the clipboard timer and the reveal gesture, then this tab's
+ * place: where it signed in and how to sign out. They hold for this tab; a
+ * new sign-in starts from the defaults. Auto-lock has no Never here: a
+ * browser tab is too easy to walk away from.
  */
 export function WebSettingsView({ status, onChanged, onNotice, server, login, onLock, onSignOut }: WebSettingsViewProps) {
-  const client = useClient()
   const { nav } = usePlaces()
-  const { settings, update } = useSettings()
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const { settings, save, busy, errorOf } = useSettingSave()
   // The ground is a choice kept in this browser (src/theme.ts), not a setting of the vault (doc 62 §3).
   const theme = useSyncExternalStore(subscribeTheme, themeChoice)
 
-  const save = async (change: Parameters<typeof update>[0]) => {
-    setBusy(true)
-    setError(null)
-    try {
-      await update(change)
-      onLock(await client.lockState())
-    } catch (e) {
-      setError(describeError(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
   const thisBrowser = (
-    <div className="flex flex-col gap-6">
-      <Section title="Lock">
-        <FieldGroup>
-          <Field orientation="horizontal">
-            <FieldLabel htmlFor="idle-timeout">Lock after idle</FieldLabel>
-            <NativeSelect
-              id="idle-timeout"
-              value={String(settings.idle_lock_secs ?? 600)}
-              onChange={(e) => void save({ idle_lock_secs: Number(e.target.value) })}
-              disabled={busy}
-            >
-              {IDLE_CHOICES.map(([label, secs]) => (
-                <NativeSelectOption key={label} value={String(secs)}>
-                  {label}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </Field>
-          <Field orientation="horizontal">
-            <FieldLabel htmlFor="hidden-lock">Lock when this tab is out of view for 5 minutes</FieldLabel>
-            <Switch
-              id="hidden-lock"
-              checked={settings.hidden_lock_secs !== null}
-              onCheckedChange={(on) => void save({ hidden_lock_secs: on ? 300 : null })}
-              disabled={busy}
-            />
-          </Field>
-          <FieldDescription>Unlocking asks for the master password. Closing the tab ends everything at once.</FieldDescription>
-        </FieldGroup>
-      </Section>
-
-      <Section title="Clipboard">
-        <FieldGroup>
-          <Field orientation="horizontal">
-            <FieldLabel htmlFor="clipboard-timer">Clear a copied secret after</FieldLabel>
-            <NativeSelect
-              id="clipboard-timer"
-              value={String(settings.clipboard_clear_secs)}
-              onChange={(e) => void save({ clipboard_clear_secs: Number(e.target.value) })}
-              disabled={busy}
-            >
-              {CLIPBOARD_CHOICES.map((secs) => (
-                <NativeSelectOption key={secs} value={String(secs)}>
-                  {secs} seconds
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </Field>
-          <FieldDescription>
-            In a browser the copied value passes through this page. It is cleared after the timer if the clipboard still holds it, or when the browser
-            won't let the page look, unless you copied something from Lockdown since.
-          </FieldDescription>
-        </FieldGroup>
-      </Section>
-
-      <Section title="Reveal">
-        <Field orientation="horizontal">
-          <FieldLabel id="reveal-label">Showing a hidden value</FieldLabel>
-          <ToggleGroup aria-labelledby="reveal-label" value={[settings.reveal]} onValueChange={(v) => v[0] && void save({ reveal: v[0] as RevealGesture })} disabled={busy}>
-            <ToggleGroupItem value="hold">Hold to reveal</ToggleGroupItem>
-            <ToggleGroupItem value="toggle">Tap to reveal</ToggleGroupItem>
-          </ToggleGroup>
-        </Field>
-      </Section>
-      <Section title="This web vault">
-        <p className="text-sm text-muted-foreground">
-          Signed in as <span className="font-medium text-foreground">{login}</span> at <span className="font-mono">{new URL(server).host}</span>. The page's code
-          comes from that server too, so it can only be as trustworthy as the server that sends it; the desktop app's code comes signed from Lockdown. For
-          crown jewels and recovery, prefer the desktop app.
-        </p>
-        <p className="text-sm text-muted-foreground">
-          This tab is one of your devices. Signing out forgets its key; another device can then remove it from the list.
-        </p>
-        <div>
-          <Button variant="outline" onClick={onSignOut} disabled={busy}>
-            Sign out of this tab
-          </Button>
-        </div>
-      </Section>
+    <div className="flex flex-col gap-8">
+      <SecurityRows surface="web" onLock={onLock} />
+      <ThisWebVault server={server} login={login} onSignOut={onSignOut} />
     </div>
   )
   return (
     <SettingsPlaces overview={thisBrowser}>
       {(shown) => (
-        <div className="flex flex-col gap-6">
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
+        <>
           {shown === "this-device" && thisBrowser}
           {shown === "appearance" && (
-            <>
-      <Section title="Appearance">
-        <ThemeSetting value={theme} onChange={setThemeChoice} />
-        <Field orientation="horizontal">
-          <FieldLabel id="density-label">Density</FieldLabel>
-          <ToggleGroup aria-labelledby="density-label" value={[settings.density]} onValueChange={(v) => v[0] && void save({ density: v[0] as Density })} disabled={busy}>
-            <ToggleGroupItem value="comfortable">Comfortable</ToggleGroupItem>
-            <ToggleGroupItem value="compact">Compact</ToggleGroupItem>
-          </ToggleGroup>
-        </Field>
-      </Section>
-
-            </>
+            <div className="flex flex-col">
+              <ThemeSetting value={theme} onChange={setThemeChoice} />
+              <DensitySetting value={settings.density} onChange={(density) => void save("density", { density })} busy={busy === "density"} />
+              <SaveError text={errorOf("density")} />
+            </div>
           )}
           {shown === "devices" && (
             <Embedded>
               <DevicesView status={status} onChanged={onChanged} onNotice={onNotice} focus={nav.device} />
             </Embedded>
           )}
-          {shown === "server" && (
-            <>
-      <ServerChecks onNotice={(text) => toast(text)} framed={false} />
-
-            </>
-          )}
-        </div>
+          {shown === "server" && <ServerChecks onNotice={(text) => toast(text)} framed={false} />}
+        </>
       )}
     </SettingsPlaces>
   )
