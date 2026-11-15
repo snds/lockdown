@@ -1,50 +1,57 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useState, type FormEvent } from "react"
 
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldLabel,
-  Input,
-  Spinner,
-} from "@unicron/ui"
+import { Banner, Button, ConfirmDialog, FieldRow, FieldRowValue, RadioGroup, RadioRow, TextField } from "@unicron/ui"
+import { DigitGroups } from "@unicron/ui/security/digit-groups"
+import { SecretField } from "@unicron/ui/security/secret-field"
 
 import { describeError } from "@/core/client"
 import type { Status } from "@/core/types"
 import { needsEmailApproval, needsSecurityKey } from "@/features/depth/depth-client"
-import { JoinWithDevice, SecondFactorWait } from "@/features/depth/join-device"
+import { JoinWithDevice, SecondFactorWait, useShownWhen, type JoinStage } from "@/features/depth/join-device"
 import { ServerPicker } from "@/features/server/server-picker"
 
 import { foundWords, hostOf, useFirstRunClient, withCandidate, type Candidate } from "./first-run-client"
-import { WelcomeActions, WelcomeColumn, WelcomeGroup, WelcomeScreen } from "./welcome"
+import { WelcomeActions, WelcomeColumn, WelcomeScreen, stepFolio, useFormFill } from "./welcome"
 
 type Way = "device" | "signin" | "kit"
 
 const WAYS: Array<{ way: Way; label: string; help?: string }> = [
-  { way: "device", label: "Approve from another device", help: "Show a code on a device that's signed in, then match six digits." },
+  {
+    way: "device",
+    label: "Approve from another device",
+    help: "Show a code on a device that's signed in, then match six digits.",
+  },
   { way: "signin", label: "Sign in with your login and password" },
-  { way: "kit", label: "Use your recovery kit", help: "For when you've lost every device." },
+  {
+    way: "kit",
+    label: "Use your recovery kit",
+    help: "For when you've lost every device.",
+  },
 ]
+
+/** The device way's three steps, for the folio: the code, the six digits, the password. */
+const DEVICE_STEPS: Record<JoinStage, number> = {
+  code: 1,
+  compare: 2,
+  finish: 3,
+}
 
 /** How long the login must stop changing before its domain is asked. */
 const DOMAIN_PAUSE_MS = 600
 
 /**
- * Screen J, "I already use Lockdown" (docs/plan/39-first-run.md §1.9):
- * approve this computer from another device, sign in to a server, or use
- * the recovery kit. The servers discovery found are listed with the best
- * one chosen; nothing is sent to one before the person confirms its key.
- * The typed password becomes this computer's master password (§1.3): the
- * core seals the new device's keys under it in the same step as the
- * sign-in or recovery, so no plain key file is ever written
- * (docs/plan/45-desktop-join-sealed.md), then opens the vault with it.
+ * Screen J, "I already use Lockdown" (docs/plan/39-first-run.md §1.9;
+ * brief F3): approve this computer from another device, sign in to a
+ * server, or use the recovery kit, as three Radio Rows in the focus frame.
+ * The servers discovery found are listed with the best one chosen; when it
+ * found none, the device way asks for the server in its own field. Nothing
+ * is sent to a server before the person confirms its key (a question whose
+ * yes is Connect). The typed password becomes this computer's master
+ * password (§1.3): the core seals the new device's keys under it in the
+ * same step as the sign-in or recovery, so no plain key file is ever
+ * written (docs/plan/45-desktop-join-sealed.md), then opens the vault with
+ * it. The device way shows a folio of three steps; the other two are one
+ * step each and show none.
  */
 export function JoinScreen({ onBack, onOpened }: { onBack: () => void; onOpened: (s: Status) => void }) {
   const frc = useFirstRunClient()
@@ -60,7 +67,14 @@ export function JoinScreen({ onBack, onOpened }: { onBack: () => void; onOpened:
   const [confirming, setConfirming] = useState<Candidate | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [waiting, setWaiting] = useState<{ server: string; email: string | null } | null>(null)
+  const [waiting, setWaiting] = useState<{
+    server: string
+    email: string | null
+  } | null>(null)
+  const [stage, setStage] = useState<JoinStage>("code")
+  const fill = useFormFill()
+  const onStage = useCallback((s: JoinStage) => setStage(s), [])
+  const refusal = useShownWhen(error)
 
   const merge = (list: Candidate[]) => {
     setCandidates((old) => list.reduce(withCandidate, old))
@@ -80,7 +94,10 @@ export function JoinScreen({ onBack, onOpened }: { onBack: () => void; onOpened:
       .candidates(false)
       .then(merge, () => {})
       .then(() => frc.candidates(true))
-      .then((l) => l && merge(l), () => {})
+      .then(
+        (l) => l && merge(l),
+        () => {},
+      )
       .finally(() => setLooking(false))
   }, [frc])
   // An email-shaped login: its domain may name the server.
@@ -96,6 +113,12 @@ export function JoinScreen({ onBack, onOpened }: { onBack: () => void; onOpened:
     }, DOMAIN_PAUSE_MS)
     return () => window.clearTimeout(timer)
   }, [frc, login])
+
+  const clearSecrets = () => {
+    setPassword("")
+    setSecretKey("")
+    setRecoveryCode("")
+  }
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
@@ -117,12 +140,23 @@ export function JoinScreen({ onBack, onOpened }: { onBack: () => void; onOpened:
     try {
       // The key is pinned before anything is sent there.
       await frc.confirm(c.address)
-      if (way === "signin") await frc.accountLoginSealed({ server: c.address, login: login.trim(), password, secretKey: secretKey.trim() || undefined })
-      else await frc.recoverSealed({ server: c.address, login: login.trim(), password, secretKey: secretKey.trim(), recoveryCode: recoveryCode.trim() })
+      if (way === "signin")
+        await frc.accountLoginSealed({
+          server: c.address,
+          login: login.trim(),
+          password,
+          secretKey: secretKey.trim() || undefined,
+        })
+      else
+        await frc.recoverSealed({
+          server: c.address,
+          login: login.trim(),
+          password,
+          secretKey: secretKey.trim(),
+          recoveryCode: recoveryCode.trim(),
+        })
       const status = await frc.openJoined(password)
-      setPassword("")
-      setSecretKey("")
-      setRecoveryCode("")
+      clearSecrets()
       onOpened(status)
     } catch (err) {
       if (needsSecurityKey(err)) setWaiting({ server: c.address, email: null })
@@ -145,9 +179,7 @@ export function JoinScreen({ onBack, onOpened }: { onBack: () => void; onOpened:
             if (!frc) return
             void frc.openJoined(password).then(
               (status) => {
-                setPassword("")
-                setSecretKey("")
-                setRecoveryCode("")
+                clearSecrets()
                 onOpened(status)
               },
               (e) => setError(describeError(e)),
@@ -157,8 +189,15 @@ export function JoinScreen({ onBack, onOpened }: { onBack: () => void; onOpened:
       </WelcomeColumn>
     )
 
+  // When discovery found nothing, the device way asks for the server in its own field (brief F3).
+  const noneFound = candidates.length === 0 && !looking
+  // Once a join from another device is under way, the screen holds only it: the digits, then the password.
+  const joining = way === "device" && stage !== "code"
+  const showPicker = !joining && !(way === "device" && noneFound)
+  const folio = way === "device" ? stepFolio([DEVICE_STEPS[stage], 3]) : undefined
+
   return (
-    <WelcomeColumn>
+    <WelcomeColumn folio={folio}>
       <WelcomeScreen
         title="Add this computer to your Lockdown"
         sentence="Let a device you already use approve this one, or sign in to your server."
@@ -170,124 +209,166 @@ export function JoinScreen({ onBack, onOpened }: { onBack: () => void; onOpened:
           ],
         }}
       />
-      <fieldset className="flex flex-col gap-2">
-        <legend className="sr-only">How to add this computer</legend>
-        {WAYS.map((w) => (
-          <label key={w.way} htmlFor={`join-way-${w.way}`} data-row="" className="flex cursor-pointer items-start gap-3 rounded-lg border px-3 has-checked:border-ring has-checked:bg-surface-selected">
-            <input id={`join-way-${w.way}`} type="radio" name="join-way" value={w.way} checked={way === w.way} onChange={() => setWay(w.way)} className="mt-1 size-4 accent-foreground" />
-            <span className="flex flex-col">
-              <span className="font-medium">{w.label}</span>
-              {w.help && <span className="text-sm text-muted-foreground">{w.help}</span>}
-            </span>
-          </label>
-        ))}
-      </fieldset>
+      {!joining && (
+        <RadioGroup aria-label="How to add this computer" value={way} onValueChange={(v) => setWay(v as Way)}>
+          {WAYS.map((w) => (
+            <RadioRow key={w.way} value={w.way} label={w.label} description={w.help} />
+          ))}
+        </RadioGroup>
+      )}
 
-      <ServerPicker
-        name="join-server"
-        candidates={candidates}
-        chosen={chosen}
-        onChoose={setChosen}
-        looking={looking}
-        onLookAgain={lookAgain}
-        onCheck={async (address) => {
-          if (!frc) return
-          const c = await frc.check(address)
-          merge([c])
-          if (c.state === "ready") setChosen(c.address)
-          else if (c.reason) throw new Error(c.reason)
-        }}
-      />
-      {lookingAt && <p className="text-sm text-muted-foreground">Looking for a server at {lookingAt}…</p>}
+      {showPicker && (
+        <div className="flex flex-col gap-3">
+          <ServerPicker
+            name="join-server"
+            candidates={candidates}
+            chosen={chosen}
+            onChoose={setChosen}
+            looking={looking}
+            onLookAgain={lookAgain}
+            onCheck={async (address) => {
+              if (!frc) return
+              const c = await frc.check(address)
+              merge([c])
+              if (c.state === "ready") setChosen(c.address)
+              else if (c.reason) throw new Error(c.reason)
+            }}
+          />
+          {lookingAt && (
+            <p role="status" className="type-caption text-text-secondary">
+              Looking for a server at {lookingAt}…
+            </p>
+          )}
+        </div>
+      )}
 
       {way === "device" ? (
-        <JoinWithDevice server={chosen ?? undefined} onOpened={onOpened} />
-      ) : (
-        <form onSubmit={submit} className="flex flex-col gap-(--c-welcome-gap)">
-          <WelcomeGroup>
-            <Field>
-              <FieldLabel htmlFor="join-login">Login</FieldLabel>
-              <Input id="join-login" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" required />
-              <FieldDescription>Often an email address.</FieldDescription>
-            </Field>
-          </WelcomeGroup>
-          <WelcomeGroup>
-            <Field>
-              <FieldLabel htmlFor="join-password">Master password</FieldLabel>
-              <Input id="join-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
-              <FieldDescription>The one you use on your other devices.</FieldDescription>
-            </Field>
-          </WelcomeGroup>
-          <WelcomeGroup>
-            <Field>
-              <FieldLabel htmlFor="join-secret-key">Secret Key</FieldLabel>
-              <Input id="join-secret-key" type="password" value={secretKey} onChange={(e) => setSecretKey(e.target.value)} autoComplete="off" required={way === "kit"} />
-              <FieldDescription>On your recovery kit page; it starts with A1-.</FieldDescription>
-            </Field>
-          </WelcomeGroup>
-          {way === "kit" && (
-            <WelcomeGroup>
-              <Field>
-                <FieldLabel htmlFor="join-recovery-code">Recovery code</FieldLabel>
-                <Input id="join-recovery-code" type="password" value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} autoComplete="off" required />
-              </Field>
-            </WelcomeGroup>
+        <div className={fill}>
+          <JoinWithDevice server={chosen ?? undefined} onOpened={onOpened} onStage={onStage} />
+          {/* While the digits show, Cancel is the way out: it ends the join on both devices. */}
+          {stage !== "compare" && (
+            <WelcomeActions>
+              <div className="-ms-4">
+                <Button type="button" variant="ghost" onClick={onBack}>
+                  Back
+                </Button>
+              </div>
+            </WelcomeActions>
           )}
-          {error && <FieldError role="alert">{error}</FieldError>}
+        </div>
+      ) : (
+        <form onSubmit={submit} className={fill} aria-label={way === "signin" ? "Sign in" : "Recover with your kit"} noValidate>
+          <div className="flex flex-col gap-6">
+            <TextField
+              id="join-login"
+              label="Login"
+              value={login}
+              onChange={(e) => setLogin(e.target.value)}
+              autoComplete="username"
+              required
+              helper="Often an email address."
+              readOnly={busy}
+            />
+            <SecretField
+              mode="edit"
+              id="join-password"
+              label="Master password"
+              name="password"
+              mono={false}
+              value={password}
+              onChange={setPassword}
+              autoComplete="current-password"
+              required
+              disabled={busy}
+              description="The one you use on your other devices."
+            />
+            <SecretField
+              mode="edit"
+              id="join-secret-key"
+              label="Secret Key"
+              name="secret-key"
+              mono
+              value={secretKey}
+              onChange={setSecretKey}
+              autoComplete="off"
+              required={way === "kit"}
+              disabled={busy}
+              description="On your recovery kit page. It starts with A1-."
+            />
+            {way === "kit" && (
+              <SecretField
+                mode="edit"
+                id="join-recovery-code"
+                label="Recovery code"
+                name="recovery-code"
+                mono
+                value={recoveryCode}
+                onChange={setRecoveryCode}
+                autoComplete="off"
+                required
+                disabled={busy}
+              />
+            )}
+          </div>
+          {/* A form that could not go on: a compact critical Banner over its buttons, in the core's words (brief 4.0). */}
+          {error ? (
+            <div ref={refusal}>
+              <Banner tone="critical" size="compact" title={error} />
+            </div>
+          ) : null}
           <WelcomeActions>
-            <Button size="lg" type="submit" disabled={busy}>
-              {busy ? <Spinner data-icon="inline-start" /> : null}
-              Continue
+            <Button size="lg" block type="submit" loading={busy}>
+              {way === "signin" ? "Sign in" : "Recover"}
             </Button>
-            <Button size="lg" type="button" variant="outline" onClick={onBack} disabled={busy}>
-              Back
-            </Button>
+            <div className="-ms-4">
+              <Button type="button" variant="ghost" onClick={onBack} disabled={busy}>
+                Back
+              </Button>
+            </div>
           </WelcomeActions>
         </form>
       )}
-      {way === "device" && (
-        <WelcomeActions>
-          <Button size="lg" type="button" variant="outline" onClick={onBack}>
-            Back
-          </Button>
-        </WelcomeActions>
-      )}
 
-      <Dialog open={confirming !== null} onOpenChange={(o) => !o && setConfirming(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Connect to {confirming ? hostOf(confirming.address) : ""}?</DialogTitle>
-            <DialogDescription>Only continue if you recognize this server. Lockdown checks this key every time it syncs.</DialogDescription>
-          </DialogHeader>
-          {confirming && <ServerFacts candidate={confirming} />}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirming(null)}>
-              Cancel
-            </Button>
-            <Button onClick={() => void connect()}>Connect</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={confirming !== null}
+        onOpenChange={(o) => !o && setConfirming(null)}
+        title={`Connect to ${confirming ? hostOf(confirming.address) : ""}?`}
+        description="Only continue if you recognize this server. Lockdown checks this key every time it syncs."
+        confirmLabel="Connect"
+        onConfirm={() => {
+          void connect()
+        }}
+      >
+        {confirming && <ServerFacts candidate={confirming} />}
+      </ConfirmDialog>
     </WelcomeColumn>
   )
 }
 
-/** Address, where it was found, and the server key's six groups of five digits. */
+/**
+ * Address, where it was found, and the server key's six groups of five
+ * digits (in `DigitGroups`, so they read group by group), as Field Rows
+ * (brief T5's review). Also drawn by Settings → Server's confirm.
+ */
 export function ServerFacts({ candidate }: { candidate: Candidate }) {
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-      <dt className="text-muted-foreground">Address</dt>
-      <dd className="break-all">{candidate.address}</dd>
-      <dt className="text-muted-foreground">Found</dt>
-      <dd>{candidate.sources.map(foundWords).join(" · ")}</dd>
-      <dt className="text-muted-foreground">Server key</dt>
-      <dd className="font-mono">{candidate.fingerprint}</dd>
-      {candidate.policy_key && (
-        <>
-          <dt className="sr-only">Policy</dt>
-          <dd className="col-span-2">Matches the key your organization set.</dd>
-        </>
+    <div className="flex flex-col">
+      <FieldRow size="stacked" label="Address">
+        <FieldRowValue truncate="middle">{candidate.address}</FieldRowValue>
+      </FieldRow>
+      <FieldRow size="stacked" label="Found">
+        <FieldRowValue truncate="wrap">{candidate.sources.map(foundWords).join(" · ")}</FieldRowValue>
+      </FieldRow>
+      {candidate.fingerprint && (
+        <FieldRow size="stacked" label="Server key">
+          <DigitGroups value={candidate.fingerprint} size="sm" label="Server key" />
+        </FieldRow>
       )}
-    </dl>
+      {candidate.policy_key && (
+        <FieldRow size="stacked" label="Policy">
+          <FieldRowValue truncate="wrap">Matches the key your organization set.</FieldRowValue>
+        </FieldRow>
+      )}
+    </div>
   )
 }

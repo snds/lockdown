@@ -47,12 +47,15 @@ describe("Settings → Server (doc 39 §1.11)", () => {
     expect(screen.getByText(/Your vault is kept on this computer only/)).toBeInTheDocument()
     const ready = await screen.findByRole("radio", { name: /nas\.example:8443/ })
     // One that would talk plain http to another computer can't be chosen.
-    expect(screen.getByRole("radio", { name: /studio\.local/ })).toBeDisabled()
+    // Unicron's radio is a focusable-off span: it says so with aria-disabled, not the disabled attribute.
+    expect(screen.getByRole("radio", { name: /studio\.local/ })).toHaveAttribute("aria-disabled", "true")
     expect(screen.getByText(/Needs https/)).toBeInTheDocument()
     await user.click(ready)
     const sheet = await screen.findByRole("dialog")
     expect(sheet).toHaveTextContent("Move your vault to nas.example:8443?")
-    expect(sheet).toHaveTextContent("12345 67890 13579 24680 11223 34455")
+    // The server key in DigitGroups: its six groups, as the other end shows them.
+    const groups = Array.from(sheet.querySelectorAll('[data-slot="digit-groups-group"]'), (g) => g.textContent)
+    expect(groups.join(" ")).toBe("12345 67890 13579 24680 11223 34455")
     await user.click(within(sheet).getByRole("button", { name: "Continue" }))
     expect(confirm).toHaveBeenCalledWith("https://nas.example:8443")
 

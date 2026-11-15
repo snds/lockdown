@@ -1,20 +1,7 @@
 import { useState, type FormEvent } from "react"
 
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldLabel,
-  Input,
-  Spinner,
-} from "@unicron/ui"
+import { Banner, Button, ConfirmDialog } from "@unicron/ui"
+import { SecretField } from "@unicron/ui/security/secret-field"
 
 import { describeError, useClient } from "@/core/client"
 import type { OncePage, Status } from "@/core/types"
@@ -25,7 +12,7 @@ import { decodePage } from "./master-password"
 import { useFirstRunClient } from "./first-run-client"
 import { EMPTY_VALUES, checkValues, useMasterStrength, type MasterPasswordValues } from "./master-password"
 import { MasterPasswordFields } from "./master-password-fields"
-import { WelcomeActions, WelcomeColumn, WelcomeGroup, WelcomeScreen } from "./welcome"
+import { WelcomeActions, WelcomeColumn, WelcomeScreen, useFormFill } from "./welcome"
 
 const M1_LEARN_MORE = [
   "Until now your vault opened with a key kept in a file on this computer, so anyone who copied that file could open it. Now that key is locked with your master password.",
@@ -35,22 +22,26 @@ const M1_LEARN_MORE = [
 ]
 
 /**
- * Existing installs (docs/plan/39-first-run.md §1.6; Q2: required, with
- * no "Not now"). The vault opened with the device's key one last time;
- * before the list draws, it gets a master password.
+ * Existing installs (docs/plan/39-first-run.md §1.6; brief F4; Q2:
+ * required, with no "Not now"). The vault opened with the device's key one
+ * last time; before the list draws, it gets a master password. Each screen
+ * is the focus frame with no folio: this happens once, not as a flow.
  *
- * - M1, a "This device only" install: a name and a master password.
+ * - M1, a "This device only" install: a name and a master password; Lock
+ *   my vault.
  * - M2, when that install already has a kit: the kit's Secret Key and
- *   recovery code, or "I don't have it: make a new kit".
+ *   recovery code; or "I don't have it", a question whose yes is New kit.
  * - M3, an install with an account on a server: that password, checked
- *   there once.
+ *   there once; Continue for now when the server can't be reached.
  *
- * Nothing in the vault changes; a new kit's page is shown before the vault.
+ * Working buttons keep their labels. Nothing in the vault changes; a new
+ * kit's page is shown before the vault.
  */
 export function Migration({ status, onDone }: { status: Status; onDone: (s: Status) => void }) {
   const client = useClient()
   const frc = useFirstRunClient()
   const server = status.account && !status.account.local ? status.account.server : null
+  const host = server?.replace(/^https?:\/\//, "")
   const hasKit = status.recovery !== "none"
   const [screen, setScreen] = useState<"m1" | "m2" | "m3" | "kit">(server ? "m3" : "m1")
   const [values, setValues] = useState<MasterPasswordValues>(EMPTY_VALUES)
@@ -63,6 +54,7 @@ export function Migration({ status, onDone }: { status: Status; onDone: (s: Stat
   const [askNewKit, setAskNewKit] = useState(false)
   const [offline, setOffline] = useState(false)
   const strength = useMasterStrength(values, true)
+  const fill = useFormFill()
   if (!frc) return null
 
   const finish = async (page: OncePage) => {
@@ -92,9 +84,13 @@ export function Migration({ status, onDone }: { status: Status; onDone: (s: Stat
     const found = checkValues(values, true, strength)
     setErrors(found)
     if (Object.keys(found).length) return
-    if (hasKit) setScreen("m2")
-    else void run({ name: values.name.trim(), password: values.password })
+    if (hasKit) {
+      setError(null)
+      setScreen("m2")
+    } else void run({ name: values.name.trim(), password: values.password })
   }
+  // A form that could not save: a compact critical Banner over its buttons, in the core's words (brief 4.0).
+  const failure = error ? <Banner tone="critical" size="compact" title={error} /> : null
 
   if (screen === "kit")
     return (
@@ -114,30 +110,53 @@ export function Migration({ status, onDone }: { status: Status; onDone: (s: Stat
         <WelcomeScreen
           title="Unlock with your password from now on"
           sentence="Type your password once and Lockdown will use it to lock this vault on this computer; everything in it stays as it is."
-          learnMore={{ title: "Your master password", paragraphs: M1_LEARN_MORE.slice(0, 3) }}
+          learnMore={{
+            title: "Your master password",
+            paragraphs: M1_LEARN_MORE.slice(0, 3),
+          }}
         />
         <form
           onSubmit={(e) => {
             e.preventDefault()
             void run({ password: values.password })
           }}
-          className="flex flex-col gap-(--c-welcome-gap)"
+          className={fill}
+          aria-label="Unlock with your password from now on"
         >
-          <WelcomeGroup>
-            <Field>
-              <FieldLabel htmlFor="m3-password">Master password</FieldLabel>
-              <Input id="m3-password" type="password" value={values.password} onChange={(e) => setValues({ ...values, password: e.target.value })} readOnly={busy} autoComplete="current-password" />
-              <FieldDescription>The password you sign in to {server?.replace(/^https?:\/\//, "")} with.</FieldDescription>
-            </Field>
-          </WelcomeGroup>
-          {error && <FieldError role="alert">{offline ? `Lockdown needs to reach ${server?.replace(/^https?:\/\//, "")} once to check your password. You can keep using your vault for now; it asks again next time.` : error}</FieldError>}
+          <SecretField
+            mode="edit"
+            id="m3-password"
+            label="Master password"
+            name="password"
+            mono={false}
+            value={values.password}
+            onChange={(password) => setValues({ ...values, password })}
+            disabled={busy}
+            autoComplete="current-password"
+            description={`The password you sign in to ${host} with.`}
+          />
+          {error ? (
+            <Banner
+              tone="critical"
+              size="compact"
+              title={
+                offline ? `Lockdown needs to reach ${host} once to check your password. You can keep using your vault for now; it asks again next time.` : error
+              }
+            />
+          ) : null}
           <WelcomeActions>
-            <Button size="lg" type="submit" disabled={busy || values.password === ""}>
-              {busy ? <Spinner data-icon="inline-start" /> : null}
-              {busy ? "Locking your vault…" : "Continue"}
+            <Button
+              size="lg"
+              block
+              type="submit"
+              loading={busy}
+              disabled={values.password === ""}
+              disabledReason={values.password === "" && !busy ? "Type your password first." : undefined}
+            >
+              Continue
             </Button>
             {offline && (
-              <Button size="lg" type="button" variant="outline" onClick={() => void client.status().then(onDone)}>
+              <Button size="lg" block type="button" variant="secondary" onClick={() => void client.status().then(onDone)} disabled={busy}>
                 Continue for now
               </Button>
             )}
@@ -146,7 +165,8 @@ export function Migration({ status, onDone }: { status: Status; onDone: (s: Stat
       </WelcomeColumn>
     )
 
-  if (screen === "m2")
+  if (screen === "m2") {
+    const missing = !secretKey.trim() || !recoveryCode.trim()
     return (
       <WelcomeColumn>
         <WelcomeScreen
@@ -156,62 +176,82 @@ export function Migration({ status, onDone }: { status: Status; onDone: (s: Stat
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            void run({ name: values.name.trim(), password: values.password, secretKey: secretKey.trim(), recoveryCode: recoveryCode.trim() })
+            void run({
+              name: values.name.trim(),
+              password: values.password,
+              secretKey: secretKey.trim(),
+              recoveryCode: recoveryCode.trim(),
+            })
           }}
-          className="flex flex-col gap-(--c-welcome-gap)"
+          className={fill}
+          aria-label="Type your recovery kit"
         >
-          <WelcomeGroup>
-            <Field>
-              <FieldLabel htmlFor="m2-secret-key">Secret Key</FieldLabel>
-              <Input id="m2-secret-key" value={secretKey} onChange={(e) => setSecretKey(e.target.value)} readOnly={busy} autoComplete="off" />
-              <FieldDescription>On your recovery kit page; it starts with A1-.</FieldDescription>
-            </Field>
-          </WelcomeGroup>
-          <WelcomeGroup>
-            <Field>
-              <FieldLabel htmlFor="m2-recovery-code">Recovery code</FieldLabel>
-              <Input id="m2-recovery-code" value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} readOnly={busy} autoComplete="off" />
-            </Field>
-          </WelcomeGroup>
-          {error && <FieldError role="alert">{error}</FieldError>}
+          <div className="flex flex-col gap-6">
+            <SecretField
+              mode="edit"
+              id="m2-secret-key"
+              label="Secret Key"
+              name="secret-key"
+              mono
+              value={secretKey}
+              onChange={setSecretKey}
+              disabled={busy}
+              autoComplete="off"
+              description="On your recovery kit page. It starts with A1-."
+            />
+            <SecretField
+              mode="edit"
+              id="m2-recovery-code"
+              label="Recovery code"
+              name="recovery-code"
+              mono
+              value={recoveryCode}
+              onChange={setRecoveryCode}
+              disabled={busy}
+              autoComplete="off"
+            />
+          </div>
+          {failure}
           <WelcomeActions>
-            <Button size="lg" type="submit" disabled={busy || !secretKey.trim() || !recoveryCode.trim()}>
-              {busy ? <Spinner data-icon="inline-start" /> : null}
-              {busy ? "Locking your vault…" : "Continue"}
+            <Button
+              size="lg"
+              block
+              type="submit"
+              loading={busy}
+              disabled={missing}
+              disabledReason={missing && !busy ? "Type both lines from your kit first." : undefined}
+            >
+              Continue
             </Button>
-            <Button size="lg" type="button" variant="outline" onClick={() => setScreen("m1")} disabled={busy}>
+            <Button size="lg" block type="button" variant="secondary" onClick={() => setScreen("m1")} disabled={busy}>
               Back
             </Button>
+            {/* A text button hangs its word on the column's edge, as the title does. */}
+            <div className="-ms-4">
+              <Button type="button" variant="ghost" onClick={() => setAskNewKit(true)} disabled={busy}>
+                I don't have it
+              </Button>
+            </div>
           </WelcomeActions>
-          <div className="text-center">
-            <Button type="button" variant="link" size="inline" onClick={() => setAskNewKit(true)} disabled={busy}>
-              I don't have it: make a new kit
-            </Button>
-          </div>
         </form>
-        <Dialog open={askNewKit} onOpenChange={setAskNewKit}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Make a new kit?</DialogTitle>
-              <DialogDescription>Your old kit page stops working.</DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setAskNewKit(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  setAskNewKit(false)
-                  void run({ name: values.name.trim(), password: values.password, newKit: true })
-                }}
-              >
-                Make a new kit
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <ConfirmDialog
+          open={askNewKit}
+          onOpenChange={setAskNewKit}
+          title="New recovery kit?"
+          description="Your old kit page stops working."
+          confirmLabel="New kit"
+          onConfirm={() => {
+            setAskNewKit(false)
+            void run({
+              name: values.name.trim(),
+              password: values.password,
+              newKit: true,
+            })
+          }}
+        />
       </WelcomeColumn>
     )
+  }
 
   return (
     <WelcomeColumn>
@@ -220,17 +260,12 @@ export function Migration({ status, onDone }: { status: Status; onDone: (s: Stat
         sentence="From now on Lockdown asks for a master password to open your vault; everything in it stays as it is."
         learnMore={{ title: "Your master password", paragraphs: M1_LEARN_MORE }}
       />
-      <form onSubmit={m1} className="flex flex-col gap-(--c-welcome-gap)" noValidate>
+      <form onSubmit={m1} className={fill} noValidate aria-label="Lock your vault with a master password">
         <MasterPasswordFields idPrefix="m1" values={values} onChange={setValues} errors={errors} withName readOnly={busy} strength={strength} />
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
+        {failure}
         <WelcomeActions>
-          <Button size="lg" type="submit" disabled={busy}>
-            {busy ? <Spinner data-icon="inline-start" /> : null}
-            {busy ? "Locking your vault…" : "Continue"}
+          <Button size="lg" block type="submit" loading={busy}>
+            Lock my vault
           </Button>
         </WelcomeActions>
       </form>

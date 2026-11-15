@@ -100,3 +100,9 @@ export function WelcomeActions({ children }: { children: ReactNode }) {
   const { phone } = useAppFrame()
   return <div className={`flex flex-col gap-3 [&>[data-slot=button]]:w-full ${phone ? "mt-auto" : ""}`}>{children}</div>
 }
+
+/** On a phone a screen's form fills the column, so its buttons sit at the foot (first run, joining, the migration, forgot). */
+export function useFormFill(): string {
+  const { phone } = useAppFrame()
+  return `flex flex-col gap-8 ${phone ? "grow" : ""}`
+}

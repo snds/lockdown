@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from "react"
 import { createPortal } from "react-dom"
 
-import { Banner, Button, Checkbox, Icon, Label, NavItem, NavSection, SectionHeader, useAppFrame } from "@unicron/ui"
+import { Banner, Button, Checkbox, Icon, Label, NavItem, NavSection, SectionHeader } from "@unicron/ui"
 import { LargeTypeView } from "@unicron/ui/security/large-type-view"
 
 import { describeError, useClient } from "@/core/client"
@@ -17,7 +17,7 @@ import { hostOf, useFirstRunClient, type Candidate, type FirstRunClient, type Qu
 import { JoinScreen } from "./join"
 import { EMPTY_VALUES, checkValues, decodePage, useMasterStrength, type MasterPasswordValues } from "./master-password"
 import { MasterPasswordFields } from "./master-password-fields"
-import { WelcomeActions, WelcomeColumn, WelcomeScreen, stepFolio } from "./welcome"
+import { WelcomeActions, WelcomeColumn, WelcomeScreen, stepFolio, useFormFill } from "./welcome"
 
 /**
  * The first run (brief F2; docs/plan/39-first-run.md §1.9; D94: one
@@ -206,11 +206,6 @@ const PASSWORD_LEARN_MORE = [
   "Your name is only a label for the lock screen. It isn't an email address and isn't sent anywhere.",
 ]
 
-/** On a phone the form fills the column, so its buttons sit at the foot. */
-function useFormFill(): string {
-  const { phone } = useAppFrame()
-  return `flex flex-col gap-8 ${phone ? "grow" : ""}`
-}
 
 /** Screen 1: the name and the master password, with the expectations set. */
 function PasswordScreen({ frc, steps, onBack, onMade }: { frc: FirstRunClient; steps: number; onBack: () => void; onMade: (page: OncePage, name: string) => void }) {
