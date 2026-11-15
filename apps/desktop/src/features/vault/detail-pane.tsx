@@ -53,7 +53,7 @@ import { PlacePanel } from "@/features/organization/place-panel"
 import { useVaults } from "@/features/organization/vaults-context"
 import { PasskeysBlock } from "@/features/passkeys/passkeys-block"
 import { ItemSecurity } from "@/features/security/item-security"
-import { AccessNote, ItemShare } from "@/features/sharing/item-share"
+import { AccessNote, ItemShare, canShare } from "@/features/sharing/item-share"
 
 import { LogAwayDialog, AwayBlock } from "./away-block"
 import { ItemCodeDisplay } from "./code-display"
@@ -331,7 +331,7 @@ function ItemOpen({ id, rows, item, setItem, onEdit, onTrashed, onChanged, onNot
   useDetailBottomRow({ start: bottomStart, end: bottomEnd })
 
   // --- the ⋯ menu and the phone's top bar ------------------------------------------------------
-  const menu = useItemMenu({ item, title, rows, summary, canEdit, onChanged, onReplaced, onError: fail, onTrash: () => void trash(), onRestore: () => void restore(), onPurge: () => setPurging(true) })
+  const menu = useItemMenu({ item, title, rows, summary, canEdit, onChanged, onReplaced, onError: fail, onTrash: () => void trash(), onRestore: () => void restore(), onPurge: () => setPurging(true), onNotice })
   const topBar =
     menu.rows || editable ? (
       <>
@@ -456,7 +456,6 @@ function ItemOpen({ id, rows, item, setItem, onEdit, onTrashed, onChanged, onNot
                     onClick={() => menu.toggleFavorite()}
                   />
                 )}
-                <ItemShare item={item} title={title} onNotice={onNotice} />
                 {editable && (
                   <Button variant="ghost" size="sm" onClick={() => onEdit(item)}>
                     <Icon name="edit" data-icon="inline-start" />
@@ -581,12 +580,6 @@ function ItemOpen({ id, rows, item, setItem, onEdit, onTrashed, onChanged, onNot
               </FieldRow>
               {item.crown_jewel && live && <EmergencyAccess itemId={item.id} canEdit={canEdit} />}
               {item.crown_jewel && !trashed && canEdit && <ExportOptIn item={item} onChanged={setItem} />}
-              {/* On a phone the Share entry waits here until the ⋯ can open it (edges-8). */}
-              {inTopBar && (
-                <div className="pt-4">
-                  <ItemShare item={item} title={title} onNotice={onNotice} />
-                </div>
-              )}
             </div>
           </SectionHeader>
         </div>
@@ -880,25 +873,27 @@ interface MenuArgs {
   onTrash: () => void
   onRestore: () => void
   onPurge: () => void
+  onNotice: (text: string) => void
 }
 
 type Ask = "jewel-on" | "jewel-off" | null
 
 /**
  * The item's ⋯ menu (brief I1): only the rows that apply and that the
- * person's access allows. Share… waits on edges-8 (ItemShare keeps its own
- * button until then). Folder and tags…, Move to vault, Archive, History,
+ * person's access allows. Share… (brief I7, 3.6: with someone or as a
+ * link; never a crown jewel or someone else's item), Folder and tags…, Move to vault, Archive, History,
  * Signing in on a TV? (logins), crown jewel on or off, and Move to Recently
  * deleted last, in critical words. In Recently deleted: Restore and Delete
  * for good. A view-only share has no menu.
  */
-function useItemMenu({ item, title, rows, summary, canEdit, onChanged, onReplaced, onError, onTrash, onRestore, onPurge }: MenuArgs) {
+function useItemMenu({ item, title, rows, summary, canEdit, onChanged, onReplaced, onError, onTrash, onRestore, onPurge, onNotice }: MenuArgs) {
   const client = useClient()
   const gate = useGate()
   const { vaults } = useVaults()
   const [organizing, setOrganizing] = useState<OrganizeTarget | null>(null)
   const [history, setHistory] = useState(false)
   const [away, setAway] = useState(false)
+  const [sharing, setSharing] = useState(false)
   const [ask, setAsk] = useState<Ask>(null)
   const trashed = item.state === "trashed"
   const archived = item.state === "archived"
@@ -958,6 +953,11 @@ function useItemMenu({ item, title, rows, summary, canEdit, onChanged, onReplace
         {!archived && (
           <AdaptiveMenuItem icon="tag" onSelect={() => setOrganizing({ id: item.id, title, vaultId: item.vault_id ?? "", organization: { folder: org.folder, tags: org.tags, favourite } })}>
             Folder and tags…
+          </AdaptiveMenuItem>
+        )}
+        {canShare(item) && (
+          <AdaptiveMenuItem icon="share" onSelect={() => setSharing(true)}>
+            Share…
           </AdaptiveMenuItem>
         )}
         {others.length > 0 && (
@@ -1033,6 +1033,7 @@ function useItemMenu({ item, title, rows, summary, canEdit, onChanged, onReplace
         confirmLabel={ask === "jewel-on" ? "Keep as a crown jewel" : "Stop keeping it"}
         onConfirm={() => jewel(ask === "jewel-on")}
       />
+      {canEdit && <ItemShare item={item} title={title} onNotice={onNotice} open={sharing} onOpenChange={setSharing} />}
     </>
   )
 

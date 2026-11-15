@@ -186,7 +186,7 @@ describe("the item's ⋯ menu (brief I1)", () => {
   it("the person's own item: every row, Move to Recently deleted last", async () => {
     mount(shows(login()), { rows: [summary()] })
     const rows = await rowsOf()
-    expect(rows).toEqual(["Add to favorites", "Folder and tags…", "Archive", "History", "Signing in on a TV?", "Keep as a crown jewel", "Move to Recently deleted"])
+    expect(rows).toEqual(["Add to favorites", "Folder and tags…", "Share…", "Archive", "History", "Signing in on a TV?", "Keep as a crown jewel", "Move to Recently deleted"])
   })
 
   it("a share with edit keeps the menu; a view-only share and a fill-only share have none", async () => {

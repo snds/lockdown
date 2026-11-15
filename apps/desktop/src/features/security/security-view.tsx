@@ -115,6 +115,9 @@ function usePushedInPage(pushed: boolean, onBack: () => void) {
 export function SecurityView({ rows: given, onDevices, onRecovery, onChanged, onNotice, surface = "desktop" }: SecurityViewProps) {
   const client = useClient()
   const frame = useAppFrame()
+  // A list of rows on a phone is full bleed, as Items' list and Mobile / 09 draw it: the rows run edge to edge
+  // and keep their own 16 inside, so their titles line up with the Section Header above (the page keeps the 16).
+  const rowList = frame.phone ? "-mx-4 flex flex-col" : "flex flex-col"
   const web = surface === "web"
   const { go } = usePlaces()
   const { edit } = useShell()
@@ -370,7 +373,7 @@ export function SecurityView({ rows: given, onDevices, onRecovery, onChanged, on
               }
             />
             {!open && <p className="type-caption pt-2 text-muted-foreground">{hint}</p>}
-            <ul aria-label={heading} className="flex flex-col">
+            <ul aria-label={heading} className={rowList}>
               {shown.map((f) => (
                 <FindingRow key={f.id} finding={f} selected={selectedFinding === f.id} onOpen={openFinding} />
               ))}
@@ -401,7 +404,7 @@ export function SecurityView({ rows: given, onDevices, onRecovery, onChanged, on
       {attention.length > 0 && (
         <section aria-labelledby="needs-attention" className="flex flex-col">
           <SectionHeader id="needs-attention" title="Needs attention" count={attention.length} />
-          <ul aria-label="Needs attention" className="flex flex-col">
+          <ul aria-label="Needs attention" className={rowList}>
             {attention.map((r) => (
               <ListRow
                 key={r.id}
@@ -420,7 +423,7 @@ export function SecurityView({ rows: given, onDevices, onRecovery, onChanged, on
       {expiring.length > 0 && (
         <section aria-labelledby="expiring" className="flex flex-col">
           <SectionHeader id="expiring" title="Expiring" count={expiring.length} />
-          <ul aria-label="Expiring" className="flex flex-col">
+          <ul aria-label="Expiring" className={rowList}>
             {expiring.map((r) => (
               <ListRow
                 key={r.id}
@@ -441,7 +444,7 @@ export function SecurityView({ rows: given, onDevices, onRecovery, onChanged, on
 
   const dismissedList = !web && dismissed.length > 0 && (
     <SectionHeader collapsible defaultOpen={false} title="Dismissed" count={dismissed.length} summary={`${countName(dismissed.length, "finding")} dismissed or snoozed`}>
-      <ul aria-label="Dismissed and snoozed" className="flex flex-col">
+      <ul aria-label="Dismissed and snoozed" className={rowList}>
         {dismissed.map((f) => (
           <FindingRow key={f.id} finding={f} selected={selectedFinding === f.id} onOpen={openFinding} onRestore={restore} busy={busy} />
         ))}
@@ -524,7 +527,7 @@ export function SecurityView({ rows: given, onDevices, onRecovery, onChanged, on
   const wholeLists = (
     <section aria-labelledby="whole-lists" className="flex flex-col">
       <SectionHeader id="whole-lists" title="Whole lists" />
-      <ul aria-label="Whole lists" className="flex flex-col">
+      <ul aria-label="Whole lists" className={rowList}>
         {fullList("attention", "Needs attention, in full", attention.length)}
         {fullList("expiring", "Expiring, in full", expiring.length)}
       </ul>
@@ -648,7 +651,8 @@ export function SecurityView({ rows: given, onDevices, onRecovery, onChanged, on
       return (
         <div ref={root} className="flex min-h-full items-stretch">
           <h1 className="sr-only">Health</h1>
-          <div className={`flex shrink-0 flex-col gap-6 pe-3 ${frame.width === "wide" || frame.width === "ultrawide" ? "w-(--c-app-frame-list)" : "w-(--c-app-frame-list-compact)"}`}>
+          {/* The Items view's geometry (Desktop / 08 as 01 to 04): the list its full knob wide, 12 to the rule, 24 to the detail. */}
+          <div className={`me-3 flex shrink-0 flex-col gap-6 ${frame.width === "wide" || frame.width === "ultrawide" ? "w-(--c-app-frame-list)" : "w-(--c-app-frame-list-compact)"}`}>
             {subTitle && <h2 className="type-title">{subTitle}</h2>}
             {subList}
           </div>

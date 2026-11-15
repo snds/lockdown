@@ -95,7 +95,7 @@ describe("adding a device (brief T2, A1)", () => {
     await waitFor(() => expect(linkDecline).toHaveBeenCalled())
   })
 
-  it("closing the offer declines the link, and copies the code on COPY", async () => {
+  it("closing the offer declines the link, and offers no copy past the shell's clipboard", async () => {
     const linkDecline = vi.fn(() => Promise.resolve())
     const writeText = vi.fn(() => Promise.resolve())
     mount(
@@ -114,13 +114,10 @@ describe("adding a device (brief T2, A1)", () => {
     })
     await user.click(screen.getByRole("button", { name: "Add device" }))
     const offer = await screen.findByRole("dialog", { name: "Add a device" })
-    await user.click(within(offer).getByRole("button", { name: "Copy the device code" }))
-    expect(writeText).toHaveBeenCalledWith("7KQ2M-9XH4P")
-    expect(
-      await within(offer).findByRole("button", {
-        name: "Copied the device code",
-      }),
-    ).toBeInTheDocument()
+    // The code is shown to type on the other device; nothing here writes it to the system clipboard (D316).
+    expect(within(offer).getByLabelText("Device code")).toHaveTextContent("7KQ2M-9XH4P")
+    expect(within(offer).queryByRole("button", { name: /copy/i })).toBeNull()
+    expect(writeText).not.toHaveBeenCalled()
     await user.click(within(offer).getByRole("button", { name: "Cancel" }))
     await waitFor(() => expect(linkDecline).toHaveBeenCalled())
   })

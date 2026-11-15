@@ -368,7 +368,9 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
   let header: ReactNode
   if (shellHead) {
     header = (
-      <AppFramePageHead size={head.size} overline={head.overline} title={head.title} count={head.count} meta={head.meta} actions={head.actions} switcher={head.switcher} below={head.below} gap={head.gap} />
+      <>
+        <AppFramePageHead size={head.size} overline={head.overline} title={head.title} count={head.count} meta={head.meta} actions={head.actions} switcher={head.switcher} below={head.below} gap={head.gap} />
+      </>
     )
   } else if (view === "all" && !scope) {
     // All items, as Desktop / 01 draws it: no visible head, the search field first. Typing opens Search.
@@ -472,9 +474,13 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
   const list = (
     <div className="flex flex-col gap-4 pb-6">
       {shellHead && frame.layout === "rail" && (
-        // A phone on its side draws the page head collapsed, without its actions: the sort stays reachable here.
+        // A phone on its side draws the page head collapsed, without its actions (a Unicron gap): the sort and the
+        // shell's Check again stay reachable here (cross-app §8: every pull to refresh has a plain Check again).
         <AppFrameInset>
-          <div className="flex justify-end">{sortMenu(sortTrigger)}</div>
+          <div className="flex justify-end gap-2">
+            {sortMenu(sortTrigger)}
+            {shellActions}
+          </div>
         </AppFrameInset>
       )}
       {(unverified || (rows && error) || actionError || trashCaption) && (

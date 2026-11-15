@@ -52,7 +52,6 @@ export function AddDevice({ onNotice, onChanged }: AddDeviceProps) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [ranOut, setRanOut] = useState(false)
-  const [copied, setCopied] = useState(false)
   const [total, setTotal] = useState(600)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   // Never more than the link was offered with: the clock above may have been read before the offer came.
@@ -76,12 +75,6 @@ export function AddDevice({ onNotice, onChanged }: AddDeviceProps) {
     }, POLL_MS)
     return stop
   }, [depth, link, stop])
-
-  useEffect(() => {
-    if (!copied) return
-    const t = setTimeout(() => setCopied(false), 2000)
-    return () => clearTimeout(t)
-  }, [copied])
 
   if (!depth) return null
 
@@ -122,16 +115,6 @@ export function AddDevice({ onNotice, onChanged }: AddDeviceProps) {
     }
   }
 
-  const copy = async () => {
-    if (!link) return
-    try {
-      await navigator.clipboard.writeText(link.code)
-      setCopied(true)
-    } catch (e) {
-      setError(describeError(e))
-    }
-  }
-
   const comparing = link?.state === "compare" && !!link.sas
   const offering = link !== null && !comparing
   const closed = link?.state === "declined" || link?.state === "closed"
@@ -159,14 +142,11 @@ export function AddDevice({ onNotice, onChanged }: AddDeviceProps) {
         {link && !closed && (
           <div className="flex flex-col items-center gap-4">
             <QrCode modules={link.qr_rows ?? []} label="QR code to add a device" />
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <p aria-label="Device code" className="type-code-display text-text-body tabular-nums">
-                {link.code}
-              </p>
-              <Button size="sm" variant="ghost" onClick={() => void copy()} aria-label={copied ? "Copied the device code" : "Copy the device code"}>
-                {copied ? "Copied" : "Copy"}
-              </Button>
-            </div>
+            {/* No COPY here: every copy goes through the shell's clipboard, which clears it and keeps it out of
+                clipboard history (D316), and the core has no such copy for a plain string yet (a gap for Sean). */}
+            <p aria-label="Device code" className="type-code-display text-text-body tabular-nums">
+              {link.code}
+            </p>
             <div className="w-full">
               <Progress
                 variant="segmented"

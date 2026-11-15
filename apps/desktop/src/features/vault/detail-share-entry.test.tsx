@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
 import { GateProvider } from "@/app/gate"
@@ -87,20 +87,28 @@ describe("an item by the person's right in it", () => {
     mount(login("edit"))
     expect(await screen.findByRole("button", { name: "Edit" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument()
-    expect(await menuRows()).toContain("Move to Recently deleted")
+    const rows = await menuRows()
+    expect(rows).toContain("Move to Recently deleted")
+    expect(rows).not.toContain("Share…")
   })
 
-  it("the person's own item offers Share from the detail: with someone, or as a link", async () => {
+  it("the person's own item offers Share… in its ⋯ menu (brief 3.6): with someone, or as a link", async () => {
     mount(login())
     const user = userEvent.setup({ pointerEventsCheck: 0 })
-    await user.click(await screen.findByRole("button", { name: "Share" }))
-    expect(await screen.findByRole("menuitem", { name: "With someone…" })).toBeInTheDocument()
-    expect(screen.getByRole("menuitem", { name: "As a link…" })).toBeInTheDocument()
+    // Not a button of its own beside Edit: one strong control in the head.
+    expect(await screen.findByRole("button", { name: "More for this item" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument()
+    expect(await menuRows()).toContain("Share…")
+    await user.click(screen.getByRole("menuitem", { name: "Share…" }))
+    const ways = await screen.findByRole("list", { name: /^Ways to share/ })
+    expect(within(ways).getByText("With someone…")).toBeInTheDocument()
+    expect(within(ways).getByText("As a link…")).toBeInTheDocument()
   })
 
   it("a crown jewel offers no sharing at all", async () => {
     mount({ ...login(), crown_jewel: true })
     expect(await screen.findByRole("button", { name: "More for this item" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument()
+    expect(await menuRows()).not.toContain("Share…")
   })
 })

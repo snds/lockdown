@@ -40,14 +40,8 @@ const fromMenu = (row: string | RegExp): Step => ({
 })
 
 const ACTIONS = {
-  // Share stays ItemShare's own button until edges-8 lets the ⋯ open it: on the overline's line on a
-  // desktop, in Details on a phone.
-  Share: {
-    run: async () => {
-      if (!shown(/^Share$/)) await runSteps([openDetails()])
-      await runSteps([{ click: /^Share$/ }])
-    },
-  },
+  // Share… is a row of the item's ⋯ (brief 3.6); it opens the two ways to share in a small layer.
+  Share: fromMenu("Share…"),
   Edit: { click: "Edit", role: "button" },
   // Moving to Recently deleted asks nothing; its toast offers UNDO (Q14).
   Trash: fromMenu("Move to Recently deleted"),

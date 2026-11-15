@@ -22,6 +22,7 @@ import { SecretField } from "@unicron/ui/security/secret-field"
 import { useGate } from "@/app/gate"
 import { notify } from "@/app/notify"
 import { ScreenHead } from "@/app/page-head"
+import { FullScreenEntry } from "@/components/full-screen-entry"
 import { useStatusItem } from "@/app/status"
 import { describeError, useClient } from "@/core/client"
 import type { CodeView, ItemSummary } from "@/core/types"
@@ -222,6 +223,7 @@ function CodeOnPage({ code, now, expiresAt, layout, onOpenItem }: { code: CodeVi
  */
 function AddCodeDialog({ open, logins, onClose, onAdded }: { open: boolean; logins: ItemSummary[]; onClose: () => void; onAdded: () => void }) {
   const client = useClient()
+  const phone = useAppFrame().phone
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [uri, setUri] = useState("")
@@ -255,6 +257,42 @@ function AddCodeDialog({ open, logins, onClose, onAdded }: { open: boolean; logi
       setBusy(false)
     }
   }
+  const form = (
+    <form id="add-code" onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
+      <SecretField
+        mode="edit"
+        label="Set-up link"
+        name="uri"
+        mono
+        value={uri}
+        onChange={setUri}
+        autoComplete="off"
+        placeholder="otpauth://totp/…"
+        description="Paste the otpauth:// or steam:// link the site gave you."
+        error={error ?? undefined}
+      />
+      <Field>
+        <FieldLabel htmlFor="code-into">Keep it</FieldLabel>
+        <NativeSelect id="code-into" name="into" value={into} onChange={(e) => setInto(e.currentTarget.value)}>
+          <NativeSelectOption value="">As its own item</NativeSelectOption>
+          {logins.map((l) => (
+            <NativeSelectOption key={l.id} value={l.id}>
+              Inside {l.title || l.site}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        <FieldDescription>A code usually belongs to the login it protects.</FieldDescription>
+      </Field>
+      {!into && <TextField label="Title" name="title" autoComplete="off" value={title} onChange={(e) => setTitle(e.currentTarget.value)} helper="Left empty, the issuer and account are used." />}
+    </form>
+  )
+  // On a phone the whole screen with the checkmark, as every form there (briefs 3.5, C1); a dialog on a desktop.
+  if (phone)
+    return (
+      <FullScreenEntry open={open} onClose={close} title="Add a code" primary="Add code" formId="add-code" busy={busy}>
+        {form}
+      </FullScreenEntry>
+    )
   return (
     <AdaptiveDialog
       open={open}
@@ -274,33 +312,7 @@ function AddCodeDialog({ open, logins, onClose, onAdded }: { open: boolean; logi
         </>
       }
     >
-      <form id="add-code" onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
-        <SecretField
-          mode="edit"
-          label="Set-up link"
-          name="uri"
-          mono
-          value={uri}
-          onChange={setUri}
-          autoComplete="off"
-          placeholder="otpauth://totp/…"
-          description="Paste the otpauth:// or steam:// link the site gave you."
-          error={error ?? undefined}
-        />
-        <Field>
-          <FieldLabel htmlFor="code-into">Keep it</FieldLabel>
-          <NativeSelect id="code-into" name="into" value={into} onChange={(e) => setInto(e.currentTarget.value)}>
-            <NativeSelectOption value="">As its own item</NativeSelectOption>
-            {logins.map((l) => (
-              <NativeSelectOption key={l.id} value={l.id}>
-                Inside {l.title || l.site}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-          <FieldDescription>A code usually belongs to the login it protects.</FieldDescription>
-        </Field>
-        {!into && <TextField label="Title" name="title" autoComplete="off" value={title} onChange={(e) => setTitle(e.currentTarget.value)} helper="Left empty, the issuer and account are used." />}
-      </form>
+      {form}
     </AdaptiveDialog>
   )
 }

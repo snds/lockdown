@@ -397,6 +397,7 @@ function VaultListHead({
   const [switching, setSwitching] = useState(false)
   const items = nav.area === "vault" && sectionOf(nav) === "items"
   const box = useBoxOf(pageHead, switching)
+  const chipBox = useRef<HTMLDivElement | null>(null)
   const scoped = useMemo(() => (rows && nav.scope ? inScope(rows, nav.scope, vaults) : rows), [rows, nav.scope, vaults])
   const counts = useMemo(() => (scoped ? countViews(scoped) : null), [scoped])
   const types = useMemo(() => (scoped ? countTypes(scoped) : null), [scoped])
@@ -406,6 +407,19 @@ function VaultListHead({
   const bannerShows = useBannerShows(bannerPlace ?? "items") && bannerPlace !== null
   const banner = bannerShows && bannerPlace ? <BannerSlot place={bannerPlace} /> : undefined
   const checkAgain = onCheckAgain ? <IconButton label="Check again" icon="renew" variant="ghost" onClick={() => void onCheckAgain()} /> : undefined
+
+  // A chip whose view is empty here is left out of the row (brief X1) and listed under MORE instead, so no
+  // view the sidebar offers is out of reach where the sidebar's groups don't show. Codes is its own tab.
+  const main = MAIN_VIEWS.filter((v) => v !== "codes")
+  const chips: ListView[] = ["all", ...main.filter((v) => (counts?.[v] ?? 0) > 0)]
+  const more = [...main.filter((v) => !chips.includes(v)), ...MORE_VIEWS.filter((v) => (counts?.[v] ?? 0) > 0)]
+  // A view from More joins the row while it is the one showing.
+  if (!chips.includes(nav.view)) chips.push(nav.view)
+  // Only whole chips: the row keeps All and the one showing, then as many of the rest, in order, as fit beside
+  // MORE; the others are listed under MORE. No chip is cut under the trigger (brief X1).
+  const chipFit = useChipFit(chipBox, chipKey(chips, nav.view))
+  const shownChips = chipFit && chipFit.key === chipKey(chips, nav.view) ? (chipFit.shown as ListView[]) : chips
+  const moreViews = [...chips.filter((v) => !shownChips.includes(v)), ...more]
 
   if (groups || !items) {
     const own: PageHeadFromShell | null = banner || checkAgain ? { below: banner, actions: checkAgain } : null
@@ -428,15 +442,9 @@ function VaultListHead({
     if (next) go(next)
   }
   const pick = (view: ListView) => navigate({ ...nav, area: "vault", view })
-  // A chip whose view is empty here is left out of the row (brief X1) and listed under MORE instead, so no
-  // view the sidebar offers is out of reach where the sidebar's groups don't show. Codes is its own tab.
-  const main = MAIN_VIEWS.filter((v) => v !== "codes")
-  const chips: ListView[] = ["all", ...main.filter((v) => (counts?.[v] ?? 0) > 0)]
-  const more = [...main.filter((v) => !chips.includes(v)), ...MORE_VIEWS.filter((v) => (counts?.[v] ?? 0) > 0)]
-  // A view from More joins the row while it is the one showing.
-  if (!chips.includes(nav.view)) chips.push(nav.view)
 
   const chipRow = (
+    <div ref={chipBox} className="min-w-0">
       <FilterChipGroup
         type="single"
         scroll
@@ -454,9 +462,9 @@ function VaultListHead({
               </FilterChip>
             }
           >
-            {more.length > 0 && (
-              <AdaptiveMenuGroup label={`Types ${countWords(more.length)}`}>
-                {more.map((v) => (
+            {moreViews.length > 0 && (
+              <AdaptiveMenuGroup label={`Types ${countWords(moreViews.length)}`}>
+                {moreViews.map((v) => (
                   <AdaptiveMenuItem key={v} icon={viewIcon(v)} count={counts?.[v]} current={nav.view === v} onSelect={() => pick(v)}>
                     {VIEW_LABELS[v]}
                   </AdaptiveMenuItem>
@@ -473,13 +481,14 @@ function VaultListHead({
           </AdaptiveMenu>
         }
       >
-        {chips.map((v) => (
+        {shownChips.map((v) => (
           // Only the active chip shows its count, as drawn.
           <FilterChip key={v} value={v} count={nav.view === v && counts ? countWords(counts[v]) : undefined}>
             {v === "all" ? "All" : VIEW_LABELS[v]}
           </FilterChip>
         ))}
       </FilterChipGroup>
+    </div>
   )
   const head: PageHeadFromShell = {
     overline: types === null ? scopeName : `${scopeName} // ${countWords(types)} ${types === 1 ? "type" : "types"}`,
@@ -518,3 +527,52 @@ function VaultListHead({
   )
 }
 
+
+/** The chips and the one showing, as one key: a new set is measured again. */
+const chipKey = (chips: readonly string[], active: string) => `${active}|${chips.join(",")}`
+
+/**
+ * Which chips of the phone's row fit whole beside MORE (brief X1). The row is
+ * drawn with every chip, measured, then drawn with the ones that fit: All and
+ * the one showing first, then the rest in order while there is room. Measured
+ * again when the set (`key`) or the width changes. Without a layout (no
+ * width) every chip stays.
+ */
+function useChipFit(box: React.RefObject<HTMLDivElement | null>, key: string): { key: string; shown: string[] } | null {
+  const [fit, setFit] = useState<{ key: string; shown: string[] } | null>(null)
+  const [width, setWidth] = useState(0)
+  useEffect(() => {
+    const el = box.current
+    if (!el || typeof ResizeObserver === "undefined") return
+    const watch = new ResizeObserver(() => setWidth(el.clientWidth))
+    watch.observe(el)
+    return () => watch.disconnect()
+  })
+  // A new width measures every chip again.
+  useLayoutEffect(() => setFit(null), [width])
+  useLayoutEffect(() => {
+    // Measured for this set already: the row shows the ones that fit.
+    if (fit?.key === key) return
+    const list = box.current?.querySelector<HTMLElement>('[data-slot="filter-chip-list"]')
+    if (!list) return
+    const room = list.clientWidth
+    if (room === 0) return
+    const chips = Array.from(list.querySelectorAll<HTMLElement>('[data-slot="filter-chip"][data-value]'))
+    const values = chips.map((c) => c.dataset.value ?? "")
+    const active = chips.find((c) => c.hasAttribute("data-active"))?.dataset.value ?? values[0] ?? ""
+    const gap = parseFloat(getComputedStyle(list).columnGap) || 0
+    const widthOf = new Map(chips.map((c) => [c.dataset.value ?? "", c.getBoundingClientRect().width]))
+    const keep = new Set([values[0] ?? "", active])
+    let used = [...keep].reduce((sum, v, i) => sum + (widthOf.get(v) ?? 0) + (i > 0 ? gap : 0), 0)
+    for (const v of values) {
+      if (keep.has(v)) continue
+      const w = (widthOf.get(v) ?? 0) + gap
+      // A hard stop at the first chip that does not fit: the row keeps its order, and the rest are under MORE.
+      if (used + w > room) break
+      keep.add(v)
+      used += w
+    }
+    setFit({ key, shown: values.filter((v) => keep.has(v)) })
+  }, [box, fit, key])
+  return fit
+}

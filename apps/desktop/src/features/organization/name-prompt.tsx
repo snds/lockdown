@@ -1,7 +1,8 @@
 import { useId, useState, type FormEvent } from "react"
 
-import { AdaptiveDialog, Button, ConfirmDialog, TextField } from "@unicron/ui"
+import { AdaptiveDialog, Button, ConfirmDialog, TextField, useAppFrame } from "@unicron/ui"
 
+import { FullScreenEntry } from "@/components/full-screen-entry"
 import { describeError } from "@/core/client"
 
 export interface NameAsk {
@@ -21,12 +22,14 @@ export interface NameAsk {
 
 /**
  * Asks for one name (a vault, a folder, a tag): a Form with one Text Field
- * (brief X5, "Name prompts"). A dialog on a desktop, a sheet on a phone.
+ * (brief X5, "Name prompts"). A dialog on a desktop; on a phone the whole
+ * screen with the checkmark, as every form there (brief 3.5).
  * The error is the field's own, under it; the form stays open until the
  * name is saved. `null` is closed.
  */
 export function NamePrompt({ ask, onClose }: { ask: NameAsk | null; onClose: () => void }) {
   const formId = useId()
+  const phone = useAppFrame().phone
   const [name, setName] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -57,6 +60,30 @@ export function NamePrompt({ ask, onClose }: { ask: NameAsk | null; onClose: () 
       setBusy(false)
     }
   }
+  const field = (
+    <form id={formId} onSubmit={(e) => void submit(e)} noValidate className="flex flex-col gap-4">
+      {phone && ask?.description && <p className="type-body text-text-secondary">{ask.description}</p>}
+      <TextField
+        label={ask?.label}
+        value={name}
+        onChange={(e) => {
+          setName(e.target.value)
+          if (error) setError(null)
+        }}
+        autoComplete="off"
+        spellCheck={false}
+        autoFocus
+        helper={ask?.hint}
+        error={error ?? undefined}
+      />
+    </form>
+  )
+  if (phone)
+    return (
+      <FullScreenEntry open={ask !== null} onClose={onClose} title={ask?.title ?? ""} primary={ask?.confirm ?? ""} formId={formId} busy={busy}>
+        {field}
+      </FullScreenEntry>
+    )
   return (
     <AdaptiveDialog
       open={ask !== null}
@@ -77,21 +104,7 @@ export function NamePrompt({ ask, onClose }: { ask: NameAsk | null; onClose: () 
         </>
       }
     >
-      <form id={formId} onSubmit={(e) => void submit(e)} noValidate>
-        <TextField
-          label={ask?.label}
-          value={name}
-          onChange={(e) => {
-            setName(e.target.value)
-            if (error) setError(null)
-          }}
-          autoComplete="off"
-          spellCheck={false}
-          autoFocus
-          helper={ask?.hint}
-          error={error ?? undefined}
-        />
-      </form>
+      {field}
     </AdaptiveDialog>
   )
 }
