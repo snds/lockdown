@@ -276,15 +276,17 @@ test("a one-time code fills after the second action, single field and split boxe
   await menu.getByRole("button", { name: /Local site/ }).click();
   await expect(menu.locator("body")).toContainText("deliberate");
   await expect(page.locator("#code")).toHaveValue("");
-  // Read the code before the fill: the fill then gets this window's code or,
-  // if the 30-second window rolls over in between, the next one. Read after
-  // the fill, a rollover would leave the filled code in neither.
+  // Read the code before the fill and again after it: the fill happens between
+  // the two, so it is one of them even if the 30-second window rolls over. The
+  // fixture's "next" can't stand in for the second read: it reads the clock a
+  // second time, so a rollover between its two reads skips a window.
   const code = await desktop.ask(`code ${items.local}`, "code");
   await menu.getByRole("button", { name: "Fill code" }).click();
   // The fill lands after the endpoint answers; wait for it rather than read at once.
   await expect(page.locator("#code")).not.toHaveValue("");
   const filled = await page.locator("#code").inputValue();
-  expect([code.code, code.next]).toContain(filled);
+  const after = await desktop.ask(`code ${items.local}`, "code");
+  expect([code.code, after.code]).toContain(filled);
 
   await page.goto(at("localhost", "/ext/code.html?split=1"));
   await page.focus("#d0");
@@ -294,7 +296,7 @@ test("a one-time code fills after the second action, single field and split boxe
   await expect(page.locator("#d5")).not.toHaveValue("");
   const digits = await page.$$eval("#fields input", (els) => els.map((e) => (e as HTMLInputElement).value).join(""));
   const again = await desktop.ask(`code ${items.local}`, "code");
-  expect([again.code, again.next, code.code, code.next]).toContain(digits);
+  expect([after.code, again.code]).toContain(digits);
   await page.close();
 });
 
