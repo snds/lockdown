@@ -122,7 +122,8 @@ test("an unpaired popup opens Lockdown, which brings the app's window forward", 
 test("pairing shows the same code in the browser and the app, and the app approves it", async () => {
   const p = await popup();
   await p.getByRole("button", { name: "Pair with Lockdown" }).click();
-  const shown = (await p.getByLabel(/^Pairing code/).textContent())?.replace(/\s/g, "");
+  // The code in its groups (brief B1: DigitGroups), as the person reads it.
+  const shown = (await p.locator('[data-slot="digit-groups-group"]').allTextContents()).join("");
   const request = await desktop.next("pairing");
   expect(shown).toBe(request.code);
   expect(String(request.name)).toMatch(/on Linux|on macOS|on Windows/);
@@ -367,7 +368,9 @@ test("the popup fills the page in front", async () => {
   await page.goto(at("localhost", "/ext/login.html"));
   const tab = await tabId(`*://localhost/*`);
   const p = await popup(`?tab=${tab}`);
-  await expect(p.getByRole("heading", { name: /For localhost/ })).toBeVisible();
+  // The host is in the top line; the section is the page's (brief B1).
+  await expect(p.locator("header")).toContainText("localhost");
+  await expect(p.getByRole("heading", { name: /For this page/ })).toBeVisible();
   await p.getByRole("button", { name: "Fill" }).click();
   await expect(page.locator("#pass")).toHaveValue("correct-horse-1");
   await p.close();
@@ -386,20 +389,22 @@ test("the popup's quick access forgives a typo and shows a code, never its set-u
   await expect(results.getByRole("listitem")).toHaveCount(1);
   await expect(results).toContainText("Close match");
   await results.getByRole("button", { name: "Show code for Shop code" }).click();
-  await expect(p.getByLabel(/^Code \d \d \d \d \d \d$/)).toBeVisible();
+  // The code in place is unicron's CodeDisplay (compact), read one character at a time.
+  await expect(p.getByRole("group", { name: /^Code for this account: \d \d \d, \d \d \d\./ })).toBeVisible();
   await expect(p.locator("body")).not.toContainText("JBSWY3DP");
   // One action per row (review R16): while the code shows, that same place
   // copies it, through the app.
   await expect(results.getByRole("button", { name: "Show code for Shop code" })).toHaveCount(0);
   const copied = desktop.next("copied");
-  await results.getByRole("button", { name: "Copy code" }).click();
+  await results.locator('[data-slot="list-row-action"]').getByRole("button", { name: "Copy code" }).click();
   expect((await copied).len).toBe(6);
   await p.close();
 });
 
-// Review R16: every result is one row, the kind's glyph, the title, one line
-// under it and one action at the trailing edge, which never wraps under the
-// words however long they run; text is 13 px or more.
+// Review R16 and brief B1: every result is one compact row, the title, one
+// mono line under it and one action at the trailing edge, which never wraps
+// under the words however long they run; reading text is 13 px or more, and
+// the only smaller text is the overline (the mono line is one).
 test("every popup result has one row anatomy with its action trailing, at 13 px or more", async () => {
   await desktop.ask(
     "login http://long.test someone.with.a.long.address@example.com long-pass-6 A login whose title runs well past the width of the popup",
@@ -413,16 +418,14 @@ test("every popup result has one row anatomy with its action trailing, at 13 px 
   await expect(row.getByRole("button")).toHaveCount(1);
   const geometry = await row.evaluate((el) => {
     const box = (sel: string) => el.querySelector(sel)!.getBoundingClientRect();
-    const glyph = box('[data-slot="item-media"]');
-    const title = box('[data-slot="item-title"]');
-    const sub = box('[data-slot="item-description"]');
-    const action = box('[data-slot="item-actions"]');
+    const title = box('[data-slot="list-row-title"]');
+    const sub = box('[data-slot="list-row-meta"]');
+    const action = box('[data-slot="list-row-action"]');
     const row = el.getBoundingClientRect();
-    return { glyph, title, sub, action, row };
+    return { title, sub, action, row };
   });
-  // Glyph first, words, then the action at the trailing edge, beside the
-  // title and the subtitle rather than under them, inside the row.
-  expect(geometry.glyph.right).toBeLessThanOrEqual(geometry.title.left + 1);
+  // The words, then the action at the trailing edge, beside the title and
+  // the line under it rather than under them, inside the row.
   expect(geometry.action.left).toBeGreaterThanOrEqual(geometry.title.right - 1);
   expect(geometry.action.left).toBeGreaterThanOrEqual(geometry.sub.right - 1);
   expect(geometry.action.top).toBeLessThan(geometry.sub.bottom);
@@ -449,12 +452,21 @@ test("every popup result has one row anatomy with its action trailing, at 13 px 
   expect(words.length).toBeGreaterThanOrEqual(3);
   expect(words.filter((w) => w.px < 11)).toEqual([]);
   expect(words.filter((w) => w.px < 13 && !w.label)).toEqual([]);
-  // A result's own words, its title and the line under it, are reading text, never labels.
+  // A result's title is reading text, never a label; the line under it is
+  // the overline (mono capitals), the one role allowed under 13 px.
   const reading = await results.evaluate((list) =>
-    Array.from(list.querySelectorAll('[data-slot="item-title"], [data-slot="item-description"]')).map((el) => parseFloat(getComputedStyle(el).fontSize)),
+    Array.from(list.querySelectorAll('[data-slot="list-row-title"]')).map((el) => parseFloat(getComputedStyle(el).fontSize)),
   );
-  expect(reading.length).toBeGreaterThanOrEqual(2);
+  expect(reading.length).toBeGreaterThanOrEqual(1);
   expect(reading.filter((px) => px < 13)).toEqual([]);
+  const lines = await results.evaluate((list) =>
+    Array.from(list.querySelectorAll('[data-slot="list-row-meta"]')).map((el) => {
+      const css = getComputedStyle(el);
+      return css.textTransform === "uppercase" && /Geist Mono/.test(css.fontFamily);
+    }),
+  );
+  expect(lines.length).toBeGreaterThanOrEqual(1);
+  expect(lines.filter((overline) => !overline)).toEqual([]);
   await p.close();
 });
 
@@ -515,7 +527,8 @@ test("a locked app says so instead of filling", async () => {
   await expect(menu.locator("body")).toContainText("locked");
   // The popup can't search while locked; it opens Lockdown to unlock there.
   const p = await popup();
-  await expect(p.getByText("Lockdown is locked. Unlock it in the app to fill and search.")).toBeVisible();
+  await expect(p.getByRole("heading", { name: "Lockdown is locked." })).toBeVisible();
+  await expect(p.getByText("Unlock it in the app to fill and search.")).toBeVisible();
   const shown = desktop.next("shown");
   await p.getByRole("button", { name: "Open Lockdown" }).click();
   await shown;

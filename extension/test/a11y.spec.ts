@@ -205,24 +205,47 @@ test("the passkey sheet, saving and then signing in, has no serious or critical 
   }
 });
 
-// docs/plan/37-cli-popup.md §2 (review R16): the popup's results in their one
-// row anatomy, and the locked state with Open Lockdown, against the same axe
-// rules in light and dark.
+// docs/plan/37-cli-popup.md §2 (review R16) and brief B1 (doc 87): the
+// popup's states against the same axe rules in light and dark: the page's
+// logins with its top line, Fix this page (the second view), the search's
+// rows, and the locked state with Open Lockdown. The capture harness runs axe
+// on every popup state, the ones this real build can't reach included
+// (connecting, no app, not paired, pairing, the look-alike stop).
 for (const scheme of SCHEMES) {
-  test(`the popup's rows and its locked state have no serious or critical axe violation (${scheme})`, async () => {
+  test(`the popup's states have no serious or critical axe violation (${scheme})`, async () => {
+    const page = await ctx.newPage();
+    await page.goto(at("localhost", "/ext/login.html"));
+    const worker = ctx.serviceWorkers()[0];
+    const tab = await worker.evaluate(async () => (await chrome.tabs.query({ url: "*://localhost/*" }))[0].id as number);
     const p = await ctx.newPage();
     await p.emulateMedia({ colorScheme: scheme });
-    await p.goto(`chrome-extension://${DEV_ID}/popup.html`);
+    await p.goto(`chrome-extension://${DEV_ID}/popup.html?tab=${tab}`);
+    // The page's logins: one h1 (read only), a section heading, rows as list items.
+    const logins = p.getByRole("list", { name: /^Logins for localhost/ });
+    await expect(logins.getByRole("listitem").first()).toBeVisible();
+    await expect(p.getByRole("heading", { level: 1 })).toHaveCount(1);
+    await expect(logins.getByRole("listitem")).toHaveCount(await logins.locator('[data-slot="list-row-title"]').count());
+    expect(blocking(await axeIn(p.mainFrame()))).toEqual([]);
+    // Fix this page: a second view with its own h1, focus on it.
+    await p.getByRole("button", { name: "Fix this page" }).click();
+    await expect(p.getByRole("heading", { level: 1, name: "Fix this page" })).toBeFocused();
+    await expect(p.getByRole("button", { name: "Save fix" })).toBeVisible();
+    expect(blocking(await axeIn(p.mainFrame()))).toEqual([]);
+    await p.getByRole("button", { name: "Back" }).click();
+    await expect(p.getByRole("button", { name: "Fix this page" })).toBeFocused();
+    // Search: rows as list items.
     await p.getByRole("searchbox", { name: "Search Lockdown" }).fill("local");
     const results = p.getByRole("list", { name: "Results" });
     await expect(results.getByRole("listitem").first()).toBeVisible();
-    await expect(results.getByRole("listitem")).toHaveCount(await results.locator('[data-slot="item-media"]').count());
+    await expect(results.getByRole("listitem")).toHaveCount(await results.locator('[data-slot="list-row-title"]').count());
     expect(blocking(await axeIn(p.mainFrame()))).toEqual([]);
     await desktop.ask("lock", "locked");
     await p.reload();
     await expect(p.getByRole("button", { name: "Open Lockdown" })).toBeVisible();
+    await expect(p.getByRole("heading", { level: 1, name: "Lockdown is locked." })).toBeVisible();
     expect(blocking(await axeIn(p.mainFrame()))).toEqual([]);
     await desktop.ask("unlock", "unlocked");
     await p.close();
+    await page.close();
   });
 }

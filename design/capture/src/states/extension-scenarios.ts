@@ -19,7 +19,16 @@ const menu = (over: Partial<MenuData>): MenuData => ({
   ...over,
 })
 
-const bank = () => ({ url: "https://secure.bluefin-bank.example/login", matches: { host: "secure.bluefin-bank.example", logins: [candidate(byTitle("Bluefin Bank"), "exact", true)], lookalike_of: [], secure: true } })
+const bank = () => ({
+  url: "https://secure.bluefin-bank.example/login",
+  matches: {
+    host: "secure.bluefin-bank.example",
+    // The first from quick access; the second a crown jewel, which shows its title only (D113).
+    logins: [candidate(byTitle("Bluefin Bank"), "exact", true), { ...candidate(byTitle("Cold wallet"), "base_domain"), title: "Bluefin Bank (business)" }],
+    lookalike_of: [],
+    secure: true,
+  },
+})
 
 export const EXT_SCENARIOS: Record<string, () => ExtScenario> = {
   // --- the popup ---------------------------------------------------------------
