@@ -90,22 +90,22 @@ const buttonNamed = (name: string | RegExp, root: ParentNode = document) =>
   [...root.querySelectorAll<HTMLElement>("button, [role=\"button\"]")].find((b) => shown(b) && (typeof name === "string" ? (b.getAttribute("aria-label") ?? b.textContent?.trim()) === name : name.test(b.getAttribute("aria-label") ?? b.textContent?.trim() ?? "")))
 
 /** Opens a row of a Sharing list (People, Vaults) by its title: its detail beside the list, or pushed over it. */
-export const openRow = (list: "People" | "Vaults", title: string): Step => ({
+export const openRow = (list: string, title: string, pane: string = list): Step => ({
   run: async () => {
     const row = await until(() => {
       const l = document.querySelector(`[role="list"][aria-label="${list}"]`)
       return l && buttonNamed(title, l)
     }, `${title} in ${list}`)
     row.click()
-    await until(() => document.querySelector(`section[aria-label="${list}: open"]`), `${list}'s detail`)
+    await until(() => document.querySelector(`section[aria-label="${pane}: open"]`), `${pane}'s detail`)
   },
 })
 
 /** Opens a person's row only where the detail stands beside the list (the expanded width), so a phone keeps its list. */
-export const openRowBeside = (list: "People" | "Vaults", title: string): Step => ({
+export const openRowBeside = (list: string, title: string, pane: string = list): Step => ({
   run: async () => {
     if (window.innerWidth < 1024) return
-    await (openRow(list, title) as { run: () => Promise<void> }).run()
+    await (openRow(list, title, pane) as { run: () => Promise<void> }).run()
   },
 })
 

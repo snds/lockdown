@@ -2,39 +2,54 @@
 
 import type { Locator, Page } from "@playwright/test"
 
-/** Makes a share link for some text, with a password. */
+/** Makes a share link for some text, with a password: SHARE TEXT, the Form, CREATE LINK (brief S4). */
 export async function shareText(page: Page, what: string, text: string, password: string) {
-  const share = page.getByRole("form", { name: "Share some text" })
-  await share.getByLabel("What it is").fill(what)
+  await page.getByRole("button", { name: "Share text" }).click()
+  const share = page.getByRole("form", { name: "Share text" })
+  await share.getByLabel("What it is (they see this)").fill(what)
   await share.getByLabel("The text").fill(text)
-  await share.getByLabel("A password for it").fill(password)
-  await share.getByRole("button", { name: "Make the link" }).click()
+  await share.getByRole("textbox", { name: "Password (optional)", exact: true }).fill(password)
+  await page.getByRole("dialog", { name: "Share text" }).getByRole("button", { name: "Create link" }).click()
 }
 
-/** Makes a request link. */
+/** Makes a request link: ASK FOR SECRET, the Form, CREATE LINK. */
 export async function askForSecret(page: Page, what: string) {
+  await page.getByRole("button", { name: "Ask for secret" }).click()
   const ask = page.getByRole("form", { name: "Ask for a secret" })
-  await ask.getByLabel("What you're asking for").fill(what)
-  await ask.getByRole("button", { name: "Make the request link" }).click()
+  await ask.getByLabel("What you're asking for (they see this)").fill(what)
+  await page.getByRole("dialog", { name: "Ask for a secret" }).getByRole("button", { name: "Create link" }).click()
 }
 
-/** The link just made, shown once. */
+/** The link just made, shown once: its text is the whole link, cut in the middle only on screen. */
 export const newLink = (page: Page): Locator => page.getByTestId("new-link")
 
-/** Puts the new link away. */
+/** Puts the new link away: DONE, in the layer that shows it. */
 export async function linkDone(page: Page) {
-  await page.getByRole("button", { name: "Done" }).click()
+  await page.getByRole("dialog").getByRole("button", { name: "Done" }).click()
+  await newLink(page).waitFor({ state: "detached" })
 }
 
-/** Opens a request's answer and hands back its group. */
+/** Opens a request's answer in the Links detail and hands back the detail. */
 export async function openAnswer(page: Page): Promise<Locator> {
-  await page.getByRole("button", { name: "Open the answer" }).click()
-  return page.getByRole("group", { name: "The answer" })
+  await page.getByRole("list", { name: "Requests" }).getByRole("button", { name: "Open answer" }).click()
+  return page.getByRole("region", { name: /^Opened: / })
 }
 
-/** Shows the answer's value. */
+/**
+ * Shows the answer's value in its SecretField: a tap, or, where the
+ * settings reveal only while held, Space kept down while the caller
+ * reads it.
+ */
 export async function showAnswer(answer: Locator) {
-  await answer.getByRole("button", { name: /^Show / }).click()
+  const show = answer.getByRole("button", { name: /(Hold to show|Show)/ })
+  const words = `${(await show.getAttribute("aria-label")) ?? ""} ${(await show.textContent()) ?? ""}`
+  if (/Hold/.test(words)) {
+    // Space held down on the focused control: the field shows the value until the key comes up.
+    await show.focus()
+    await answer.page().keyboard.down("Space")
+  } else {
+    await show.click()
+  }
 }
 
 // --- people -----------------------------------------------------------------------

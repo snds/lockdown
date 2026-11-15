@@ -26,6 +26,7 @@ import { describeError } from "@/core/client"
 import type { Access, ItemSummary, VaultView } from "@/core/types"
 import { count, countName, fullDate, rowDate } from "@/lib/format"
 
+import { StopSharing } from "./item-share"
 import { OFFLINE_REASON } from "./people-section"
 import { RIGHT_NAMES, RIGHT_WORDS, useSharingClient, type ContactView, type MemberView, type SharingOverview, type VaultSharingView } from "./sharing-client"
 import { SharingPanes, paneHeading } from "./sharing-panes"
@@ -77,21 +78,19 @@ interface VaultsTabProps {
  * HOUSEHOLD, and the items shared one by one, sent and received; a vault
  * opens its members as the detail, found-3's members place.
  */
-export function VaultsTab({ overview, vaults, rows, selected, onSelect, onOpenItem, onOpenPeople, onChanged, onNotice, onError }: VaultsTabProps) {
+export function VaultsTab({ overview, vaults, rows, selected, onSelect, onOpenItem, onOpenPeople, onChanged, onNotice }: VaultsTabProps) {
   const sharing = useSharingClient()
   const shown = shareableVaults(vaults)
   const open = shown.find((v) => v.id === selected) ?? null
   const [naming, setNaming] = useState(false)
   const online = overview.online
   const titleOf = (id: string) => rows.find((r) => r.id === id)?.title ?? "An item"
+  // Stopping asks first (brief I7, StopSharing); a refusal shows in the Question.
+  const [stopping, setStopping] = useState<{ share_id: string; login: string; item_id: string } | null>(null)
   const unshare = async (shareId: string, login: string) => {
-    try {
-      await sharing.unshareItem(shareId)
-      onNotice(`Stopped sharing with ${login}`)
-      onChanged()
-    } catch (e) {
-      onError(describeError(e))
-    }
+    await sharing.unshareItem(shareId)
+    onNotice(`Stopped sharing with ${login}`)
+    onChanged()
   }
   const canStartHousehold = overview.households.every((h) => !h.organizing)
   const items = overview.sent.length + overview.received.length
@@ -137,7 +136,7 @@ export function VaultsTab({ overview, vaults, rows, selected, onSelect, onOpenIt
                 title={titleOf(s.item_id)}
                 meta={`With ${s.login} // ${RIGHT_WORD[s.right].toLowerCase()} // since ${fullDate(s.created_at)}`}
                 action={
-                  <Button type="button" size="sm" variant="ghost" disabled={!online} disabledReason={!online ? OFFLINE_REASON : undefined} onClick={() => void unshare(s.share_id, s.login)}>
+                  <Button type="button" size="sm" variant="ghost" disabled={!online} disabledReason={!online ? OFFLINE_REASON : undefined} onClick={() => setStopping(s)}>
                     Stop sharing
                   </Button>
                 }
@@ -161,6 +160,7 @@ export function VaultsTab({ overview, vaults, rows, selected, onSelect, onOpenIt
           </div>
         </section>
       )}
+      <StopSharing share={stopping} title={stopping ? titleOf(stopping.item_id) : ""} onClose={() => setStopping(null)} onStop={unshare} />
       <NewHousehold
         open={naming}
         onClose={() => setNaming(false)}

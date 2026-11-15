@@ -1,478 +1,425 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-  Icon,
-  Input,
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemTitle,
-  NativeSelect,
-  NativeSelectOption,
-  Textarea,
-} from "@unicron/ui"
+import { Button, ConfirmDialog, EmptyState, FloatButton, ListRow, SectionHeader, TextField } from "@unicron/ui"
+import { SecretField } from "@unicron/ui/security/secret-field"
 
-import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError } from "@/core/client"
 import { decodeAndWipe, encodeSecret } from "@/core/secret-bytes"
-import { whenLocal } from "@/lib/format"
+import { fullDate } from "@/lib/format"
 
-import { LinkFields } from "./item-share"
-import { LinkOnce } from "./link-once"
+import { monthDay } from "./emergency-model"
+import { LastsField, LinkFields, LinkLayer, linkOptions } from "./link-once"
 import { OpenedPanel } from "./opened-panel"
+import { OFFLINE_REASON } from "./people-section"
+import { ShareLayer } from "./share-layer"
 import { useSharingClient, utf8, type OpenedView, type RequestView, type SendView } from "./sharing-client"
+import { SharingPanes } from "./sharing-panes"
 
-interface LinksProps {
+interface LinksTabProps {
+  /** The server can be reached. */
   online: boolean
   onNotice: (text: string) => void
+  /** A share link someone sent opens here (the desktop). Left out, it opens on its own page (the web vault's /s/ page). */
+  onShareLink?: (link: string) => void
+  /** KEEP IN MY VAULT on what a link held (not in the web vault, whose worker has no call for it). */
+  canKeep?: boolean
+  /** Tells the page how many links and requests there are, for the tab's count. */
+  onCount?: (n: number) => void
+  /** Tells the page whether a detail is open, so a pushed one can take the page (narrower than expanded). */
+  onDetail?: (open: boolean) => void
 }
 
-const viewsWords = (s: SendView) =>
-  s.max_views === null ? `opened ${s.views} ${s.views === 1 ? "time" : "times"}` : `opened ${s.views} of ${s.max_views}`
+/** The row of a share link (brief S4): `expires NOV 20 // opened 1 of 3 // password`. */
+export function sendLine(s: SendView, nowSecs: number = Date.now() / 1000): string {
+  const opens = s.max_views === null ? `opened ${s.views}` : `opened ${s.views} of ${s.max_views}`
+  return [`${s.expires_at < nowSecs ? "expired" : "expires"} ${monthDay(s.expires_at)}`, opens, ...(s.password ? ["password"] : [])].join(" // ")
+}
+
+/** The row of a request link: `waiting // expires NOV 08`, or `answered NOV 03`. */
+export function requestLine(r: RequestView): string {
+  return r.answered_at ? `answered ${monthDay(r.answered_at)}` : `waiting // expires ${monthDay(r.expires_at)}`
+}
+
+/** A request link's path is `/r/`; anything else pasted is taken for a share link. */
+export function isRequestLink(text: string): boolean {
+  try {
+    return new URL(text).pathname.includes("/r/")
+  } catch {
+    return /\/r\//.test(text)
+  }
+}
+
+type Deleting = { kind: "send"; send: SendView } | { kind: "request"; request: RequestView } | null
 
 /**
- * Share links (docs/plan/18-sharing.md §7): text (or an item, from its
- * detail) sealed on this device under a key that lives only in the link's
- * fragment, so the server keeps ciphertext it can't read, with an expiry,
- * a limit on opens and an optional password. Opening someone's link
- * happens here too, and what it holds shows in place.
+ * Sharing → LINKS (brief S4): send a secret to someone with no account,
+ * ask someone for one, and open what was sent to you. The list holds
+ * SHARE TEXT and ASK FOR SECRET (secondary), one field that opens a share
+ * link or answers a request link, then the links and the requests made
+ * here; what a link or an answer held opens in the detail.
+ *
+ * Share links are sealed on this device under a key that lives only in
+ * the link's fragment (docs/plan/18-sharing.md §7), so the server keeps
+ * ciphertext it can't read. A link made here is shown once. Deleting one
+ * asks first. The lists do not say what a link was called: the list calls
+ * return no title (wish W8).
  */
-export function ShareLinksSection({ online, onNotice }: LinksProps) {
+export function LinksTab({ online, onNotice, onShareLink, canKeep = true, onCount, onDetail }: LinksTabProps) {
   const sharing = useSharingClient()
-  const [sends, setSends] = useState<SendView[]>([])
+  const [sends, setSends] = useState<SendView[] | null>(null)
+  const [requests, setRequests] = useState<RequestView[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [making, setMaking] = useState(false)
-  const [link, setLink] = useState<string | null>(null)
-  const [opened, setOpened] = useState<OpenedView | null>(null)
+  const [making, setMaking] = useState<"text" | "ask" | null>(null)
+  const [opened, setOpened] = useState<{ key: string; view: OpenedView } | null>(null)
+  const [answering, setAnswering] = useState<{ link: string; label: string } | null>(null)
+  const [deleting, setDeleting] = useState<Deleting>(null)
+  const reason = online ? undefined : OFFLINE_REASON
 
   const load = useCallback(() => {
     if (!online) return
-    sharing
-      .sends()
-      .then(setSends)
+    Promise.all([sharing.sends(), sharing.requests()])
+      .then(([s, r]) => {
+        setSends(s)
+        setRequests(r)
+        onCount?.(s.length + r.length)
+      })
       .catch((e) => setError(describeError(e)))
-  }, [online, sharing])
+  }, [online, sharing, onCount])
   useEffect(load, [load])
+  const isOpen = opened !== null
+  useEffect(() => onDetail?.(isOpen), [isOpen, onDetail])
 
-  const make = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    const form = e.currentTarget
-    const data = new FormData(form)
-    const title = String(data.get("title") ?? "")
-    const text = String(data.get("text") ?? "")
-    const days = Number(data.get("days") ?? 7)
-    const views = String(data.get("views") ?? "")
-    const password = String(data.get("password") ?? "")
-    form.reset()
-    if (!text) return
+  const openAnswer = async (r: RequestView) => {
     setError(null)
     try {
-      const bytes = await sharing.sendText(title, encodeSecret(text), days, views ? Number(views) : null, password ? utf8(password) : null)
-      setLink(decodeAndWipe(bytes))
-      load()
-    } catch (err) {
-      setError(describeError(err))
-    }
-  }
-  const remove = async (s: SendView) => {
-    try {
-      await sharing.deleteSend(s.send_id)
-      onNotice("The link is gone; it opens nothing now.")
-      load()
+      setOpened({ key: `answer:${r.request_id}`, view: await sharing.openAnswer(r.request_id) })
     } catch (e) {
       setError(describeError(e))
     }
   }
-  const open = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    const form = e.currentTarget
-    const data = new FormData(form)
-    const typed = String(data.get("link") ?? "").trim()
-    const password = String(data.get("password") ?? "")
-    form.reset()
-    if (!typed) return
-    setError(null)
-    setOpened(null)
+  const remove = async () => {
+    const d = deleting
+    if (!d) return
     try {
-      setOpened(await sharing.openSend(utf8(typed), password ? utf8(password) : null))
-    } catch (err) {
-      setError(describeError(err))
+      if (d.kind === "send") await sharing.deleteSend(d.send.send_id)
+      else await sharing.deleteRequest(d.request.request_id)
+      onNotice(d.kind === "send" ? "Link deleted" : "Request deleted")
+      load()
+    } catch (e) {
+      setError(describeError(e))
+      throw e
     }
   }
 
-  return (
-    <section aria-labelledby="sharing-links" className="flex flex-col gap-2">
-      <h2 id="sharing-links" className="text-base font-semibold">
-        Share links
-      </h2>
+  const list = (
+    <>
       <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!online}
-          onClick={() => {
-            setError(null)
-            setMaking(true)
-          }}
-        >
-          <Icon name="link" data-icon="inline-start" />
-          Share some text…
+        <Button type="button" variant="secondary" disabled={!online} disabledReason={reason} onClick={() => setMaking("text")}>
+          Share text
+        </Button>
+        <Button type="button" variant="secondary" disabled={!online} disabledReason={reason} onClick={() => setMaking("ask")}>
+          Ask for secret
         </Button>
       </div>
-      {sends.length > 0 && (
-        <ItemGroup role="list" aria-label="Your share links">
-          {sends.map((s) => (
-            <Item key={s.send_id} variant="outline" size="sm" role="listitem">
-              <ItemContent>
-                <ItemTitle>Made {whenLocal(s.created_at)}</ItemTitle>
-                <ItemDescription>
-                  Expires {whenLocal(s.expires_at)} · {viewsWords(s)}
-                  {s.password ? " · needs a password" : ""}
-                </ItemDescription>
-              </ItemContent>
-              <ItemActions>
-                <Button variant="ghost-destructive" size="sm" onClick={() => void remove(s)}>
-                  Delete
-                </Button>
-              </ItemActions>
-            </Item>
-          ))}
-        </ItemGroup>
+      <OpenField
+        online={online}
+        onOpened={(view, link) => setOpened({ key: `link:${link.length}:${Date.now()}`, view })}
+        onAnswer={setAnswering}
+        onShareLink={onShareLink}
+      />
+      {error && (
+        <p role="alert" className="type-caption text-critical-text">
+          {error}
+        </p>
       )}
-      <form className="flex flex-col gap-2" aria-label="Open a share link" onSubmit={(e) => void open(e)}>
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="open-link">Open a share link someone sent you</FieldLabel>
-            <Input id="open-link" name="link" autoComplete="off" spellCheck={false} placeholder="https://…/s/…#…" />
-            <FieldDescription>It opens here, on this device; the server never sees what's in it.</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="open-link-password">Its password, if it has one</FieldLabel>
-            <Input id="open-link-password" name="password" type="password" autoComplete="off" />
-          </Field>
-        </FieldGroup>
-        <div>
-          <Button type="submit" variant="outline" size="sm">
-            <Icon name="unlocked" data-icon="inline-start" />
-            Open
-          </Button>
-        </div>
-      </form>
-      {error && <FieldError role="alert">{error}</FieldError>}
-      {opened && <OpenedPanel opened={opened} onNotice={onNotice} />}
-      <Dialog
-        open={making}
-        onOpenChange={(o) => {
-          if (!o) {
-            setMaking(false)
-            setLink(null)
-          }
+      {sends !== null && requests !== null && sends.length + requests.length === 0 && (
+        <EmptyState size="sm" overline="Links // 00" title="No links yet." body="Share some text as a link, or ask someone for a secret." />
+      )}
+      {sends !== null && sends.length > 0 && (
+        <section aria-label="Share links" className="flex flex-col">
+          <SectionHeader title="Share links" count={sends.length} />
+          <div role="list" aria-label="Share links">
+            {sends.map((s) => (
+              <ListRow
+                key={s.send_id}
+                role="listitem"
+                size="compact"
+                title={`Created ${fullDate(s.created_at)}`}
+                meta={sendLine(s)}
+                action={
+                  <Button type="button" size="sm" variant="ghost" disabled={!online} disabledReason={reason} onClick={() => setDeleting({ kind: "send", send: s })}>
+                    Delete
+                  </Button>
+                }
+              />
+            ))}
+          </div>
+        </section>
+      )}
+      {requests !== null && requests.length > 0 && (
+        <section aria-label="Requests" className="flex flex-col">
+          <SectionHeader title="Requests" count={requests.length} />
+          <div role="list" aria-label="Requests">
+            {requests.map((r) => (
+              <ListRow
+                key={r.request_id}
+                role="listitem"
+                size="compact"
+                selected={opened?.key === `answer:${r.request_id}`}
+                title={`Asked ${monthDay(r.created_at)}`}
+                meta={requestLine(r)}
+                action={
+                  <span className="flex items-center gap-1">
+                    {r.answered_at && (
+                      <Button type="button" size="sm" variant="ghost" disabled={!online} disabledReason={reason} onClick={() => void openAnswer(r)}>
+                        Open answer
+                      </Button>
+                    )}
+                    <Button type="button" size="sm" variant="ghost" disabled={!online} disabledReason={reason} onClick={() => setDeleting({ kind: "request", request: r })}>
+                      Delete
+                    </Button>
+                  </span>
+                }
+              />
+            ))}
+          </div>
+        </section>
+      )}
+    </>
+  )
+
+  return (
+    <>
+      <SharingPanes
+        name="Links"
+        backLabel="Links"
+        onBack={() => setOpened(null)}
+        emptyBody="Open a link or an answer to see what it holds here."
+        list={list}
+        detail={opened ? <OpenedPanel key={opened.key} opened={opened.view} onNotice={onNotice} canKeep={canKeep} /> : null}
+      />
+      <ShareTextLayer
+        open={making === "text"}
+        onClose={() => {
+          setMaking(null)
+          load()
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Share some text</DialogTitle>
-            <DialogDescription>
-              It is locked on this computer before it leaves; the key is the part of the link after <code>#</code>, which never reaches the
-              server.
-            </DialogDescription>
-          </DialogHeader>
-          {link ? (
-            <LinkOnce link={link} />
-          ) : (
-            <form id="send-text" className="flex flex-col gap-3" onSubmit={(e) => void make(e)}>
-              <Field>
-                <FieldLabel htmlFor="send-title">What it is (they see this)</FieldLabel>
-                <Input id="send-title" name="title" autoComplete="off" />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="send-text-body">The text</FieldLabel>
-                <Textarea id="send-text-body" name="text" rows={4} autoComplete="off" spellCheck={false} />
-              </Field>
-              <LinkFields />
-            </form>
-          )}
-          {/* A refusal (a split view pauses links, D328 as changed by D375) shows where the person is looking. */}
-          {error && !link && <FieldError role="alert">{error}</FieldError>}
-          <LabelledActions>
-            <LabelledAction
-              kind="cancel"
-              onClick={() => {
-                setMaking(false)
-                setLink(null)
-              }}
-            >
-              {link ? "Done" : "Cancel"}
-            </LabelledAction>
-            {!link && (
-              <LabelledAction kind="confirm" type="submit" form="send-text">
-                Make the link
-              </LabelledAction>
-            )}
-          </LabelledActions>
-        </DialogContent>
-      </Dialog>
-    </section>
+      />
+      <AskLayer
+        open={making === "ask"}
+        onClose={() => {
+          setMaking(null)
+          load()
+        }}
+      />
+      <AnswerLayer
+        answering={answering}
+        onClose={() => setAnswering(null)}
+        onSent={() => {
+          setAnswering(null)
+          onNotice("Sent. Only the person who asked can open it")
+        }}
+      />
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(o) => !o && setDeleting(null)}
+        overline={deleting?.kind === "send" ? `Share link // ${sendLine(deleting.send)}` : deleting ? `Request // ${requestLine(deleting.request)}` : "Links"}
+        title={deleting?.kind === "request" ? "Delete this request?" : "Delete this link?"}
+        description={
+          deleting?.kind === "request"
+            ? "The link stops taking an answer, and an answer it took is gone."
+            : "It opens nothing from now on. What someone already opened, they may have kept."
+        }
+        confirmLabel="Delete"
+        tone="destructive"
+        onConfirm={remove}
+      />
+    </>
   )
 }
 
 /**
- * Request links (docs/plan/18-sharing.md §7): a link someone else uses
- * once to send you a secret, sealed on their device to your key, which
- * the link pins. Answering someone's request link happens here too.
+ * SOMEONE SENT YOU A LINK (brief S4): one field for a share link or a
+ * request link, its password if it has one, and OPEN. A share link opens
+ * in the detail; a request link opens the answer Form. A link that will
+ * not open says why under the field, in the core's words.
  */
-export function RequestLinksSection({ online, onNotice }: LinksProps) {
+function OpenField({ online, onOpened, onAnswer, onShareLink }: {
+  online: boolean
+  onOpened: (view: OpenedView, link: string) => void
+  onAnswer: (a: { link: string; label: string }) => void
+  onShareLink?: (link: string) => void
+}) {
   const sharing = useSharingClient()
-  const [requests, setRequests] = useState<RequestView[]>([])
+  const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
-  const [making, setMaking] = useState(false)
-  const [link, setLink] = useState<string | null>(null)
-  const [opened, setOpened] = useState<OpenedView | null>(null)
-  const [answering, setAnswering] = useState<{ link: string; label: string } | null>(null)
-
-  const load = useCallback(() => {
-    if (!online) return
-    sharing
-      .requests()
-      .then(setRequests)
-      .catch((e) => setError(describeError(e)))
-  }, [online, sharing])
-  useEffect(load, [load])
-
-  const make = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    const data = new FormData(e.currentTarget)
-    const label = String(data.get("label") ?? "").trim()
-    const days = Number(data.get("days") ?? 7)
-    if (!label) return
-    setError(null)
-    try {
-      setLink(decodeAndWipe(await sharing.createRequest(label, days)))
-      load()
-    } catch (err) {
-      setError(describeError(err))
-    }
-  }
-  const openAnswer = async (r: RequestView) => {
-    setError(null)
-    try {
-      setOpened(await sharing.openAnswer(r.request_id))
-    } catch (e) {
-      setError(describeError(e))
-    }
-  }
-  const remove = async (r: RequestView) => {
-    try {
-      await sharing.deleteRequest(r.request_id)
-      onNotice("The request is gone.")
-      load()
-    } catch (e) {
-      setError(describeError(e))
-    }
-  }
-  const read = async (e: FormEvent<HTMLFormElement>) => {
+  const [busy, setBusy] = useState(false)
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const form = e.currentTarget
     const typed = String(new FormData(form).get("link") ?? "").trim()
     if (!typed) return
     setError(null)
+    setBusy(true)
+    const pw = password
     try {
-      const label = await sharing.requestLabel(utf8(typed))
+      if (isRequestLink(typed)) {
+        const label = await sharing.requestLabel(utf8(typed))
+        onAnswer({ link: typed, label })
+      } else if (onShareLink) {
+        onShareLink(typed)
+      } else {
+        onOpened(await sharing.openSend(utf8(typed), pw ? utf8(pw) : null), typed)
+      }
       form.reset()
-      setAnswering({ link: typed, label })
+      setPassword("")
     } catch (err) {
       setError(describeError(err))
+    } finally {
+      setBusy(false)
     }
   }
-
   return (
-    <section aria-labelledby="sharing-requests" className="flex flex-col gap-2">
-      <h2 id="sharing-requests" className="text-base font-semibold">
-        Request links
-      </h2>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          size="sm"
+    <section aria-label="Someone sent you a link" className="flex flex-col gap-3">
+      <SectionHeader title="Someone sent you a link" />
+      <form aria-label="Open a link" className="flex flex-col gap-3" onSubmit={(e) => void submit(e)}>
+        <TextField
+          label="Paste a share link or a request link"
+          name="link"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="https://"
+          error={error ?? undefined}
           disabled={!online}
-          onClick={() => {
-            setError(null)
-            setMaking(true)
-          }}
-        >
-          <Icon name="email" data-icon="inline-start" />
-          Ask someone for a secret…
-        </Button>
-      </div>
-      {requests.length > 0 && (
-        <ItemGroup role="list" aria-label="Your request links">
-          {requests.map((r) => (
-            <Item key={r.request_id} variant="outline" size="sm" role="listitem">
-              <ItemContent>
-                <ItemTitle>{r.answered_at ? `Answered ${whenLocal(r.answered_at)}` : "Waiting for an answer"}</ItemTitle>
-                <ItemDescription>
-                  Made {whenLocal(r.created_at)} · expires {whenLocal(r.expires_at)}
-                </ItemDescription>
-              </ItemContent>
-              <ItemActions>
-                {r.answered_at && (
-                  <Button variant="outline" size="sm" onClick={() => void openAnswer(r)}>
-                    Open the answer
-                  </Button>
-                )}
-                <Button variant="ghost-destructive" size="sm" onClick={() => void remove(r)}>
-                  Delete
-                </Button>
-              </ItemActions>
-            </Item>
-          ))}
-        </ItemGroup>
-      )}
-      <form className="flex flex-wrap items-end gap-2" aria-label="Answer a request link" onSubmit={(e) => void read(e)}>
-        <Field>
-          <FieldLabel htmlFor="answer-link">Answer someone's request link</FieldLabel>
-          <Input id="answer-link" name="link" autoComplete="off" spellCheck={false} placeholder="https://…/r/…#…" />
-        </Field>
-        <Button type="submit" variant="outline" size="sm">
-          Continue
-        </Button>
+          disabledReason={online ? undefined : OFFLINE_REASON}
+        />
+        {!onShareLink && <SecretField mode="edit" label="Its password, if it has one" value={password} onChange={setPassword} autoComplete="off" disabled={!online} />}
+        <div>
+          <Button type="submit" variant="secondary" disabled={!online} disabledReason={online ? undefined : OFFLINE_REASON} loading={busy}>
+            Open
+          </Button>
+        </div>
       </form>
-      {error && <FieldError role="alert">{error}</FieldError>}
-      {opened && <OpenedPanel opened={opened} onNotice={onNotice} />}
-      <Dialog
-        open={making}
-        onOpenChange={(o) => {
-          if (!o) {
-            setMaking(false)
-            setLink(null)
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Ask someone for a secret</DialogTitle>
-            <DialogDescription>
-              They open the link and type the secret; it is locked on their device to your key and the link works once. The server can't read
-              the answer.
-            </DialogDescription>
-          </DialogHeader>
-          {link ? (
-            <LinkOnce link={link} note="Send it to them. It works once, until it expires." />
-          ) : (
-            <form id="request-make" className="flex flex-col gap-3" onSubmit={(e) => void make(e)}>
-              <Field>
-                <FieldLabel htmlFor="request-label">What you're asking for (they see this)</FieldLabel>
-                <Input id="request-label" name="label" autoComplete="off" placeholder="The Wi-Fi password" />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="request-days">Lasts</FieldLabel>
-                <NativeSelect id="request-days" name="days" defaultValue="7">
-                  {[1, 3, 7, 14, 30].map((d) => (
-                    <NativeSelectOption key={d} value={String(d)}>
-                      {d === 1 ? "1 day" : `${d} days`}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </Field>
-            </form>
-          )}
-          {error && !link && <FieldError role="alert">{error}</FieldError>}
-          <LabelledActions>
-            <LabelledAction
-              kind="cancel"
-              onClick={() => {
-                setMaking(false)
-                setLink(null)
-              }}
-            >
-              {link ? "Done" : "Cancel"}
-            </LabelledAction>
-            {!link && (
-              <LabelledAction kind="confirm" type="submit" form="request-make">
-                Make the link
-              </LabelledAction>
-            )}
-          </LabelledActions>
-        </DialogContent>
-      </Dialog>
-      <AnswerDialog
-        answering={answering}
-        onClose={() => setAnswering(null)}
-        onSent={() => {
-          setAnswering(null)
-          onNotice("Sent. Only the person who asked can open it.")
-        }}
-      />
     </section>
   )
 }
 
-function AnswerDialog({ answering, onClose, onSent }: { answering: { link: string; label: string } | null; onClose: () => void; onSent: () => void }) {
+/** Share text (brief S4): what it is, the text, how long, how many opens, a password; then the link once. */
+function ShareTextLayer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const sharing = useSharingClient()
+  const [password, setPassword] = useState("")
+  return (
+    <LinkLayer
+      open={open}
+      onClose={onClose}
+      overline="Links // share text"
+      title="Share text"
+      formId="send-text"
+      onReset={() => setPassword("")}
+      onMake={async (form) => {
+        const data = new FormData(form)
+        const title = String(data.get("title") ?? "")
+        const text = String(data.get("text") ?? "")
+        const { days, views } = linkOptions(form)
+        if (!text) throw new Error("Type the text to share.")
+        const bytes = encodeSecret(text)
+        try {
+          return decodeAndWipe(await sharing.sendText(title, bytes, days, views, password ? utf8(password) : null))
+        } finally {
+          bytes.fill(0)
+        }
+      }}
+    >
+      <TextField label="What it is (they see this)" name="title" autoComplete="off" />
+      <TextField label="The text" name="text" multiline minRows={6} autoComplete="off" spellCheck={false} />
+      <LinkFields idPrefix="send" password={password} onPassword={setPassword} />
+    </LinkLayer>
+  )
+}
+
+/** Ask for a secret (brief S4): what you're asking for, how long; then the link once. */
+function AskLayer({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const sharing = useSharingClient()
+  return (
+    <LinkLayer
+      open={open}
+      onClose={onClose}
+      overline="Links // ask for a secret"
+      title="Ask for a secret"
+      formId="request-make"
+      note="Send it to them. It works once, until it expires."
+      onMake={async (form) => {
+        const data = new FormData(form)
+        const label = String(data.get("label") ?? "").trim()
+        if (!label) throw new Error("Say what you're asking for.")
+        return decodeAndWipe(await sharing.createRequest(label, Number(data.get("days") ?? 7)))
+      }}
+    >
+      <TextField label="What you're asking for (they see this)" name="label" autoComplete="off" placeholder="The Wi-Fi password" />
+      <LastsField id="request-days" />
+    </LinkLayer>
+  )
+}
+
+/** Answer a request (brief S4): what they asked for, a name, the secret; SEND IT. */
+function AnswerLayer({ answering, onClose, onSent }: { answering: { link: string; label: string } | null; onClose: () => void; onSent: () => void }) {
+  const sharing = useSharingClient()
+  const [secret, setSecret] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const close = () => {
+    setSecret("")
+    setError(null)
+    onClose()
+  }
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!answering) return
-    const form = e.currentTarget
-    const data = new FormData(form)
-    const title = String(data.get("title") ?? "")
-    const secret = String(data.get("secret") ?? "")
-    form.reset()
-    if (!secret) return
+    if (!answering || !secret) return
+    const title = String(new FormData(e.currentTarget).get("title") ?? "")
     setError(null)
+    setBusy(true)
     const bytes = encodeSecret(secret)
     try {
       await sharing.answerRequest(utf8(answering.link), title, bytes)
+      setSecret("")
       onSent()
     } catch (err) {
       setError(describeError(err))
     } finally {
       bytes.fill(0)
+      setBusy(false)
     }
   }
   return (
-    <Dialog open={answering !== null} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>They ask for: {answering?.label}</DialogTitle>
-          <DialogDescription>
-            What you type is locked on this computer to the key the link names, and only they can open it. Send it only if you know who sent
-            you the link.
-          </DialogDescription>
-        </DialogHeader>
-        <form id="request-answer" className="flex flex-col gap-3" onSubmit={(e) => void submit(e)}>
-          <Field>
-            <FieldLabel htmlFor="answer-title">A name for it (optional)</FieldLabel>
-            <Input id="answer-title" name="title" autoComplete="off" />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="answer-secret">The secret</FieldLabel>
-            <Input id="answer-secret" name="secret" type="password" autoComplete="off" />
-          </Field>
-        </form>
-        {error && <FieldError role="alert">{error}</FieldError>}
-        <LabelledActions>
-          <LabelledAction kind="cancel" onClick={onClose}>
+    <ShareLayer
+      open={answering !== null}
+      onClose={close}
+      overline="Links // answer a request"
+      title="Answer a request"
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={close}>
             Cancel
-          </LabelledAction>
-          <LabelledAction kind="confirm" type="submit" form="request-answer">
+          </Button>
+          <Button type="submit" form="request-answer" loading={busy}>
             Send it
-          </LabelledAction>
-        </LabelledActions>
-      </DialogContent>
-    </Dialog>
+          </Button>
+        </>
+      }
+      phoneAction={<FloatButton label="Send it" icon="send" kind="primary" size="l" extended type="submit" form="request-answer" disabled={busy} />}
+    >
+      <form id="request-answer" aria-label="Answer a request" className="flex flex-col gap-4" onSubmit={(e) => void submit(e)}>
+        <p className="type-body text-text-body">They asked for: {answering?.label}</p>
+        <TextField label="A name for it (optional)" name="title" autoComplete="off" />
+        <SecretField mode="edit" label="The secret" value={secret} onChange={setSecret} autoComplete="off" required />
+        <p className="type-caption text-text-secondary">Send it only if you know who sent you the link.</p>
+        {error && (
+          <p role="alert" className="type-caption text-critical-text">
+            {error}
+          </p>
+        )}
+      </form>
+    </ShareLayer>
   )
 }
+

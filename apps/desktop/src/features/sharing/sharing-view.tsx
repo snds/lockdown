@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 
-import { Badge, Banner, Button, EmptyState, Skeleton, Tabs, TabsList, TabsTrigger, useAppFrame } from "@unicron/ui"
+import { Banner, Button, EmptyState, Skeleton, Tabs, TabsList, TabsTrigger, useAppFrame } from "@unicron/ui"
 
 import { NeedsYouSlot } from "@/app/needs-you"
 import { ScreenHead } from "@/app/page-head"
@@ -11,9 +11,10 @@ import type { ItemSummary } from "@/core/types"
 import { useVaults } from "@/features/organization/vaults-context"
 import { count } from "@/lib/format"
 
-import { EmergencySection } from "./emergency-section"
+import { setShownGrant, useWantedGrant, wantGrant } from "./emergency-model"
+import { EmergencyRequests, EmergencyTab } from "./emergency-section"
 import { KeyResets } from "./key-resets"
-import { RequestLinksSection, ShareLinksSection } from "./links-section"
+import { LinksTab } from "./links-section"
 import { PeopleTab } from "./people-section"
 import { SharingPaused } from "./sharing-paused"
 import { useSharingClient, utf8, type SharingOverview } from "./sharing-client"
@@ -54,7 +55,7 @@ function overlineOf(o: SharingOverview, sharedVaults: number): string {
  * phone. Offline, the lists stay readable and each action that needs the
  * server is disabled with its reason; a split view shows its critical
  * Banner. Routine removals are text buttons: red is kept for the Question
- * (R12). Until edges-8 the Links and Emergency tabs show today's sections.
+ * (R12). Links and Emergency are edges-8's (doc 91).
  *
  * Nothing secret is drawn here except what a link or an answer holds,
  * which comes over one value at a time when the person asks.
@@ -75,6 +76,9 @@ export function SharingView({ section, onSection, vault, rows, onOpenItem, onCha
   const [error, setError] = useState<string | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
   const [links, setLinks] = useState<number | null>(null)
+  const [grant, setGrant] = useState<string | null>(null)
+  const [linkOpen, setLinkOpen] = useState(false)
+  const wanted = useWantedGrant()
 
   const pick = (t: SharingSection) => (routed ? onSection(t) : setOwnTab(t))
   const selectVault = useCallback((id: string | null) => (routed ? go(id ? membersPlace(id) : "sharing-vaults") : setOwnVault(id)), [routed, go])
@@ -96,6 +100,8 @@ export function SharingView({ section, onSection, vault, rows, onOpenItem, onCha
   const synced = rows.length === 0 ? null : rows
   useEffect(load, [load, synced])
 
+  const setGrants = useCallback((emergency: SharingOverview["emergency"]) => setOverview((o) => (o ? { ...o, emergency } : o)), [])
+
   const changed = useCallback(() => {
     load()
     reloadVaults()
@@ -110,7 +116,30 @@ export function SharingView({ section, onSection, vault, rows, onOpenItem, onCha
     links,
     emergency: overview?.emergency.length ?? null,
   }
-  const pushed = !frame.split && ((tab === "people" && person !== null) || (tab === "vaults" && openVault !== null))
+  const pushed =
+    !frame.split && ((tab === "people" && person !== null) || (tab === "vaults" && openVault !== null) || (tab === "emergency" && grant !== null) || (tab === "links" && linkOpen))
+
+  // A REVIEW on needs-you row 4: the Emergency tab, that grant open.
+  const review = useCallback(
+    (id: string) => {
+      setGrant(id)
+      if (routed) onSection("emergency")
+      else setOwnTab("emergency")
+    },
+    [routed, onSection],
+  )
+  // One from another screen (the shell's watch) waits in the store until Sharing shows.
+  useEffect(() => {
+    if (!wanted) return
+    review(wanted)
+    wantGrant(null)
+  }, [wanted, review])
+  // Which grant is on screen, so row 4's solid action there is STOP IT.
+  const shownGrant = tab === "emergency" ? grant : null
+  useEffect(() => {
+    setShownGrant(shownGrant)
+    return () => setShownGrant(null)
+  }, [shownGrant])
 
   const copyCode = async () => {
     if (!overview) return
@@ -181,32 +210,23 @@ export function SharingView({ section, onSection, vault, rows, onOpenItem, onCha
               onError={setFailed}
             />
           )}
-          {tab === "links" && (
-            <div className="flex flex-col gap-6">
-              <ShareLinksSection online={overview.online} onNotice={onNotice} />
-              <RequestLinksSection online={overview.online} onNotice={onNotice} />
-            </div>
-          )}
+          {/* Needs-you row 4 (brief X3): a request for your vaults. Until the shell mounts EmergencyWatch for every screen, Sharing registers it. */}
+          <EmergencyRequests grants={overview.emergency} online={overview.online && !overview.paused} onGrants={setGrants} onReview={review} onNotice={onNotice} onError={setFailed} />
+          {tab === "links" && <LinksTab online={overview.online} onNotice={onNotice} onCount={setLinks} onDetail={setLinkOpen} />}
           {tab === "emergency" && (
-            <div className="flex flex-col gap-6">
-              {overview.waiting_on_you > 0 && (
-                <p role="alert" className="type-body flex items-center gap-2">
-                  <Badge tone="critical">Emergency</Badge>
-                  {overview.waiting_on_you === 1
-                    ? "Someone asked for emergency access to your vaults. Stop it below if you didn't expect it."
-                    : `${overview.waiting_on_you} people asked for emergency access to your vaults. Stop it below if you didn't expect it.`}
-                </p>
-              )}
-              <EmergencySection
-                grants={overview.emergency}
-                contacts={overview.contacts}
-                vaults={vaults}
-                online={overview.online}
-                onGrants={(emergency) => setOverview((o) => (o ? { ...o, emergency } : o))}
-                onChanged={changed}
-                onNotice={onNotice}
-              />
-            </div>
+            <EmergencyTab
+              grants={overview.emergency}
+              contacts={overview.contacts}
+              vaults={vaults}
+              online={overview.online && !overview.paused}
+              offline={!overview.online}
+              selected={grant}
+              onSelect={setGrant}
+              onGrants={setGrants}
+              onChanged={changed}
+              onNotice={onNotice}
+              onOpenPeople={() => pick("people")}
+            />
           )}
         </>
       )}

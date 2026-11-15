@@ -74,12 +74,12 @@ describe("an item by the person's right in it", () => {
     expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument()
   })
 
-  it("the person's own item offers Share from the detail: with someone, or as a share link", async () => {
+  it("the person's own item offers Share from the detail: with someone, or as a link", async () => {
     mount(login())
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     await user.click(await screen.findByRole("button", { name: "Share" }))
     expect(await screen.findByRole("menuitem", { name: "With someone…" })).toBeInTheDocument()
-    expect(screen.getByRole("menuitem", { name: "As a share link…" })).toBeInTheDocument()
+    expect(screen.getByRole("menuitem", { name: "As a link…" })).toBeInTheDocument()
   })
 
   it("a crown jewel offers no sharing at all", async () => {

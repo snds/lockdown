@@ -14,6 +14,7 @@ import { VaultsProvider } from "@/features/organization/vaults-context"
 import { fakeClient } from "@/test/fake-client"
 import { fakeSharing } from "@/test/fake-sharing"
 
+import { grantActions } from "./emergency-model"
 import { RESET_HINT, RESET_TITLE, letBackInNotice } from "./key-resets-words"
 import { OFFLINE_REASON } from "./people-section"
 import { SharingClientProvider, emergencyActions, type ContactView, type EmergencyView, type SharingClient, type SharingOverview, type VaultSharingView } from "./sharing-client"
@@ -219,7 +220,12 @@ describe("the Sharing screen", () => {
     expect(blocks()).toHaveLength(0)
     const user = userEvent.setup()
     await openTab(user, "Links")
-    expect(await screen.findByRole("button", { name: "Share some text…" })).toBeDisabled()
+    // Off, and still reachable, each with its reason (#37).
+    for (const name of ["Share text", "Ask for secret", "Open"]) {
+      const button = await screen.findByRole("button", { name })
+      expect(button).toHaveAttribute("aria-disabled", "true")
+      expect(button).toHaveAccessibleDescription(OFFLINE_REASON)
+    }
   })
 
   it("offline: a vault's Add, Change and Remove are off with the reason under them", async () => {
@@ -421,29 +427,75 @@ describe("the Sharing screen", () => {
     await waitFor(() => expect(shareVault).toHaveBeenCalledWith("v1", "bob@example.com", "view", {}))
   })
 
-  it("makes a text share link, shows it once, and copies it on the shell's clipboard path", async () => {
+  it("makes a text share link in a Form, shows it once with COPY LINK as the one primary, and copies it on the shell's clipboard path", async () => {
     const link = "https://sync.example/s/abc#key"
     const sendText = vi.fn(() => Promise.resolve(new TextEncoder().encode(link)))
     const copyLink = vi.fn(() => Promise.resolve({ copy: 3, clears_in_secs: 30 }))
     mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview()), sendText, copyLink }))
     const user = userEvent.setup()
     await openTab(user, "Links")
-    await user.click(await screen.findByRole("button", { name: "Share some text…" }))
-    const dialog = await screen.findByRole("dialog", { name: "Share some text" })
+    await user.click(await screen.findByRole("button", { name: "Share text" }))
+    const dialog = await screen.findByRole("dialog", { name: "Share text" })
     await user.type(within(dialog).getByLabelText("What it is (they see this)"), "Door code")
     await user.type(within(dialog).getByLabelText("The text"), "4321")
-    await user.click(within(dialog).getByRole("button", { name: "Make the link" }))
-    expect(await within(dialog).findByDisplayValue(link)).toBeInTheDocument()
+    await user.click(within(dialog).getByRole("button", { name: "Create link" }))
+    // Shown once: the whole link is the line's text, cut in the middle on screen.
+    expect(await within(dialog).findByTestId("new-link")).toHaveTextContent(link)
     // Title, the text as bytes, 7 days, once, no password.
-    expect(sendText).toHaveBeenCalledWith("Door code", Array.from(new TextEncoder().encode("4321")), 7, 1, null)
-    await user.click(within(dialog).getByRole("button", { name: "Copy the link" }))
+    expect(sendText).toHaveBeenCalledWith("Door code", expect.any(Array), 7, 1, null)
+    expect(within(dialog).queryByRole("button", { name: "Create link" })).not.toBeInTheDocument()
+    expect(within(dialog).getByText("Send it in a way you trust. It isn't shown again after you close this.")).toBeInTheDocument()
+    await user.click(within(dialog).getByRole("button", { name: "Copy link" }))
     expect(copyLink).toHaveBeenCalledWith(Array.from(new TextEncoder().encode(link)), 30)
     expect(await within(dialog).findByText("Copied. The clipboard clears in 30 seconds.")).toBeInTheDocument()
     await user.click(within(dialog).getByRole("button", { name: "Done" }))
-    expect(screen.queryByDisplayValue(link)).not.toBeInTheDocument()
+    // Closed, the link is gone: it is never shown again.
+    await waitFor(() => expect(screen.queryByTestId("new-link")).not.toBeInTheDocument())
+    await user.click(screen.getByRole("button", { name: "Share text" }))
+    expect(within(await screen.findByRole("dialog", { name: "Share text" })).queryByTestId("new-link")).not.toBeInTheDocument()
   })
 
-  it("opens a link someone sent: plain values drawn, secrets masked until asked", async () => {
+  it("the link's seconds come from the copy's own clears_in_secs", async () => {
+    const link = "https://sync.example/r/xyz#pin"
+    mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview()), createRequest: () => Promise.resolve(new TextEncoder().encode(link)), copyLink: () => Promise.resolve({ copy: 4, clears_in_secs: 12 }) }))
+    const user = userEvent.setup()
+    await openTab(user, "Links")
+    await user.click(await screen.findByRole("button", { name: "Ask for secret" }))
+    const dialog = await screen.findByRole("dialog", { name: "Ask for a secret" })
+    await user.type(within(dialog).getByLabelText("What you're asking for (they see this)"), "The Wi-Fi password")
+    await user.click(within(dialog).getByRole("button", { name: "Create link" }))
+    expect(await within(dialog).findByText("Send it to them. It works once, until it expires.")).toBeInTheDocument()
+    await user.click(within(dialog).getByRole("button", { name: "Copy link" }))
+    expect(await within(dialog).findByText("Copied. The clipboard clears in 12 seconds.")).toBeInTheDocument()
+  })
+
+  it("lists the links and requests made here, in rows, and deleting one asks first", async () => {
+    const day = 86_400
+    const sends = [{ send_id: "s1", created_at: 1_790_000_000, expires_at: 1_790_000_000 + 7 * day, max_views: 3, views: 1, password: true }]
+    const requests = [{ request_id: "r1", created_at: 1_790_000_000, expires_at: 1_790_000_000 + 7 * day, answered_at: null }]
+    const deleteSend = vi.fn(() => Promise.resolve())
+    mount(fakeSharing({ overview: () => Promise.resolve(overview()), sends: () => Promise.resolve(sends), requests: () => Promise.resolve(requests), deleteSend }))
+    const user = userEvent.setup()
+    await openTab(user, "Links")
+    const links = await screen.findByRole("list", { name: "Share links" })
+    expect(within(links).getByText(/opened 1 of 3 \/\/ password/)).toBeInTheDocument()
+    expect(within(screen.getByRole("list", { name: "Requests" })).getByText(/^waiting \/\/ expires/)).toBeInTheDocument()
+    await user.click(within(links).getByRole("button", { name: "Delete" }))
+    const question = await screen.findByRole("dialog", { name: "Delete this link?" })
+    // Asking deletes nothing.
+    expect(deleteSend).not.toHaveBeenCalled()
+    await user.click(within(question).getByRole("button", { name: "Delete" }))
+    await waitFor(() => expect(deleteSend).toHaveBeenCalledWith("s1"))
+  })
+
+  it("no links yet: an Empty State under the field", async () => {
+    mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview()) }))
+    const user = userEvent.setup()
+    await openTab(user, "Links")
+    expect(await screen.findByText("No links yet.")).toBeInTheDocument()
+  })
+
+  it("opens a share link someone sent in the one field: the detail draws plain values, secrets masked until asked", async () => {
     const openSend = vi.fn(() =>
       Promise.resolve({
         kind: "item" as const,
@@ -456,29 +508,47 @@ describe("the Sharing screen", () => {
       }),
     )
     const openedValue = vi.fn((i: number) => Promise.resolve(new TextEncoder().encode(i === 0 ? "admin" : "hunter2")))
-    mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview()), openSend, openedValue }))
+    const saveOpened = vi.fn(() => Promise.resolve("n1"))
+    mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview()), openSend, openedValue, saveOpened }))
     const user = userEvent.setup()
     await openTab(user, "Links")
-    await user.type(await screen.findByLabelText("Open a share link someone sent you"), "https://sync.example/s/abc#key")
+    await user.type(await screen.findByLabelText("Paste a share link or a request link"), "https://sync.example/s/abc#key")
     await user.type(screen.getByLabelText("Its password, if it has one"), "pw")
     await user.click(screen.getByRole("button", { name: "Open" }))
     expect(openSend).toHaveBeenCalledWith(Array.from(new TextEncoder().encode("https://sync.example/s/abc#key")), Array.from(new TextEncoder().encode("pw")))
     const panel = await screen.findByRole("region", { name: "Opened: Router" })
+    expect(within(panel).getByText("Opened // shared with you")).toBeInTheDocument()
     expect(await within(panel).findByText("admin")).toBeInTheDocument()
     expect(within(panel).queryByText("hunter2")).not.toBeInTheDocument()
     expect(openedValue).not.toHaveBeenCalledWith(1)
-    expect(within(panel).getByRole("button", { name: "Keep in my vault" })).toBeInTheDocument()
+    expect(within(panel).getByText("Kept here until you open another link or lock.")).toBeInTheDocument()
+    await user.click(within(panel).getByRole("button", { name: "Keep in my vault" }))
+    expect(await within(panel).findByText("Kept in your vault.")).toBeInTheDocument()
+    expect(within(panel).queryByRole("button", { name: "Keep in my vault" })).not.toBeInTheDocument()
   })
 
-  it("answers someone's request link: shows what they ask for, sends the secret once", async () => {
-    const requestLabel = vi.fn(() => Promise.resolve("The Wi-Fi password"))
-    const answerRequest = vi.fn(() => Promise.resolve())
-    mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview()), requestLabel, answerRequest }))
+  it("a link that will not open says why under the field, in the core's words", async () => {
+    mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview()), openSend: () => Promise.reject(new Error("This link has expired.")) }))
     const user = userEvent.setup()
     await openTab(user, "Links")
-    await user.type(await screen.findByLabelText("Answer someone's request link"), "https://sync.example/r/xyz#pin")
-    await user.click(screen.getByRole("button", { name: "Continue" }))
-    const dialog = await screen.findByRole("dialog", { name: "They ask for: The Wi-Fi password" })
+    const field = await screen.findByLabelText("Paste a share link or a request link")
+    await user.type(field, "https://sync.example/s/old#k")
+    await user.click(screen.getByRole("button", { name: "Open" }))
+    await waitFor(() => expect(field).toHaveAccessibleDescription(expect.stringContaining("This link has expired.")))
+  })
+
+  it("a request link pasted in the same field opens the answer Form, which sends the secret once", async () => {
+    const requestLabel = vi.fn(() => Promise.resolve("The Wi-Fi password"))
+    const answerRequest = vi.fn(() => Promise.resolve())
+    const openSend = vi.fn()
+    mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview()), requestLabel, answerRequest, openSend }))
+    const user = userEvent.setup()
+    await openTab(user, "Links")
+    await user.type(await screen.findByLabelText("Paste a share link or a request link"), "https://sync.example/r/xyz#pin")
+    await user.click(screen.getByRole("button", { name: "Open" }))
+    const dialog = await screen.findByRole("dialog", { name: "Answer a request" })
+    expect(within(dialog).getByText("They asked for: The Wi-Fi password")).toBeInTheDocument()
+    expect(openSend).not.toHaveBeenCalled()
     await user.type(within(dialog).getByLabelText("The secret"), "s3cret")
     await user.click(within(dialog).getByRole("button", { name: "Send it" }))
     await waitFor(() => expect(answerRequest).toHaveBeenCalled())
@@ -488,26 +558,78 @@ describe("the Sharing screen", () => {
     expect(sentSecret.every((b) => b === 0)).toBe(true)
   })
 
-  it("someone asked for emergency access: the screen says so and Stop is one press", async () => {
+  it("someone asked for your vaults: needs-you row 4 on Sharing; REVIEW opens the grant, where STOP IT acts at once with no gate", async () => {
     const asked = grant({ state: "requested", release_at: 1_900_000_000 })
     const emergencyStep = vi.fn(() => Promise.resolve([grant({ state: "accepted" })]))
-    mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview({ emergency: [asked], waiting_on_you: 1 })), emergencyStep }))
+    const gate = vi.fn()
+    mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview({ emergency: [asked], waiting_on_you: 1 })), emergencyStep, letBackIn: gate }))
     const user = userEvent.setup()
-    await openTab(user, "Emergency")
-    expect(await screen.findByText(/Someone asked for emergency access/)).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "Stop it" }))
+    // On People: the block, REVIEW, no text action.
+    const block = await screen.findByRole("region", { name: /^Emergency access \/\/ opens/i })
+    expect(blocks()).toHaveLength(1)
+    expect(within(block).getByText("bob@example.com asked for your vaults.")).toBeInTheDocument()
+    expect(within(block).getAllByRole("button")).toHaveLength(1)
+    await user.click(within(block).getByRole("button", { name: "Review" }))
+    // The Emergency tab, the grant open.
+    const detail = await screen.findByRole("region", { name: "Emergency: open" })
+    expect(within(detail).getByText(/They open your vaults .* unless you stop it\./)).toBeInTheDocument()
+    expect(emergencyStep).not.toHaveBeenCalled()
+    // On its own screen the block's solid is STOP IT: one press, no Question, no gate.
+    const here = await screen.findByRole("region", { name: /^Emergency access \/\/ opens/i })
+    await user.click(await within(here).findByRole("button", { name: "Stop it" }))
     expect(emergencyStep).toHaveBeenCalledWith("g1", "stop")
-    expect(await screen.findByText(/can ask for access; you'd have 7 days/)).toBeInTheDocument()
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(gate).not.toHaveBeenCalled()
+    // Stopped: the block leaves.
+    await waitFor(() => expect(blocks()).toHaveLength(0))
   })
 
-  it("an emergency contact must have compared fingerprints first", async () => {
+  it("a grant you named: END IT asks first, and the released case says what to change", async () => {
+    const released = grant({ state: "released", history: [{ at: 1_790_000_000, words: "bob@example.com opened your vaults." }] })
+    const emergencyStep = vi.fn(() => Promise.resolve([grant({ state: "revoked" })]))
+    mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview({ emergency: [released] })), emergencyStep }))
+    const user = userEvent.setup()
+    await openTab(user, "Emergency")
+    const list = await screen.findByRole("list", { name: "Your emergency contacts" })
+    expect(within(list).getByText(/wait 7 days \/\/ 01 vault/)).toBeInTheDocument()
+    await user.click(within(list).getByRole("button", { name: /bob@example.com/ }))
+    const detail = await screen.findByRole("region", { name: "Emergency: open" })
+    expect(within(within(detail).getByRole("list", { name: "What happened" })).getByText("bob@example.com opened your vaults.")).toBeInTheDocument()
+    await user.click(within(detail).getByRole("button", { name: "End it" }))
+    const question = await screen.findByRole("dialog", { name: "End emergency access for bob@example.com?" })
+    expect(within(question).getByText(/They already opened your vaults\. Ending it stops new access/)).toBeInTheDocument()
+    expect(emergencyStep).not.toHaveBeenCalled()
+    await user.click(within(question).getByRole("button", { name: "End it" }))
+    await waitFor(() => expect(emergencyStep).toHaveBeenCalledWith("g1", "revoke"))
+  })
+
+  it("someone who trusts you: ACCEPT is the detail's primary, and OPEN THEIR VAULTS once the wait ran out", async () => {
+    const invited = grant({ grant_id: "g2", mine: false, other: "alice@example.com", state: "invited" })
+    const emergencyStep = vi.fn(() => Promise.resolve([{ ...invited, state: "ready" as const }]))
+    const emergencyOpen = vi.fn(() => Promise.resolve([{ ...invited, state: "released" as const }]))
+    const notices: string[] = []
+    render(<Screen sharing={fakeSharing({ ...empty, overview: () => Promise.resolve(overview({ emergency: [invited] })), emergencyStep, emergencyOpen })} onNotice={(t) => notices.push(t)} />)
+    const user = userEvent.setup()
+    await openTab(user, "Emergency")
+    await user.click(within(await screen.findByRole("list", { name: "People who trust you" })).getByRole("button", { name: /alice@example.com/ }))
+    const detail = await screen.findByRole("region", { name: "Emergency: open" })
+    await user.click(within(detail).getByRole("button", { name: "Accept" }))
+    expect(emergencyStep).toHaveBeenCalledWith("g2", "accept")
+    await user.click(await within(detail).findByRole("button", { name: "Open their vaults" }))
+    await waitFor(() => expect(emergencyOpen).toHaveBeenCalledWith("g2"))
+    expect(notices).toContain("alice@example.com's vaults are open to read, in the sidebar")
+  })
+
+  it("an emergency contact must have compared fingerprints first, with OPEN PEOPLE", async () => {
     mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview()) }))
     const user = userEvent.setup()
     await openTab(user, "Emergency")
-    await user.click(await screen.findByRole("button", { name: "Add an emergency contact…" }))
+    await user.click(await screen.findByRole("button", { name: "Add emergency contact" }))
     const dialog = await screen.findByRole("dialog")
-    expect(within(dialog).getByText(/Only someone whose fingerprint you compared/)).toBeInTheDocument()
+    expect(within(dialog).getByText("Only someone whose fingerprint you compared can be an emergency contact.")).toBeInTheDocument()
     expect(within(dialog).queryByRole("button", { name: "Ask them" })).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole("button", { name: "Open people" }))
+    expect(await screen.findByRole("tab", { name: /^People/, selected: true })).toBeInTheDocument()
   })
 
   it("adds a verified emergency contact through the gate with the wait and vaults picked", async () => {
@@ -515,11 +637,34 @@ describe("the Sharing screen", () => {
     mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview({ contacts: [{ ...bob, verified: true }] })), addEmergency }))
     const user = userEvent.setup()
     await openTab(user, "Emergency")
-    await user.click(await screen.findByRole("button", { name: "Add an emergency contact…" }))
-    const dialog = await screen.findByRole("dialog")
+    await user.click(await screen.findByRole("button", { name: "Add emergency contact" }))
+    const dialog = await screen.findByRole("dialog", { name: "Add emergency contact" })
     await user.selectOptions(within(dialog).getByLabelText("Waiting period"), "14")
     await user.click(within(dialog).getByRole("button", { name: "Ask them" }))
     await waitFor(() => expect(addEmergency).toHaveBeenCalledWith("bob@example.com", 14, ["v1"], {}))
+  })
+})
+
+describe("emergency steps by state, as the screen offers them (brief S5)", () => {
+  const offered = (g: EmergencyView) => grantActions(g).map((a) => `${a.action}:${a.emphasis}`)
+  it("your contact: END IT always; STOP IT is the needs-you's while asked, and secondary once ready", () => {
+    expect(offered(grant({ state: "invited" }))).toEqual(["revoke:critical"])
+    expect(offered(grant({ state: "requested" }))).toEqual(["revoke:critical"])
+    expect(offered(grant({ state: "ready" }))).toEqual(["stop:secondary", "revoke:critical"])
+    expect(offered(grant({ state: "released" }))).toEqual(["revoke:critical"])
+    expect(offered(grant({ state: "revoked" }))).toEqual([])
+  })
+  it("someone who trusts you: ACCEPT, ASK FOR ACCESS, then OPEN THEIR VAULTS; stepping down stays", () => {
+    const c = (state: EmergencyView["state"]) => grant({ mine: false, state })
+    expect(offered(c("invited"))).toEqual(["accept:primary", "decline:text"])
+    expect(offered(c("accepted"))).toEqual(["request:secondary", "decline:text"])
+    expect(offered(c("requested"))).toEqual(["decline:text"])
+    expect(offered(c("ready"))).toEqual(["open:primary"])
+    expect(offered(c("declined"))).toEqual([])
+  })
+  it("only ending, asking and stepping down ask first; nothing is gated", () => {
+    expect(grantActions(grant({ state: "ready" })).filter((a) => a.asks).map((a) => a.action)).toEqual(["revoke"])
+    expect(grantActions(grant({ mine: false, state: "accepted" })).filter((a) => a.asks).map((a) => a.action)).toEqual(["request", "decline"])
   })
 })
 
