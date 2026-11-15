@@ -13,7 +13,7 @@ import { as, fail } from "../host/core"
 import { Standalone } from "../harness/standalone"
 import type { StateDef } from "../harness/types"
 import { d, only, w } from "./defs"
-import { choose, newItem, newItemMenu } from "./steps/edges"
+import { choose, newItem, newItemMenu, rest, review, waits } from "./steps/edges"
 import { open, webOpen } from "./steps/screens"
 import { DIALOG, MENU, go } from "./steps/shell"
 import { healthDevice, itemAction, openItem } from "./steps/vault"
@@ -74,25 +74,112 @@ export const EDGES_STATES: StateDef[] = [
   d({ id: "desktop-devices-add", screen: "Add a device", state: "Code and QR", brief_row: "Add a device", notes: "A link for the new device: a code to type, or a QR to scan; ten minutes, once.", answers: () => ({ link_poll: () => as("link_offer")({}) }), steps: [...open, ...go("devices"), { click: "Add a device" }, DIALOG, { pause: 400 }] }),
   d({ id: "desktop-devices-add-compare", screen: "Add a device", state: "Do the digits match?", brief_row: "Add a device", notes: "The new device shows six digits; approve if they match.", steps: [...open, ...go("devices"), { click: "Add a device" }, DIALOG, { wait: "Do the digits match?" }] }),
   d({ id: "desktop-devices-end-session", screen: "Signed in", state: "End all other sessions?", brief_row: "Signed in", notes: "Ending every session but this one.", steps: [...open, ...go("devices"), { click: "End all other sessions" }, DIALOG] }),
-  d({ id: "desktop-approval-browser-pairing", screen: "Browser pairing", state: "Connect Chrome?", brief_row: "Browser pairing", notes: "A browser asks to pair; compare the code.", answers: () => ({ browser_pending: () => [PAIRING_REQUEST] }), steps: [...open, DIALOG] }),
-  d({ id: "desktop-approval-passkey", screen: "Passkey approval", state: "Sign in with a passkey?", brief_row: "Passkey approval", notes: "On a password-only machine, a passkey request waits for Approve.", answers: () => ({ browser_passkey_pending: () => [PASSKEY_REQUEST] }), steps: [...open, DIALOG] }),
+  // --- requests (doc 84; brief A1, X3 rows 1 to 3) ------------------------------------
+  // A request waits as the needs-you and never opens by itself: each review here is opened from REVIEW.
+  d({
+    id: "desktop-approval-browser-pairing",
+    screen: "Browser pairing",
+    state: "Pair Chrome?",
+    brief_row: "Browser pairing",
+    notes: "A browser asks to pair: PAIRING REQUEST // 01:58 LEFT on the needs-you, then REVIEW: BROWSER and KIND, the code in DigitGroups with its sentence, THEY MATCH (through the gate) or CODES DIFFER, and what a paired browser can do (brief A1; D156 as changed by doc 84).",
+    built: { area: "sign-in-request", screen: "pairing", kind: "undrawn" },
+    answers: () => ({ browser_pending: () => [PAIRING_REQUEST] }),
+    steps: [...open, ...review, rest],
+  }),
+  d({
+    id: "desktop-approval-passkey",
+    screen: "Passkey approval",
+    state: "Review a sign-in",
+    brief_row: "Passkey approval",
+    notes: "Mobile / 11 and Desktop / 09: SIGN-IN REQUEST // 01:57 LEFT, the request's own words as the title, the BROWSER row, the segmented rule, DECLINE and APPROVE WITH TOUCH ID (the fixture's approve route is the platform check). No ACCOUNT, DEVICE, NEAR or TIME: the request carries none of them (W5).",
+    built: { area: "sign-in-request", screen: "review", kind: "drawn" },
+    answers: () => ({ browser_passkey_pending: () => [PASSKEY_REQUEST] }),
+    steps: [...open, ...review, rest],
+  }),
+  d({
+    id: "desktop-approval-passkey-strip",
+    screen: "Passkey approval",
+    state: "Waiting on Items",
+    brief_row: "Passkey approval",
+    notes: "The request waits; nothing opens by itself. Phone: the yellow strip over the bottom row with REVIEW (Mobile / 01). Wider: the block at the top of the detail column, over \"Nothing open.\", with REVIEW solid and DECLINE as text (X3 row 1).",
+    built: { area: "needs-you", screen: "sign-in-strip", kind: "undrawn" },
+    answers: () => ({ browser_passkey_pending: () => [PASSKEY_REQUEST] }),
+    steps: [...open, ...waits, rest],
+  }),
+  d({
+    id: "desktop-approval-passkey-block",
+    screen: "Passkey approval",
+    state: "Waiting over a login",
+    brief_row: "Passkey approval",
+    notes: "Desktop / 01's block: the request at the top of the open login's detail, SIGN-IN REQUEST // 01:57 LEFT, the request's words, REVIEW and DECLINE. The request names no item, so the block shows on every screen, this one included (app spec, W5). Phone: the login with the strip.",
+    built: { area: "needs-you", screen: "sign-in-block", kind: "undrawn" },
+    answers: () => ({ browser_passkey_pending: () => [PASSKEY_REQUEST] }),
+    steps: [...open, ...openItem("Pixelforge"), ...waits, rest],
+  }),
+  d({
+    id: "desktop-approval-passkey-gate",
+    screen: "Passkey approval",
+    state: "The gate over the review",
+    brief_row: "Passkey approval",
+    notes: "On a computer whose approve route is the master password the yes is plain APPROVE; pressing it opens the gate over the review. CANCEL returns to the review with nothing approved (brief A1, X5).",
+    built: { area: "sign-in-request", screen: "gate", kind: "undrawn" },
+    answers: () => ({
+      browser_passkey_pending: () => [PASSKEY_REQUEST],
+      approval_route: (a) => (a.kind === "approve" ? { route: "password", method: "password" } : as("approval_route")(a)),
+      browser_passkey_answer: (a) => {
+        if (!(a.gate as { password?: string } | undefined)?.password) fail("approval_needed", "your master password is needed to approve this sign-in", "password")
+        return undefined
+      },
+    }),
+    steps: [...open, ...review, { pause: 300 }, { click: "Approve", role: "button" }, { wait: "To approve this sign-in." }, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-approval-passkey-ran-out",
+    screen: "Passkey approval",
+    state: "Ran out while open",
+    brief_row: "Passkey approval",
+    notes: "The two minutes ran out with the review open: \"This request ran out.\", EXPIRED in the overline, the rule empty, and CLOSE alone. Nothing was answered (brief A1). The request here lasts a few seconds, on the real clock.",
+    built: { area: "sign-in-request", screen: "ran-out", kind: "undrawn" },
+    live_clock: true,
+    answers: () => {
+      let first: number | null = null
+      return {
+        browser_passkey_pending: () => {
+          first ??= Date.now()
+          const left = 10 - Math.floor((Date.now() - first) / 1000)
+          return left > 0 ? [{ ...PASSKEY_REQUEST, expires_in_secs: 10 }] : []
+        },
+      }
+    },
+    steps: [...open, ...review, { pause: 5000 }, { wait: "This request ran out." }, { pause: 300 }, rest],
+  }),
+  d({
+    id: "desktop-approval-under-editor",
+    screen: "Passkey approval",
+    state: "Arriving under the editor",
+    brief_row: "Passkey approval",
+    notes: "A request that arrives while the editor is open shows as the compact line on the editor's top edge, SIGN-IN REQUEST // 01:57 LEFT and REVIEW; the block behind the scrim hides (X3, LA8). REVIEW opens the review over the editor.",
+    answers: () => ({ browser_passkey_pending: () => (document.querySelector('[role="dialog"]') ? [PASSKEY_REQUEST] : []) }),
+    steps: [...open, ...newItem(/^Login/), DIALOG, { see: '[data-needs-you-layer] [data-slot="needs-you"], [data-needs-you-layer] [data-slot="accessory"]' }, { pause: 300 }],
+  }),
   d({
     id: "desktop-approval-sheet-seam",
     screen: "Approvals",
-    state: "ApprovalSheet (seam)",
+    state: "Device request (seam)",
     brief_row: "Approvals",
-    notes: "unicron's ApprovalSheet as the host binds it; nothing in the core produces a request yet, so no screen mounts it (brief §3.2).",
+    notes: "unicron's ApprovalSheet as the host binds it for a device request (X3 row 3): DEVICE REQUEST, the request's what and who, WHERE and WHEN, the three digits the other side shows, APPROVE (the host runs the gate), DENY and THIS WASN'T ME. Nothing in the core produces a request yet, so no screen mounts it (brief §3.2); the needs-you row is tested in approval-sheet.test.tsx.",
+    built: { area: "sign-in-request", screen: "device", kind: "undrawn" },
     mount: () => (
       <Standalone>
         <DeviceApproval
-          request={{ id: "ap-1", kind: "device", origin: "pairing", context: [{ label: "Device", value: "Sam's new phone" }, { label: "Where", value: "Port Elm, WA (198.51.100.23)" }, { label: "When", value: "Just now" }], expected: "418", digits: 3 }}
+          request={{ id: "ap-1", kind: "device", origin: "pairing", title: "Sam's new phone asks to join", context: [{ label: "Where", value: "Port Elm, WA (198.51.100.23)" }, { label: "When", value: "14:31" }], expected: "418", digits: 3 }}
           onApprove={() => {}}
           onDeny={() => {}}
           onReport={() => {}}
         />
       </Standalone>
     ),
-    steps: [DIALOG, { pause: 400 }],
+    steps: [DIALOG, { pause: 700 }],
   }),
   d({
     id: "desktop-editor-generator-words",
