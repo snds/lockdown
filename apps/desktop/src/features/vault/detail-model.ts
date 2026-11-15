@@ -178,6 +178,19 @@ export function cardFaceOf(item: ItemDetail): CardFace {
 /** Public keys read and copy as code (brief I2: `CodeBlock` for SSH and PGP public keys). */
 export const CODE_BLOCK_FIELDS = new Set(["ssh.public_key", "pgp.public_key"])
 
+/**
+ * The secret the phone's bottom row copies (brief I1): the row's quick copy
+ * when the core names one, else the item's first secret field. The core
+ * names no quick copy for a kind with no primary secret (a note), but a
+ * note that holds a password still gets the eye and its copy, as Mobile /
+ * 05 draws; the copy itself goes through the field's own gate.
+ */
+export function bottomCopyOf(copy: CopyTarget | null, fields: Pick<FieldView, "field_id" | "label" | "kind" | "hidden">[]): CopyTarget | null {
+  if (copy) return copy
+  const secret = fields.find((f) => f.hidden && f.kind !== "totp" && f.kind !== "passkey" && f.kind !== "linked")
+  return secret ? { field_id: secret.field_id, how: "secret", label: secret.label.toLowerCase() } : null
+}
+
 /** What the phone's bottom row holds for an item (brief I1), chosen by the row's quick copy (`ItemSummary.copy`). */
 export interface BottomRowPlan {
   /** The eye: shows the copied secret's own row, as the Reveal setting says. */

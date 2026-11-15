@@ -14,7 +14,7 @@ import { malformedLists } from "@/test/a11y"
 import { fakeDepth } from "@/test/fake-depth"
 import { TEMPLATES } from "@/test/templates-fixture"
 
-import { bottomRowOf, overlineOf } from "./detail-model"
+import { bottomCopyOf, bottomRowOf, overlineOf } from "./detail-model"
 import { DetailPane } from "./detail-pane"
 
 vi.mock("@/app/notify", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/app/notify")>()), notify: vi.fn(() => 1) }))
@@ -248,6 +248,16 @@ describe("the phone's bottom row follows the row's quick copy (brief I1)", () =>
     expect(bottomRowOf({ state: "trashed" }, secret, true)).toEqual({ start: null, end: "restore" })
     expect(bottomRowOf({ state: "trashed" }, secret, false)).toEqual({ start: null, end: null })
     expect(bottomRowOf({ state: "live", access: "fill-only" }, secret, false)).toEqual({ start: null, end: null })
+  })
+  it("a note with a secret gets copy-secret on its first secret field; a note with nothing secret gets no row", () => {
+    const network = { field_id: "note.net", label: "Network password", kind: "password", hidden: true }
+    const text = { field_id: "note.body", label: "Note", kind: "multiline", hidden: false }
+    const target = bottomCopyOf(null, [text, network])
+    expect(target).toEqual({ field_id: "note.net", how: "secret", label: "network password" })
+    expect(bottomRowOf({ state: "live" }, target, true)).toEqual({ start: "reveal", end: "copy-secret" })
+    expect(bottomCopyOf(null, [text])).toBeNull()
+    expect(bottomCopyOf(null, [{ field_id: "c", label: "Code", kind: "totp", hidden: true }])).toBeNull()
+    expect(bottomCopyOf(secret, [network])).toBe(secret)
   })
 })
 

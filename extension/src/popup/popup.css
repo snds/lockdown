@@ -15,3 +15,15 @@
     background: var(--surface-ground);
   }
 }
+
+/*
+ * A stand-in for a Unicron gap (brief B1): a row's mono line is the
+ * person's own words (a username, a site), so it is drawn as written, in the
+ * plain meta role, never in the capitals of the overline. The plain meta
+ * role is 12 px; the popup keeps reading text at 13 px or more (R16), so
+ * here it is 13 px on the same 20 px line. Take this out when Unicron has a
+ * 13 px mono row role.
+ */
+[data-slot="list-row"][data-meta-style="plain"] [data-slot="list-row-meta"] {
+  --type-meta-size: 0.8125rem;
+}

@@ -235,8 +235,11 @@ export function SearchView({ rows, selected, onSelect, onChanged, onNotice }: Se
               </section>
             )}
             {q && rows && found.length === 0 && (
-              // The Empty State keeps its own 16 from the edge, under the field, as Mobile / 14 draws it.
-              <EmptyState
+              // The Empty State keeps its own 16 from the edge, under the field, as Mobile / 14 draws it. Beside the
+              // sidebar the pane's gutter is that edge already, so it steps back by its own 16 and lines up with the
+              // field, as Desktop / 11 draws it (a Unicron gap: EmptyState has no flush form).
+              <div className={frame.phone ? undefined : "-ms-4"}>
+                <EmptyState
                   overline={`Search // ${count(0)}`}
                   title={`No item for ${q}.`}
                   body={`${here && narrow ? `Nothing in ${narrow.label} matches.` : nothingIn(vaults.map((v) => v.name))} Save it from the browser next time you sign in, or add it here.`}
@@ -246,6 +249,7 @@ export function SearchView({ rows, selected, onSelect, onChanged, onNotice }: Se
                     </Button>
                   }
                 />
+              </div>
             )}
             {found.length > 0 &&
               groups.map((g) => (

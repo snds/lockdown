@@ -1,4 +1,4 @@
-import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react"
+import { createContext, useContext, useMemo, useState, type KeyboardEvent, type ReactNode } from "react"
 
 import {
   AdaptiveMenu,
@@ -377,7 +377,6 @@ export function OrganizationNav({ rows, nav, onNavigate, variant = "sidebar", sh
             />,
           ),
         )}
-      {switcher && li("new", <NavItem label="New vault" icon="add" data-level={0} onClick={newVault} />)}
       {sharing && !switcher && (
         <NavItem label="Sharing" icon="share" current={current === "sharing"} mark={sharingMark > 0 ? { count: sharingMark, tone: "needs-you" } : undefined} onClick={() => goPlace("sharing")} />
       )}
@@ -398,7 +397,7 @@ export function OrganizationNav({ rows, nav, onNavigate, variant = "sidebar", sh
       ) : (
         <>
           <NavSection title="Vaults" count={vaults.length} tree action={<IconButton label="New vault" icon="add" size="icon-sm" variant="ghost" onClick={newVault} />}>
-            {tree}
+            <InNavTree.Provider value={true}>{tree}</InNavTree.Provider>
           </NavSection>
           {failure}
         </>
@@ -425,6 +424,8 @@ export function OrganizationNav({ rows, nav, onNavigate, variant = "sidebar", sh
       {switcher && sharing && (
         <NavItem label="Sharing" icon="share" current={current === "sharing"} mark={sharingMark > 0 ? { count: sharingMark, tone: "needs-you" } : undefined} onClick={() => goPlace("sharing")} />
       )}
+      {/* Every switcher ends with its add row (cross-app §7); a vault is made new, so its words are "New vault" (§12). */}
+      {switcher && <NavItem label="New vault" icon="add" onClick={newVault} />}
       <NamePrompt ask={name} onClose={() => setName(null)} />
       <ConfirmPrompt ask={confirm} onClose={() => setConfirm(null)} />
     </>
@@ -456,12 +457,18 @@ function OrgEntry({ label, icon, description, mark, current, expanded, onExpande
   const [open, setOpen] = useState(false)
   const [page, setPage] = useState<MenuPage>("main")
   const keys = useRowMenuKeys(() => setOpen(true))
+  // In the sidebar's tree the ⋯ is for a pointer only: a tree may own nothing but its items, so the
+  // button is out of the tab order and hidden from assistive tech, and the row's Menu key, Shift+F10
+  // and right click open the same menu (cross-app §10). On close, focus goes back to the row.
+  const inTree = useInNavTree()
   // A desktop menu shows its overline and not its title, so a later page names itself in the overline there.
   const sheet = useAdaptiveSheet()
   const pageTitle = page === "main" ? menuTitle : (pageTitles?.[page] ?? menuTitle)
   const change = (next: boolean) => {
     setOpen(next)
-    if (!next) setPage("main")
+    if (next) return
+    setPage("main")
+    if (inTree) requestAnimationFrame(backToRow)
   }
   return (
     <NavItem
@@ -485,7 +492,13 @@ function OrgEntry({ label, icon, description, mark, current, expanded, onExpande
             overline={page === "main" ? menuOverline : sheet ? menuTitle : `${menuTitle} // ${pageTitle}`}
             title={pageTitle}
             align="end"
-            trigger={<IconButton label={menuLabel ?? `${label} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" />}
+            trigger={
+              inTree ? (
+                <IconButton label={menuLabel ?? `${label} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" tabIndex={-1} aria-hidden="true" />
+              ) : (
+                <IconButton label={menuLabel ?? `${label} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" />
+              )
+            }
           >
             {menu(page, setPage)}
           </AdaptiveMenu>
@@ -493,6 +506,20 @@ function OrgEntry({ label, icon, description, mark, current, expanded, onExpande
       }
     />
   )
+}
+
+const InNavTree = createContext(false)
+
+/** The row sits in a `tree` NavSection (the desktop sidebar), not in the switcher's plain list. */
+function useInNavTree(): boolean {
+  return useContext(InNavTree)
+}
+
+/** After the ⋯ menu of a tree row closes, focus is the row's again (the ⋯ itself takes no focus there). */
+function backToRow() {
+  const active = document.activeElement
+  if (!(active instanceof HTMLElement) || !active.closest('[data-slot="nav-item-action"]')) return
+  active.closest('[data-slot="nav-item"]')?.querySelector<HTMLElement>('[data-slot="nav-item-main"]')?.focus()
 }
 
 /**

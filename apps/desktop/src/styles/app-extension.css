@@ -162,6 +162,28 @@
 }
 
 /*
+ * A stand-in for a Unicron gap, the same one Warpcore holds (cross-app: one
+ * answer). A selected ListRow sits on primary-soft and keeps the label ink
+ * for its meta line. On stone that is 4.21 to 1 (#656A66 on #CCE8D2) for
+ * 12 px text, under WCAG's 4.5 to 1. So inside a selected row the label ink
+ * is the secondary ink, on both grounds. Take this out when ListRow darkens
+ * its selected meta itself.
+ */
+[data-slot="list-row"][data-selected] {
+  --muted-foreground: var(--text-secondary);
+}
+
+/*
+ * Quick create (States / 03) is drawn 240 wide. Unicron's menus size to
+ * their items (165 here) and have no named 240 width yet (a gap, the same
+ * one Warpcore holds); the menu's own knob, on the 4 px scale, sets it for
+ * this one menu.
+ */
+[data-quick-create] {
+  --c-menu-min-width: calc(var(--spacing) * 60);
+}
+
+/*
  * The Wi-Fi guest card's print (docs/plan/21-vault-depth.md, D239): while a
  * card is drawn for printing, the page prints that card alone, black on
  * white, whatever the theme; nothing else of the vault reaches the paper.

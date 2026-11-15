@@ -105,9 +105,14 @@ describe("vaults, folders and tags in the sidebar", () => {
     expect(within(tree).getAllByRole("treeitem", { name: /^(work|clients|family),/ })).toHaveLength(3)
     await user.click(within(tree).getByRole("treeitem", { name: /^clients,/ }))
     expect(onNavigate).toHaveBeenLastCalledWith({ area: "vault", view: "all", scope: { tag: "work/clients" } })
-    // Every row keeps its menu, by the same name.
-    expect(screen.getByRole("button", { name: "Personal options" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "#work/clients options" })).toBeInTheDocument()
+    // Every row keeps its menu, by the same name. In the tree the ⋯ is for a pointer: a tree owns
+    // only its items, so the button is out of the tab order and hidden from assistive tech (the
+    // row's Menu key opens the same menu, below).
+    for (const name of ["Personal options", "#work/clients options"]) {
+      const options = screen.getByLabelText(name, { selector: "button" })
+      expect(options).toHaveAttribute("aria-hidden", "true")
+      expect(options).toHaveAttribute("tabindex", "-1")
+    }
     // Sharing is the group's last row.
     await user.click(within(tree).getByRole("treeitem", { name: "Sharing" }))
     expect(onNavigate).toHaveBeenLastCalledWith({ area: "sharing", view: "all" })
@@ -226,7 +231,10 @@ describe.each(WIDTHS)("the vault, folder and tag menus at %s px", (_name, width,
     else await press(user, () => within(rows).getByRole("button", { name: `Expand ${name}` }))
   }
   async function openMenu(user: UserEvent, rows: HTMLElement, label: string) {
-    await press(user, () => within(rows).getByRole("button", { name: label }))
+    // Beside the sidebar the ⋯ is for a pointer; the keyboard opens the same menu from the row (Shift+F10).
+    // A tag's row is named by its last part ("#work/clients" is the row "clients").
+    if (wide) await press(user, () => within(rows).getByRole("treeitem", { name: startsName(label.replace(/ options$/, "").replace(/^#(.*\/)?/, "")) }), "{Shift>}{F10}{/Shift}")
+    else await press(user, () => within(rows).getByRole("button", { name: label }))
     await waitFor(() => expect(openMenuRows().length).toBeGreaterThan(0))
   }
   async function closeMenu(user: UserEvent) {
@@ -302,7 +310,7 @@ describe("the name prompts", () => {
     const renameVault = vi.fn<Client["renameVault"]>(() => (refuse ? Promise.reject({ code: "refused", message: "A vault named Family already exists." }) : Promise.resolve()))
     mount(fakeClient({ ...base, renameVault }), <OrganizationNav rows={[]} nav={{ area: "vault", view: "all" }} onNavigate={() => {}} />)
     const user = userEvent.setup()
-    await user.click(screen.getByRole("button", { name: "Personal options" }))
+    await user.click(screen.getByLabelText("Personal options", { selector: "button" }))
     await user.click(await screen.findByRole("menuitem", { name: "Rename" }))
     const field = await screen.findByRole("textbox", { name: "Name" })
     expect(field).toHaveValue("Personal")
@@ -323,7 +331,7 @@ describe("the name prompts", () => {
     const addFolder = vi.fn<Client["addFolder"]>(() => Promise.resolve("f1"))
     mount(fakeClient({ ...base, addFolder }), <OrganizationNav rows={[]} nav={{ area: "vault", view: "all" }} onNavigate={() => {}} />)
     const user = userEvent.setup()
-    await user.click(screen.getByRole("button", { name: "Family options" }))
+    await user.click(screen.getByLabelText("Family options", { selector: "button" }))
     await user.click(await screen.findByRole("menuitem", { name: "New folder" }))
     await screen.findByRole("dialog", { name: "New folder in Family" })
     await user.click(screen.getByRole("button", { name: "Create folder" }))
@@ -338,7 +346,7 @@ describe("the name prompts", () => {
     const rows = [row("a", { tags: ["travel"] })]
     mount(fakeClient({ ...base, renameTag }), <OrganizationNav rows={rows} nav={{ area: "vault", view: "all", scope: { tag: "travel" } }} onNavigate={() => {}} />)
     const user = userEvent.setup()
-    await user.click(screen.getByRole("button", { name: "#travel options" }))
+    await user.click(screen.getByLabelText("#travel options", { selector: "button" }))
     await user.click(await screen.findByRole("menuitem", { name: "Take off every item" }))
     const question = await screen.findByRole("dialog", { name: "Take #travel off every item?" })
     expect(renameTag).not.toHaveBeenCalled()
@@ -357,9 +365,21 @@ describe("keys", () => {
     expect(await screen.findByRole("menu", { name: "Family" })).toBeInTheDocument()
     await user.keyboard("{Escape}")
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull())
+    // Closing gives focus back to the row, never to the hidden ⋯.
+    await waitFor(() => expect(within(tree).getByRole("treeitem", { name: /^Family/ })).toHaveFocus())
     within(tree).getByRole("treeitem", { name: /^Personal/ }).focus()
     await user.keyboard("{ContextMenu}")
     expect(await screen.findByRole("menu", { name: "Personal" })).toBeInTheDocument()
+  })
+
+  it("keeps the tree to its items: Tab leaves the tree in one stop, past every ⋯", async () => {
+    mount(fakeClient(base), <OrganizationNav rows={[]} nav={{ area: "vault", view: "all" }} onNavigate={() => {}} />)
+    const tree = screen.getByRole("tree", { name: /^Vaults/ })
+    // The tree's only children are its items: no button stands among them for assistive tech.
+    expect(within(tree).queryAllByRole("button")).toEqual([])
+    const stops = Array.from(tree.querySelectorAll<HTMLElement>("button, [tabindex]")).filter((el) => el.tabIndex >= 0)
+    expect(stops).toHaveLength(1)
+    expect(stops[0]).toHaveAttribute("role", "treeitem")
   })
 
   it("moves through the switcher's rows with the tree's arrow keys", async () => {
@@ -382,8 +402,11 @@ describe("keys", () => {
     await user.keyboard("{ArrowLeft}")
     expect(within(list).queryByRole("button", { name: /^Work(,|$)/ })).toBeNull()
     await user.keyboard("{End}")
-    expect(rowNamed(/^New vault(,|$)/)).toHaveFocus()
+    expect(rowNamed(/^Tags(,|$)/)).toHaveFocus()
     await user.keyboard("{Home}")
     expect(rowNamed(/^All vaults(,|$)/)).toHaveFocus()
+    // The switcher ends with its add row, after the vaults, the shared ones and Sharing (cross-app §7).
+    const buttons = screen.getAllByRole("button")
+    expect(buttons[buttons.length - 1]).toHaveAccessibleName("New vault")
   })
 })

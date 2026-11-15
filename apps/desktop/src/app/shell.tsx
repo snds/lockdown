@@ -307,10 +307,12 @@ function Sidebar({ collapsed, onCollapsedChange, rows, toFix, sharingMark, setti
             {rows && rows.length > 0 && <NavItem label="More" icon="overflow-menu--horizontal" expanded={moreOpen || inMore} onExpandedChange={setMoreOpen} />}
             {rows && rows.length > 0 && (moreOpen || inMore) && [...more, ...ASIDE_VIEWS].map((v) => row(v, 1))}
           </NavSection>
-          <OrganizationNav rows={rows ?? []} nav={nav} onNavigate={navigate} sharingMark={sharingMark} />
+          {/* Tools before the vaults: the app's three sections (Items, Codes, Health) stay in view at 1440 × 900,
+              above the vault trees, which grow with the person's folders and tags. */}
           <NavSection title="Tools">
             <NavItem label="Health" icon="checkmark--outline" current={current === "health"} mark={health} onClick={() => go("health")} />
           </NavSection>
+          <OrganizationNav rows={rows ?? []} nav={nav} onNavigate={navigate} sharingMark={sharingMark} />
         </>
       ) : (
         // The rail: the three sections. Views, vaults and Sharing are behind the page head there.

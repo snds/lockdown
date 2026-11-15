@@ -333,6 +333,7 @@ function SiteSection({ site, say, onFix, fixButton }: { site: Site; say: Say; on
                   key={c.item_id}
                   render={<li />}
                   size="compact"
+                  metaStyle="plain"
                   title={title}
                   meta={c.crown_jewel ? "Protected" : c.username}
                   marks={c.asked ? <Badge>From quick access</Badge> : undefined}
@@ -456,6 +457,7 @@ function FixView({ tabId, onBack, say }: { tabId?: number; onBack: () => void; s
                   key={i}
                   render={<li />}
                   size="compact"
+                  metaStyle="plain"
                   title={<label htmlFor={`fix-role-${i}`}>{fieldName(f)}</label>}
                   meta={`${f.type} // now ${ROLES.find(([v]) => v === (f.role ?? ""))?.[1].toLowerCase() ?? "an ordinary field"}`}
                   // The Select sits under the words, not at the row's end: at
@@ -515,6 +517,7 @@ function Aliases({ site, say }: { site: Site; say: Say }) {
             key={svc.item_id}
             render={<li />}
             size="compact"
+            metaStyle="plain"
             title={svc.name}
             meta={svc.domain ? `On ${svc.domain}` : "A new address that forwards to you"}
             action={
@@ -622,6 +625,7 @@ function Search({ lookalike, say }: { lookalike: string[]; say: Say }) {
               key={item.item_id}
               render={<li />}
               size="compact"
+              metaStyle="plain"
               title={title}
               meta={resultLine(item)}
               marks={item.exact === false ? <Badge>Close match</Badge> : undefined}

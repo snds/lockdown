@@ -4,6 +4,7 @@ import { AppFrameInset, AppFramePageHead, NavItem, SearchField, SectionHeader, S
 
 import { useCrumb } from "@/app/crumbs"
 import { NeedsYouSlot, useNeedsYouBlock } from "@/app/needs-you"
+import { pageHeadSize } from "@/app/page-head"
 import { deviceName, settingsSections, usePlaces, type SettingsSection } from "@/app/places"
 import { isMac } from "@/features/palette/palette-model"
 import { count } from "@/lib/format"
@@ -113,10 +114,13 @@ export function SettingsPlaces({ overview, marks, children }: SettingsPlacesProp
       onValueChange={(value) => go(value ? `settings-${value}` : "settings")}
       search={search}
       overview={drawsOverview ? <AppFrameInset>{overview}</AppFrameInset> : undefined}
-      head={frame.phone ? undefined : <AppFramePageHead title="Settings" size="sm" gap="sm" />}
+      head={frame.phone ? undefined : <AppFramePageHead title="Settings" size={pageHeadSize(frame)} gap="sm" />}
     >
       {shown ? (
         <AppFrameInset>
+          {/* A section pushed at medium width: the frame's section head is a level below and no top bar names it,
+              so the screen's one h1 is the section's name (brief 4.0). The phone's top bar carries it there. */}
+          {open && !frame.split && !frame.phone && <h1 className="sr-only">{sectionLabel(open)}</h1>}
           {/* What waits on the person, at the top of the section (brief X3). */}
           {needsYou ? (
             <div className="flex flex-col gap-6">

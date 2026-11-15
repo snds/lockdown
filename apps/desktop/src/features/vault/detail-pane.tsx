@@ -58,7 +58,7 @@ import { AccessNote, ItemShare } from "@/features/sharing/item-share"
 import { LogAwayDialog, AwayBlock } from "./away-block"
 import { ItemCodeDisplay } from "./code-display"
 import { ItemCrownJewel } from "./crown-jewel"
-import { CODE_BLOCK_FIELDS, DEFAULT_MATCH_RULE, bottomRowOf, cardFaceOf, filled, hostOf, overlineOf, sectionsOf } from "./detail-model"
+import { CODE_BLOCK_FIELDS, DEFAULT_MATCH_RULE, bottomCopyOf, bottomRowOf, cardFaceOf, filled, hostOf, overlineOf, sectionsOf } from "./detail-model"
 import { ItemField, type RowSize, type SecretFormat } from "./item-field"
 import { LARGE_TYPE_LIFETIME_S, ShowLargeType } from "./large-type"
 import { LinkedField } from "./linked-field"
@@ -315,7 +315,7 @@ function ItemOpen({ id, rows, item, setItem, onEdit, onTrashed, onChanged, onNot
   // --- the phone's bottom row, chosen by the row's quick copy (brief I1) ------------------------
   const remote = useSecretFieldRemote()
   const quickCopy = useQuickCopy(onNotice)
-  const copy = summary?.copy ?? null
+  const copy = bottomCopyOf(summary?.copy ?? null, item.fields)
   const plan = bottomRowOf(item, copy, canEdit)
   const remoteField = plan.start === "reveal" && copy ? copy.field_id : null
   // The elements are drawn again with the pane (the codes tick each second); the shell keeps their state.
@@ -605,7 +605,8 @@ function ItemOpen({ id, rows, item, setItem, onEdit, onTrashed, onChanged, onNot
       <ConfirmDialog
         open={resolving !== null}
         onOpenChange={(o) => !o && setResolving(null)}
-        tone="destructive"
+        // Nothing is lost (the other copy can be restored), so the yes is the default action (brief X5).
+        tone="default"
         title={resolving === "keep-this" ? "Keep this copy?" : "Keep the other copy?"}
         description={`${resolving === "keep-this" ? `"${other?.title}"` : `"${title}"`} moves to Recently deleted. Nothing is destroyed: it stays readable there through its grace period and can be restored from there.`}
         confirmLabel={resolving === "keep-this" ? "Keep this copy" : "Keep other copy"}
@@ -745,7 +746,12 @@ function drawUse(item: ItemDetail, template: TemplateView | null, field: FieldRe
           {body?.value ? (
             <section aria-label="Note" className={`flex max-w-162 flex-col gap-1 ${rest.length ? "pt-6" : ""}`}>
               <h3 className="type-overline text-muted-foreground">Note</h3>
-              <MarkdownView text={body.value} />
+              {/* The note's words in the secondary ink, as Mobile / 05 and Desktop / 04 draw them, under the
+                  field values above. Prose has no tone, so its body role is pointed at the secondary role
+                  here, on a plain wrapper (a Unicron gap: Prose tone="secondary"). */}
+              <div className="[--text-body:var(--text-secondary)]">
+                <MarkdownView text={body.value} />
+              </div>
             </section>
           ) : (
             rest.length === 0 && parts.empty

@@ -434,6 +434,9 @@ test("every popup result has one row anatomy with its action trailing, at 13 px 
   expect(geometry.action.right).toBeLessThanOrEqual(geometry.row.right);
   // The subtitle is one line, cut short rather than wrapped.
   expect(geometry.sub.height).toBeLessThan(28);
+  // It shows the username as it is stored, letter for letter, in the case it was saved in.
+  const shown = await row.locator('[data-slot="list-row-meta"]').evaluate((el) => (el as HTMLElement).innerText);
+  expect(shown.startsWith("someone.with.a.long.address@example.com")).toBe(true);
   // Every word the popup reads as text is 13 px or more. The one smaller
   // size is unicron's label role, its overline (Geist Mono, capitals,
   // 11 px): from unicron 1.0 a button's label and a field's label are set
@@ -455,7 +458,8 @@ test("every popup result has one row anatomy with its action trailing, at 13 px 
   expect(words.filter((w) => w.px < 11)).toEqual([]);
   expect(words.filter((w) => w.px < 13 && !w.label)).toEqual([]);
   // A result's title is reading text, never a label; the line under it is
-  // the overline (mono capitals), the one role allowed under 13 px.
+  // mono, at 13 px, and drawn as written: a username is the person's own
+  // words, never put in capitals (brief B1, `kestrel04 // github.com`).
   const reading = await results.evaluate((list) =>
     Array.from(list.querySelectorAll('[data-slot="list-row-title"]')).map((el) => parseFloat(getComputedStyle(el).fontSize)),
   );
@@ -464,11 +468,11 @@ test("every popup result has one row anatomy with its action trailing, at 13 px 
   const lines = await results.evaluate((list) =>
     Array.from(list.querySelectorAll('[data-slot="list-row-meta"]')).map((el) => {
       const css = getComputedStyle(el);
-      return css.textTransform === "uppercase" && /Geist Mono/.test(css.fontFamily);
+      return { mono: /Geist Mono/.test(css.fontFamily), upper: css.textTransform === "uppercase", px: parseFloat(css.fontSize) };
     }),
   );
   expect(lines.length).toBeGreaterThanOrEqual(1);
-  expect(lines.filter((overline) => !overline)).toEqual([]);
+  expect(lines.filter((line) => !line.mono || line.upper || line.px < 13)).toEqual([]);
   await p.close();
 });
 
