@@ -46,8 +46,9 @@ describe("the export dialog's age choice", () => {
       exportChoose,
     })
     const user = userEvent.setup()
-    await user.selectOptions(await screen.findByLabelText("Kind of file"), "lockdown-age")
+    await user.click(await screen.findByRole("radio", { name: "A Lockdown backup, locked to a public key (age)" }))
     await user.click(await screen.findByRole("button", { name: "Choose where to save…" }))
+    // The field's problem shows under the field.
     expect(await screen.findByText(/Paste the age public key/)).toBeInTheDocument()
     await user.type(screen.getByLabelText("The public keys it opens with"), "age1aaa\nage1bbb")
     await user.click(screen.getByRole("button", { name: "Choose where to save…" }))

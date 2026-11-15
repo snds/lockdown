@@ -80,3 +80,9 @@ export function leftOutLine(p: ExportPreview): string | null {
   const names = p.left_out.map((l) => l.title).join(", ")
   return `${plural(p.crown_jewels_left_out, "crown jewel")} stay${p.crown_jewels_left_out === 1 ? "s" : ""} out: ${names}. To include one, open it and turn on "Include in exports and backups".`
 }
+
+/** The folder a saved file is in, for the toast "Saved to {folder}" (brief T7). */
+export function folderOf(path: string): string {
+  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"))
+  return cut > 0 ? path.slice(0, cut) : path
+}

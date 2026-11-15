@@ -27,9 +27,9 @@ function browserPrefers(scheme: "light" | "dark") {
   })) as unknown as typeof window.matchMedia
 }
 
-function mount(section: "appearance" | "this-device" = "appearance", onSignOut: () => void = () => {}) {
+function mount(section: "appearance" | "this-device" | "import-export" | "backups" = "appearance", onSignOut: () => void = () => {}, client = fakeClient({})) {
   return render(
-    <ClientProvider value={fakeClient({})}>
+    <ClientProvider value={client}>
       <SettingsProvider>
         {/* Appearance is one of Settings' sections now (doc 64): the test opens on it. */}
         <PlacesProvider value={{ nav: { area: "settings", view: "all", section }, surface: "web", go: () => {}, navigate: () => {} }}>
@@ -96,5 +96,24 @@ describe("the web vault's This browser (brief T1)", () => {
     expect(screen.getByText(/as trustworthy as the server that sends it/)).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Sign out of this tab" }))
     expect(out).toBe(1)
+  })
+})
+
+describe("the web vault draws no import, export or backups (brief W1, T7, T8)", () => {
+  beforeEach(() => browserPrefers("light"))
+
+  it.each(["import-export", "backups"] as const)("lists neither section, and a link to %s draws nothing of it and asks the client nothing", async (section) => {
+    const backupStatus = vi.fn(() => Promise.reject(new Error("refused in the web vault")))
+    const importFormats = vi.fn(() => Promise.reject(new Error("refused in the web vault")))
+    const exportPreview = vi.fn(() => Promise.reject(new Error("refused in the web vault")))
+    mount(section, () => {}, fakeClient({ backupStatus, importFormats, exportPreview }))
+    // The web's own sections are there.
+    expect((await screen.findAllByText("Appearance")).length).toBeGreaterThan(0)
+    expect(screen.queryByText("Import and export")).not.toBeInTheDocument()
+    expect(screen.queryByText("Backups")).not.toBeInTheDocument()
+    for (const name of [/^Import…/, /^Export…/, /Turn on backups/, /Back up now/, /Restore…/]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument()
+    expect(backupStatus).not.toHaveBeenCalled()
+    expect(importFormats).not.toHaveBeenCalled()
+    expect(exportPreview).not.toHaveBeenCalled()
   })
 })

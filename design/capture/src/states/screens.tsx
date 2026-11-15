@@ -18,7 +18,7 @@ import { fakeLink, waitingCredentials } from "../host/web-link"
 import type { World } from "../fixture/world"
 import type { StateDef } from "../harness/types"
 import { d, linkPage, w } from "./defs"
-import { create, inPage, kitSaved, settingsDrawn, open, quickSkipped, settings, settingsAt, toBackups, webOpen } from "./steps/screens"
+import { create, inPage, kitSaved, settingsDrawn, open, pickImportFile, quickSkipped, settings, settingsAt, toBackups, webOpen } from "./steps/screens"
 import { DIALOG, go } from "./steps/shell"
 
 const PERSON_LOGIN = PERSON.login
@@ -662,16 +662,144 @@ export const SCREENS_STATES: StateDef[] = [
     steps: [...open, ...go("status"), { wait: /kept on this computer only/ }, { pause: 300 }],
   }),
   d({ id: "desktop-settings-compact", screen: "Settings", state: "Compact density chosen", brief_row: "Settings", notes: "Appearance set to compact: the whole app tightens.", steps: [...settings, { click: "Compact" }, { pause: 300 }] }),
-  d({ id: "desktop-settings-import", screen: "Import / export", state: "Import: pick a format", brief_row: "Import / export", notes: "Twenty formats; a preview before anything is kept.", steps: [...settingsAt("settings-import-export"), { click: /^Import…/ }, DIALOG] }),
-  d({ id: "desktop-settings-export", screen: "Import / export", state: "Export", brief_row: "Import / export", notes: "Four file kinds plus age; crown jewels left out unless opted in.", steps: [...settingsAt("settings-import-export"), { click: /^Export…/ }, DIALOG, { pause: 400 }] }),
-  d({ id: "desktop-settings-backup-restore", screen: "Settings → Backups", state: "Restore from a backup", brief_row: "Settings → Backups", notes: "Restore opens the import preview.", steps: [...settingsAt("settings-backups"), { click: /^Restore…/ }, DIALOG] }),
-  d({ id: "desktop-settings-backups-off", screen: "Settings → Backups", state: "Off", brief_row: "Settings → Backups", notes: "Backups are off; the sidebar line says so too.", setup: (w) => {
-    w.settings = { ...w.settings, backup: { enabled: false, folder: null, interval_hours: 24, keep_last: 10 } }
-  }, steps: settingsAt("settings-backups") }),
-  d({ id: "desktop-settings-backups-crown-waiting", screen: "Settings → Backups", state: "Crown jewels: next backup carries them", brief_row: "Settings → Backups", notes: "After the update: the switch is on and the newest backup was made without crown jewels, so one line says the next one carries them (doc 48).", answers: () => ({ backup_status: () => backupStatus(true, true, 2) }), steps: [...settingsAt("settings-backups"), { wait: /first to include your 2 crown jewels/ }, toBackups] }),
-  d({ id: "desktop-settings-backups-crown-off", screen: "Settings → Backups", state: "Crown jewels left out", brief_row: "Settings → Backups", notes: "\"Include crown jewels\" off: the per-item opt-in and the count come back (doc 48).", setup: (w) => {
-    w.settings = { ...w.settings, backup: { enabled: true, folder: "/Users/sam/Backups/Lockdown", interval_hours: 24, keep_last: 10, include_crown_jewels: false } }
-  }, steps: [...settingsAt("settings-backups"), { wait: /crown jewels aren't in your backups/ }, toBackups] }),
+  // Brief T7 and T8 (screens-8, doc 83): the import Form in its steps, the export Form, Backups off, on, waiting, failed. On a Mac, so the device group says This Mac.
+  d({
+    id: "desktop-settings-import",
+    screen: "Import / export",
+    state: "Import: choose",
+    brief_row: "Import / export",
+    notes: "Brief T7 step 1: IMPORT // STEP 01 // 03, \"Where is it from?\" (Let Lockdown tell from the file), the chosen file as a FileChip, CHOOSE ANOTHER FILE…, the plain-text caption, CANCEL and CHECK FILE. A 640 dialog; full screen on a phone.",
+    built: { area: "settings-import", screen: "choose", kind: "undrawn" },
+    setup: onMac,
+    steps: [...settingsAt("settings-import-export"), { click: /^Import…/ }, DIALOG, ...pickImportFile, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-settings-import-password",
+    screen: "Import / export",
+    state: "Import: the file's own password",
+    brief_row: "Import / export",
+    notes: "Brief T7 step 1b: a file with a password of its own asks for it in a SecretField with the hint for that kind of file; OPEN FILE.",
+    built: { area: "settings-import", screen: "password", kind: "undrawn" },
+    setup: onMac,
+    answers: () => ({ import_preview: (a) => (a.password ? as("import_preview")(a) : fail("refused", "this file is protected with a password; type it to open the file")) }),
+    steps: [...settingsAt("settings-import-export"), { click: /^Import…/ }, DIALOG, ...pickImportFile, { click: "Check file", role: "button" }, { wait: "The file's password" }, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-settings-import-preview",
+    screen: "Import / export",
+    state: "Import: what the file holds",
+    brief_row: "Import / export",
+    notes: "Brief T7 step 2: the core's summary as the title, WHAT THE FILE HOLDS (a row per kind with its count), WHAT CAN'T COME ALONG 02 with the core's notes, BRING IN 24 ITEMS.",
+    built: { area: "settings-import", screen: "preview", kind: "undrawn" },
+    setup: onMac,
+    steps: [...settingsAt("settings-import-export"), { click: /^Import…/ }, DIALOG, ...pickImportFile, { click: "Check file", role: "button" }, { wait: "What can't come along" }, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-settings-import-done",
+    screen: "Import / export",
+    state: "Import: done",
+    brief_row: "Import / export",
+    notes: "Brief T7 step 3: the report in one sentence as the title, \"You can delete the file you imported now.\", FIND DUPLICATES (to Health) and DONE.",
+    built: { area: "settings-import", screen: "done", kind: "undrawn" },
+    setup: onMac,
+    steps: [...settingsAt("settings-import-export"), { click: /^Import…/ }, DIALOG, ...pickImportFile, { click: "Check file", role: "button" }, { click: /^Bring in 24 items/, role: "button" }, { wait: "Find duplicates", role: "button" }, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-settings-export",
+    screen: "Import / export",
+    state: "Export",
+    brief_row: "Import / export",
+    notes: "Brief T7's export Form: KIND OF FILE as Radio Rows with their sentences (the recommended one first, age second where the build has it), WHAT THE FILE WILL HOLD, the password twice, CANCEL and CHOOSE WHERE TO SAVE… (gate).",
+    built: { area: "settings-export", screen: "form", kind: "undrawn" },
+    setup: onMac,
+    steps: [...settingsAt("settings-import-export"), { click: /^Export…/ }, DIALOG, { wait: /This file will hold/ }, { pause: 400 }],
+  }),
+  d({
+    id: "desktop-settings-export-plain",
+    screen: "Import / export",
+    state: "Export: a file that isn't protected",
+    brief_row: "Import / export",
+    notes: "A CSV chosen: NOT IN THIS KIND OF FILE, the warning Banner and the Checkbox; CHOOSE WHERE TO SAVE… waits with its reason.",
+    setup: onMac,
+    steps: [...settingsAt("settings-import-export"), { click: /^Export…/ }, DIALOG, { click: /A spreadsheet of your logins/, role: "radio" }, { wait: /no column in a CSV/ }, { run: () => document.querySelector(`label[for="export-plain-ok"]`)?.scrollIntoView({ block: "center" }) }, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-settings-backup-restore",
+    screen: "Settings → Backups",
+    state: "Restore from a backup",
+    brief_row: "Settings → Backups",
+    notes: "Brief T7: RESTORE… on a file in the folder opens the import Form at its preview, with the overline RESTORE // the backup's time.",
+    built: { area: "settings-import", screen: "restore", kind: "undrawn" },
+    setup: onMac,
+    steps: [...settingsAt("settings-backups"), { click: /^Restore…/ }, DIALOG, { wait: /Restore \/\// }, { wait: "What the file holds" }, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-settings-backups-off",
+    screen: "Settings → Backups",
+    state: "Off",
+    brief_row: "Settings → Backups",
+    notes: "Brief T8, off: FOLDER \"None chosen yet\" with CHOOSE…, HOW OFTEN and KEEP with CHANGE, the backup password twice, TURN ON BACKUPS waiting for a folder with its reason (on a phone, an extended FloatButton at the end of the bottom row).",
+    built: { area: "settings-backups", screen: "off", kind: "undrawn" },
+    setup: (w) => {
+      onMac()
+      w.settings = { ...w.settings, backup: { enabled: false, folder: null, interval_hours: 24, keep_last: 10 } }
+    },
+    steps: [...settingsAt("settings-backups"), { wait: "Turn on backups", role: "button" }, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-settings-backups-on",
+    screen: "Settings → Backups",
+    state: "On",
+    brief_row: "Settings → Backups",
+    notes: "Brief T8, on: rows that save by themselves. BACKUPS On with BACK UP NOW, LAST BACKUP \"Backed up 9 hours ago\" and when the next is due, Include crown jewels (today's default, on: D138 is still open), FOLDER, HOW OFTEN, KEEP, BACKUP PASSWORD Set, IN THE FOLDER 06 with RESTORE…, and TURN OFF BACKUPS.",
+    built: { area: "settings-backups", screen: "on", kind: "undrawn" },
+    setup: onMac,
+    steps: [...settingsAt("settings-backups"), { wait: "Back up now", role: "button" }, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-settings-backups-turn-off",
+    screen: "Settings → Backups",
+    state: "Turn off: the question",
+    brief_row: "Settings → Backups",
+    notes: "TURN OFF BACKUPS asks (C11): \"Turn off backups?\", the files stay, the Checkbox \"Also forget the backup password on this computer\", focus on CANCEL, TURN OFF.",
+    setup: onMac,
+    steps: [...settingsAt("settings-backups"), { click: "Turn off backups", role: "button" }, DIALOG, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-settings-backups-crown-waiting",
+    screen: "Settings → Backups",
+    state: "Crown jewels: next backup carries them",
+    brief_row: "Settings → Backups",
+    notes: "After the update: the switch is on and the newest backup was made without crown jewels, so one line under it says the next one carries them (doc 48, D565).",
+    built: { area: "settings-backups", screen: "crown-waiting", kind: "undrawn" },
+    setup: onMac,
+    answers: () => ({ backup_status: () => backupStatus(true, true, 2) }),
+    steps: [...settingsAt("settings-backups"), { wait: /first to include your 2 crown jewels/ }, toBackups],
+  }),
+  d({
+    id: "desktop-settings-backups-crown-off",
+    screen: "Settings → Backups",
+    state: "Crown jewels left out",
+    brief_row: "Settings → Backups",
+    notes: "\"Include crown jewels\" off: the per-item opt-in and the count come back (doc 48).",
+    built: { area: "settings-backups", screen: "crown-off", kind: "undrawn" },
+    setup: (w) => {
+      onMac()
+      w.settings = { ...w.settings, backup: { enabled: true, folder: "/Users/sam/Backups/Lockdown", interval_hours: 24, keep_last: 10, include_crown_jewels: false } }
+    },
+    steps: [...settingsAt("settings-backups"), { wait: /crown jewels aren't in your backups/ }, toBackups],
+  }),
+  d({
+    id: "desktop-settings-backups-failed",
+    screen: "Settings → Backups",
+    state: "The last backup failed",
+    brief_row: "Settings → Backups",
+    notes: "Brief T8 and X2 table 4: the critical Banner \"The last backup didn't work\" at the top of the section, in the core's words, with BACK UP NOW; LAST BACKUP \"Backed up 4 days ago\".",
+    built: { area: "settings-backups", screen: "failed", kind: "undrawn" },
+    setup: onMac,
+    answers: () => ({ backup_status: () => ({ ...backupStatus(true), last_success_at: ago(4), next_due_at: ago(3), last_error: "The backup folder /Volumes/Backup isn't there. Connect the drive, or choose another folder." }) }),
+    steps: [...settingsAt("settings-backups"), { wait: "The last backup didn't work" }, { pause: 300 }],
+  }),
   // Brief T6 and T9 (screens-5, doc 80): one state per section, on a Mac so the device group says This Mac and the shortcut says ⌘K.
   d({
     id: "desktop-settings-browsers",

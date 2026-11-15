@@ -45,11 +45,23 @@ export function factLines(p: ImportPreview): string[] {
   return out
 }
 
-/** What the person is asked to confirm: the button's words. */
+/** How many items the yes brings in: the new ones and those a backup changes. */
+export const keeping = (p: ImportPreview): number => p.new + p.updated
+
+/** The yes, with how many it brings in (brief T7, no article): "Bring in 240 items"; "Bring in" when there is nothing. */
 export function confirmWords(p: ImportPreview): string {
-  const keeping = p.new + p.updated
-  if (keeping === 0) return "Nothing to bring in"
-  return `Bring in ${plural(keeping, "item")}`
+  const n = keeping(p)
+  return n === 0 ? "Bring in" : `Bring in ${plural(n, "item")}`
+}
+
+/** Why the yes is off (#37), shown under it; `null` while there is something to bring in. */
+export function nothingReason(p: ImportPreview): string | null {
+  return keeping(p) === 0 ? "Nothing to bring in" : null
+}
+
+/** The wizard's place in its steps, for the overline: `Import // Step 01 // 03` (brief T7). */
+export function stepOverline(step: 1 | 2 | 3): string {
+  return `Import // Step ${String(step).padStart(2, "0")} // 03`
 }
 
 /** The report, in one sentence. */
@@ -59,4 +71,17 @@ export function doneLine(r: ImportReport): string {
   if (r.updated) parts.push(`${plural(r.updated, "item")} updated from the backup`)
   if (r.unchanged) parts.push(`${plural(r.unchanged, "item")} already here`)
   return parts.length ? `${parts.join(", ")}.` : "Nothing changed."
+}
+
+const two = (n: number) => String(n).padStart(2, "0")
+
+/** A backup's time as the overline and the folder's rows write it: `2026.11.13 09:00`, local. */
+export function madeAtWords(secs: number): string {
+  const d = new Date(secs * 1000)
+  return `${d.getFullYear()}.${two(d.getMonth() + 1)}.${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`
+}
+
+/** A restore's overline: `Restore // 2026.11.13 09:00`, or `Restore` when the backup's time isn't known. */
+export function restoreOverline(madeAt?: number | null): string {
+  return madeAt ? `Restore // ${madeAtWords(madeAt)}` : "Restore"
 }

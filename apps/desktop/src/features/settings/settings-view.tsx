@@ -1,8 +1,8 @@
-import { useState, type FormEvent } from "react"
+import { type FormEvent } from "react"
 
 import { useTheme } from "next-themes"
 
-import { Button, Icon, TextField } from "@unicron/ui"
+import { Button, TextField } from "@unicron/ui"
 
 import { usePlaces } from "@/app/places"
 import { useStatusItem } from "@/app/status"
@@ -11,8 +11,7 @@ import type { LockState, Status } from "@/core/types"
 import { BackupsSection } from "@/features/backups/backups-section"
 import { AliasSettings } from "@/features/bridges/alias-settings"
 import { ClockSetting } from "@/features/bridges/clock"
-import { ExportDialog } from "@/features/export/export-dialog"
-import { ImportWizard } from "@/features/import/import-wizard"
+import { ImportExportSection } from "@/features/import/import-export-section"
 import { DevicesView } from "@/features/devices/devices-view"
 import { RecoveryView } from "@/features/recovery/recovery-view"
 import { SecuritySettings } from "@/features/security/security-settings"
@@ -57,7 +56,6 @@ export function SettingsView({ status, onStatus, lock: _lock, onLock, onChanged,
   const { nav, go } = usePlaces()
   const frc = useFirstRunClient()
   const updates = useUpdates()
-  const [transfer, setTransfer] = useState<"import" | "export" | null>(null)
   // The ground is a choice kept on this device by next-themes, not a setting of the vault (doc 62 §3).
   const { theme, setTheme } = useTheme()
   const { settings, save, busy, errorOf } = useSettingSave()
@@ -131,24 +129,7 @@ export function SettingsView({ status, onStatus, lock: _lock, onLock, onChanged,
                 {!(status.account?.local ?? false) && <ServerChecks onNotice={onNotice} />}
               </div>
             )}
-            {shown === "import-export" && (
-              <div className="flex flex-col gap-4">
-                <p className="type-body text-text-secondary">
-                  Bring your data in from another app, or take all of it out as one file. Lockdown shows what a file holds, and what it leaves out, before
-                  anything happens.
-                </p>
-                <div className="flex gap-3">
-                  <Button size="sm" variant="secondary" onClick={() => setTransfer("import")}>
-                    <Icon name="upload" />
-                    Import…
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={() => setTransfer("export")}>
-                    <Icon name="download" />
-                    Export…
-                  </Button>
-                </div>
-              </div>
-            )}
+            {shown === "import-export" && <ImportExportSection onChanged={onChanged} onNotice={onNotice} onFindDuplicates={() => go("health")} />}
             {shown === "backups" && <BackupsSection onChanged={onChanged} onNotice={onNotice} />}
             {shown === "aliases" && <AliasSettings onNotice={onNotice} onChanged={onChanged} />}
             {shown === "codes" && <ClockSetting />}
@@ -157,15 +138,6 @@ export function SettingsView({ status, onStatus, lock: _lock, onLock, onChanged,
           </>
         )}
       </SettingsPlaces>
-      <ImportWizard
-        open={transfer === "import"}
-        onClose={() => setTransfer(null)}
-        onImported={(report) => {
-          onNotice(`${report.imported} ${report.imported === 1 ? "item" : "items"} brought in`)
-          onChanged()
-        }}
-      />
-      <ExportDialog open={transfer === "export"} onClose={() => setTransfer(null)} onNotice={onNotice} />
     </>
   )
 }

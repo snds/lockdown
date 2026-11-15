@@ -7,7 +7,7 @@ import type { ExportPreview, GateInput } from "@/core/types"
 import { fakeClient } from "@/test/fake-client"
 
 import { ExportDialog } from "./export-dialog"
-import { carriesLine, leftOutLine, passwordProblem } from "./export-model"
+import { carriesLine, folderOf, leftOutLine, passwordProblem } from "./export-model"
 
 const preview = (format: ExportPreview["format"]): ExportPreview => ({
   format,
@@ -47,24 +47,30 @@ function mount(over: Partial<Client>) {
 
 describe("the export dialog", () => {
   it("says what stays out, locks the file with a password, and saves where the person chose", async () => {
-    const { exportChoose, exportSave } = mount({})
+    const { exportChoose, exportSave, onNotice } = mount({})
     const user = userEvent.setup()
+    // The kinds are Radio Rows with their sentences, the recommended one first and chosen.
+    const kinds = screen.getAllByRole("radio")
+    expect(kinds[0]).toHaveAccessibleName("A Lockdown backup, locked with a password (recommended)")
+    expect(kinds[0]).toBeChecked()
     const region = await screen.findByRole("region", { name: "What the file will hold" })
     await waitFor(() => expect(region).toHaveTextContent("This file will hold 12 items, 2 attached files."))
     expect(region).toHaveTextContent("1 crown jewel stays out: Cold wallet.")
 
-    await user.type(screen.getByLabelText("A password for the file"), "long enough pw")
-    await user.type(screen.getByLabelText("The same password again"), "long enough pX")
+    await user.type(screen.getByLabelText("A password for the file"), "abcd1234")
+    await user.type(screen.getByLabelText("The same password again"), "abcd1235")
     await user.click(screen.getByRole("button", { name: "Choose where to save…" }))
+    // A field's problem shows under that field.
     expect(await screen.findByText("The two passwords don't match.")).toBeInTheDocument()
     expect(exportChoose).not.toHaveBeenCalled()
 
     await user.clear(screen.getByLabelText("The same password again"))
-    await user.type(screen.getByLabelText("The same password again"), "long enough pw")
+    await user.type(screen.getByLabelText("The same password again"), "abcd1234")
     await user.click(screen.getByRole("button", { name: "Choose where to save…" }))
     // The core's gate: here, a plain confirm.
     await user.click(within(await screen.findByRole("dialog", { name: "Export the vault?" })).getByRole("button", { name: "Export" }))
-    expect(await screen.findByText("Saved to /home/ada/out.")).toBeInTheDocument()
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved to /home/ada")
+    expect(onNotice).toHaveBeenLastCalledWith("Saved to /home/ada")
     expect(exportChoose).toHaveBeenCalledWith("lockdown", true)
     const input = exportSave.mock.calls.at(-1)![0]
     expect(input).toMatchObject({ target: 4, format: "lockdown", plainConfirmed: false })
@@ -74,10 +80,12 @@ describe("the export dialog", () => {
   it("an unprotected file needs the person's yes first", async () => {
     const { exportSave } = mount({})
     const user = userEvent.setup()
-    await user.selectOptions(screen.getByLabelText("Kind of file"), "csv")
+    await user.click(screen.getByRole("radio", { name: "A spreadsheet of your logins (not protected)" }))
     expect(await screen.findByText("3 items that aren't logins: a CSV holds logins only")).toBeInTheDocument()
+    // The yes waits for the person's yes, with its reason under it, and stays in the tab order.
+    expect(screen.getByRole("button", { name: "Choose where to save…" })).toHaveAccessibleDescription(/Tick the box/)
     await user.click(screen.getByRole("button", { name: "Choose where to save…" }))
-    expect(await screen.findByText(/Tick the box/)).toBeInTheDocument()
+    expect(exportSave).not.toHaveBeenCalled()
     await user.click(screen.getByRole("checkbox", { name: /I understand this file won't be protected/ }))
     await user.click(screen.getByRole("button", { name: "Choose where to save…" }))
     await user.click(within(await screen.findByRole("dialog", { name: "Export the vault?" })).getByRole("button", { name: "Export" }))
@@ -89,8 +97,8 @@ describe("the export dialog", () => {
     const { exportSave } = mount({ exportChoose: () => Promise.resolve(null) })
     const user = userEvent.setup()
     await screen.findByText(/12 items/)
-    await user.type(screen.getByLabelText("A password for the file"), "long enough pw")
-    await user.type(screen.getByLabelText("The same password again"), "long enough pw")
+    await user.type(screen.getByLabelText("A password for the file"), "abcd1234")
+    await user.type(screen.getByLabelText("The same password again"), "abcd1234")
     await user.click(screen.getByRole("button", { name: "Choose where to save…" }))
     await waitFor(() => expect(screen.getByRole("button", { name: "Choose where to save…" })).toBeEnabled())
     expect(exportSave).not.toHaveBeenCalled()
@@ -113,7 +121,7 @@ describe("crown jewels in a locked backup (doc 48)", () => {
     expect(region).not.toHaveTextContent("stays out")
     expect(exportPreview).toHaveBeenCalledWith("lockdown", null, true)
 
-    await user.selectOptions(screen.getByLabelText("Kind of file"), "lockdown-plain")
+    await user.click(screen.getByRole("radio", { name: "A readable Lockdown file (not protected)" }))
     await waitFor(() => expect(region).toHaveTextContent("1 crown jewel stays out: Cold wallet."))
     expect(exportPreview).toHaveBeenLastCalledWith("lockdown", null, false)
   })
@@ -125,5 +133,7 @@ describe("the export wording", () => {
     expect(passwordProblem("long enough", "long enough")).toBeNull()
     expect(leftOutLine({ ...preview("cxf"), crown_jewels_left_out: 0, left_out: [] })).toBeNull()
     expect(carriesLine({ ...preview("cxf"), crown_jewels_included: 2 })).toBe("This file will hold 12 items, 2 crown jewels you chose to include.")
+    expect(folderOf("/Users/sam/Desktop/lockdown-export.ldx")).toBe("/Users/sam/Desktop")
+    expect(folderOf("C:\\Users\\sam\\out.ldx")).toBe("C:\\Users\\sam")
   })
 })

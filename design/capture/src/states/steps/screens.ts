@@ -31,8 +31,28 @@ export const settingsAt = (section: SettingsPlace): Step[] => [...open, ...go(se
 type SettingsPlace = Extract<PlaceId, `settings-${string}`>
 /** Settings on Appearance, where Density is. */
 export const settings: Step[] = [...settingsAt("settings-appearance"), { wait: "Density" }]
-/** Settings is taller than a capture: bring Backups (its last section) into the picture. */
-export const toBackups: Step = { run: () => document.getElementById("backup-crown-jewels")?.scrollIntoView({ block: "start" }) }
+/** Settings is taller than a capture: bring Backups' crown-jewel row into the picture. */
+export const toBackups: Step = { run: () => document.getElementById("backup-crown-jewels")?.scrollIntoView({ block: "center" }) }
+
+/**
+ * The import's CHOOSE FILE, as the window's file dialog would answer it: a
+ * CSV export of invented logins put on the wizard's file input. The fixture's
+ * core reads none of it; its preview is the fixture's.
+ */
+export const pickImportFile: Step[] = [
+  { wait: "Choose file…", role: "button" },
+  {
+    run: () => {
+      const input = document.getElementById("import-file") as HTMLInputElement | null
+      if (!input) throw new Error("no import file input")
+      const files = new DataTransfer()
+      files.items.add(new File(["title,url,username,password\n"], "logins-export.csv", { type: "text/csv" }))
+      input.files = files.files
+      input.dispatchEvent(new Event("change", { bubbles: true }))
+    },
+  },
+  { wait: "logins-export.csv" },
+]
 
 /** Waits, up to 6 s, until the page's text holds `words`, in view or not (a row below the fold). */
 export const inPage = (words: RegExp): Step => ({
