@@ -38,7 +38,8 @@ const mount = (depth: DepthClient, onNotice = vi.fn()) =>
 describe("Security keys (brief T2)", () => {
   it("lists each key with when it was added and last used", async () => {
     mount(fakeDepth({ securityKeys: () => Promise.resolve(list) }))
-    const rows = within(await screen.findByRole("list", { name: "Security keys" })).getAllByRole("listitem")
+    // The list is in the page before the keys arrive: wait for its rows, not only for the list.
+    const rows = await within(await screen.findByRole("list", { name: "Security keys" })).findAllByRole("listitem")
     expect(rows).toHaveLength(2)
     expect(rows[0]).toHaveTextContent("Blue key")
     expect(rows[0]).toHaveTextContent("not used yet")
