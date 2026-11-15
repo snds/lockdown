@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
+import { HygieneClientProvider } from "@/features/hygiene/hygiene-client"
 import { PaperClientProvider, type PaperClient } from "@/features/paper/paper-client"
 
 import { OncePage, kitValues } from "./once-page"
@@ -42,10 +43,49 @@ describe("the kit page through LargeTypeView's print variant", () => {
 
   it("the page as text takes keyboard focus, since it scrolls sideways on a phone (design review R18)", async () => {
     render(<OncePage page={{ title: "Your recovery kit", lines: [], text: PAGE }} onClose={() => {}} />)
+    // Shut on screen (brief T3), printed whole.
+    expect(screen.queryByRole("region", { name: "The page as text" })).toBeNull()
+    await userEvent.click(await screen.findByRole("button", { name: "The page as text" }))
     const text = await screen.findByRole("region", { name: "The page as text" })
     expect(text.tagName).toBe("PRE")
     expect(text).toHaveAttribute("tabindex", "0")
     expect(text).toHaveTextContent("LOCKDOWN RECOVERY KIT")
+  })
+})
+
+describe("the kit page as a viewer (brief T3)", () => {
+  it("is a viewer that says it is shown once, holds the page on paper, and has one primary", async () => {
+    render(<OncePage page={{ title: "Your recovery kit", lines: ["a kit was made"], text: PAGE }} onClose={() => {}} />)
+    const dialog = await screen.findByRole("dialog", { name: "Your recovery kit" })
+    expect(dialog.getAttribute("data-size-asked") ?? dialog.getAttribute("data-size")).toBe("viewer")
+    // It opens at its top, not on a control far down the page (brief 4.0).
+    await waitFor(() => expect(dialog).toHaveFocus())
+    expect(dialog).toHaveTextContent("Recovery kit // shown once")
+    expect(dialog).toHaveTextContent("Shown once and never kept. Print it, save it as a file or write it down.")
+    // Black on white in both themes, and the page as written goes to the paper whole.
+    const paper = within(dialog).getByRole("article", { name: "Your recovery kit page" })
+    expect(paper).toHaveClass("light")
+    expect(paper.querySelector("pre[hidden]")?.textContent).toContain("Recovery code:  QRST-2345-VWXY-6789-ABCD-EFGH")
+    const footer = dialog.querySelector('[data-slot="dialog-footer"]') as HTMLElement
+    expect(within(footer).getByRole("button", { name: "Print" })).toHaveAttribute("data-variant", "secondary")
+    expect(within(footer).getByRole("button", { name: "I have it" })).toHaveAttribute("data-variant", "default")
+  })
+
+  it("holds the window out of screen captures while it is open", async () => {
+    const protect = vi.fn((_on: boolean) => Promise.resolve(true))
+    const { rerender } = render(
+      <HygieneClientProvider value={{ protect, memory: () => Promise.resolve(null) }}>
+        <OncePage page={{ title: "Your recovery kit", lines: [], text: PAGE }} onClose={() => {}} />
+      </HygieneClientProvider>,
+    )
+    await screen.findByRole("dialog")
+    expect(protect).toHaveBeenLastCalledWith(true)
+    rerender(
+      <HygieneClientProvider value={{ protect, memory: () => Promise.resolve(null) }}>
+        <OncePage page={null} onClose={() => {}} />
+      </HygieneClientProvider>,
+    )
+    await waitFor(() => expect(protect).toHaveBeenLastCalledWith(false))
   })
 })
 

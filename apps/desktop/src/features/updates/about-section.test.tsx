@@ -1,7 +1,9 @@
 import { act, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
+import { PlacesProvider } from "@/app/places"
 import { ClientProvider } from "@/core/client"
+import type { Status } from "@/core/types"
 import { fakeClient } from "@/test/fake-client"
 
 import { AboutSection } from "./about-section"
@@ -155,5 +157,37 @@ describe("Settings → About", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(off)
     expect(screen.getByRole("button", { name: "Check for updates" })).toBeDisabled()
     expect(screen.queryByRole("switch")).not.toBeInTheDocument()
+  })
+
+  it("holds two groups, This app and Server, and Server's row opens Settings → Server (cross-app decisions §3)", async () => {
+    const went: string[] = []
+    const status = { account: { server: "https://vault.rivera.example", local: false } } as unknown as Status
+    render(
+      <ClientProvider value={fakeClient({})}>
+        <PlacesProvider value={{ nav: { area: "settings", view: "all", section: "about" }, surface: "desktop", go: (id) => went.push(id), navigate: () => {} }}>
+          <UpdateClientProvider value={updateClient(BASE).client}>
+            <AboutSection status={status} />
+          </UpdateClientProvider>
+        </PlacesProvider>
+      </ClientProvider>,
+    )
+    expect(await screen.findByRole("heading", { name: "This app" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Server" })).toBeInTheDocument()
+    expect(screen.getByRole("group", { name: "Server" })).toHaveTextContent("vault.rivera.example")
+    await userEvent.click(screen.getByRole("button", { name: "Open" }))
+    expect(went).toEqual(["settings-server"])
+  })
+
+  it("has no Server group for a vault kept on this computer", async () => {
+    const status = { account: { server: "local", local: true } } as unknown as Status
+    render(
+      <ClientProvider value={fakeClient({})}>
+        <UpdateClientProvider value={updateClient(BASE).client}>
+          <AboutSection status={status} />
+        </UpdateClientProvider>
+      </ClientProvider>,
+    )
+    expect(await screen.findByRole("heading", { name: "This app" })).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Server" })).not.toBeInTheDocument()
   })
 })

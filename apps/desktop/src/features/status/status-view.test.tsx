@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
 import { ClientProvider, type Client } from "@/core/client"
@@ -40,22 +40,39 @@ function fakeClient(overrides: Partial<Client>): Client {
   return Object.assign(Object.create(base), { status: () => Promise.resolve(status) }, overrides)
 }
 
-describe("the Status screen", () => {
-  it("has one primary action, Check now; Sync now is secondary (design review R19)", () => {
+describe("the Status screen (brief T4, doc 82)", () => {
+  it("has no filled button: Check now is secondary, Sync now a text action (design review R19)", () => {
     render(
       <ClientProvider value={fakeClient({})}>
         <StatusView status={status} onStatus={() => {}} onNotice={() => {}} />
       </ClientProvider>,
     )
     const filled = screen.getAllByRole("button").filter((b) => b.className.split(" ").includes("bg-primary"))
-    expect(filled).toEqual([screen.getByRole("button", { name: "Check now" })])
-    // unicron 1.0's secondary: no fill, a 1px ink edge drawn as an inset ring.
-    const sync = screen.getByRole("button", { name: "Sync now" })
-    expect(sync).toHaveAttribute("data-variant", "outline")
-    expect(sync.className.split(" ")).toEqual(expect.arrayContaining(["inset-ring", "inset-ring-foreground"]))
+    expect(filled).toEqual([])
+    expect(screen.getByRole("button", { name: "Check now" })).toHaveAttribute("data-variant", "secondary")
+    expect(screen.getByRole("button", { name: "Sync now" })).toHaveAttribute("data-variant", "ghost")
   })
 
-  it("shows the verified log, and the audit's words when a sync is refused", async () => {
+  it("puts each proof in a row with its word, and ids and hashes only under Details (R14)", async () => {
+    render(
+      <ClientProvider value={fakeClient({})}>
+        <StatusView status={status} onStatus={() => {}} onNotice={() => {}} />
+      </ClientProvider>,
+    )
+    const proofs = screen.getByRole("region", { name: "Locked, even from us" })
+    expect(within(proofs).getByText("Never leaves this computer.")).toBeInTheDocument()
+    expect(within(proofs).getByText("Made here. The server has never seen it.")).toBeInTheDocument()
+    expect(within(proofs).getAllByText("Verified")).toHaveLength(4)
+    expect(within(proofs).getByText(/^Checked /)).toBeInTheDocument()
+    // The persona is a fact of this device.
+    expect(screen.getByRole("region", { name: "This device" })).toHaveTextContent("Personal (Personal)")
+    expect(screen.queryByText(status.device_id)).not.toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole("button", { name: /Details/ }))
+    expect(screen.getByText(status.device_id)).toBeInTheDocument()
+    expect(screen.getByText(`3 // ${"ab".repeat(32)}`)).toBeInTheDocument()
+  })
+
+  it("shows the audit's words when a sync is refused, and keeps the verified log", async () => {
     const sync = vi.fn(() =>
       Promise.reject({
         code: "refused",
@@ -68,7 +85,7 @@ describe("the Status screen", () => {
         <StatusView status={status} onStatus={() => {}} onNotice={() => {}} />
       </ClientProvider>,
     )
-    expect(screen.getByText(/^3 entries, checked /)).toBeInTheDocument()
+    expect(screen.getByText(/^Checked /)).toBeInTheDocument()
 
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Sync now" }))
@@ -77,10 +94,10 @@ describe("the Status screen", () => {
     expect(alert).toHaveTextContent("Sync refused: key transparency: log entry 0")
     expect(alert).toHaveTextContent("swapped a device key")
     // The remembered view stays on screen beside the refusal.
-    expect(screen.getByText(/^3 entries, checked /)).toBeInTheDocument()
+    expect(screen.getByText(/^Checked /)).toBeInTheDocument()
   })
 
-  it("asks for the password, saying why, when the server won't renew the session (docs/plan/33)", async () => {
+  it("asks for the password in the Sign in form, saying why, when the server won't renew the session (docs/plan/33)", async () => {
     const words =
       "This device's session was ended from one of your devices or by whoever runs the server, so it can't renew itself. Log in again with your master password."
     const sync = vi.fn(() => Promise.reject({ code: "sign_in_needed", message: words, detail: "ended" }))
@@ -92,14 +109,17 @@ describe("the Status screen", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Sync now" }))
     const dialog = await screen.findByRole("dialog")
-    expect(dialog).toHaveTextContent("Log in")
+    expect(within(dialog).getByRole("heading", { name: "Sign in" })).toBeInTheDocument()
     expect(dialog).toHaveTextContent("was ended from one of your devices")
+    // A kit exists: the form asks for its Secret Key too.
+    expect(within(dialog).getByText("Secret Key")).toBeInTheDocument()
     expect(screen.queryByText(/^Sync refused/)).not.toBeInTheDocument()
   })
 
-  it("keeps the reason on screen while the account needs a sign-in", async () => {
+  it("keeps the reason in a critical Banner with Sign in while the account needs a sign-in", async () => {
     const needs: Status = {
       ...status,
+      recovery: "none",
       account: {
         ...status.account!,
         sign_in: { reason: "idle", message: "This device went unused for longer than the server allows (30 days unless whoever runs it changed that), so its session can't be renewed. Log in again with your master password." },
@@ -110,13 +130,18 @@ describe("the Status screen", () => {
         <StatusView status={needs} onStatus={() => {}} onNotice={() => {}} />
       </ClientProvider>,
     )
-    expect(screen.getByRole("alert")).toHaveTextContent("went unused for longer than the server allows")
+    const banner = screen.getByRole("alert")
+    expect(banner).toHaveTextContent("Lockdown isn't syncing")
+    expect(banner).toHaveTextContent("went unused for longer than the server allows")
     const user = userEvent.setup()
-    await user.click(screen.getByRole("button", { name: "Log in again" }))
-    expect(await screen.findByRole("dialog")).toHaveTextContent("went unused")
+    await user.click(within(banner).getByRole("button", { name: "Sign in" }))
+    const dialog = await screen.findByRole("dialog")
+    expect(dialog).toHaveTextContent("went unused")
+    // No kit on this device: no Secret Key to ask for.
+    expect(within(dialog).queryByText("Secret Key")).not.toBeInTheDocument()
   })
 
-  it("says a revoked device joins again, and offers no password prompt (docs/plan/35)", async () => {
+  it("says a revoked device joins again, and offers no sign-in (docs/plan/35)", async () => {
     const words = "This device was revoked from your account. Join it again from a device you still use."
     const revoked: Status = { ...status, account: { ...status.account!, sign_in: { reason: "revoked", message: words } } }
     const sync = vi.fn(() => Promise.reject({ code: "sign_in_needed", message: words, detail: "revoked" }))
@@ -126,7 +151,7 @@ describe("the Status screen", () => {
       </ClientProvider>,
     )
     expect(screen.getByRole("alert")).toHaveTextContent(words)
-    expect(screen.queryByRole("button", { name: "Log in again" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument()
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Sync now" }))
     await waitFor(() => expect(sync).toHaveBeenCalled())
@@ -141,38 +166,43 @@ describe("the Status screen", () => {
         <StatusView status={unchecked} onStatus={() => {}} onNotice={() => {}} />
       </ClientProvider>,
     )
-    expect(screen.getByText("not checked yet; the next sync verifies it")).toBeInTheDocument()
+    expect(screen.getByText("Not checked yet. The next sync checks it.")).toBeInTheDocument()
   })
 
-  it("Check now runs the audit and shows its words, pass or fail (D95)", async () => {
+  it("Check now: a pass says nothing and puts its lines under Details; a failure is a critical Banner (D95)", async () => {
     const audit = vi
       .fn<() => Promise<string[]>>()
       .mockResolvedValueOnce(["tree head: 3 entries, root 0123456789abcdef, signed 2026-10-17", "3 entries of this account verified: every device key is one your identity lists"])
       .mockRejectedValueOnce({ code: "refused", message: "key transparency: the tree head is smaller than the one remembered (3 → 2): a rollback" })
+    const onNotice = vi.fn()
     render(
       <ClientProvider value={fakeClient({ audit })}>
-        <StatusView status={status} onStatus={() => {}} onNotice={() => {}} />
+        <StatusView status={status} onStatus={() => {}} onNotice={onNotice} />
       </ClientProvider>,
     )
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Check now" }))
-    const status1 = await screen.findByRole("status")
-    expect(status1).toHaveTextContent("Checked just now")
-    expect(status1).toHaveTextContent("3 entries of this account verified")
+    await waitFor(() => expect(audit).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(onNotice).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: /Details/ }))
+    expect(screen.getByRole("list", { name: "Last check" })).toHaveTextContent("3 entries of this account verified")
 
     await user.click(screen.getByRole("button", { name: "Check now" }))
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("The check failed"))
-    expect(screen.getByRole("status")).toHaveTextContent("a rollback")
-    expect(screen.getByRole("status")).toHaveTextContent("Nothing was changed")
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("The check failed")
+    expect(alert).toHaveTextContent("a rollback")
+    expect(alert).toHaveTextContent("Nothing was changed")
   })
 
-  it("lists what was held back for support, in the check's own words, and nothing when none was", () => {
+  it("lists what was held back for support under Details, in the check's own words, and nothing when none was", async () => {
     const detail = "Family: head manifest 7 by bob@example.com held back: the vault's history didn't check out at manifest 7: the device signature didn't check out"
     const { rerender } = render(
       <ClientProvider value={fakeClient({})}>
         <StatusView status={{ ...status, held_back: [detail] }} onStatus={() => {}} onNotice={() => {}} />
       </ClientProvider>,
     )
+    await userEvent.setup().click(screen.getByRole("button", { name: /Details/ }))
     const list = screen.getByRole("list", { name: "Held back until they verify" })
     expect(list).toHaveTextContent(detail)
     rerender(
@@ -181,5 +211,32 @@ describe("the Status screen", () => {
       </ClientProvider>,
     )
     expect(screen.queryByRole("list", { name: "Held back until they verify" })).not.toBeInTheDocument()
+  })
+
+  it("shows a local account no server words: one line and Set up sync (brief T4)", async () => {
+    const local: Status = { ...status, account: { ...status.account!, local: true, server: "lockdown-local://this-device" } }
+    const { container } = render(
+      <ClientProvider value={fakeClient({})}>
+        <StatusView status={local} onStatus={() => {}} onNotice={() => {}} />
+      </ClientProvider>,
+    )
+    expect(container.textContent ?? "").not.toMatch(/the log/)
+    await userEvent.setup().click(screen.getByRole("button", { name: /Details/ }))
+    expect(screen.getByText("Your vault is kept on this computer only.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Set up sync" })).toBeInTheDocument()
+    const text = container.textContent ?? ""
+    for (const word of [/server/i, /public log/i, /mirror/i, /sync now/i, /check now/i, /session/i, /login/i, /lockdown-local/]) expect(text).not.toMatch(word)
+  })
+
+  it("offers Register and Sign in, both secondary, with no account", async () => {
+    render(
+      <ClientProvider value={fakeClient({})}>
+        <StatusView status={{ ...status, account: null }} onStatus={() => {}} onNotice={() => {}} />
+      </ClientProvider>,
+    )
+    expect(screen.getByRole("button", { name: "Register" })).toHaveAttribute("data-variant", "secondary")
+    expect(screen.getByRole("button", { name: "Sign in" })).toHaveAttribute("data-variant", "secondary")
+    await userEvent.setup().click(screen.getByRole("button", { name: "Register" }))
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Register an account")
   })
 })

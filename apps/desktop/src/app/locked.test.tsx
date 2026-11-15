@@ -26,7 +26,10 @@ describe("locked", () => {
     )
     expect(await screen.findByText("The vault file can't be read.")).toBeInTheDocument()
     expect(document.querySelector('[data-slot="locked-wash"]')).toBeNull()
-    expect(document.querySelector('[data-slot^="app-frame"]')).toBeNull()
+    // The closed app is Unicron's focus frame (contract 5.1b #1; screens-1, doc 76): the frame's box, its body and its
+    // polite announcer come with it. None of the shell's parts does: no sidebar, rail, status line, rows or columns.
+    expect(document.querySelector('[data-slot="app-frame-focus"]')).not.toBeNull()
+    expect(document.querySelector('[data-slot^="app-frame-"]:not([data-slot^="app-frame-focus"]):not([data-slot="app-frame-body"]):not([data-slot="app-frame-announcer"])')).toBeNull()
     expect(screen.queryByRole("navigation")).toBeNull()
     expect(document.querySelector('[data-slot="needs-you"]')).toBeNull()
   })

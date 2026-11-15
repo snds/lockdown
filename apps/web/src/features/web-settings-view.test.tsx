@@ -27,13 +27,13 @@ function browserPrefers(scheme: "light" | "dark") {
   })) as unknown as typeof window.matchMedia
 }
 
-function mount() {
+function mount(section: "appearance" | "this-device" | "import-export" | "backups" = "appearance", onSignOut: () => void = () => {}, client = fakeClient({})) {
   return render(
-    <ClientProvider value={fakeClient({})}>
+    <ClientProvider value={client}>
       <SettingsProvider>
         {/* Appearance is one of Settings' sections now (doc 64): the test opens on it. */}
-        <PlacesProvider value={{ nav: { area: "settings", view: "all", section: "appearance" }, surface: "web", go: () => {}, navigate: () => {} }}>
-          <WebSettingsView status={STATUS} onChanged={() => {}} onNotice={() => {}} server="https://vault.example" login="sam" onLock={() => {}} onSignOut={() => {}} />
+        <PlacesProvider value={{ nav: { area: "settings", view: "all", section }, surface: "web", go: () => {}, navigate: () => {} }}>
+          <WebSettingsView status={STATUS} onChanged={() => {}} onNotice={() => {}} server="https://vault.example" login="sam" onLock={() => {}} onSignOut={onSignOut} />
         </PlacesProvider>
       </SettingsProvider>
     </ClientProvider>,
@@ -71,5 +71,49 @@ describe("the web vault's Theme row", () => {
     await waitFor(() => expect(screen.getByRole("radio", { name: "System" })).toHaveAttribute("aria-checked", "true"))
     expect(document.documentElement).not.toHaveClass("dark")
     expect(window.localStorage.getItem(THEME_KEY)).toBeNull()
+  })
+})
+
+describe("the web vault's This browser (brief T1)", () => {
+  beforeEach(() => browserPrefers("light"))
+
+  it("offers Auto-lock without Never, the tab's out-of-view lock, Clipboard and Reveal, then This web vault with its sign-out", async () => {
+    let out = 0
+    mount("this-device", () => (out += 1))
+    const user = userEvent.setup()
+    const autoLock = await screen.findByRole("group", { name: "Auto-lock" })
+    await user.click(within(autoLock).getByRole("button", { name: /Change/ }))
+    const items = within(await screen.findByRole("menu")).getAllByRole("menuitemradio")
+    expect(items.map((i) => i.textContent)).not.toContain("Never")
+    await user.keyboard("{Escape}")
+    expect(screen.getByRole("switch", { name: "Lock when this tab is out of view" })).toBeInTheDocument()
+    expect(screen.getByRole("group", { name: "Clipboard" })).toBeInTheDocument()
+    expect(screen.getByRole("radio", { name: "Hold to reveal" })).toBeInTheDocument()
+    // Desktop-only rows are not drawn in a browser.
+    expect(screen.queryByRole("group", { name: "Approvals" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("group", { name: "Recovery kit" })).not.toBeInTheDocument()
+    expect(screen.getByRole("group", { name: "Signed in as" })).toHaveTextContent("sam")
+    expect(screen.getByText(/as trustworthy as the server that sends it/)).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Sign out of this tab" }))
+    expect(out).toBe(1)
+  })
+})
+
+describe("the web vault draws no import, export or backups (brief W1, T7, T8)", () => {
+  beforeEach(() => browserPrefers("light"))
+
+  it.each(["import-export", "backups"] as const)("lists neither section, and a link to %s draws nothing of it and asks the client nothing", async (section) => {
+    const backupStatus = vi.fn(() => Promise.reject(new Error("refused in the web vault")))
+    const importFormats = vi.fn(() => Promise.reject(new Error("refused in the web vault")))
+    const exportPreview = vi.fn(() => Promise.reject(new Error("refused in the web vault")))
+    mount(section, () => {}, fakeClient({ backupStatus, importFormats, exportPreview }))
+    // The web's own sections are there.
+    expect((await screen.findAllByText("Appearance")).length).toBeGreaterThan(0)
+    expect(screen.queryByText("Import and export")).not.toBeInTheDocument()
+    expect(screen.queryByText("Backups")).not.toBeInTheDocument()
+    for (const name of [/^Import…/, /^Export…/, /Turn on backups/, /Back up now/, /Restore…/]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument()
+    expect(backupStatus).not.toHaveBeenCalled()
+    expect(importFormats).not.toHaveBeenCalled()
+    expect(exportPreview).not.toHaveBeenCalled()
   })
 })

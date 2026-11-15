@@ -1,5 +1,7 @@
 import { FieldRow, FilterChip, FilterChipGroup, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/ui"
 
+import { useRowSize } from "./setting-rows"
+
 /** The ground the app is drawn on, in the words Settings uses: follow the device, or hold one. */
 export type ThemeChoice = "system" | "stone" | "graphite"
 
@@ -21,7 +23,7 @@ const CHOICES: ReadonlyArray<readonly [ThemeChoice, string, string]> = [
  */
 export function ThemeSetting({ value, onChange }: { value: ThemeChoice; onChange: (choice: ThemeChoice) => void }) {
   return (
-    <FieldRow label="Theme">
+    <FieldRow size={useRowSize()} label="Theme">
       <FilterChipGroup label="Theme" value={value} onValueChange={(next) => onChange(next as ThemeChoice)}>
         {CHOICES.map(([choice, name, tip]) => (
           <Tooltip key={choice}>

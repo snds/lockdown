@@ -1,4 +1,3 @@
-import { whenLocal } from "@/lib/format"
 import type { BackupStatus } from "@/core/types"
 
 export const INTERVALS: Array<[string, number]> = [
@@ -23,13 +22,36 @@ export function statusLine(s: BackupStatus): string {
   return `On: ${intervalWords(s.interval_hours)} to ${s.folder}, keeping the newest ${s.keep_last}.`
 }
 
-/** When the last one worked, and when the next is due. */
-export function whenLine(s: BackupStatus): string {
-  const last = s.last_success_at ? `Last backup: ${whenLocal(s.last_success_at)}.` : "No backup yet."
-  if (!s.enabled) return last
-  const next = s.next_due_at ? ` Next: ${whenLocal(s.next_due_at)}, while Lockdown is unlocked.` : ""
-  return `${last}${next}`
+const two = (n: number) => String(n).padStart(2, "0")
+const clock = (d: Date) => `${two(d.getHours())}:${two(d.getMinutes())}`
+
+/** The LAST BACKUP row's words (brief T8): "Backed up 3 hours ago", or "No backup yet". */
+export function lastBackupLine(s: BackupStatus, nowSecs: number = Date.now() / 1000): string {
+  if (!s.last_success_at) return "No backup yet"
+  const secs = Math.max(0, nowSecs - s.last_success_at)
+  const say = (n: number, unit: string) => `Backed up ${n} ${unit}${n === 1 ? "" : "s"} ago`
+  if (secs < 60) return "Backed up just now"
+  if (secs < 3600) return say(Math.floor(secs / 60), "minute")
+  if (secs < 86_400) return say(Math.floor(secs / 3600), "hour")
+  return say(Math.floor(secs / 86_400), "day")
 }
+
+/** When the next is due, under the LAST BACKUP row; `null` when backups are off. */
+export function nextLine(s: BackupStatus, nowSecs: number = Date.now() / 1000): string | null {
+  if (!s.enabled || !s.next_due_at) return null
+  const when = "while Lockdown is unlocked"
+  if (s.next_due_at <= nowSecs) return `Due now, ${when}.`
+  const d = new Date(s.next_due_at * 1000)
+  const today = new Date(nowSecs * 1000).toDateString() === d.toDateString()
+  const at = today ? `at ${clock(d)}` : `${d.getFullYear()}.${two(d.getMonth() + 1)}.${two(d.getDate())} ${clock(d)}`
+  return `Next ${at}, ${when}.`
+}
+
+/** A choice of HOW OFTEN, keyed by hours, for the CHANGE menu. */
+export const INTERVAL_CHOICES = INTERVALS.map(([label, hours]) => [String(hours), { label, value: label }] as const)
+
+/** A choice of KEEP, for the CHANGE menu. */
+export const KEEP_CHOICES = KEEP.map((n) => [String(n), { label: `The newest ${n}`, value: `The newest ${n}` }] as const)
 
 /** A file's size in plain words. */
 export function sizeWords(bytes: number): string {
@@ -59,7 +81,7 @@ export function waitingLine(s: BackupStatus): string | null {
 
 /** The toast after the switch changes. */
 export function crownSwitchNotice(on: boolean): string {
-  return on ? "Crown jewels will be in your next backup." : "Crown jewels stay out of new backups. Backups you already have keep what they hold."
+  return on ? "Crown jewels go in your next backup" : "Crown jewels stay out of new backups"
 }
 
 /** The crown jewels a backup leaves out (D121), or `null`. */
