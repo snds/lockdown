@@ -1,26 +1,24 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 
-import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Icon } from "@unicron/ui"
+import { AdaptiveDialog, Button, DigitGroups, Icon, QrCode, Tile } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
 import { useLocked } from "@/app/locked"
-import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 import { useCaptureProtect } from "@/features/hygiene/hygiene-client"
 import { usePrinting } from "@/features/paper/paper-client"
+import { countdown } from "@/lib/format"
 
-import { WIFI_CARD_LIFETIME_S, qrPath } from "./depth-model"
+import { WIFI_CARD_LIFETIME_S } from "./depth-model"
 
-function QrCode({ grid, label }: { grid: Uint8Array; label: string }) {
-  const { size, d } = qrPath(grid)
-  // Black on white whatever the theme: phone cameras read a dark code on a light ground.
-  return (
-    <svg role="img" aria-label={label} viewBox={`0 0 ${size} ${size}`} width="288" height="288" shapeRendering="crispEdges">
-      <rect width={size} height={size} fill="#ffffff" />
-      <path d={d} fill="#000000" />
-    </svg>
-  )
+/** The core's grid (its width, then one byte a module, `1` dark) as the rows unicron's QrCode draws. */
+function qrRows(grid: Uint8Array): boolean[][] {
+  const w = grid[0] ?? 0
+  return Array.from({ length: w }, (_, y) => Array.from({ length: w }, (_, x) => grid[1 + y * w + x] === 1))
 }
+
+/** What scanning it does, never what it holds (unicron QrCode's label). */
+const guestCodeLabel = (ssid: string) => `QR code to join ${ssid}`
 
 interface WifiCardProps {
   itemId: string
@@ -30,7 +28,8 @@ interface WifiCardProps {
 
 /**
  * The Wi-Fi guest card (matrix `wifi-items`; D239): a QR code a guest's
- * phone camera joins the network from, full size in a sheet that hides
+ * phone camera joins the network from, on a Tile in a viewer (full screen
+ * on a phone; brief I9) that hides
  * itself after a minute, when the window loses focus and when the vault
  * locks, and a printable card. The code holds the network's password, so
  * it comes from the core as bytes through the `Reveal` gate for a crown
@@ -52,6 +51,8 @@ export function WifiCard({ itemId, ssid, hasPassword }: WifiCardProps) {
   const held = useRef<Uint8Array | null>(null)
   const { print: printPage, printing } = usePrinting()
   const printingNow = useRef(false)
+  // The card opens with focus on DONE, the layer's one primary: Enter or Escape puts it away.
+  const done = useRef<HTMLButtonElement | null>(null)
   // A layout effect, not a plain one: it runs in the same task as the
   // render that drops the words, before any event can land. A plain effect
   // runs after paint, so a blur in between would still read "printing" and
@@ -131,6 +132,7 @@ export function WifiCard({ itemId, ssid, hasPassword }: WifiCardProps) {
   }
 
   useCaptureProtect(visible)
+  const rows = visible && grid ? qrRows(grid) : null
   return (
     <>
       <Button variant="ghost" size="sm" onClick={() => void open()}>
@@ -138,40 +140,53 @@ export function WifiCard({ itemId, ssid, hasPassword }: WifiCardProps) {
         Guest card
       </Button>
       {error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="type-caption text-critical-text">
           {error}
         </p>
       )}
-      <Dialog open={visible} onOpenChange={(o) => !o && close()}>
-        <DialogContent size="lg">
-          <DialogHeader>
-            <DialogTitle>Join {ssid}</DialogTitle>
-            <DialogDescription>Point a phone's camera at the code. It hides itself in {Math.max(left, 0)} seconds, or when you leave this window.</DialogDescription>
-          </DialogHeader>
-          {visible && grid && (
-            <div className="flex flex-col items-center gap-3">
-              <QrCode grid={grid} label={`The code to join ${ssid}`} />
-              <p className="text-lg font-semibold">{ssid}</p>
-            </div>
-          )}
-          {visible && grid && printed !== null && (
-            <div data-print-card hidden className="print:block">
-              <p className="text-2xl font-semibold">Wi-Fi: {ssid}</p>
-              {printed && <p className="font-mono text-3xl tracking-widest">{printed}</p>}
-              <QrCode grid={grid} label={`The code to join ${ssid}`} />
-              <p>Scan with a phone camera to join.</p>
-            </div>
-          )}
-          <LabelledActions>
-            <LabelledAction kind="cancel" onClick={close}>
-              Hide
-            </LabelledAction>
-            <LabelledAction kind="confirm" onClick={() => void print()}>
-              Print a card
-            </LabelledAction>
-          </LabelledActions>
-        </DialogContent>
-      </Dialog>
+      {/* A viewer (960 on a desktop, full screen on a phone): the card, its minute, PRINT CARD and DONE (brief I9). */}
+      <AdaptiveDialog
+        open={visible}
+        onOpenChange={(o) => !o && close()}
+        size="viewer"
+        height="full"
+        overline="Wi-Fi // Guest card"
+        title={`Join ${ssid}`}
+        initialFocus={done}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => void print()}>
+              Print card
+            </Button>
+            <Button ref={done} onClick={close}>
+              Done
+            </Button>
+          </>
+        }
+      >
+        {rows && (
+          <div className="flex flex-col items-center gap-4">
+            <Tile>
+              <span className="flex flex-col items-center gap-4">
+                <span className="type-title text-foreground">{ssid}</span>
+                <QrCode modules={rows} label={guestCodeLabel(ssid)} />
+              </span>
+            </Tile>
+            <p className="type-caption text-support-foreground">Scan with a phone camera to join.</p>
+            <p className="type-overline text-secondary-live">{`Hides in ${countdown(left)}`}</p>
+            <p className="sr-only">It hides itself after a minute, or when you leave this window.</p>
+          </div>
+        )}
+        {rows && printed !== null && (
+          // The paper, drawn only while it prints: black on white, alone (app-extension.css [data-print-card]).
+          <div data-print-card hidden className="print:block">
+            <p className="type-display-compact">Wi-Fi: {ssid}</p>
+            {printed && <DigitGroups value={printed} size="lg" label="Password" />}
+            <QrCode modules={rows} label={guestCodeLabel(ssid)} />
+            <p className="type-body">Scan with a phone camera to join.</p>
+          </div>
+        )}
+      </AdaptiveDialog>
     </>
   )
 }

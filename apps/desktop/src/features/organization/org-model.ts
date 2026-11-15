@@ -237,3 +237,50 @@ export function targetOf(row: ItemSummary): OrganizeTarget {
     organization: { folder: row.folder ?? null, tags: row.tags ?? [], favourite: Boolean(row.favourite) },
   }
 }
+
+/** Whether a row's menu has anything to offer: only what the person's right allows (docs/plan/18-sharing.md). */
+export function rowMenuOffers(row: ItemSummary): boolean {
+  return !row.access || row.access === "edit" || row.access === "manage"
+}
+
+// --- the vault, folder and tag menus (brief V2) -------------------------------------------
+
+/** How long a vault keeps what was deleted before every device purges it, in days (the core's choices). */
+export const TRASH_DAYS = [7, 14, 30, 60, 90, 365] as const
+
+/** A choice of `TRASH_DAYS` in words: "30 days", "A year". */
+export function trashDaysWords(days: number): string {
+  return days === 365 ? "A year" : `${days} days`
+}
+
+/**
+ * Whether the person may change a vault: name it, file in it, set how long it keeps deleted items.
+ * Theirs, or shared with them to manage (docs/plan/18-sharing.md: nothing the right doesn't allow).
+ */
+export function canManageVault(v: VaultView): boolean {
+  return !v.sharing || v.sharing.owned || v.sharing.right === "manage"
+}
+
+/** Whether the person may make, rename, move and remove the folders of a vault: theirs, or shared to edit or manage. */
+export function canFileInVault(v: VaultView): boolean {
+  return !v.sharing || v.sharing.owned || v.sharing.right === "edit" || v.sharing.right === "manage"
+}
+
+/** One row of a vault's ⋯ menu. */
+export type VaultMenuRow = "new-folder" | "rename" | "trash-days" | "share" | "members" | "who-has-it"
+
+/**
+ * A vault's ⋯ menu, in order (brief V2): a vault you can manage offers New folder, Rename, Keep
+ * deleted items for… and its sharing, which is Members once it is shared and Share… before; a vault
+ * shared with you offers Who has it. `sharing` is false where Sharing has no place (no account).
+ */
+export function vaultMenuOffers(v: VaultView, sharing: boolean): VaultMenuRow[] {
+  const shared = Boolean(v.sharing) && v.sharing?.kind !== "received"
+  if (!canManageVault(v)) return [...(canFileInVault(v) ? (["new-folder"] as const) : []), ...(sharing ? (["who-has-it"] as const) : [])]
+  return ["new-folder", "rename", "trash-days", ...(sharing ? [shared ? ("members" as const) : ("share" as const)] : [])]
+}
+
+/** One row of a folder's ⋯ menu, in order (brief V2). Move to the top only for a folder inside another. */
+export function folderMenuOffers(folder: FolderView): Array<"new-folder" | "rename" | "move-to-top" | "remove"> {
+  return ["new-folder", "rename", ...(folder.parent ? (["move-to-top"] as const) : []), "remove"]
+}

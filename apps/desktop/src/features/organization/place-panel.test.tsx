@@ -51,36 +51,61 @@ function mount(client: Client, ui: ReactNode, vaults = VAULTS) {
 
 const base = { templates: () => Promise.resolve(LOGIN_TEMPLATES), approvalRoute: () => Promise.resolve({ route: "window" as const, method: "window" }) }
 
-describe("assigning from the list and the detail", () => {
+const jewel: ItemDetail = {
+  id: "j1",
+  kind: "login",
+  state: "live",
+  version: 3,
+  edited_at: 0,
+  crown_jewel: true,
+  fields: [],
+  vault_id: "v1",
+  organization: { folder: "f-clients", tags: ["work"], favourite: true },
+  attachments: [],
+  crown_jewel_fixed: false,
+}
 
-  it("the detail shows where the item is and takes it out of the crown-jewel class only after asking", async () => {
-    const setCrownJewel = vi.fn<Client["setCrownJewel"]>((_id, _on, gate) =>
-      gate?.confirmed ? Promise.resolve("plain-id") : Promise.reject({ code: "approval_needed", message: "confirm in this window", detail: "window" }),
+describe("where an item is, in Details (brief I4)", () => {
+  it("shows its vault, folder and tags as rows, and moves a crown jewel to another vault only after asking", async () => {
+    const moveItem = vi.fn<Client["moveItem"]>((_id, _to, gate) =>
+      gate?.confirmed ? Promise.resolve("moved-id") : Promise.reject({ code: "approval_needed", message: "confirm in this window", detail: "window" }),
     )
     const onReplaced = vi.fn()
-    const item: ItemDetail = {
-      id: "j1",
-      kind: "login",
-      state: "live",
-      version: 3,
-      edited_at: 0,
-      crown_jewel: true,
-      fields: [],
-      vault_id: "v1",
-      organization: { folder: "f-clients", tags: ["work"], favourite: true },
-      attachments: [],
-      crown_jewel_fixed: false,
-    }
-    mount(fakeClient({ ...base, setCrownJewel }), <PlacePanel item={item} title="Bank" rows={[]} onChanged={() => {}} onReplaced={onReplaced} onError={() => {}} />)
-    expect(screen.getByText("Work / Clients")).toBeInTheDocument()
-    expect(screen.getByText("#work")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Remove from favourites" })).toBeInTheDocument()
+    mount(fakeClient({ ...base, moveItem }), <PlacePanel item={jewel} title="Bank" rows={[]} onChanged={() => {}} onReplaced={onReplaced} onError={() => {}} />)
+    expect(screen.getByRole("group", { name: "Vault" })).toHaveTextContent("Personal")
+    expect(screen.getByRole("group", { name: "Folder" })).toHaveTextContent("Work / Clients")
+    expect(within(screen.getByRole("list", { name: "Tags" })).getByText("#work")).toBeInTheDocument()
     const user = userEvent.setup()
-    await user.click(screen.getByRole("button", { name: "More for this item" }))
-    await user.click(await screen.findByRole("menuitem", { name: "Stop keeping as a crown jewel" }))
-    await user.click(await screen.findByRole("button", { name: "Stop protecting it" }))
+    await user.click(within(screen.getByRole("group", { name: "Vault" })).getByRole("button", { name: "Move" }))
+    await user.click(await screen.findByRole("menuitem", { name: "Family" }))
     // The core asked; the window's confirm stands in on a device with nothing else.
     await user.click(within(await screen.findByRole("dialog", { name: "Go ahead?" })).getByRole("button", { name: "Continue" }))
-    await waitFor(() => expect(onReplaced).toHaveBeenCalledWith("plain-id", "No longer a crown jewel."))
+    await waitFor(() => expect(onReplaced).toHaveBeenCalledWith("moved-id", "Moved Bank to Family"))
+    expect(moveItem).toHaveBeenLastCalledWith("j1", "v2", { confirmed: true })
+  })
+
+  it("CHANGE opens Folder and tags; saving files and tags it in one version", async () => {
+    const organize = vi.fn<Client["organize"]>(() => Promise.resolve(4))
+    const onChanged = vi.fn()
+    const plain: ItemDetail = { ...jewel, crown_jewel: false, organization: { folder: null, tags: [], favourite: false } }
+    mount(fakeClient({ ...base, organize }), <PlacePanel item={plain} title="Bank" rows={[]} onChanged={onChanged} onReplaced={() => {}} onError={() => {}} />)
+    expect(screen.getByRole("group", { name: "Folder" })).toHaveTextContent("None")
+    const user = userEvent.setup()
+    await user.click(within(screen.getByRole("group", { name: "Tags" })).getByRole("button", { name: "Change" }))
+    const form = await screen.findByRole("dialog", { name: "Folder and tags" })
+    await user.selectOptions(within(form).getByLabelText("Folder"), "f-work")
+    await user.type(within(form).getByLabelText("Tags"), "clients{Enter}Clients{Enter}")
+    // The same tag in other letters is kept once.
+    expect(within(form).getAllByRole("button", { name: /^Remove tag/ })).toHaveLength(1)
+    await user.click(within(form).getByRole("switch", { name: "Favorite" }))
+    await user.click(within(form).getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(organize).toHaveBeenCalledWith("j1", { folder: "f-work", tags: ["clients"], favourite: true }))
+    expect(onChanged).toHaveBeenCalledWith("Saved Bank")
+  })
+
+  it("draws nothing to press on a share this person cannot change, and no MOVE with one vault", () => {
+    mount(fakeClient(base), <PlacePanel item={jewel} title="Bank" rows={[]} canEdit={false} onChanged={() => {}} onReplaced={() => {}} onError={() => {}} />)
+    expect(screen.getByRole("group", { name: "Vault" })).toBeInTheDocument()
+    expect(screen.queryByRole("button")).not.toBeInTheDocument()
   })
 })

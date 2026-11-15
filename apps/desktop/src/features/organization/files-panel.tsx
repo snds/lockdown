@@ -1,25 +1,9 @@
 import { useEffect, useRef, useState } from "react"
 
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  Icon,
-  IconButton,
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemMedia,
-  ItemTitle,
-} from "@unicron/ui"
+import { Button, ConfirmDialog, FileChip, Icon, IconButton, SectionHeader } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
-import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
+import { usePlaces } from "@/app/places"
 import { describeError, useClient } from "@/core/client"
 import type { AttachmentView, StorageView } from "@/core/types"
 
@@ -43,25 +27,31 @@ interface FilesPanelProps {
 }
 
 /**
- * An item's attached files (02-model §6): each sealed in 1 MiB chunks
- * under its own key, its name, type and size sealed with it. Add picks a
- * file with the system's own picker; Save hands the file's bytes over
- * once (a crown jewel's after its check) and the system saves them where
- * the person chooses, then this window drops its copy. Remove makes a new
- * version without the file; the history keeps it.
+ * An item's files (02-model §6, brief I5): each sealed in 1 MiB chunks
+ * under its own key, its name, type and size sealed with it. The Section
+ * Header FILES with its count and ATTACH, then one FileChip per file (a
+ * type tag, the name, the size). Pressing a chip saves the file where the
+ * person chooses (a crown jewel's after its check); its trailing control
+ * removes it after a Question: the item saves a new version without it and
+ * the history keeps it. Under the chips, the room used on the server, when
+ * the account has one. Nothing on a share this person cannot change but the
+ * files, and nothing at all in the web vault, which keeps no files (W1).
  */
 export function FilesPanel({ itemId, files, editable, onChanged, onNotice }: FilesPanelProps) {
   const client = useClient()
   const gate = useGate()
+  const { surface } = usePlaces()
   const pick = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
+  const [saving, setSaving] = useState<string | null>(null)
   const [removing, setRemoving] = useState<AttachmentView | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [room, setRoom] = useState<StorageView | null>(null)
+  const web = surface === "web"
 
   // The account's attachment room on its server (D234); nothing without an account.
   useEffect(() => {
-    if (!editable) return
+    if (!editable || web) return
     let live = true
     Promise.resolve()
       .then(() => client.storageUsage())
@@ -70,12 +60,12 @@ export function FilesPanel({ itemId, files, editable, onChanged, onNotice }: Fil
     return () => {
       live = false
     }
-  }, [client, editable, files.length])
+  }, [client, editable, web, files.length])
 
   /**
    * Attach: the shell's own file dialog and the core reading the disk a
    * chunk at a time (D233), so this window never holds the file; where
-   * that isn't offered (the web vault), the system's picker and the bytes.
+   * that isn't offered (a test), the system's picker and the bytes.
    */
   const attachFromDisk = async () => {
     setError(null)
@@ -90,7 +80,7 @@ export function FilesPanel({ itemId, files, editable, onChanged, onNotice }: Fil
     setBusy(true)
     try {
       await gate.run((g) => client.attachChosen(itemId, chosen.token, g))
-      onChanged(`Attached "${chosen.name}".`)
+      onChanged(`Attached ${chosen.name}`)
     } catch (e) {
       setError(describeError(e))
     } finally {
@@ -101,14 +91,14 @@ export function FilesPanel({ itemId, files, editable, onChanged, onNotice }: Fil
   const add = async (file: File) => {
     setError(null)
     if (file.size > MAX_FILE_BYTES) {
-      setError(`Files up to ${MAX_FILE_BYTES / (1024 * 1024)} MB attach here; "${file.name}" is larger.`)
+      setError(`Files up to ${MAX_FILE_BYTES / (1024 * 1024)} MB attach here; ${file.name} is larger.`)
       return
     }
     setBusy(true)
     const bytes = new Uint8Array(await file.arrayBuffer())
     try {
       await gate.run((g) => client.attach(itemId, file.name, file.type, bytes, g))
-      onChanged(`Attached "${file.name}".`)
+      onChanged(`Attached ${file.name}`)
     } catch (e) {
       setError(describeError(e))
     } finally {
@@ -128,16 +118,13 @@ export function FilesPanel({ itemId, files, editable, onChanged, onNotice }: Fil
       place = undefined
     }
     if (place === null) return
-    if (place) {
-      try {
-        await gate.run((g) => client.attachmentSave(itemId, f.id, place.token, g))
-        onNotice(`Saved "${f.name}" to ${place.name}.`)
-      } catch (e) {
-        setError(describeError(e))
-      }
-      return
-    }
+    setSaving(f.id)
     try {
+      if (place) {
+        await gate.run((g) => client.attachmentSave(itemId, f.id, place.token, g))
+        onNotice(`Saved ${f.name} to ${place.name}`)
+        return
+      }
       const bytes = await gate.run((g) => client.attachment(itemId, f.id, g))
       const blob = new Blob([bytes as BlobPart], { type: f.mime || "application/octet-stream" })
       bytes.fill(0)
@@ -149,36 +136,43 @@ export function FilesPanel({ itemId, files, editable, onChanged, onNotice }: Fil
       a.click()
       a.remove()
       window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
-      onNotice(`Saving "${f.name}".`)
+      onNotice(`Saving ${f.name}`)
     } catch (e) {
       setError(describeError(e))
+    } finally {
+      setSaving(null)
     }
   }
 
   const remove = async () => {
     const f = removing
-    setRemoving(null)
     if (!f) return
     try {
       await gate.run((g) => client.detach(itemId, f.id, g))
-      onChanged(`Took off "${f.name}"; the item's history still holds it.`)
+      onChanged(`Removed ${f.name}`)
     } catch (e) {
       setError(describeError(e))
+    } finally {
+      setRemoving(null)
     }
   }
 
-  if (!files.length && !editable) return null
+  if (web || (!files.length && !editable)) return null
   return (
-    <section aria-label="Files" className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-medium text-muted-foreground uppercase">Files</h3>
-        {editable && (
-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => void attachFromDisk()}>
-            <Icon name="attachment" data-icon="inline-start" />
-            {busy ? "Attaching…" : "Attach a file"}
-          </Button>
-        )}
-      </div>
+    <section aria-label="Files" className="flex flex-col gap-3">
+      <SectionHeader
+        title="Files"
+        count={files.length || undefined}
+        level={3}
+        action={
+          editable ? (
+            <Button variant="ghost" size="sm" loading={busy} onClick={() => void attachFromDisk()}>
+              <Icon name="attachment" data-icon="inline-start" />
+              Attach
+            </Button>
+          ) : undefined
+        }
+      />
       <input
         ref={pick}
         type="file"
@@ -189,55 +183,52 @@ export function FilesPanel({ itemId, files, editable, onChanged, onNotice }: Fil
           if (f) void add(f)
         }}
       />
+      {files.length > 0 ? (
+        <ul aria-label="Files" className="flex flex-wrap gap-2">
+          {files.map((f) => (
+            <li key={f.id} className="flex min-w-0 max-w-full">
+              <FileChip
+                name={f.name}
+                type={typeOf(f)}
+                size={sizeWords(f.size)}
+                busy={saving === f.id}
+                onClick={() => void save(f)}
+                mainRender={<button type="button" aria-label={`Save ${f.name}`} />}
+                action={editable ? <IconButton variant="ghost" size="icon-sm" icon="close" label={`Remove ${f.name}`} onClick={() => setRemoving(f)} /> : undefined}
+              />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="type-caption text-support-foreground">No files.</p>
+      )}
       {room && (
-        <p className="text-xs text-muted-foreground">
+        <p className="type-caption text-support-foreground">
           {room.quota !== null ? `${room.used_words} of ${room.quota_words} used for files on your server.` : `${room.used_words} of files on your server.`}
         </p>
       )}
-      {files.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No files. Attach a scan, a receipt or a key file; it is encrypted with the item.</p>
-      ) : (
-        <ItemGroup>
-          {files.map((f) => (
-            <Item key={f.id} role="listitem" size="sm">
-              <ItemMedia variant="icon">
-                <Icon name="document" />
-              </ItemMedia>
-              <ItemContent>
-                <ItemTitle>
-                  <span className="truncate">{f.name}</span>
-                </ItemTitle>
-                <ItemDescription>{[sizeWords(f.size), f.mime].filter(Boolean).join(" · ")}</ItemDescription>
-              </ItemContent>
-              <ItemActions>
-                <IconButton label={`Save ${f.name}`} icon="download" size="icon-sm" onClick={() => void save(f)} />
-                {editable && <IconButton label={`Remove ${f.name}`} icon="trash-can" size="icon-sm" variant="ghost-destructive" onClick={() => setRemoving(f)} />}
-              </ItemActions>
-            </Item>
-          ))}
-        </ItemGroup>
-      )}
       {error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="type-caption text-critical-text">
           {error}
         </p>
       )}
-      <Dialog open={removing !== null} onOpenChange={(o) => !o && setRemoving(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Take off "{removing?.name}"?</DialogTitle>
-            <DialogDescription>The item saves a new version without it. Earlier versions in its history still hold the file.</DialogDescription>
-          </DialogHeader>
-          <LabelledActions>
-            <LabelledAction kind="cancel" onClick={() => setRemoving(null)}>
-              Cancel
-            </LabelledAction>
-            <LabelledAction kind="destructive" onClick={() => void remove()}>
-              Take it off
-            </LabelledAction>
-          </LabelledActions>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(o) => !o && setRemoving(null)}
+        tone="destructive"
+        title={`Remove ${removing?.name ?? "this file"}?`}
+        description="The item saves a new version without it. Earlier versions in its history still hold the file."
+        confirmLabel="Remove"
+        onConfirm={() => remove()}
+      />
     </section>
   )
+}
+
+/** The chip's type tag: the name's extension, else the media type's last part ("PDF", "PNG"). */
+function typeOf(f: AttachmentView): string | undefined {
+  const dot = f.name.lastIndexOf(".")
+  if (dot > 0 && dot < f.name.length - 1) return f.name.slice(dot + 1).toUpperCase()
+  const sub = f.mime.split("/")[1]?.split(/[+.;-]/)[0]
+  return sub ? sub.toUpperCase() : undefined
 }

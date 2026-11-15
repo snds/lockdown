@@ -1,23 +1,7 @@
-import { useMemo, useState, type FormEvent } from "react"
+import { useId, useMemo, useState, type FormEvent } from "react"
 
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-  NativeSelect,
-  NativeSelectOption,
-  Switch,
-} from "@unicron/ui"
+import { AdaptiveDialog, Banner, Button, Field, FieldDescription, FieldLabel, NativeSelect, NativeSelectOption, ToggleRow } from "@unicron/ui"
 
-import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { describeError, useClient } from "@/core/client"
 import type { ItemSummary } from "@/core/types"
 
@@ -34,33 +18,54 @@ interface OrganizePromptProps {
 }
 
 /**
- * Files, tags and stars one item: the folder from its own vault's tree,
- * tags as chips, the favourite switch. Saving writes one new version in
- * the core with the three organization fields replaced and every other
- * field kept as it was (`Vault::organize`).
+ * Folder and tags (brief I4's first small Form): the folder from the
+ * item's own vault's tree, tags as chips (ChipField), the Favorite switch,
+ * and one primary SAVE. A dialog on a desktop, a sheet on a phone. Saving
+ * writes one new version in the core with the three organization fields
+ * replaced and every other field kept as it was (`Vault::organize`); a
+ * failure stays in the form in the core's words.
  */
 export function OrganizePrompt({ target, rows, onClose, onSaved }: OrganizePromptProps) {
+  const formId = useId()
+  const [busy, setBusy] = useState(false)
   return (
-    <Dialog open={target !== null} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>{target && <OrganizeForm key={target.id} target={target} rows={rows} onClose={onClose} onSaved={onSaved} />}</DialogContent>
-    </Dialog>
+    <AdaptiveDialog
+      open={target !== null}
+      onOpenChange={(o) => !o && !busy && onClose()}
+      overline={target?.title}
+      title="Folder and tags"
+      description="Folders belong to the item's vault; tags work across every vault."
+      // Typed tags would be lost to a stray press outside; Cancel, Escape and the close button still close it.
+      closeOnOutsideClick={false}
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="submit" form={formId} loading={busy}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      {target && <OrganizeForm key={target.id} formId={formId} target={target} rows={rows} onBusy={setBusy} onSaved={onSaved} />}
+    </AdaptiveDialog>
   )
 }
 
-function OrganizeForm({ target, rows, onClose, onSaved }: { target: OrganizeTarget; rows: ItemSummary[]; onClose: () => void; onSaved: () => void }) {
+function OrganizeForm({ formId, target, rows, onBusy, onSaved }: { formId: string; target: OrganizeTarget; rows: ItemSummary[]; onBusy: (busy: boolean) => void; onSaved: () => void }) {
   const client = useClient()
   const { vaults } = useVaults()
   const vault = vaults.find((v) => v.id === target.vaultId)
   const [folder, setFolder] = useState(target.organization.folder ?? "")
   const [tags, setTags] = useState(target.organization.tags)
   const [favourite, setFavourite] = useState(target.organization.favourite)
-  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const known = useMemo(() => [...new Set(rows.flatMap((r) => r.tags ?? []))].sort(), [rows])
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    setBusy(true)
+    onBusy(true)
     setError(null)
     try {
       await client.organize(target.id, { folder, tags, favourite })
@@ -68,50 +73,26 @@ function OrganizeForm({ target, rows, onClose, onSaved }: { target: OrganizeTarg
     } catch (err) {
       setError(describeError(err))
     } finally {
-      setBusy(false)
+      onBusy(false)
     }
   }
   return (
-    <form onSubmit={submit} className="grid gap-4">
-      <DialogHeader>
-        <DialogTitle>Organize "{target.title}"</DialogTitle>
-        <DialogDescription>Folders belong to the item's vault{vault ? ` (${vault.name})` : ""}; tags work across every vault.</DialogDescription>
-      </DialogHeader>
-      <FieldGroup>
-        <Field>
-          <FieldLabel htmlFor="organize-folder">Folder</FieldLabel>
-          <NativeSelect id="organize-folder" value={folder} onChange={(e) => setFolder(e.target.value)}>
-            <NativeSelectOption value="">No folder</NativeSelectOption>
-            {folderTree(vault?.folders ?? []).map((f) => (
-              <NativeSelectOption key={f.id} value={f.id}>
-                {f.path}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-          {!vault?.folders.length && <FieldDescription>This vault has no folders yet; make one from its menu in the sidebar.</FieldDescription>}
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="organize-tags">Tags</FieldLabel>
-          <TagsEditor id="organize-tags" tags={tags} onChange={setTags} known={known} />
-          <FieldDescription>A slash nests a tag under another: work/clients.</FieldDescription>
-        </Field>
-        <Field orientation="horizontal">
-          <Switch id="organize-favourite" checked={favourite} onCheckedChange={setFavourite} />
-          <FieldContent>
-            <FieldLabel htmlFor="organize-favourite">Favourite</FieldLabel>
-            <FieldDescription>Listed first in quick access and in Favourites.</FieldDescription>
-          </FieldContent>
-        </Field>
-      </FieldGroup>
-      {error && <FieldError role="alert">{error}</FieldError>}
-      <LabelledActions>
-        <LabelledAction kind="cancel" type="button" onClick={onClose} disabled={busy}>
-          Cancel
-        </LabelledAction>
-        <LabelledAction kind="confirm" type="submit" disabled={busy}>
-          Save
-        </LabelledAction>
-      </LabelledActions>
+    <form id={formId} onSubmit={(e) => void submit(e)} className="flex flex-col gap-6">
+      {error && <Banner tone="critical" size="compact" title={error} />}
+      <Field>
+        <FieldLabel htmlFor="organize-folder">Folder</FieldLabel>
+        <NativeSelect id="organize-folder" value={folder} onChange={(e) => setFolder(e.target.value)}>
+          <NativeSelectOption value="">No folder</NativeSelectOption>
+          {folderTree(vault?.folders ?? []).map((f) => (
+            <NativeSelectOption key={f.id} value={f.id}>
+              {f.path}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        {!vault?.folders.length && <FieldDescription>{vault ? `${vault.name} has no folders yet. Make one from its menu in the sidebar.` : "This vault has no folders yet."}</FieldDescription>}
+      </Field>
+      <TagsEditor id="organize-tags" label="Tags" tags={tags} onChange={setTags} known={known} helper="A slash nests one tag under another: work/clients." />
+      <ToggleRow label="Favorite" description="Listed first in Quick access and in Favorites." checked={favourite} onCheckedChange={setFavourite} />
     </form>
   )
 }

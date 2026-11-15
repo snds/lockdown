@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
 import { GateProvider } from "@/app/gate"
+import { PlacesProvider } from "@/app/places"
 import { ClientProvider, type Client } from "@/core/client"
 import type { GateInput, ItemDetail } from "@/core/types"
 import { fakeClient } from "@/test/fake-client"
@@ -39,5 +40,23 @@ describe("a crown jewel's export opt-in (D121)", () => {
     await user.click(within(await screen.findByRole("dialog", { name: "Go ahead?" })).getByRole("button", { name: "Continue" }))
     await waitFor(() => expect(changed).toHaveBeenCalledWith(expect.objectContaining({ export_opt_in: true })))
     expect(setExportOptIn).toHaveBeenLastCalledWith("w1", true, { confirmed: true })
+  })
+
+  it("the web vault makes no exports: the row says where it is changed and the switch stays still (W1)", async () => {
+    const setExportOptIn = vi.fn<Client["setExportOptIn"]>()
+    render(
+      <PlacesProvider value={{ nav: { area: "vault", view: "all" }, surface: "web", go: () => {}, navigate: () => {} }}>
+        <ClientProvider value={fakeClient({ setExportOptIn })}>
+          <GateProvider>
+            <ExportOptIn item={wallet} onChanged={() => {}} />
+          </GateProvider>
+        </ClientProvider>
+      </PlacesProvider>,
+    )
+    const toggle = screen.getByRole("switch", { name: "Include in exports and backups" })
+    expect(screen.getByText("Exports and backups are made in the desktop app.")).toBeInTheDocument()
+    await userEvent.setup().click(toggle)
+    expect(toggle).not.toBeChecked()
+    expect(setExportOptIn).not.toHaveBeenCalled()
   })
 })

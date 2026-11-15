@@ -1,6 +1,29 @@
 import type { ItemSummary } from "@/core/types"
 
-import { baseTitle, buildList, conflictPair, countViews, groupRows, rowsIn, sortRows, KIND_VIEWS, VIEW_LABELS, countTypes } from "./list-model"
+import type { Finding } from "@/core/types"
+import { count } from "@/lib/format"
+
+import {
+  baseTitle,
+  buildList,
+  conflictPair,
+  countViews,
+  defaultGroup,
+  findingWords,
+  groupFor,
+  groupRows,
+  letterOf,
+  methodWords,
+  monoLine,
+  rowWords,
+  rowsIn,
+  scopeChips,
+  sortRows,
+  viewOfKind,
+  KIND_VIEWS,
+  VIEW_LABELS,
+  countTypes,
+} from "./list-model"
 
 function row(over: Partial<ItemSummary> & { id: string; title: string; kind: string }): ItemSummary {
   return {
@@ -81,6 +104,105 @@ describe("the vault list (D93)", () => {
     const hit = buildList(rows, "all", "WI-FI", "title", "none")
     expect(hit[0]!.rows.map((r) => r.id)).toEqual(["3"])
     expect(groupRows([], "kind")).toEqual([])
+  })
+})
+
+describe("letter groups and the sort and group menu (brief V1, D780)", () => {
+  it("groups title order by first letter, accents folded, anything else under #, with each letter's count", () => {
+    const named = ["Steam", "spotify", "Émile's bank", "Stripe", "42 club", "tailscale", "Ticketmaster"].map((title, i) => row({ id: String(i), title, kind: "login" }))
+    const groups = buildList(named, "all", "", "title", "letter")
+    expect(groups.map((g) => [g.label, g.rows.length])).toEqual([
+      ["#", 1],
+      ["E", 1],
+      ["S", 3],
+      ["T", 2],
+    ])
+    expect(groups.find((g) => g.label === "S")!.rows.map((r) => r.title)).toEqual(["spotify", "Steam", "Stripe"])
+    // A header's count is written as every count is (decisions §13): `S // 03`.
+    expect(count(groups.find((g) => g.label === "S")!.rows.length)).toBe("03")
+    expect(letterOf("  émile")).toBe("E")
+    expect(letterOf("")).toBe("#")
+  })
+
+  it("offers letters only in A to Z order, and starts each device on its drawn grouping", () => {
+    expect(groupFor("title", "letter")).toBe("letter")
+    expect(groupFor("changed", "letter")).toBe("none")
+    expect(groupFor("used", "kind")).toBe("kind")
+    // With another sort, the letter grouping falls to one list rather than letters out of order.
+    expect(buildList(rows, "all", "", "changed", "letter")).toHaveLength(1)
+    expect(defaultGroup(false)).toBe("letter")
+    expect(defaultGroup(true)).toBe("none")
+  })
+
+  it("sorts by recent use on this device, newest first, never-used last in title order", () => {
+    const used = [row({ id: "a", title: "Alpha", kind: "login", last_used: 50 }), row({ id: "b", title: "Bravo", kind: "login" }), row({ id: "c", title: "Charlie", kind: "login", last_used: 90 }), row({ id: "d", title: "Able", kind: "login" })]
+    expect(sortRows(used, "used").map((r) => r.id)).toEqual(["c", "a", "d", "b"])
+  })
+})
+
+describe("kind views and a scope's chips (brief X1, V1)", () => {
+  it("opens each kind as its own view, or as the smart view that lists it", () => {
+    expect(viewOfKind("card")).toBe("card")
+    expect(viewOfKind("wi-fi")).toBe("wi-fi")
+    expect(viewOfKind("passkey")).toBe("passkeys")
+    expect(viewOfKind("code")).toBe("codes")
+    expect(viewOfKind("contact")).toBeNull()
+  })
+
+  it("chips only the kinds a scope holds, live ones, in the sidebar's order", () => {
+    const scoped = [row({ id: "1", title: "a", kind: "note" }), row({ id: "2", title: "b", kind: "login" }), row({ id: "3", title: "c", kind: "wi-fi" }), row({ id: "4", title: "d", kind: "card", state: "trashed" })]
+    expect(scopeChips(scoped)).toEqual(["wi-fi", "login", "note"])
+    expect(scopeChips([])).toEqual([])
+  })
+})
+
+describe("what a row says (brief V1)", () => {
+  const login = row({ id: "s", title: "Steam", kind: "login", site: "https://store.steam.example/login", methods: ["password", "passkey", "code"], vault_id: "v1" })
+
+  it("says a login's ways in as the frames do", () => {
+    expect(methodWords(login)).toBe("Passkey + code")
+    expect(methodWords({ ...login, methods: ["passkey"] })).toBe("Passkey")
+    expect(methodWords({ ...login, methods: ["password"] })).toBe("Login")
+    expect(methodWords({ ...login, methods: ["password", "code"] })).toBe("Login + code")
+    expect(methodWords({ ...login, methods: [] })).toBe("Login")
+  })
+
+  it("puts the site, a note's edit, or the template's plain field on the mono line, and nothing for a crown jewel (D113)", () => {
+    expect(monoLine(login)).toBe("store.steam.example")
+    const now = new Date(2026, 10, 15, 12).getTime() / 1000
+    const edited = new Date(2026, 10, 8, 9).getTime() / 1000
+    expect(monoLine(row({ id: "n", title: "Door", kind: "note", edited_at: edited }), now)).toBe("edited NOV 08")
+    expect(monoLine(row({ id: "w", title: "Home", kind: "wi-fi", subtitle: "Rivera-Home" }))).toBe("Rivera-Home")
+    expect(monoLine(row({ id: "j", title: "Cold wallet", kind: "crypto-wallet", crown_jewel: true, subtitle: "" }))).toBe("")
+  })
+
+  it("names the kind, or the vault in a kind view across vaults, then the state words", () => {
+    const vaults = [
+      { id: "v1", name: "Personal", primary: true, items: 1, trash_days: 30, folders: [] },
+      { id: "v2", name: "Family", primary: false, items: 1, trash_days: 7, folders: [] },
+    ]
+    const card = row({ id: "c", title: "Everyday", kind: "card", vault_id: "v2" })
+    expect(rowWords(card, { view: "all", vaults })).toBe("Card")
+    expect(rowWords(card, { view: "card", vaults })).toBe("Family")
+    // Inside one vault the vault goes without saying.
+    expect(rowWords(card, { view: "card", vaults, oneVault: true })).toBe("Card")
+    expect(rowWords(login, { view: "all", vaults })).toBe("Passkey + code")
+    expect(rowWords({ ...login, conflict_copy: true, access: "view" }, { view: "all" })).toBe("Passkey + code // conflict // shared")
+    expect(rowWords({ ...card, state: "archived" }, { view: "favourites" })).toBe("Card // archived")
+    // A state the view already names is said once.
+    expect(rowWords({ ...card, state: "archived" }, { view: "archived" })).toBe("Card")
+    expect(rowWords({ ...card, state: "trashed" }, { view: "deleted" })).toBe("Card")
+  })
+
+  it("adds the worst finding of the cached report, and none that was dismissed", () => {
+    const f = (kind: Finding["kind"], item: string, dismissed = false) => ({ kind, item_id: item, dismissed: dismissed ? { at: 1 } : null }) as unknown as Finding
+    const words = findingWords([f("weak", "s"), f("breached", "s"), f("reused", "x"), f("weak", "y", true), f("missing_2fa", "z")])
+    expect(words.get("s")).toBe("breached")
+    expect(words.get("x")).toBe("reused")
+    expect(words.has("y")).toBe(false)
+    expect(words.has("z")).toBe(false)
+    expect(rowWords(login, { view: "all", findings: words })).toBe("Passkey + code // breached")
+    expect(findingWords(null).size).toBe(0)
   })
 })
 

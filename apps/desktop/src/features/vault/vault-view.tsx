@@ -1,225 +1,552 @@
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
 
 import {
+  AdaptiveMenu,
+  AdaptiveMenuRadioGroup,
+  AdaptiveMenuRadioItem,
+  AppFrameInset,
+  AppFramePageHead,
+  Banner,
   Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-  Icon,
+  EmptyState,
+  FilterChip,
+  FilterChipGroup,
   IconButton,
-  Input,
-  ItemGroup,
+  SearchField,
+  SectionHeader,
   Skeleton,
-  ToggleGroup,
-  ToggleGroupItem,
+  useAppFrame,
 } from "@unicron/ui"
 
-import { MasterDetail, PaneHeader } from "@/components/master-detail"
-import { isMac } from "@/features/palette/palette-model"
-import type { ItemSummary } from "@/core/types"
-import { DuplicatesReview } from "@/features/organization/duplicates-review"
+import { savedWords } from "@/app/notify"
+import { usePageHead } from "@/app/page-head"
+import { usePlaces } from "@/app/places"
+import { useSettings } from "@/app/settings"
+import { useTemplates } from "@/app/templates"
+import { MasterDetail } from "@/components/master-detail"
+import { useClient } from "@/core/client"
+import type { Finding, ItemSummary } from "@/core/types"
 import { groupByExpiry } from "@/features/organization/expiry"
 import { OrganizePrompt } from "@/features/organization/organize-prompt"
-import { folderPaths, inScope, scopeTitle, targetOf, type OrganizeTarget, type Scope } from "@/features/organization/org-model"
-import { RowMenu } from "@/features/organization/row-menu"
+import { folderPaths, inScope, rowMenuOffers, scopeTitle, targetOf, type OrganizeTarget, type Scope } from "@/features/organization/org-model"
+import { RowMenuItems } from "@/features/organization/row-menu"
+import { useRowMenuLayers } from "@/features/organization/row-menu-layers"
 import { useVaults } from "@/features/organization/vaults-context"
+import { useOfferRoutes } from "@/features/palette/palette-routes"
+import { count, countName } from "@/lib/format"
 
+import { kindWord } from "./detail-model"
 import { DetailPane } from "./detail-pane"
-import { ItemRow } from "./item-row"
-import { DEFAULT_GROUP, DEFAULT_SORT, VIEW_LABELS, buildList, kindIcon, type GroupBy, type ListView, type SortKey } from "./list-model"
 import { ItemEditor, type EditorTarget } from "./item-editor"
-import { useQuickCopy } from "./quick-copy"
+import { ItemRow } from "./item-row"
+import { NewItemMenu } from "./new-item-menu"
+import {
+  DEFAULT_SORT,
+  VIEW_LABELS,
+  buildList,
+  defaultGroup,
+  findingWords,
+  groupFor,
+  isKindView,
+  rowWords,
+  scopeChips,
+  type GroupBy,
+  type ListView,
+  type RowGroup,
+  type SortKey,
+} from "./list-model"
+import { rememberWhere, searchWith } from "./search-words"
 
 interface VaultViewProps {
   view: ListView
   rows: ItemSummary[] | null
   error: string | null
+  /** Reloads the list: after a change, and TRY AGAIN after a failed read. */
   onChanged: () => void
   onNotice: (text: string) => void
   /** The open item: kept by the app so the quick-access palette can open one. */
   selected: string | null
   onSelect: (id: string | null) => void
-  /** Opens the quick-access palette (also ⌘K / Ctrl+K anywhere in the app). */
+  /** Kept for callers: Quick access is ⌘K now, with no button on the list (D111, brief X4). */
   onPalette: () => void
   /** A vault, folder or tag the list is narrowed to (the sidebar's Vaults and Tags). */
   scope?: Scope
 }
 
-const EMPTY: Partial<Record<ListView, [string, string]>> = {
-  all: ["Nothing saved yet", "Add one with New item, or import from another manager in Settings."],
-  passkeys: ["No passkeys yet", "Save a passkey with Lockdown when a site offers one in your browser; a Login keeps its own."],
-  codes: ["No codes here", "Add a code from the Codes screen."],
-  "wi-fi": ["No Wi-Fi networks", "Add one with New item → Wi-Fi network."],
-  expiring: ["Nothing expiring", "Items with an expiry date within thirty days show here."],
-  attention: ["Nothing needs you", "Conflict copies, expiring items and codes that protect this account itself show here."],
-  deleted: ["The trash is empty", "Trashed items stay readable here through their grace period."],
-  favourites: ["No favourites yet", "Star an item from its menu or its detail; favourites come first in quick access."],
-  archived: ["Nothing archived", "Archive an item to take it out of the list and search without deleting it."],
-  contacts: ["No contacts yet", "Add someone with New item → Contact. Contacts are never used to fill a form."],
+/** A list longer than this draws only the rows in view (brief X6). */
+export const WINDOW_FROM = 200
+
+// --- sort and group, kept per device ----------------------------------------------------------
+
+const ORDER_KEY = "lockdown.list-order"
+
+/** The person's sort and group, kept on this device for every list (brief V1); the grouping starts by the device's width. */
+function useListOrder(phone: boolean): { sort: SortKey; group: GroupBy; setSort: (s: SortKey) => void; setGroup: (g: GroupBy) => void } {
+  const [kept, setKept] = useState<{ sort?: SortKey; group?: GroupBy }>(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem(ORDER_KEY) ?? "{}") as { sort?: SortKey; group?: GroupBy }
+    } catch {
+      return {}
+    }
+  })
+  const keep = useCallback((next: { sort?: SortKey; group?: GroupBy }) => {
+    setKept((was) => {
+      const now = { ...was, ...next }
+      try {
+        window.localStorage.setItem(ORDER_KEY, JSON.stringify(now))
+      } catch {
+        // Kept for this session only.
+      }
+      return now
+    })
+  }, [])
+  return {
+    sort: kept.sort ?? DEFAULT_SORT,
+    group: kept.group ?? defaultGroup(phone),
+    setSort: (sort) => keep({ sort }),
+    setGroup: (group) => keep({ group }),
+  }
 }
 
+/** The "Sort and group" menu (brief V1): a menu on a desktop, a sheet on a phone. By letter only with A to Z. */
+function SortMenu({ trigger, sort, group, letters, onSort, onGroup }: { trigger: React.ReactElement<Record<string, unknown>>; sort: SortKey; group: GroupBy; letters: boolean; onSort: (s: SortKey) => void; onGroup: (g: GroupBy) => void }) {
+  return (
+    <AdaptiveMenu title="Sort and group" overline="Items" align="end" trigger={trigger}>
+      <AdaptiveMenuRadioGroup label="Sort" value={sort} onValueChange={(v) => onSort(v as SortKey)}>
+        <AdaptiveMenuRadioItem value="title">A to Z</AdaptiveMenuRadioItem>
+        <AdaptiveMenuRadioItem value="changed">Recently changed</AdaptiveMenuRadioItem>
+        <AdaptiveMenuRadioItem value="used">Recently used</AdaptiveMenuRadioItem>
+      </AdaptiveMenuRadioGroup>
+      <AdaptiveMenuRadioGroup label="Group" value={groupFor(sort, group)} onValueChange={(v) => onGroup(v as GroupBy)}>
+        {letters && sort === "title" && <AdaptiveMenuRadioItem value="letter">By letter</AdaptiveMenuRadioItem>}
+        <AdaptiveMenuRadioItem value="kind">By type</AdaptiveMenuRadioItem>
+        <AdaptiveMenuRadioItem value="none">None</AdaptiveMenuRadioItem>
+      </AdaptiveMenuRadioGroup>
+    </AdaptiveMenu>
+  )
+}
+
+// --- the words of each empty list (brief 5.2) ---------------------------------------------------
+
+/** "Cards" → "cards", "SSH keys" stays: a plural in a sentence. */
+const inSentence = (words: string) => (/^[A-Z][a-z]/.test(words) ? words.charAt(0).toLowerCase() + words.slice(1) : words)
+
+interface EmptyWords {
+  overline: string
+  title: string
+  body?: string
+  /** The template a NEW button starts, or `menu` for the whole New item menu. */
+  create?: { label: string; template: string | "menu" }
+}
+
+function emptyWords(view: ListView, scopeName: string | null, trashDays: number | null): EmptyWords {
+  const name = VIEW_LABELS[view]
+  const kind = isKindView(view) ? view : view === "wi-fi" ? "wi-fi" : view === "contacts" ? "identity/contact" : null
+  const single = kind === "identity/contact" ? "contact" : kind ? inSentence(kindWord(kind)) : ""
+  if (view === "deleted")
+    return {
+      overline: `${scopeName ? `${scopeName} // ` : ""}Recently deleted // ${count(0)}`,
+      title: "Nothing here.",
+      body: trashDays === null ? "Each vault keeps deleted items for its own time." : `Deleted items stay here for ${trashDays} days, then go for good.`,
+    }
+  if (scopeName && view === "all") return { overline: `${scopeName} // ${count(0)}`, title: "Nothing here.", body: "Nothing is filed here yet.", create: { label: "New item", template: "menu" } }
+  if (scopeName && kind) return { overline: `${scopeName} // ${name} // ${count(0)}`, title: `No ${inSentence(name)} in ${scopeName}.`, create: { label: `New ${single}`, template: kind } }
+  if (scopeName) return { overline: `${scopeName} // ${name} // ${count(0)}`, title: "Nothing here." }
+  switch (view) {
+    case "all":
+      return { overline: `Items // ${count(0)}`, title: "Nothing saved yet.", body: "Save a login from your browser, or add one here.", create: { label: "New item", template: "menu" } }
+    case "favourites":
+      return { overline: `Favorites // ${count(0)}`, title: "No favorites yet.", body: "Star an item to keep it here." }
+    case "passkeys":
+      return { overline: `Passkeys // ${count(0)}`, title: "No passkeys yet.", body: "Save one with Lockdown when a site offers it in your browser." }
+    case "codes":
+      return { overline: `Codes // ${count(0)}`, title: "No codes yet.", body: "Add one from the set-up link a site gives you." }
+    case "contacts":
+      return { overline: `Contacts // ${count(0)}`, title: "No contacts yet.", body: "Contacts are never used to fill a form.", create: { label: "New contact", template: "identity/contact" } }
+    case "archived":
+      return { overline: `Archived // ${count(0)}`, title: "Nothing archived.", body: "Archive an item to keep it without it getting in your way." }
+    case "expiring":
+      return { overline: `Expiring // ${count(0)}`, title: "Nothing expiring.", body: "Items with an expiry date within 30 days show here." }
+    case "attention":
+      return { overline: `Needs attention // ${count(0)}`, title: "Nothing needs you.", body: "Conflict copies, expiring items and codes that protect this account itself show here." }
+    default:
+      return { overline: `${name} // ${count(0)}`, title: `No ${inSentence(name)} yet.`, body: "Add one and it shows here.", create: kind ? { label: `New ${single}`, template: kind } : undefined }
+  }
+}
+
+// --- a long list draws only the rows in view (brief X6) -----------------------------------------
+
+/** The nearest ancestor that scrolls: the frame's list column. */
+function scrollerOf(el: HTMLElement | null): HTMLElement | null {
+  for (let p = el?.parentElement ?? null; p; p = p.parentElement) {
+    const y = getComputedStyle(p).overflowY
+    if (y === "auto" || y === "scroll") return p
+  }
+  return null
+}
+
+/** Without a layout (a test, a first paint), how many rows a windowed group draws. */
+const FIRST_PAINT = 24
+const OVERSCAN = 8
+
 /**
- * The vault (brief §3): a list on the left, one item on the right. The
- * list is one smart view, searched, sorted and grouped as D93 decided:
- * title A–Z, grouped by kind with counts, with a sort menu (title, recently
- * changed) and a group toggle (by kind, none). A Login keeps its passkeys
- * and codes inside its own row; the method glyphs say which it holds.
+ * Which of a group's rows to draw: all of them when the list is short; in
+ * a long one, those in the scroller's view and a few either side. Rows
+ * outside are stood in for by space of their height, so the scroll bar and
+ * the sticky letter headers stay true.
  */
-export function VaultView({ view, rows, error, onChanged, onNotice, selected, onSelect, onPalette, scope }: VaultViewProps) {
+function useWindow(enabled: boolean, rowCount: number, rowHeight: number): { ref: React.RefObject<HTMLUListElement | null>; start: number; end: number } {
+  const ref = useRef<HTMLUListElement | null>(null)
+  const [range, setRange] = useState<[number, number]>(() => [0, Math.min(rowCount, FIRST_PAINT)])
+  useLayoutEffect(() => {
+    if (!enabled) return
+    const list = ref.current
+    const scroller = scrollerOf(list)
+    if (!list || !scroller) return
+    let frame = 0
+    const measure = () => {
+      frame = 0
+      const view = scroller.getBoundingClientRect()
+      const top = list.getBoundingClientRect().top
+      if (view.height === 0) {
+        setRange([0, Math.min(rowCount, FIRST_PAINT)])
+        return
+      }
+      const first = Math.max(0, Math.floor((view.top - top) / rowHeight) - OVERSCAN)
+      const last = Math.min(rowCount, Math.ceil((view.bottom - top) / rowHeight) + OVERSCAN)
+      setRange((was) => (was[0] === first && was[1] === Math.max(first, last) ? was : [first, Math.max(first, last)]))
+    }
+    const later = () => {
+      if (!frame) frame = requestAnimationFrame(measure)
+    }
+    measure()
+    scroller.addEventListener("scroll", later, { passive: true })
+    window.addEventListener("resize", later)
+    return () => {
+      scroller.removeEventListener("scroll", later)
+      window.removeEventListener("resize", later)
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [enabled, rowCount, rowHeight])
+  return enabled ? { ref, start: range[0], end: Math.min(range[1], rowCount) } : { ref, start: 0, end: rowCount }
+}
+
+interface GroupProps {
+  group: RowGroup
+  /** The kind of header: letters stick while their rows scroll (SectionHeader `index`). */
+  header: "letter" | "section" | "none"
+  label: string
+  windowed: boolean
+  rowHeight: number
+  /** Where the group's first row sits in the whole list, and the list's length. */
+  offset: number
+  total: number
+  inset: boolean
+  row: (r: ItemSummary, position: { index: number; of: number } | undefined) => ReactNode
+}
+
+/** One group of the list: a named region ("S, 4 items") with its header and its rows. */
+function RowsGroup({ group, header, label, windowed, rowHeight, offset, total, inset, row }: GroupProps) {
+  const { ref, start, end } = useWindow(windowed, group.rows.length, rowHeight)
+  const shown = group.rows.slice(start, end)
+  return (
+    <section aria-label={label}>
+      {header !== "none" && <SectionHeader title={group.label} count={group.rows.length} variant={header === "letter" ? "index" : "default"} inset={inset} />}
+      <ul ref={ref} role="list" className="flex flex-col">
+        {windowed && start > 0 && <li aria-hidden="true" style={{ height: start * rowHeight }} />}
+        {shown.map((r, i) => row(r, windowed ? { index: offset + start + i, of: total } : undefined))}
+        {windowed && end < group.rows.length && <li aria-hidden="true" style={{ height: (group.rows.length - end) * rowHeight }} />}
+      </ul>
+    </section>
+  )
+}
+
+/** Each item's worst finding from the cached report (desktop only; brief V1). Never the network checks. */
+function useFindings(on: boolean, rows: ItemSummary[] | null): Map<string, string> {
+  const client = useClient()
+  const [findings, setFindings] = useState<Finding[] | null>(null)
+  useEffect(() => {
+    if (!on || !rows) return
+    let live = true
+    client
+      .securityReport()
+      .then((r) => live && setFindings(r.findings))
+      .catch(() => live && setFindings(null))
+    return () => {
+      live = false
+    }
+  }, [client, on, rows])
+  return useMemo(() => (on ? findingWords(findings) : new Map<string, string>()), [on, findings])
+}
+
+/** A row's height in the list's window: unicron's ListRow with plain meta, 92, or 56 compact. */
+const ROW_HEIGHT = { comfortable: 92, compact: 56 } as const
+
+/**
+ * The vault's lists (brief V1): All items, every view, kind and scope, as
+ * one calm list beside the item it opens. On a desktop: All items has the
+ * search field (typing opens Search) and letter headers; a view or a kind
+ * has a Section Header with its count and SORT; a vault, folder or tag has
+ * its header and a chip row of the kinds it holds. On a phone and at medium
+ * width the shell's page head is the switcher, with its chips; the list adds
+ * its sort button. Rows are unicron's ListRow (`ItemRow`) with a ⋯ menu;
+ * on a phone they swipe (`SwipeRow`), every swipe action also in that menu.
+ * Loading draws skeleton rows; a failed read keeps what loaded with a
+ * critical Banner and TRY AGAIN, or says so in a critical Empty State.
+ */
+export function VaultView({ view, rows, error, onChanged, onNotice, selected, onSelect, scope }: VaultViewProps) {
   const { vaults } = useVaults()
+  const { navigate, nav, go } = usePlaces()
+  const { settings } = useSettings()
+  const { templates } = useTemplates()
+  const frame = useAppFrame()
   const [organizing, setOrganizing] = useState<OrganizeTarget | null>(null)
-  const [duplicates, setDuplicates] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const paths = useMemo(() => folderPaths(vaults), [vaults])
   const scoped = useMemo(() => (rows && scope ? inScope(rows, scope, vaults) : rows), [rows, scope, vaults])
   const scopeName = scope ? scopeTitle(scope, vaults) : null
+  const scopeVault = scope?.vault ? vaults.find((v) => v.id === scope.vault) : scope?.folder ? vaults.find((v) => v.folders.some((f) => f.id === scope.folder)) : undefined
   const unverified = scope?.vault ? vaults.find((v) => v.id === scope.vault)?.unverified : null
   const paneTitle = scopeName ?? VIEW_LABELS[view]
-  const [query, setQuery] = useState("")
-  const [sort, setSort] = useState<SortKey>(DEFAULT_SORT)
-  const [groupBy, setGroupBy] = useState<GroupBy>(DEFAULT_GROUP)
+  const order = useListOrder(frame.phone)
   const setSelected = onSelect
   const [version, setVersion] = useState(0)
   const [editor, setEditor] = useState<EditorTarget | null>(null)
-  const quickCopy = useQuickCopy(onNotice)
+  const findings = useFindings(!frame.phone, rows)
+  // Quick access's GO TO goes through the shell's go (palette-routes.ts).
+  useOfferRoutes()
+  // Search opened from here offers this list as its second chip, and Escape comes back (brief X4).
+  const whereKey = JSON.stringify(nav)
+  useEffect(() => {
+    rememberWhere(JSON.parse(whereKey) as typeof nav)
+    return () => rememberWhere(null)
+  }, [whereKey])
 
+  // Letter headers belong to All items, as Desktop / 01 draws it; a view or a scope is one list (Desktop / 03) unless grouped by type.
+  const letters = view === "all" && !scope
+  const group: GroupBy = order.group === "letter" && !letters ? "none" : order.group
   const groups = useMemo(() => {
     if (!scoped) return []
     // The Expiring view reads soonest first, in sections by how soon (expired, a week, a month, later).
-    if (view === "expiring" && sort === DEFAULT_SORT) return groupByExpiry(buildList(scoped, view, query, sort, "none", paths).flatMap((g) => g.rows))
-    return buildList(scoped, view, query, sort, groupBy, paths)
-  }, [scoped, view, query, sort, groupBy, paths])
+    if (view === "expiring" && order.sort === DEFAULT_SORT) return groupByExpiry(buildList(scoped, view, "", order.sort, "none", paths).flatMap((g) => g.rows))
+    return buildList(scoped, view, "", order.sort, group, paths)
+  }, [scoped, view, order.sort, group, paths])
   const inView = useMemo(() => groups.reduce((n, g) => n + g.rows.length, 0), [groups])
-  const [emptyTitle, emptyText] = scope ? ["Nothing here", "Nothing filed here is in this view; pick All items in the sidebar to see everything."] : (EMPTY[view] ?? ["Nothing here yet", "Add one with New item."])
-
-  const header = (
-    <PaneHeader title={paneTitle}>
-      <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="sm" aria-label="Sort and group" />}>
-          <Icon name="arrows--vertical" data-icon="inline-start" />
-          Sort
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {/* A label names the group it sits in (Base UI's Menu.GroupLabel needs one). */}
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-            <DropdownMenuRadioGroup value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-              <DropdownMenuRadioItem value="title">Title</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="changed">Recently changed</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="used">Recently used</DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Group</DropdownMenuLabel>
-            <DropdownMenuRadioGroup value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
-              <DropdownMenuRadioItem value="kind">By kind</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="none">No groups</DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <IconButton label="Quick access" icon="flash" shortcut={isMac() ? "⌘K" : "Ctrl+K"} onClick={onPalette} />
-      <IconButton label="Find duplicates" icon="merge" onClick={() => setDuplicates(true)} />
-    </PaneHeader>
-  )
-
-  const list = (
-    <div className="flex flex-col gap-2 px-2 pb-4">
-      <div className="flex items-center gap-2 px-2">
-        <Input type="search" placeholder="Search titles, sites, usernames" aria-label="Search" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
-        <ToggleGroup aria-label="Group rows" value={[groupBy]} onValueChange={(v) => v[0] && setGroupBy(v[0] as GroupBy)} size="sm">
-          <ToggleGroupItem value="kind" aria-label="Group by kind">
-            <Icon name="show-data--cards" />
-          </ToggleGroupItem>
-          <ToggleGroupItem value="none" aria-label="No groups">
-            <Icon name="list" />
-          </ToggleGroupItem>
-        </ToggleGroup>
-      </div>
-      {unverified && (
-        // A shared vault some of whose recent changes didn't verify: one calm line, nothing to do (docs/plan/49-shared-vault-quiet.md).
-        <p role="note" className="px-2 text-sm text-muted-foreground">
-          {unverified}
-        </p>
-      )}
-      {error && (
-        <p role="alert" className="px-2 text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      {!rows && !error && (
-        // A status with its words in it: a plain div may not carry a label (review R18).
-        <div className="flex flex-col gap-2 px-2" role="status">
-          <span className="sr-only">Loading items</span>
-          <Skeleton variant="row" />
-          <Skeleton variant="row" />
-          <Skeleton variant="row" />
-        </div>
-      )}
-      {rows && inView === 0 && (
-        <Empty>
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Icon name={view === "all" ? "password" : view === "attention" ? "checkmark" : kindIcon(view === "deleted" ? "custom" : view)} />
-            </EmptyMedia>
-            <EmptyTitle>{query ? "No matches" : emptyTitle}</EmptyTitle>
-            <EmptyDescription>{query ? "Try fewer letters." : emptyText}</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      )}
-      {groups.map((g) => (
-        // The list's groups are named with their counts ("Notes, 2 items"), so a
-        // group never shares its name with a section of the open item (an item's
-        // own "Notes"; design review R18: landmarks need unique names).
-        <section key={g.key} aria-label={g.label ? `${g.label}, ${itemCount(g.rows.length)}` : VIEW_LABELS[view]}>
-          {g.label && (
-            <h2 data-group-header="" className="flex items-baseline justify-between px-3 pb-1 text-xs font-medium text-muted-foreground uppercase">
-              <span>{g.label}</span>
-              <span aria-label={itemCount(g.rows.length)}>{g.rows.length}</span>
-            </h2>
-          )}
-          <ItemGroup role="list">
-            {g.rows.map((r) => (
-              <ItemRow
-                key={r.id}
-                row={r}
-                selected={selected === r.id}
-                onSelect={setSelected}
-                onCopy={quickCopy}
-                actions={
-                  <RowMenu
-                    row={r}
-                    onOrganize={(row) => setOrganizing(targetOf(row))}
-                    onChanged={(text, moved) => {
-                      if (moved && selected === r.id) setSelected(moved)
-                      bump()
-                      onNotice(text)
-                    }}
-                    onError={(text) => onNotice(text)}
-                  />
-                }
-              />
-            ))}
-          </ItemGroup>
-        </section>
-      ))}
-    </div>
-  )
+  const grouping = view === "expiring" && order.sort === DEFAULT_SORT ? "kind" : groupFor(order.sort, group)
 
   const bump = () => {
     setVersion((v) => v + 1)
     onChanged()
   }
+  const changed = (text: string, moved?: string, id?: string) => {
+    setActionError(null)
+    if (moved && selected === id) setSelected(moved)
+    bump()
+    if (text) onNotice(text)
+  }
+  const menuLayers = useRowMenuLayers({ onChanged: (text) => changed(text), onError: setActionError })
+  const create = (template: string) => setEditor({ kind: template, item: null, vaultId: scopeVault?.id, folder: scope?.folder, tags: scope?.tag ? [scope.tag] : undefined })
+  const creatable = (template: string) => templates?.kinds.some((t) => (t.id ?? t.kind) === template && t.creatable) ?? false
+
+  // --- the head ------------------------------------------------------------------------------
+  const sortTrigger = <IconButton label="Sort and group" icon="settings--adjust" variant="ghost" />
+  const sortMenu = (trigger: React.ReactElement<Record<string, unknown>>) => <SortMenu trigger={trigger} sort={order.sort} group={group} letters={letters} onSort={order.setSort} onGroup={order.setGroup} />
+  const head = usePageHead({
+    title: paneTitle,
+    count: rows ? inView : undefined,
+    actions: (
+      <>
+        {sortMenu(sortTrigger)}
+      </>
+    ),
+  })
+  // What the shell adds to every head of Items ("Check again"), for the desktop's own head.
+  const shellActions = usePageHead({ title: paneTitle }).actions
+  // The shell lays its switcher over the head where the sidebar's groups don't show (a phone, medium width).
+  const shellHead = head.switcher !== undefined
+  const trashCaption =
+    view === "deleted" && rows ? (scopeVault ? `Kept for ${scopeVault.trash_days} days, then deleted for good.` : vaults.length > 1 ? "Each vault keeps deleted items for its own time." : vaults[0] ? `Kept for ${vaults[0].trash_days} days, then deleted for good.` : null) : null
+  const chips = scope && !shellHead && scoped ? scopeChips(scoped) : []
+
+  let header: ReactNode
+  if (shellHead) {
+    header = (
+      <AppFramePageHead size={head.size} overline={head.overline} title={head.title} count={head.count} meta={head.meta} actions={head.actions} switcher={head.switcher} below={head.below} gap={head.gap} />
+    )
+  } else if (view === "all" && !scope) {
+    // All items, as Desktop / 01 draws it: no visible head, the search field first. Typing opens Search.
+    header = (
+      <AppFrameInset>
+        <h1 className="sr-only">{paneTitle}</h1>
+        <div className="flex flex-col gap-4 pb-6">
+          <SearchField
+            aria-label="Search"
+            placeholder={rows ? `Search ${countName(inView, "item")}` : "Search"}
+            value=""
+            onValueChange={(words) => {
+              if (!words) return
+              searchWith(words)
+              go("search")
+            }}
+            trailing={
+              <>
+                {sortMenu(sortTrigger)}
+                {shellActions}
+              </>
+            }
+          />
+          {head.below}
+        </div>
+      </AppFrameInset>
+    )
+  } else {
+    header = (
+      <AppFrameInset>
+        <h1 className="sr-only">{paneTitle}</h1>
+        <div className="flex flex-col gap-4 pb-2">
+          {head.below}
+          <SectionHeader
+            title={paneTitle}
+            count={rows ? inView : undefined}
+            action={
+              <>
+                {sortMenu(<Button variant="ghost" size="sm">Sort</Button>)}
+                {shellActions}
+              </>
+            }
+          />
+          {chips.length > 0 && (
+            <FilterChipGroup type="single" scroll label="Show" value={view} onValueChange={(v) => navigate({ ...nav, area: "vault", view: v as ListView })}>
+              {["all" as ListView, ...chips].map((v) => (
+                <FilterChip key={v} value={v} count={view === v && scoped ? count(inView) : undefined}>
+                  {v === "all" ? "All" : VIEW_LABELS[v]}
+                </FilterChip>
+              ))}
+            </FilterChipGroup>
+          )}
+        </div>
+      </AppFrameInset>
+    )
+  }
+
+  // --- the list ------------------------------------------------------------------------------
+  const empty = emptyWords(view, scopeName, view === "deleted" ? (scopeVault?.trash_days ?? (vaults.length === 1 ? (vaults[0]?.trash_days ?? null) : null)) : null)
+  const emptyAction = empty.create ? (
+    empty.create.template === "menu" ? (
+      // Beside the sidebar its NEW ITEM is the one way in; a second button of the same name would only repeat it.
+      !shellHead ? undefined : <NewFromMenu label={empty.create.label} onPick={create} onNotice={onNotice} />
+    ) : creatable(empty.create.template) ? (
+      <Button variant="secondary" onClick={() => create(empty.create!.template)}>
+        {empty.create.label}
+      </Button>
+    ) : undefined
+  ) : undefined
+  const windowed = inView > WINDOW_FROM
+  const rowHeight = ROW_HEIGHT[settings.density === "compact" ? "compact" : "comfortable"]
+  const oneVault = Boolean(scopeVault) || vaults.length < 2
+  // A phone's rows swipe (brief V1, States / 01): the same calls and toasts as the row's menu.
+  const swipe = frame.phone ? { onChanged: (text: string) => changed(text), onError: setActionError, onNotice } : null
+  const drawRow = (r: ItemSummary, position: { index: number; of: number } | undefined) => (
+    <ItemRow
+      key={r.id}
+      row={r}
+      selected={selected === r.id}
+      onSelect={setSelected}
+      position={position}
+      words={rowWords(r, { view, vaults, oneVault, findings })}
+      swipe={swipe}
+      actions={
+        rowMenuOffers(r) ? (
+          <RowMenuItems
+            row={r}
+            onOrganize={(row) => setOrganizing(targetOf(row))}
+            onHistory={menuLayers.onHistory}
+            onPurge={menuLayers.onPurge}
+            onChanged={(text, moved) => changed(text, moved, r.id)}
+            onError={setActionError}
+            swiped={Boolean(swipe)}
+          />
+        ) : undefined
+      }
+    />
+  )
+  // Where each group's first row sits in the whole list, for a long list's positions.
+  const offsets = groups.reduce<number[]>((at, _g, i) => [...at, i === 0 ? 0 : at[i - 1]! + groups[i - 1]!.rows.length], [])
+  const list = (
+    <div className="flex flex-col gap-4 pb-6">
+      {shellHead && frame.layout === "rail" && (
+        // A phone on its side draws the page head collapsed, without its actions: the sort stays reachable here.
+        <AppFrameInset>
+          <div className="flex justify-end">{sortMenu(sortTrigger)}</div>
+        </AppFrameInset>
+      )}
+      {(unverified || (rows && error) || actionError || trashCaption) && (
+        <AppFrameInset>
+          <div className="flex flex-col gap-4">
+            {rows && error && (
+              // A reload that failed over rows that loaded before: the rows stay (cross-app decisions §9).
+              <Banner
+                tone="critical"
+                title="Couldn't load your items."
+                body={error}
+                action={
+                  <Button variant="secondary" size="sm" onClick={onChanged}>
+                    Try again
+                  </Button>
+                }
+              />
+            )}
+            {actionError && <Banner tone="critical" size="compact" title={actionError} onDismiss={() => setActionError(null)} />}
+            {unverified && (
+              // A shared vault some of whose recent changes didn't verify: nothing to press (D573, docs/plan/49-shared-vault-quiet.md).
+              <div role="note">
+                <Banner tone="info" size="compact" body={unverified} />
+              </div>
+            )}
+            {trashCaption && inView > 0 && <p className="type-caption text-muted-foreground">{trashCaption}</p>}
+          </div>
+        </AppFrameInset>
+      )}
+      {!rows && error && (
+        <AppFrameInset>
+          <EmptyState tone="critical" overline="Items // Not loaded" title="Couldn't load your items." body={error} actionLabel="Try again" onAction={onChanged} />
+        </AppFrameInset>
+      )}
+      {!rows && !error && (
+        // A status with its words in it (review R18): the skeleton rows of States / 04, and no count.
+        <div role="status" className="flex flex-col px-4">
+          <span className="sr-only">Loading items</span>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} variant="row" />
+          ))}
+        </div>
+      )}
+      {rows && inView === 0 && (
+        <AppFrameInset>
+          <EmptyState overline={empty.overline} title={empty.title} body={empty.body} action={emptyAction} />
+        </AppFrameInset>
+      )}
+      <div className="flex flex-col">
+      {groups.map((g, i) => {
+        const at = offsets[i] ?? 0
+        return (
+          <RowsGroup
+            key={g.key}
+            group={g}
+            header={!g.label ? "none" : grouping === "letter" ? "letter" : "section"}
+            label={g.label ? `${g.label}, ${countName(g.rows.length, "item")}` : paneTitle}
+            windowed={windowed}
+            rowHeight={rowHeight}
+            offset={at}
+            total={inView}
+            inset={frame.phone}
+            row={drawRow}
+          />
+        )
+      })}
+      </div>
+    </div>
+  )
 
   return (
     <>
@@ -236,8 +563,8 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
               onEdit={(item) => setEditor({ kind: item.template ?? item.kind, item })}
               onTrashed={() => {
                 setSelected(null)
+                // The pane says it itself, with UNDO (Q14).
                 bump()
-                onNotice("Moved to the trash.")
               }}
               onChanged={(text) => {
                 bump()
@@ -253,17 +580,17 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
           ) : null
         }
         onBack={() => setSelected(null)}
-        emptyIcon="password"
-        emptyLabel="Pick an item to see its fields. Hidden values stay masked until you reveal them."
+        emptyLabel="Pick an item to see it here."
       />
       <ItemEditor
         target={editor}
         onClose={() => setEditor(null)}
         onSaved={(id, generated) => {
+          const title = editor?.item ? (editor.item.fields.find((f) => f.field_id === "title")?.value ?? null) : null
           setEditor(null)
           setSelected(id)
           bump()
-          onNotice(generated ? "Saved. The new password is in the item; copy it from there." : "Saved.")
+          onNotice(savedWords(title, generated))
         }}
       />
       <OrganizePrompt
@@ -271,29 +598,18 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
         rows={rows ?? []}
         onClose={() => setOrganizing(null)}
         onSaved={() => {
+          const title = organizing?.title
           setOrganizing(null)
           bump()
-          onNotice("Saved.")
+          onNotice(title ? `Saved ${title}` : "Saved")
         }}
       />
-      <DuplicatesReview
-        open={duplicates}
-        onOpenChange={setDuplicates}
-        rows={rows ?? []}
-        onChanged={(text) => {
-          bump()
-          onNotice(text)
-        }}
-        onOpen={(id) => {
-          setDuplicates(false)
-          setSelected(id)
-        }}
-      />
+      {menuLayers.layers}
     </>
   )
 }
 
-/** "1 item", "14 items". */
-function itemCount(n: number): string {
-  return `${n} ${n === 1 ? "item" : "items"}`
+/** NEW ITEM in an empty list: the shell's New item menu (every template), behind a secondary button. */
+function NewFromMenu({ label, onPick, onNotice }: { label: string; onPick: (template: string) => void; onNotice: (text: string) => void }) {
+  return <NewItemMenu onPick={onPick} onNotice={onNotice} trigger={<Button variant="secondary">{label}</Button>} />
 }

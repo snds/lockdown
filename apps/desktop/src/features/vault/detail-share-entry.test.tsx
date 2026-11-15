@@ -47,31 +47,47 @@ function mount(detail: ItemDetail, sharing: SharingClient = fakeSharing({}), ext
   )
 }
 
+/** Details is shut by default (brief I4): the right's sentence is in it. */
+async function openDetails() {
+  const toggle = await screen.findByRole("button", { name: /^Details/ })
+  if (toggle.getAttribute("aria-expanded") !== "true") await userEvent.setup({ pointerEventsCheck: 0 }).click(toggle)
+}
+
+const menuRows = async () => {
+  await userEvent.setup({ pointerEventsCheck: 0 }).click(await screen.findByRole("button", { name: "More for this item" }))
+  return (await screen.findAllByRole("menuitem")).map((m) => m.textContent?.trim())
+}
+
+beforeEach(() => localStorage.clear())
+
 describe("an item by the person's right in it", () => {
-  it("fill only: no reveal, no copy, no edit, no trash, no share; the right is said", async () => {
+  it("fill only: no reveal, no copy, no edit, no menu, no share; the right is said", async () => {
     mount(login("fill-only"))
-    expect(await screen.findByText("Shared with you")).toBeInTheDocument()
+    expect(await screen.findByText(/shared with you \/\/ fill only/)).toBeInTheDocument()
+    await openDetails()
+    expect(screen.getByText("Shared with you")).toBeInTheDocument()
     expect(screen.getByText(/Fill only: Lockdown fills it in the browser/)).toBeInTheDocument()
     expect(screen.getByText("Fills in the browser only; never shown or copied.")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /Show/ })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /Copy password/i })).not.toBeInTheDocument()
-    for (const name of ["Edit", "Trash", "Share"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument()
+    for (const name of ["Edit", "More for this item", "Share"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument()
     // The plain username is still drawn, as the fill uses it.
-    expect(screen.getByText("admin")).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Sign-in" })).toHaveTextContent("admin")
   })
 
   it("view: the password can be shown, but nothing can be changed or passed on", async () => {
     mount(login("view"))
-    expect(await screen.findByText("Shared with you")).toBeInTheDocument()
+    await openDetails()
+    expect(screen.getByText("Shared with you")).toBeInTheDocument()
     expect(screen.queryByText("Fills in the browser only; never shown or copied.")).not.toBeInTheDocument()
-    for (const name of ["Edit", "Trash", "Share"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument()
+    for (const name of ["Edit", "More for this item", "Share"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument()
   })
 
-  it("edit (a member vault): Edit and Trash, but sharing stays with the owner", async () => {
+  it("edit (a member vault): Edit and Move to Recently deleted, but sharing stays with the owner", async () => {
     mount(login("edit"))
     expect(await screen.findByRole("button", { name: "Edit" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Trash" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument()
+    expect(await menuRows()).toContain("Move to Recently deleted")
   })
 
   it("the person's own item offers Share from the detail: with someone, or as a share link", async () => {
@@ -84,7 +100,7 @@ describe("an item by the person's right in it", () => {
 
   it("a crown jewel offers no sharing at all", async () => {
     mount({ ...login(), crown_jewel: true })
-    expect(await screen.findByRole("button", { name: "Trash" })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: "More for this item" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument()
   })
 })

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 
@@ -10,7 +10,9 @@ import type { FieldTemplateView, ItemSummary, Templates, VaultView } from "@/cor
 import { fakeClient } from "@/test/fake-client"
 import { TEMPLATES } from "@/test/templates-fixture"
 
-import { DuplicatesReview } from "./duplicates-review"
+import { SecurityView } from "@/features/security/security-view"
+
+import { DuplicateDetail } from "./duplicates-review"
 import { VaultsProvider } from "./vaults-context"
 
 const VAULTS: VaultView[] = [
@@ -77,23 +79,77 @@ function mount(client: Client, ui: ReactNode, vaults = VAULTS) {
 
 const base = { templates: () => Promise.resolve(LOGIN_TEMPLATES), approvalRoute: () => Promise.resolve({ route: "window" as const, method: "window" }) }
 
-describe("the duplicate finder", () => {
-  it("lists what the core found and merges into the copy kept", async () => {
-    const duplicates = vi.fn<Client["duplicates"]>(() =>
-      Promise.resolve([{ reason: "same-login", words: "2 logins for the same website and username", ids: ["a", "b"], mergeable: true }]),
-    )
+describe("Duplicates", () => {
+  it("asks Keep which?, the newest chosen first, and merges into the copy kept after asking", async () => {
     const mergeDuplicates = vi.fn<Client["mergeDuplicates"]>(() => Promise.resolve(4))
     const onChanged = vi.fn()
     mount(
-      fakeClient({ ...base, duplicates, mergeDuplicates }),
-      <DuplicatesReview open onOpenChange={() => {}} rows={[row("a", { title: "Forum" }), row("b", { title: "Forum old" })]} onChanged={onChanged} onOpen={() => {}} />,
+      fakeClient({ ...base, mergeDuplicates }),
+      <DuplicateDetail
+        group={{ reason: "same-login", words: "2 logins for the same website and username", ids: ["a", "b"], mergeable: true }}
+        rows={[row("a", { title: "Forum", edited_at: 100 }), row("b", { title: "Forum old", edited_at: 50 })]}
+        onChanged={onChanged}
+        onOpen={() => {}}
+      />,
     )
+    const keep = screen.getByRole("radiogroup", { name: /Keep which/ })
+    expect(within(keep).getByRole("radio", { name: "Forum" })).toBeChecked()
     const user = userEvent.setup()
-    expect(await screen.findByText("2 logins for the same website and username")).toBeInTheDocument()
-    const keep = screen.getAllByRole("button", { name: "Keep this, merge the rest" })
-    await user.click(keep[0]!)
-    await user.click(await screen.findByRole("button", { name: "Merge" }))
-    await waitFor(() => expect(mergeDuplicates).toHaveBeenCalledWith("a", ["b"], {}))
-    expect(onChanged).toHaveBeenCalledWith("Merged; the other copy is in the trash.")
+    await user.click(within(keep).getByRole("radio", { name: "Forum old" }))
+    await user.click(screen.getByRole("button", { name: "Merge" }))
+    const ask = await screen.findByRole("dialog")
+    expect(ask).toHaveTextContent('Merge into "Forum old"?')
+    // Focus starts on Cancel: Enter never merges by accident.
+    expect(within(ask).getByRole("button", { name: "Cancel" })).toHaveFocus()
+    expect(mergeDuplicates).not.toHaveBeenCalled()
+    await user.click(within(ask).getByRole("button", { name: "Merge" }))
+    await waitFor(() => expect(mergeDuplicates).toHaveBeenCalledWith("b", ["a"], {}))
+    expect(onChanged).toHaveBeenCalled()
+  })
+
+  it("a group that cannot merge offers OPEN on each copy and DELETE on every copy but the first", async () => {
+    const trash = vi.fn<Client["trash"]>(() => Promise.resolve())
+    const onOpen = vi.fn()
+    mount(
+      fakeClient({ ...base, trash }),
+      <DuplicateDetail
+        group={{ reason: "same-password", words: "Forum and Shop share a password.", ids: ["a", "b"], mergeable: false }}
+        rows={[row("a", { title: "Forum" }), row("b", { title: "Shop" })]}
+        onChanged={() => {}}
+        onOpen={onOpen}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Merge" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Delete Forum" })).not.toBeInTheDocument()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Open Forum" }))
+    expect(onOpen).toHaveBeenCalledWith("a")
+    await user.click(screen.getByRole("button", { name: "Delete Shop" }))
+    await waitFor(() => expect(trash).toHaveBeenCalledWith("b"))
+  })
+
+  it("is reached from Health in the web vault, whose client finds and merges duplicates", async () => {
+    const duplicates = vi.fn<Client["duplicates"]>(() => Promise.resolve([{ reason: "same-login", words: "2 logins for forum.example", ids: ["a", "b"], mergeable: true }]))
+    mount(
+      fakeClient({
+        ...base,
+        duplicates,
+        securityPlaybooks: () => Promise.resolve([]),
+        list: () => Promise.resolve([row("a", { title: "Forum" }), row("b", { title: "Forum old" })]),
+        status: () => Promise.reject({ code: "refused", message: "not here" }),
+      }),
+      <SecurityView surface="web" onDevices={() => {}} />,
+    )
+    expect(await screen.findByText("Checks for weak, reused and breached passwords are in the desktop app.")).toBeInTheDocument()
+    // No hero, no metrics, no Fix groups on the web.
+    expect(screen.queryByText("to fix")).not.toBeInTheDocument()
+    expect(screen.queryByRole("list", { name: "Fix now" })).not.toBeInTheDocument()
+    const row1 = screen.getByRole("group", { name: "Duplicates" })
+    expect(row1).toHaveTextContent("Not checked")
+    const user = userEvent.setup()
+    await user.click(within(row1).getByRole("button", { name: "Find duplicates" }))
+    const list = await screen.findByRole("list", { name: "Possible duplicates" })
+    await user.click(within(list).getByRole("button", { name: "2 logins for forum.example" }))
+    expect(await screen.findByRole("radiogroup", { name: /Keep which/ })).toBeInTheDocument()
   })
 })
