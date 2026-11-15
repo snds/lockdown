@@ -1,7 +1,7 @@
 import type { ItemDetail } from "@/core/types"
 import { TEMPLATES } from "@/test/templates-fixture"
 
-import { buildChanges, customRow, initialRows, wipeRows } from "./editor-model"
+import { buildChanges, customRow, holdsValue, hostOf, inSentence, initialRows, isEssential, wipeRows } from "./editor-model"
 
 const wifi = TEMPLATES.kinds.find((t) => t.kind === "wi-fi")!
 const login = TEMPLATES.kinds.find((t) => t.kind === "login")!
@@ -92,5 +92,32 @@ describe("the editor's model (D110)", () => {
       { field_id: "passkey.0.key", action: "keep" },
       { field_id: "passkey.0.backed_up", action: "keep" },
     ])
+  })
+})
+
+describe("the editor's zones (brief E2)", () => {
+  it("puts each kind's essentials first, and the rest under More options", () => {
+    const essentials = (t: typeof login) => initialRows(t, null).filter((r) => isEssential(t, r)).map((r) => r.fieldId)
+    expect(essentials(login)).toEqual(["user", "pw", "url.0"])
+    expect(essentials(wifi)).toEqual(["wifi.ssid", "wifi.passphrase", "wifi.security"])
+    // A kind with no list of its own: its first section and every required field, never Notes.
+    const passport = TEMPLATES.kinds.find((t) => t.id === "identity/passport")!
+    expect(essentials(passport)).toEqual(["passport.number", "passport.country", "expires_at"])
+  })
+
+  it("knows what holds a value, for opening More options on an edit", () => {
+    const [user] = initialRows(login, existingLogin)
+    expect(holdsValue(user!)).toBe(true)
+    expect(holdsValue(customRow(0, "Hint", "text"))).toBe(false)
+  })
+
+  it("writes a kind's name inside a sentence and a website as its host", () => {
+    expect(inSentence("Payment card")).toBe("payment card")
+    expect(inSentence("Wi-Fi network")).toBe("Wi-Fi network")
+    expect(inSentence("SSH key")).toBe("SSH key")
+    expect(inSentence("Driver's licence")).toBe("driver's licence")
+    expect(hostOf("https://www.github.example/login")).toBe("github.example")
+    expect(hostOf("github.example")).toBe("github.example")
+    expect(hostOf("")).toBe("")
   })
 })

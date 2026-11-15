@@ -4,6 +4,8 @@
 // here a real Chromium measures a real page and the same wasm core
 // answers. The expectations are copied from the Rust test, not derived.
 import { test, expect, type Frame, type Page } from "@playwright/test";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { serve, type Served } from "./server";
 
 let served: Served;
@@ -139,3 +141,68 @@ test("a lookalike is refused whatever else is true", async ({ page }) => {
   expect(out.r.verdict).toBe("refuse");
   expect(out.r.reason).toContain("looks like a different site");
 });
+
+// Brief B2 (D159, D206): the fill menu has two heights only, 64 px for a
+// message and 232 px for a list or a question, so the page learns no more
+// from the frame's size than that; and at the height it asks for, nothing it
+// draws is cut (R3: a stop always takes the taller one). The built frame
+// (dist/chromium/frame.html) over a stand-in for the background, one
+// answer per menu state.
+const NONCE = "5f2c9e1ab7d04c3e8f6a1b2c3d4e5f60";
+const READY = { link: "ready", message: "", paired: true, locked: false, pairing: null, passkeys: true };
+const login = (title: string, username: string, decision = "exact", crown = false) => ({
+  item_id: title, title, username, saved: null, rule: null, decision, crown_jewel: crown, password: true, code_field: null, edited_at: 0,
+});
+const MENU = { kind: "login", link: READY, host: "accounts.northwind.example", logins: [], wallet: [], lookalike_of: [], note: null, passkeys: [], suggest: null };
+const MENU_STATES: Record<string, { data: Record<string, unknown>; press?: string; want: number }> = {
+  logins: { data: { ...MENU, logins: [login("Northwind", "sam"), login("Northwind (old)", "sam.r", "equivalent"), login("Northwind (work)", "", "exact", true)] }, want: 232 },
+  locked: { data: { ...MENU, link: { ...READY, locked: true } }, want: 64 },
+  "no-app": { data: { ...MENU, link: { ...READY, link: "no_app", message: "Lockdown isn't running on this computer." } }, want: 64 },
+  lookalike: { data: { ...MENU, host: "accounts.n0rthwind.example", lookalike_of: ["northwind.example"] }, want: 232 },
+  unpaired: { data: { ...MENU, link: { ...READY, paired: false } }, want: 232 },
+  "card-confirm": { data: { ...MENU, kind: "card", wallet: [{ item_id: "visa", kind: "card", title: "Visa", subtitle: "Visa ending 1111", crown_jewel: false }] }, press: "Visa", want: 232 },
+};
+
+for (const [name, state] of Object.entries(MENU_STATES)) {
+  test(`the fill menu takes one of its two heights, and fits in it: ${name}`, async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 232 });
+    await page.addInitScript(
+      ({ data }) => {
+        const w = window as unknown as { __heights: number[]; chrome: unknown };
+        w.__heights = [];
+        addEventListener("message", (e) => {
+          if (e.data?.lockdown === "height") w.__heights.push(e.data.px);
+        });
+        const answer = (msg: { t: string }) => {
+          if (msg.t === "menu_data") return data;
+          if (msg.t === "menu_pick") return { confirm: "Fill Visa ending 1111 into this page?" };
+          return {};
+        };
+        w.chrome = { runtime: { sendMessage: async (msg: { t: string }) => answer(msg) } };
+      },
+      { data: state.data },
+    );
+    const frame = pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "chromium", "frame.html")).href;
+    await page.goto(`${frame}#menu:${NONCE}`);
+    await expect(page.locator("#app")).not.toBeEmpty();
+    if (state.press) {
+      const pick = page.getByRole("button", { name: new RegExp(state.press) });
+      await expect(pick).toBeEnabled();
+      await pick.click();
+      await expect(page.getByRole("button", { name: "Fill card" })).toBeVisible();
+    }
+    const heights = await page.evaluate(() => (window as unknown as { __heights: number[] }).__heights);
+    expect(heights.length).toBeGreaterThan(0);
+    for (const h of heights) expect([64, 232]).toContain(h);
+    expect(heights.at(-1)).toBe(state.want);
+    // At that height (the iframe's own), nothing the frame draws is cut.
+    await page.setViewportSize({ width: 320, height: state.want });
+    const cut = await page.evaluate(() => {
+      const r = document.querySelector("#app")!.getBoundingClientRect();
+      const stop = document.querySelector(".stop");
+      const s = stop?.getBoundingClientRect();
+      return { body: document.body.scrollHeight > innerHeight, app: r.bottom > innerHeight, stop: s ? s.bottom > innerHeight || stop!.scrollHeight > stop!.clientHeight : false };
+    });
+    expect(cut).toEqual({ body: false, app: false, stop: false });
+  });
+}

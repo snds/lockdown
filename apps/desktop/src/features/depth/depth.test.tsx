@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react"
 import { isLinkQr, linkCode, phraseDigits, promptFor, type RemindersView } from "./depth-client"
-import { QrCode } from "./qr-code"
+import { QrCode } from "@unicron/ui/security/qr-code"
 
 const reminders = (over: { password?: Partial<RemindersView["password"]>; drill?: Partial<RemindersView["drill"]> }): RemindersView => ({
   password: { applies: true, due: false, last_at: 1, every_days: 14, next_at: 2, ...over.password },
@@ -28,8 +28,9 @@ describe("the security-depth helpers", () => {
     expect(promptFor(reminders({ drill: { due: true, kit: "none" } }))).toBeNull()
   })
 
+  // Unicron's QrCode since doc 85 (Lockdown's own drawing is gone): the core's rows, as they cross the bridge.
   it("draws a QR code from the core's rows, dark modules only", () => {
-    const { container } = render(<QrCode rows={["101", "010", "101"]} label="code" />)
+    const { container } = render(<QrCode modules={["101", "010", "101"]} label="code" />)
     const d = container.querySelector("path")?.getAttribute("d") ?? ""
     expect(d.match(/M/g)).toHaveLength(5)
     expect(screen.getByRole("img", { name: "code" })).toBeInTheDocument()

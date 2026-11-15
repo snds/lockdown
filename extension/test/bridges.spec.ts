@@ -157,7 +157,7 @@ test("a fill fix set in the popup names the field the page gets wrong, and is ke
   expect(menuFrame(p)).toBeUndefined();
 
   const pop = await popupFor(p);
-  await pop.getByText("Fix this page").click();
+  await pop.getByRole("button", { name: "Fix this page" }).click();
   const fields = pop.getByRole("list", { name: "Fields on this page" });
   await expect(fields.getByRole("listitem")).toHaveCount(2);
   await expect(fields).toContainText("Member number");
@@ -184,11 +184,12 @@ test("never fill here holds in the menu, the popup and the core", async () => {
   const p = await ctx.newPage();
   await p.goto(at("fixsite.test", "/ext/fix.html"));
   const pop = await popupFor(p);
-  await pop.getByText("Fix this page").click();
-  await pop.getByRole("checkbox", { name: "Never fill on fixsite.test" }).check();
+  await pop.getByRole("button", { name: "Fix this page" }).click();
+  await pop.getByRole("switch", { name: "Never fill on fixsite.test" }).check();
   await pop.getByRole("button", { name: "Save fix" }).click();
   await expect(pop.getByRole("status")).toContainText("Kept the fix");
   // The popup's own Fill is refused, with the reason.
+  await pop.getByRole("button", { name: "Back" }).click();
   await pop.getByRole("button", { name: "Fill" }).click();
   await expect(pop.getByRole("status")).toContainText("You told Lockdown never to fill on fixsite.test");
   await pop.close();
@@ -249,7 +250,9 @@ test("the popup's change-password link is the one the security center checked", 
   const pop = await popupFor(p);
   const row = pop.getByRole("listitem").filter({ hasText: "Changer" });
   const opened = ctx.waitForEvent("page");
-  await row.getByRole("button", { name: "Change password" }).click();
+  // Change password is in the row's menu (brief B1).
+  await row.getByRole("button", { name: /^More actions/ }).click();
+  await pop.getByRole("menuitem", { name: "Change password" }).click();
   const change = await opened;
   // The app asked the site, found its well-known page, and opened it.
   await change.waitForURL(/\/ext\/change\.html$/);
@@ -266,7 +269,8 @@ test("a site without a well-known page gets the curated one from the signed data
   const p = await ctx.newPage();
   await p.goto("https://github.com/login");
   const pop = await popupFor(p);
-  await pop.getByRole("listitem").filter({ hasText: "GitHub" }).getByRole("button", { name: "Change password" }).click();
+  await pop.getByRole("listitem").filter({ hasText: "GitHub" }).getByRole("button", { name: /^More actions/ }).click();
+  await pop.getByRole("menuitem", { name: "Change password" }).click();
   await expect(pop.getByRole("status")).toContainText("Opened the page where github.com changes passwords");
   // The tab the extension opened, as the browser has it.
   await expect.poll(async () => opened("https://github.com/settings/security")).toBe(true);

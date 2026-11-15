@@ -1,41 +1,53 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 
-import { Button, Icon, Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@unicron/ui"
+import { Button, FieldRow, FileChip } from "@unicron/ui"
 import { SecretField, type SecretFieldReferenceHost } from "@unicron/ui/security/secret-field"
 
-import { ListItems } from "@/components/list-items"
 import { useLocked } from "@/app/locked"
 import { useSettings } from "@/app/settings"
 import { describeError, isAppError, useClient } from "@/core/client"
 import { decodeAndWipe } from "@/core/secret-bytes"
 
 import { useSharingClient, type OpenedView } from "./sharing-client"
+import { paneHeading } from "./sharing-panes"
 
 interface OpenedPanelProps {
   opened: OpenedView
   onNotice: (text: string) => void
+  /** KEEP IN MY VAULT is offered: left out where the build has no call for it (the web vault). */
+  canKeep?: boolean
 }
 
+/** The size of a file as a chip says it: `84 KB`. */
+const kb = (bytes: number) => `${Math.max(1, Math.round(bytes / 1024))} KB`
+
 /**
- * What a share link or a request's answer held, opened on this device.
- * The core keeps it until the next one is opened or the vault locks; each
- * value comes over as bytes when it is shown or copied, never as a list.
- * A secret is a `SecretField` copied on the shell's clipboard path; a
- * file is saved where the person picks; the rest can be kept as a note.
+ * What a share link or a request's answer held, opened on this device:
+ * the Links tab's detail (brief S4). OPENED // SHARED WITH YOU, what it
+ * is, then one row per value. The core keeps it until the next one is
+ * opened or the vault locks; each value comes over as bytes when it is
+ * shown or copied, never as a list. A secret is a `SecretField` copied on
+ * the shell's clipboard path, one value at a time; plain text is a Field
+ * Row; a file is a `FileChip` saved where the person picks. KEEP IN MY
+ * VAULT (secondary) leaves once pressed, and a caption takes its place.
  */
-export function OpenedPanel({ opened, onNotice }: OpenedPanelProps) {
+export function OpenedPanel({ opened, onNotice, canKeep = true }: OpenedPanelProps) {
   const sharing = useSharingClient()
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [keeping, setKeeping] = useState(false)
+  const title = opened.title || "Shared with you"
 
   const keep = async () => {
     setError(null)
+    setKeeping(true)
     try {
       await sharing.saveOpened()
       setSaved(true)
-      onNotice(`Kept "${opened.title || "Shared with me"}" as a note in your vault.`)
     } catch (e) {
       setError(describeError(e))
+    } finally {
+      setKeeping(false)
     }
   }
   const saveFile = async () => {
@@ -54,49 +66,49 @@ export function OpenedPanel({ opened, onNotice }: OpenedPanelProps) {
       a.click()
       a.remove()
       window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
-      onNotice(`Saving "${file.name}".`)
+      onNotice(`Saving ${file.name}`)
     } catch (e) {
       setError(describeError(e))
     }
   }
 
   return (
-    <section aria-label={`Opened: ${opened.title || "shared with you"}`} className="flex flex-col gap-2 rounded-xl border p-3">
-      <h3 className="text-sm font-semibold">{opened.title || "Shared with you"}</h3>
-      {/* A plain list, as a detail block's (detail-pane.tsx): each child sits in ListItems' own list item. */}
-      <div role="list" className="flex w-full flex-col">
-        <ListItems>
-          {opened.values.map((v, index) =>
-            v.secret ? <OpenedSecret key={index} index={index} label={v.label} /> : <OpenedPlain key={index} index={index} label={v.label} />,
-          )}
-          {opened.file && (
-            <Item variant="outline" size="sm">
-              <ItemContent>
-                <ItemDescription>A file</ItemDescription>
-                <ItemTitle>
-                  {opened.file.name} · {Math.max(1, Math.round(opened.file.size / 1024))} KB
-                </ItemTitle>
-              </ItemContent>
-              <ItemActions>
-                <Button variant="outline" size="sm" onClick={() => void saveFile()}>
-                  <Icon name="download" data-icon="inline-start" />
+    <section aria-label={`Opened: ${title}`} className="flex flex-col gap-6">
+      {paneHeading("Opened // shared with you", title)}
+      <div role="list" aria-label={`What ${title} holds`} className="flex w-full flex-col">
+        {opened.values.map((v, index) => (
+          <div role="listitem" key={index}>
+            {v.secret ? <OpenedSecret index={index} label={v.label} /> : <OpenedPlain index={index} label={v.label} first={index === 0} />}
+          </div>
+        ))}
+        {opened.file && (
+          <div role="listitem" className="pt-3">
+            <FileChip
+              name={opened.file.name}
+              size={kb(opened.file.size)}
+              action={
+                <Button type="button" variant="ghost" size="sm" onClick={() => void saveFile()}>
                   Save
                 </Button>
-              </ItemActions>
-            </Item>
-          )}
-        </ListItems>
+              }
+            />
+          </div>
+        )}
       </div>
-      {!opened.file && (
-        <div>
-          <Button variant="outline" size="sm" disabled={saved} onClick={() => void keep()}>
-            <Icon name="folder" data-icon="inline-start" />
-            {saved ? "Kept in your vault" : "Keep in my vault"}
-          </Button>
+      {canKeep && !opened.file && (
+        <div className="flex flex-col items-start gap-2">
+          {saved ? (
+            <p className="type-body text-text-body">Kept in your vault.</p>
+          ) : (
+            <Button type="button" variant="secondary" loading={keeping} onClick={() => void keep()}>
+              Keep in my vault
+            </Button>
+          )}
         </div>
       )}
+      <p className="type-caption text-text-secondary">Kept here until you open another link or lock.</p>
       {error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="type-caption text-critical-text">
           {error}
         </p>
       )}
@@ -142,7 +154,7 @@ function OpenedSecret({ index, label }: { index: number; label: string }) {
   )
 }
 
-function OpenedPlain({ index, label }: { index: number; label: string }) {
+function OpenedPlain({ index, label, first }: { index: number; label: string; first: boolean }) {
   const sharing = useSharingClient()
   const [text, setText] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -160,13 +172,8 @@ function OpenedPlain({ index, label }: { index: number; label: string }) {
     }
   }, [sharing, index])
   return (
-    <Item variant="outline" size="sm" data-row="">
-      <ItemContent>
-        <ItemDescription>{label}</ItemDescription>
-        <ItemTitle>
-          <span className="whitespace-pre-wrap">{text ?? error ?? "…"}</span>
-        </ItemTitle>
-      </ItemContent>
-    </Item>
+    <FieldRow size="stacked" label={label} rule={first ? "none" : undefined}>
+      <span className="whitespace-pre-wrap break-words">{text ?? error ?? "…"}</span>
+    </FieldRow>
   )
 }

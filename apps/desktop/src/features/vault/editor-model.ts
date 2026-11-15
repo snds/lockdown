@@ -265,3 +265,50 @@ export const DERIVED_TITLE: Record<string, string> = {
   code: "Left empty, the code's issuer is used.",
   "wi-fi": "Left empty, the network name is used.",
 }
+
+/**
+ * The essentials of each kind, in order (brief E2, zone 1): what is always
+ * in view. A login's one-time code sits behind its own switch; the vault
+ * row follows them all. A kind left out here shows its title, its first
+ * section and every required field.
+ */
+export const ESSENTIALS: Record<string, readonly string[]> = {
+  login: ["url.0", "user", "pw"],
+  card: ["card.number", "card.holder", "card.expiry", "card.cvc"],
+  note: ["body"],
+  code: ["code.0"],
+  "wi-fi": ["wifi.ssid", "wifi.passphrase", "wifi.security"],
+}
+
+/** Whether a row is one of its template's essentials (zone 1); the rest go under More options. */
+export function isEssential(template: TemplateView, row: EditorRow): boolean {
+  const named = ESSENTIALS[template.kind]
+  if (named) return row.fieldId !== null && named.includes(row.fieldId)
+  if (!row.template) return false
+  const first = template.fields.find((f) => f.control !== "passkey")?.section
+  return row.template.required || (first !== undefined && row.template.section === first && row.template.field_id !== "notes")
+}
+
+/** Whether a row holds something now (a value, a switch on, a secret on the item or typed). */
+export function holdsValue(row: EditorRow): boolean {
+  if (row.control === "boolean") return row.flag
+  if (isSecretControl(row.control)) return row.exists || row.text !== ""
+  return row.text.trim() !== ""
+}
+
+/** "Wi-Fi network" stays as it is; "Payment card" reads "payment card" inside a sentence. */
+export function inSentence(name: string): string {
+  const [word = ""] = name.split(" ")
+  return /^[A-Z][a-z']+$/.test(word) ? name.charAt(0).toLowerCase() + name.slice(1) : name
+}
+
+/** A website as its host, for the dialog's title while it is typed ("https://github.com/login" reads "github.com"). */
+export function hostOf(url: string): string {
+  const t = url.trim()
+  if (!t) return ""
+  try {
+    return new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(t) ? t : `https://${t}`).hostname.replace(/^www\./, "")
+  } catch {
+    return t
+  }
+}

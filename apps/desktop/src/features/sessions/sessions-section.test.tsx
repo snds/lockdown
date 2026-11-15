@@ -49,8 +49,8 @@ describe("the Signed in section", () => {
     if (!first || !second) throw new Error("two rows")
     expect(rest).toHaveLength(0)
     const rows = [first, second] as const
-    expect(within(rows[0]).getByText("this device")).toBeInTheDocument()
-    expect(within(rows[0]).getByText(/Lockdown 0\.1\.0 on macOS · from 203\.0\.113\.7/)).toBeInTheDocument()
+    expect(within(rows[0]).getByText("This device")).toBeInTheDocument()
+    expect(within(rows[0]).getByText(/Lockdown 0\.1\.0 on macOS \/\/ from 203\.0\.113\.7 \/\/ signed in \d{4}\.\d{2}\.\d{2}/)).toBeInTheDocument()
     expect(within(rows[1]).getByText("Device dev-phon")).toBeInTheDocument()
     // This device's own session has no End; the other one does.
     expect(within(rows[0]).queryByRole("button", { name: /End/ })).not.toBeInTheDocument()
@@ -70,13 +70,15 @@ describe("the Signed in section", () => {
     expect(sessionEnd).not.toHaveBeenCalled()
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "End" }))
     await waitFor(() => expect(sessionEnd).toHaveBeenCalledWith("b".repeat(32)))
-    expect(notice).toHaveBeenCalledWith("Ended the session on Device dev-phon. It has to log in again.")
+    // Ending a session takes access away: it asks, and no gate follows (D221, brief X5).
+    expect(screen.queryByRole("dialog", { name: "Confirm it's you" })).toBeNull()
+    expect(notice).toHaveBeenCalledWith("Ended the session on Device dev-phon")
 
-    await userEvent.click(screen.getByRole("button", { name: "End all other sessions" }))
-    expect(screen.getByRole("dialog")).toHaveTextContent("End every other session?")
-    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "End" }))
+    await userEvent.click(await screen.findByRole("button", { name: "End all others" }))
+    expect(await screen.findByRole("dialog", { name: "End every other session?" })).toBeInTheDocument()
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "End all others" }))
     await waitFor(() => expect(sessionEndOthers).toHaveBeenCalledTimes(1))
-    expect(notice).toHaveBeenLastCalledWith("Ended 1 other session.")
+    expect(notice).toHaveBeenLastCalledWith("Ended 1 other session")
   })
 
   it("reads the list again when the live channel says it changed, and shows a refusal in words", async () => {
@@ -88,7 +90,7 @@ describe("the Signed in section", () => {
       </LiveClientProvider>,
     )
     await screen.findByText("Lockdown on laptop")
-    expect(screen.queryByRole("button", { name: "End all other sessions" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "End all others" })).not.toBeInTheDocument()
     sessionList.mockResolvedValueOnce([laptop, phone])
     await act(async () => live.emit({ kind: "sessions" }))
     expect(await screen.findByText("Device dev-phon")).toBeInTheDocument()
@@ -100,6 +102,19 @@ describe("the Signed in section", () => {
     sessionList.mockRejectedValueOnce({ code: "refused", message: "the session with the server has run out; log in again" })
     await act(async () => live.emit({ kind: "sessions" }))
     expect(await screen.findByRole("alert")).toHaveTextContent("log in again")
+  })
+
+  it("reads nothing itself when its screen hands it the list", async () => {
+    const sessionList = vi.fn(() => Promise.resolve([laptop, phone]))
+    const list = { sessions: [laptop], error: null, reload: () => Promise.resolve() }
+    render(
+      <LiveClientProvider value={fakeLive({ sessionList })}>
+        <SessionsSection onNotice={() => {}} list={list} />
+      </LiveClientProvider>,
+    )
+    expect(await screen.findByText("Lockdown on laptop")).toBeInTheDocument()
+    expect(screen.queryByText("Device dev-phon")).not.toBeInTheDocument()
+    expect(sessionList).not.toHaveBeenCalled()
   })
 
   it("shows nothing where the host has no live client (the web vault today)", () => {

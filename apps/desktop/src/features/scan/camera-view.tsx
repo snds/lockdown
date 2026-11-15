@@ -64,11 +64,13 @@ export function CameraView({ onFrame, onError, label }: CameraViewProps) {
       .catch(() => onError("Lockdown couldn't use the camera. Allow it in this computer's privacy settings, or open the code's picture as a file."))
     return stop
   }, [onFrame, onError])
+  // The camera view (an app-level piece, undrawn §2): a square raised panel with a hairline,
+  // and one status line under it.
   return (
-    <div className="flex flex-col items-center gap-2">
-      <video ref={video} muted playsInline aria-label={label} className="aspect-video w-full max-w-md rounded-md bg-muted object-cover" />
-      <p className="text-xs text-muted-foreground" role="status">
-        {live ? "Hold the code steady in the picture." : "Starting the camera…"}
+    <div className="flex w-full max-w-sm flex-col items-center gap-3">
+      <video ref={video} muted playsInline aria-label={label} className="bg-surface-raised rule-box aspect-square w-full rounded object-cover" />
+      <p className="type-caption text-text-secondary" role="status">
+        {live ? "Hold the code steady in the square." : "Starting the camera…"}
       </p>
     </div>
   )

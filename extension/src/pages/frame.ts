@@ -60,20 +60,56 @@ function close() {
   void send({ t: mode === "passkey" ? "pk_sheet_cancel" : "menu_close" })
 }
 
+/** The host in two parts, so it is cut in the middle (ui.css): the start
+ *  gives way and the end, where a look-alike differs least, stays. */
+function hostLine(host: string): HTMLElement {
+  const line = el("span", "host")
+  if (!host) return line
+  line.title = host
+  const keep = Math.min(host.length, 12)
+  line.append(el("span", "host-start", host.slice(0, host.length - keep)), el("span", "host-end", host.slice(host.length - keep)))
+  return line
+}
+
+/** The close glyph: two strokes in the ink, drawn without loading anything. */
+function closeGlyph(): SVGSVGElement {
+  const ns = "http://www.w3.org/2000/svg"
+  const svg = document.createElementNS(ns, "svg")
+  svg.setAttribute("viewBox", "0 0 16 16")
+  svg.setAttribute("aria-hidden", "true")
+  const path = document.createElementNS(ns, "path")
+  path.setAttribute("d", "M4 4l8 8M12 4l-8 8")
+  path.setAttribute("stroke", "currentColor")
+  path.setAttribute("stroke-width", "1.5")
+  path.setAttribute("fill", "none")
+  svg.append(path)
+  return svg
+}
+
 function header(host: string): HTMLElement {
   const h = el("div", "head")
+  const mark = el("span", "mark", "L")
+  mark.setAttribute("aria-hidden", "true")
   // The frame's one page heading (design review R18), drawn as the brand it was.
-  h.append(el("h1", "brand", "Lockdown"), el("span", "host", host))
-  const x = el("button", "close", "×")
+  h.append(mark, el("h1", "brand", "Lockdown"), hostLine(host))
+  const x = el("button", "close")
+  x.append(closeGlyph())
   x.setAttribute("aria-label", "Close")
   x.addEventListener("click", close)
   h.append(x)
   return h
 }
 
+/** A stop's words, led by "Stop:" (brief B2), as the look-alike stop already is. */
+function stopWords(p: HTMLElement, text: string) {
+  const rest = text.replace(/^Stop:\s*/, "")
+  p.append(el("strong", "stop-word", "Stop:"), document.createTextNode(` ${rest}`))
+}
+
 function message(host: string, text: string, tone: "plain" | "stop" = "plain") {
   root.replaceChildren(header(host))
-  const p = el("p", tone === "stop" ? "msg stop" : "msg", text)
+  const p = el("p", tone === "stop" ? "msg stop" : "msg", tone === "stop" ? undefined : text)
+  if (tone === "stop") stopWords(p, text)
   p.setAttribute("role", tone === "stop" ? "alert" : "status")
   root.append(p)
   // Sized to its words within the two heights (design review R3): a stop
@@ -138,7 +174,7 @@ async function pick(data: MenuData, itemId: string, what: PickWhat, field: strin
   if (answer?.done) return
   if (answer?.confirm) {
     root.replaceChildren(header(data.host))
-    const p = el("p", "msg", answer.confirm)
+    const p = el("p", "msg ask", answer.confirm)
     p.setAttribute("role", "status")
     const row = el("div", "actions")
     const go = el("button", "primary", what === "card" ? "Fill card" : what === "code" ? "Fill code" : what === "passkey" ? "Sign in" : "Fill")
@@ -172,7 +208,8 @@ async function suggestPick(data: MenuData) {
 
 function row(title: string, sub: string, onPick: (e: MouseEvent) => void, badge?: string): HTMLElement {
   const b = el("button", "item")
-  const t = el("span", "title", title || "Untitled")
+  const t = el("span", "title")
+  t.append(el("span", "title-text", title || "Untitled"))
   if (badge) t.append(el("span", "badge", badge))
   b.append(t, el("span", "sub", sub))
   b.addEventListener("click", onPick)
@@ -217,7 +254,7 @@ function renderMenu(data: MenuData) {
   if (data.suggest) {
     const s = data.suggest
     list.push(
-      row("Use a strong password", s.site ? `Follows ${s.site.host}'s password rules` : `Made by Lockdown · ${Math.round(s.bits)} bits, ${s.strength}`, (e) => {
+      row("Use a strong password", s.site ? `Follows ${s.site.host}'s rules` : `Made by Lockdown // ${Math.round(s.bits)} bits, ${s.strength}`, (e) => {
         if (deliberate(e)) void suggestPick(data)
       }),
     )
@@ -225,14 +262,14 @@ function renderMenu(data: MenuData) {
   // A page asking for a passkey (conditional mediation): its passkeys first.
   for (const p of (data.passkeys ?? []) as PasskeyOption[]) {
     list.push(
-      row(p.title, `Passkey · ${p.user_name || p.user_display_name}`, (e) => {
+      row(p.title, p.user_name || p.user_display_name, (e) => {
         if (deliberate(e)) void pick(data, p.item_id, "passkey", p.credential_id, false)
       }, "passkey"),
     )
   }
   if (what === "login" || what === "code") {
     for (const c of data.logins as LoginCandidate[]) {
-      const sub = c.crown_jewel ? "Protected" : what === "code" ? `One-time code · ${c.username}` : c.username || c.saved || ""
+      const sub = c.crown_jewel ? "PROTECTED" : what === "code" ? `One-time code // ${c.username}` : c.username || c.saved || ""
       list.push(
         row(c.title, sub, (e) => {
           if (deliberate(e)) void pick(data, c.item_id, what, what === "code" ? c.code_field : null, false)
@@ -242,7 +279,7 @@ function renderMenu(data: MenuData) {
   } else {
     for (const w of data.wallet as WalletEntry[]) {
       list.push(
-        row(w.title, w.crown_jewel ? "Protected" : w.subtitle, (e) => {
+        row(w.title, w.crown_jewel ? "PROTECTED" : w.subtitle, (e) => {
           if (deliberate(e)) void pick(data, w.item_id, what, null, false)
         }),
       )
@@ -254,7 +291,7 @@ function renderMenu(data: MenuData) {
   root.replaceChildren(header(data.host))
   const after: HTMLElement[] = []
   if ((data.passkeys ?? []).length > 0) {
-    const other = el("button", "link", "Use a passkey from another device")
+    const other = el("button", "link", "Use another device or security key")
     other.addEventListener("click", (e) => {
       if (deliberate(e)) void send({ t: "menu_passkey_other" })
     })
@@ -325,7 +362,7 @@ async function renderPrompt() {
   root.replaceChildren(header(""))
   const q =
     offer.kind === "update" ? `Update the password for ${offer.title} in Lockdown?` : `Save this login for ${offer.title} in Lockdown?`
-  const p = el("p", "msg", q)
+  const p = el("p", "msg ask", q)
   if (offer.username) p.append(el("span", "sub block", offer.username))
   const actions = el("div", "actions")
   const yes = el("button", "primary", offer.kind === "update" ? "Update" : "Save")
@@ -358,7 +395,8 @@ function busy(host: string, text: string) {
 /** A stop with one way out. */
 function stop(host: string, text: string, label = "OK") {
   root.replaceChildren(header(host))
-  const p = el("p", "msg stop", text)
+  const p = el("p", "msg stop")
+  stopWords(p, text)
   p.setAttribute("role", "alert")
   const row = el("div", "actions")
   const ok = el("button", "secondary", label)
@@ -384,7 +422,7 @@ async function sheetPick(d: SheetData, o: PasskeyOption, confirmed: boolean) {
   if (a?.done) return
   if (a?.confirm) {
     root.replaceChildren(header(d.host))
-    const p = el("p", "msg", a.confirm)
+    const p = el("p", "msg ask", a.confirm)
     p.setAttribute("role", "status")
     const row = el("div", "actions")
     const go = el("button", "primary", "Sign in")
@@ -435,7 +473,7 @@ function renderSheet(d: SheetData) {
     const plan = d.plan
     if (!plan) return stop(d.host, "This request isn't open any more.")
     if (plan.excluded) return stop(d.host, `Lockdown already holds a passkey for this account on ${plan.rp_id}.`, "OK")
-    const p = el("p", "msg", `Save a passkey for ${site} in Lockdown?`)
+    const p = el("p", "msg ask", `Save a passkey for ${site} in Lockdown?`)
     p.append(
       el(
         "span",
@@ -456,7 +494,7 @@ function renderSheet(d: SheetData) {
     arm()
     return
   }
-  const lead = el("p", "msg", `Sign in to ${d.rp_id} with a passkey`)
+  const lead = el("p", "msg ask", `Sign in to ${d.rp_id} with a passkey`)
   const rows = d.options.map((o) =>
     row(o.title, o.user_name || o.user_display_name, (e) => {
       if (deliberate(e)) void sheetPick(d, o, false)
