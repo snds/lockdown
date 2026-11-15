@@ -1,9 +1,12 @@
 import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ThemeProvider } from "next-themes"
+import type { ReactNode } from "react"
+
+import { ListRow } from "@unicron/ui"
 
 import { PlacesProvider, type Nav } from "@/app/places"
-import { DEFAULT_SETTINGS, SettingsProvider } from "@/app/settings"
+import { DEFAULT_SETTINGS, SettingsProvider, useSettings } from "@/app/settings"
 import { ClientProvider, type Client } from "@/core/client"
 import type { DeviceInfo, Settings, Status } from "@/core/types"
 import { LiveClientProvider, type LiveClient, type SessionView } from "@/features/sessions/live-client"
@@ -46,9 +49,11 @@ interface Mount {
   nav?: Partial<Nav>
   live?: Partial<LiveClient>
   status?: Status
+  /** Mounted beside Settings, under the same settings: a part that reads them. */
+  extra?: ReactNode
 }
 
-function mount({ settings = {}, client = {}, nav = {}, live, status = STATUS }: Mount = {}) {
+function mount({ settings = {}, client = {}, nav = {}, live, status = STATUS, extra }: Mount = {}) {
   const saved: Settings[] = []
   const went: string[] = []
   const notices: string[] = []
@@ -76,6 +81,7 @@ function mount({ settings = {}, client = {}, nav = {}, live, status = STATUS }: 
               <PlacesProvider value={{ nav: { area: "settings", view: "all", section: "this-device", ...nav }, surface: "desktop", go: (id) => went.push(id), navigate: () => {} }}>
                 <SettingsView status={status} onStatus={() => {}} lock={null} onLock={() => {}} onChanged={() => {}} onNotice={(t) => notices.push(t)} />
               </PlacesProvider>
+              {extra}
             </SettingsProvider>
           </LiveClientProvider>
         </FirstRunClientProvider>
@@ -275,5 +281,22 @@ describe("the Settings frame", () => {
     expect(within(density).getByRole("radio", { name: "Comfortable" })).toHaveAttribute("aria-checked", "true")
     await user.click(within(density).getByRole("radio", { name: "Compact" }))
     await waitFor(() => expect(m.saved.at(-1)?.density).toBe("compact"))
+  })
+
+  it("Appearance: Compact switches list rows to the compact size, across the app (D92)", async () => {
+    // A list row takes its size from the density, as the vault's rows do (features/vault/item-row.tsx).
+    function Probe() {
+      const { settings } = useSettings()
+      return <ListRow title="Probe row" size={settings.density === "compact" ? "compact" : "default"} />
+    }
+    const { container } = mount({ nav: { section: "appearance" }, extra: <Probe /> })
+    const user = userEvent.setup()
+    const title = () => container.querySelector('[data-slot="list-row-title"]')
+    await waitFor(() => expect(title()).toHaveClass("type-subtitle"))
+    expect(document.documentElement.dataset.density).toBe("comfortable")
+    await user.click(within(await screen.findByRole("radiogroup", { name: "Density" })).getByRole("radio", { name: "Compact" }))
+    await waitFor(() => expect(title()).toHaveClass("type-ui"))
+    expect(document.documentElement.dataset.density).toBe("compact")
+    expect(screen.getByRole("group", { name: "Density" })).toHaveTextContent("Compact fits more on the screen.")
   })
 })

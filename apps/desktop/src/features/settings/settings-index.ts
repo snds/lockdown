@@ -19,8 +19,8 @@ export const SETTINGS_INDEX: Record<SettingsSection, readonly string[]> = {
     "Recovery kit",
     "Other sessions",
   ],
-  browsers: ["Browsers", "Pair a browser", "Passkeys in browsers"],
-  "quick-access": ["Quick access", "Shortcut", "Memory"],
+  browsers: ["Extension", "Browsers on this computer", "Connect", "Paired browsers"],
+  "quick-access": ["Open quick access from anywhere", "Shortcut", "Out of swap"],
   appearance: ["Theme", "Density"],
   devices: ["Devices", "Add a device", "Revoke", "Sessions", "Security keys"],
   recovery: ["Recovery kit", "Drill", "Emergency sheet", "Master password reminder"],
@@ -28,9 +28,9 @@ export const SETTINGS_INDEX: Record<SettingsSection, readonly string[]> = {
   server: ["Server", "Restore drills", "Log mirrors", "Move the vault"],
   "import-export": ["Import", "Export"],
   backups: ["Backups", "Restore", "Crown jewels in backups"],
-  aliases: ["Email aliases", "Alias service", "Breach watch"],
-  codes: ["One-time codes", "Clock"],
-  "security-checks": ["Breach check", "Change password check", "Security checks"],
+  aliases: ["Alias services", "Add service", "Watch my aliases for data breaches"],
+  codes: ["Correct for a wrong clock", "One-time codes"],
+  "security-checks": ["Check my passwords against known data breaches", "Breach list", "Find each site's change-password page before opening it"],
   about: ["About", "Version", "Check for updates", "Check for updates automatically", "Restart to update", "Reload app"],
 }
 
