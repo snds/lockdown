@@ -36,6 +36,7 @@ import { SecurityView } from "@/features/security/security-view"
 import { SettingsView } from "@/features/settings/settings-view"
 import { useSharingClient } from "@/features/sharing/sharing-client"
 import { SharingLocalOnly, SharingView } from "@/features/sharing/sharing-view"
+import { EmergencyWatch } from "@/features/sharing/emergency-section"
 import { UnlockScreen } from "@/features/unlock/unlock-screen"
 import { SearchView } from "@/features/vault/search-view"
 import { VaultView } from "@/features/vault/vault-view"
@@ -100,7 +101,7 @@ function Root() {
   // Health is read again after a pull runs its check.
   const [healthRead, setHealthRead] = useState(0)
   const news = useNews()
-  const { dismiss: dismissGate } = useGate()
+  const { dismiss: dismissGate, triesLocked, clearTriesLocked } = useGate()
 
   // Lock (brief X5): no question, no animation. The content goes first (the locked branch below draws the
   // unlock screen alone), then every layer closes with it: the gate, the palette, every dialog and sheet.
@@ -290,8 +291,10 @@ function Root() {
 
   const backup = useBackupTrouble(status !== null)
   const sources: CriticalSources = { signIn: status?.account?.sign_in?.message ?? sessionEnded, split, sync: syncError, backup }
+  // A revoked device can't sign in again (screens-7): its Banner still says why, and offers SEE STATUS, not SIGN IN.
+  const revoked = status?.account?.sign_in?.reason === "revoked"
   const kind = firstCritical(sources)
-  const critical = kind
+  const banner = kind
     ? criticalBanner(kind, sources, {
         signIn: () => setSigningIn(true),
         seeStatus: () => go("status"),
@@ -299,6 +302,7 @@ function Root() {
         openBackups: () => go("settings-backups"),
       })
     : null
+  const critical = banner?.kind === "sign-in" && revoked ? { ...banner, action: { label: "See status", onClick: () => go("status") } } : banner
 
   // The status line's own line where a screen says none: on Items and Sharing, what Health has to fix (brief X2 row 3).
   const healthLine = useMemo<StatusFact | null>(
@@ -341,7 +345,14 @@ function Root() {
     // wash; brief 4.0 "Locked means nothing readable is drawn").
     return (
       <div className="h-full overflow-y-auto">
-        <UnlockScreen reason={lock?.reason ?? null} onOpened={setStatus} />
+        <UnlockScreen
+          reason={lock?.reason ?? null}
+          triesLocked={triesLocked}
+          onOpened={(s) => {
+            clearTriesLocked()
+            setStatus(s)
+          }}
+        />
         {devtools}
         {/* The open shell holds its own, inside the frame. */}
         <Toaster position="bottom-center" />
@@ -389,7 +400,7 @@ function Root() {
         {nav.area === "search" && <SearchView rows={rows} selected={selected} onSelect={setSelected} onChanged={() => void reload()} onNotice={notice} />}
         {nav.area === "codes" && (
           <PageColumn>
-            <CodesView rows={rows ?? []} onChanged={() => void reload()} />
+            <CodesView rows={rows ?? []} onChanged={() => void reload()} onOpenItem={openItem} />
           </PageColumn>
         )}
         {nav.area === "settings" && <SettingsView status={status} onStatus={setStatus} lock={lock} onLock={setLock} onChanged={refreshStatus} onNotice={notice} />}
@@ -416,6 +427,8 @@ function Root() {
             />
           </PageColumn>
         )}
+        {/* Needs-you row 4 on every screen (doc 91 §7); on Sharing, the page registers it from its own overview. */}
+        <EmergencyWatch enabled={shares && nav.area !== "sharing"} onNotice={notice} />
       </AppShell>
       </MessageBoardProvider>
       </StatusProvider>
@@ -428,11 +441,15 @@ function Root() {
           setSelected(id)
         }}
         onNotice={notice}
+        onGo={go}
+        onLock={lockNow}
+        surface="desktop"
       />
       {/* SIGN IN on the Banner: today's account dialog, as Status opens it (brief X2 table 4). */}
       <AccountDialog
         kind={signingIn ? "login" : null}
         reason={status.account?.sign_in?.message ?? sessionEnded}
+        hasKit={status.recovery !== "none"}
         onClose={() => setSigningIn(false)}
         onDone={(_lines, page) => {
           setSigningIn(false)
@@ -446,7 +463,7 @@ function Root() {
       <PairingDialog onNotice={notice} />
       <PasskeyApprovalDialog onNotice={notice} />
       {/* The reminders are needs-you rows 7 to 9 (brief X3, Q4), not a dialog after unlock. */}
-      <RemindersPrompt onNotice={notice} onChanged={refreshStatus} />
+      <RemindersPrompt onNotice={notice} onChanged={refreshStatus} hasAccount={status.account != null && !status.account.local} />
       {devtools}
       </VaultsProvider>
       </WaitingHost>

@@ -50,22 +50,9 @@ async function installSheets(scheme: "light" | "dark") {
   await document.fonts.ready
 }
 
-/**
- * The extension's host draws the frame's iframe with a 2 px corner and its
- * shadow (extension/src/content/host.ts, brief B2). The test page's iframe
- * still has the old 10 px corner (harness/test-page.tsx, the foundation's),
- * which would clip the frame's own 2 px hairline corner, so the frame gives
- * its iframe the host's corner until the test page does.
- */
-function hostCorner() {
-  const host = window.frameElement as HTMLElement | null
-  if (host) host.style.borderRadius = "2px"
-}
-
 export async function mountExtensionFrame(frame: { mode: string; scenario: string; scheme: "light" | "dark" }): Promise<void> {
   installChrome(background(scenario(frame.scenario)))
   await installSheets(frame.scheme)
-  hostCorner()
   // The mode and nonce in the frame's own address, as `frame.html#menu:<nonce>` has them.
   location.hash = `${frame.mode}:${NONCE}`
   await import("../../../../extension/src/pages/frame")

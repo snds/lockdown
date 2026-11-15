@@ -13,7 +13,6 @@ import { folderPaths, inScope, rowMenuOffers, scopeTitle, targetOf, type Organiz
 import { RowMenuItems } from "@/features/organization/row-menu"
 import { useRowMenuLayers } from "@/features/organization/row-menu-layers"
 import { useVaults } from "@/features/organization/vaults-context"
-import { useOfferRoutes } from "@/features/palette/palette-routes"
 import { count, countName } from "@/lib/format"
 
 import { DetailPane } from "./detail-pane"
@@ -110,7 +109,6 @@ export function SearchView({ rows, selected, onSelect, onChanged, onNotice }: Se
   const { go, navigate } = usePlaces()
   const { edit } = useShell()
   const frame = useAppFrame()
-  useOfferRoutes()
   const [query, setQuery] = useState(typedWords)
   // Opened by typing in All items' field: emptying the field goes back to the list, as a search in place would.
   const [fromList] = useState(() => typedWords() !== "")

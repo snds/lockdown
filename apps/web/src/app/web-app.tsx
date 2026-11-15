@@ -42,9 +42,9 @@ import { webLiveClient } from "../core/web-live-client"
 import { webServerClient } from "../core/web-server-client"
 import { ServerClientProvider } from "@/features/server/server-client"
 import { LinksView } from "../features/links-view"
-import { Frame, SignInScreen } from "../features/sign-in-screen"
+import { Frame, SignInScreen, WebCantStart, WebStarting } from "../features/sign-in-screen"
 import { WebSettingsView } from "../features/web-settings-view"
-import { WebUnlockScreen } from "../features/web-unlock-screen"
+import { NotSyncedQuestion, WebUnlockScreen } from "../features/web-unlock-screen"
 import { WebSecurityView } from "../features/web-security-view"
 import { webPqStatusClient } from "../core/web-pq-status-client"
 import { PqStatusClientProvider } from "@/features/security/pq-status-client"
@@ -102,6 +102,10 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
   const [syncError, setSyncError] = useState<string | null>(null)
   // When this tab last synced, for the status line's SYNCED 14:31 (brief X2 row 3, web vault).
   const [syncedAt, setSyncedAt] = useState<number | null>(null)
+  // The live channel said another device ended this tab's session: the unlock screen says so (brief W1).
+  const [sessionEnded, setSessionEnded] = useState(false)
+  // Signing out with changes not synced: the Question's reason, in the server's words (brief W1).
+  const [notSynced, setNotSynced] = useState<string | null>(null)
   const news = useNews()
   // The worker's live channel (docs/plan/27-web-server-finish.md §2) is open.
   const liveUp = useRef(false)
@@ -201,6 +205,7 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
     (s: Status) => {
       refreshWeb()
       setReason(null)
+      setSessionEnded(false)
       setStatus(s)
       setSyncedAt(s.account?.last_sync_at ? s.account.last_sync_at * 1000 : null)
     },
@@ -222,11 +227,7 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
     client
       .sync()
       .then(forget)
-      .catch((e) =>
-        toast.error(`Not synced, so still signed in: ${describeError(e)}`, {
-          action: { label: "Sign out anyway", onClick: forget },
-        }),
-      )
+      .catch((e) => setNotSynced(describeError(e)))
   }, [client, forget])
   const lockNow = () =>
     client
@@ -255,8 +256,8 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
     } else if (n.kind === "sync_failed") setSyncError(n.message)
     else if (n.kind === "session_ended") {
       liveUp.current = false
-      // The tab locks at once, so this is said in a toast: a Banner would never be seen.
-      toast.error("This tab's session was ended from another of your devices. Unlock with your password to sign in again.")
+      // The tab locks at once; the unlock screen says why (brief W1).
+      setSessionEnded(true)
       lockNow()
     }
   })
@@ -308,24 +309,18 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
 
   if (webError) {
     return (
-      <Frame>
-        <h1 className="mb-4 text-lg font-semibold tracking-tight">The web vault can't start</h1>
-        <p role="alert" className="text-sm text-destructive">
-          {webError}
-        </p>
+      <>
+        <WebCantStart server={server} reason={webError} onTryAgain={() => location.reload()} />
         <Toaster position="bottom-center" />
-      </Frame>
+      </>
     )
   }
   if (!web) {
     return (
-      <Frame>
-        {/* Every screen has one page heading (design review R18); this one only for a screen reader. */}
-        <h1 className="sr-only">Lockdown web vault</h1>
-        <Spinner />
-        <p className="mt-2 text-sm text-muted-foreground">Starting the vault…</p>
+      <>
+        <WebStarting />
         <Toaster position="bottom-center" />
-      </Frame>
+      </>
     )
   }
   if (!status) {
@@ -333,7 +328,7 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
       // Locked or signed out: that screen alone, nothing of the shell (Q15; changes D107's wash).
       <div className="h-full overflow-y-auto">
           {web.signed_in && web.locked && web.login ? (
-            <WebUnlockScreen session={session} login={web.login} reason={reason} onUnlocked={opened} onSignedOut={refreshWeb} />
+            <WebUnlockScreen session={session} login={web.login} reason={reason} sessionEnded={sessionEnded} onUnlocked={opened} onSignedOut={refreshWeb} />
           ) : web.signed_in ? (
             <Frame>
               <Spinner />
@@ -387,7 +382,7 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
           {nav.area === "search" && <SearchView rows={rows} selected={selected} onSelect={setSelected} onChanged={sync} onNotice={notice} />}
           {nav.area === "codes" && (
             <PageColumn>
-              <CodesView rows={rows ?? []} onChanged={sync} />
+              <CodesView rows={rows ?? []} onChanged={sync} onOpenItem={openItem} />
             </PageColumn>
           )}
           {nav.area === "sharing" && (
@@ -422,6 +417,18 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
             setSelected(id)
           }}
           onNotice={notice}
+          onGo={go}
+          onLock={lockNow}
+          surface="web"
+        />
+        <NotSyncedQuestion
+          open={notSynced !== null}
+          reason={notSynced ?? ""}
+          onSignOut={() => {
+            setNotSynced(null)
+            forget()
+          }}
+          onCancel={() => setNotSynced(null)}
         />
       </VaultsProvider>
       </WaitingHost>

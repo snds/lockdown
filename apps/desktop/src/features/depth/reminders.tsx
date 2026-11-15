@@ -37,7 +37,12 @@ export const SKIP_WORDS = "I understand an untested kit can fail"
  *
  * Each leaves when it is answered; the next due one then shows.
  */
-export function RemindersPrompt({ onNotice, onChanged }: { onNotice: (text: string) => void; onChanged: () => void }) {
+export function RemindersPrompt({ onNotice, onChanged, hasAccount = true }: {
+  onNotice: (text: string) => void
+  onChanged: () => void
+  /** An account to sign in to: the drill's optional password shows only then (a local vault has none). */
+  hasAccount?: boolean
+}) {
   const depth = useDepthClient()
   const [reminders, setReminders] = useState<RemindersView | null>(null)
   const [kit, setKit] = useState(false)
@@ -173,7 +178,7 @@ export function RemindersPrompt({ onNotice, onChanged }: { onNotice: (text: stri
       </AdaptiveDialog>
       <KitDialog
         kind={kit ? "kit-verify" : null}
-        hasAccount
+        hasAccount={hasAccount}
         onClose={() => setKit(false)}
         onDone={(lines) => {
           setKit(false)

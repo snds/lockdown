@@ -36,7 +36,6 @@ import { useQuickCopy } from "@/features/vault/quick-copy"
 import { searchWith } from "@/features/vault/search-words"
 
 import { LOCK_ROW, SHOWN_CODE_MS, actionKeys, goToRows, hostOf, isMac, type GoToRow } from "./palette-model"
-import { offeredRoutes } from "./palette-routes"
 
 interface QuickPaletteProps {
   open: boolean
@@ -49,14 +48,13 @@ interface QuickPaletteProps {
   /** Drawn in place (the quick-access window) instead of as a dialog. */
   inline?: boolean
   /**
-   * GO TO: goes to a place by its id (app/places.ts `go`). Left out, the
-   * palette uses the `go` a screen inside the shell handed over
-   * (palette-routes.ts) until App.tsx passes this.
+   * GO TO: goes to a place by its id (app/places.ts `go`). Left out (the
+   * quick-access window), GO TO offers Lock alone.
    */
   onGo?: (placeId: string) => void
   /** The Lock command: the app's own lock. Left out, the palette asks the core to lock. */
   onLock?: () => void
-  /** Which build draws it, for GO TO's places. Left out: what the shell handed over, else the desktop. */
+  /** Which build draws it, for GO TO's places. Left out: the desktop. */
   surface?: Surface
 }
 
@@ -153,11 +151,10 @@ function PaletteBody({ onOpenChange, rows, onOpen, onNotice, inline = false, onG
   const lastCopy = useRef<number | null>(null)
   useCaptureProtect(shown !== null)
 
-  // Where GO TO goes: the app's own `go`, or what the shell handed over. The quick-access window
-  // has no way into the main window's places (only an item), so it offers Lock alone.
-  const routes = offeredRoutes()
-  const go = inline ? undefined : (onGo ?? routes?.go)
-  const where = surface ?? routes?.surface ?? "desktop"
+  // Where GO TO goes: the app's own `go`. The quick-access window has no way into the main
+  // window's places (only an item), so it offers Lock alone.
+  const go = inline ? undefined : onGo
+  const where = surface ?? "desktop"
   const q = query.trim()
   const places = useMemo(() => goToRows(q, where, vaults, mac).filter((r) => r.id === LOCK_ROW || go), [q, where, vaults, mac, go])
   const everything = Boolean(q && go)

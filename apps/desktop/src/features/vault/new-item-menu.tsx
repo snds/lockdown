@@ -162,7 +162,7 @@ export function NewItemMenu({ onPick, onNotice = () => {}, trigger, open, onOpen
   return (
     <>
       <AdaptiveMenu
-        title="New item"
+        title={sheet ? "What are you saving?" : "New item"}
         overline={sheet ? `New item // ${vault ? `${vault.name} vault` : "your vault"}` : undefined}
         align="end"
         width="auto"

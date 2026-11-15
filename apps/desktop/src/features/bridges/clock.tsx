@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 
-import { Banner, Button, SectionHeader, ToggleRow } from "@unicron/ui"
+import { Banner, Button, ToggleRow } from "@unicron/ui"
 
 import { useSettings } from "@/app/settings"
 import { describeError, useClient } from "@/core/client"
@@ -77,10 +77,9 @@ export function ClockSetting() {
   const { settings, update } = useSettings()
   const [error, setError] = useState<string | null>(null)
   if (!bridges) return null
-  // A Toggle Row under its group's header (brief T6): the row is the switch's target and names it.
+  // A Toggle Row (brief T6): the row is the switch's target and names it. The Settings frame's own head names the section.
   return (
-    <section aria-labelledby="clock-setting" className="flex flex-col">
-      <SectionHeader id="clock-setting" title="One-time codes" />
+    <div className="flex flex-col">
       <ToggleRow
         id="clock-correct"
         label="Correct for a wrong clock"
@@ -89,6 +88,6 @@ export function ClockSetting() {
         onCheckedChange={(on) => void update({ code_clock_correction: on }).catch((e) => setError(describeError(e)))}
       />
       {error && <Banner size="compact" title={error} />}
-    </section>
+    </div>
   )
 }

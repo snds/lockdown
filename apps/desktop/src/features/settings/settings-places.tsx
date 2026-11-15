@@ -16,7 +16,6 @@ const GROUP_TITLES = { account: "Account", vault: "Vault", lockdown: "Lockdown" 
 /** Section heads' lines where the brief words them (T0, T10); the rest are the places table's. */
 const LINES: Partial<Record<SettingsSection, string>> = {
   "this-device": "How Lockdown locks and copies on this computer.",
-  about: "The version that runs, and its updates.",
 }
 
 interface SettingsPlacesProps {

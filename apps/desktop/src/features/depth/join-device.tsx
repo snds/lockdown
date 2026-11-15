@@ -222,7 +222,7 @@ export function JoinWithDevice({
   return (
     <form key="start" onSubmit={(e) => void start(e)} aria-label="Join with a code" className="flex flex-col gap-6" noValidate>
       <p className="type-caption text-text-secondary">
-        On a device that already has Lockdown, open Devices and choose “Add a device”, then type the code it shows. Nothing from your kit is needed.
+        On a device that already has Lockdown, open Devices and choose Add device, then type the code it shows. Nothing from your kit is needed.
       </p>
       {server === undefined && (
         <TextField

@@ -216,7 +216,7 @@ export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, t
             <StatusStrip outranked={needsYou} />
             <BottomRow toFix={toFix} onCreate={() => setCreating(true)} onQuickCreate={create} onReselect={reselect} />
             <PushedBottomRow />
-            <CreateMenu open={creating} onOpenChange={setCreating} onPick={create} onNotice={onNotice} />
+            <CreateMenu open={creating} onOpenChange={setCreating} onPick={create} onNotice={onNotice} rows={rows} />
             {/* Inside the frame, so it places toasts: the content's bottom left on a desktop, the strip's slot on a phone. */}
             <Toaster />
           </AppFrame>
@@ -363,9 +363,9 @@ function useBoxOf(find: () => HTMLElement | null, open: boolean): CSSProperties 
  * rail's create button and the phone's: a menu under the button on a
  * desktop, a sheet on a phone.
  */
-function CreateMenu({ open, onOpenChange, onPick, onNotice }: { open: boolean; onOpenChange: (open: boolean) => void; onPick: (template: string) => void; onNotice?: (text: string) => void }) {
+function CreateMenu({ open, onOpenChange, onPick, onNotice, rows }: { open: boolean; onOpenChange: (open: boolean) => void; onPick: (template: string) => void; onNotice?: (text: string) => void; rows: ItemSummary[] | null }) {
   const box = useBoxOf(sidebarCreate, open)
-  return <NewItemMenu open={open} onOpenChange={onOpenChange} onPick={onPick} onNotice={onNotice} trigger={<button type="button" aria-hidden="true" tabIndex={-1} style={box} />} />
+  return <NewItemMenu open={open} onOpenChange={onOpenChange} onPick={onPick} onNotice={onNotice} rows={rows} trigger={<button type="button" aria-hidden="true" tabIndex={-1} style={box} />} />
 }
 
 /**

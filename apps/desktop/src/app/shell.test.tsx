@@ -521,10 +521,10 @@ describe("the phone's rows (brief 3.3)", () => {
     render(<Harness />)
     const create = screen.getByRole("button", { name: "New item" })
     await press(user, create)
-    const sheet = await screen.findByRole("dialog", { name: "New item" })
+    const sheet = await screen.findByRole("dialog", { name: "What are you saving?" })
     expect(await within(sheet).findByRole("group", { name: "Sign-ins and money" })).toBeInTheDocument()
     await user.keyboard("{Escape}")
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New item" })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "What are you saving?" })).toBeNull())
     // Quick create is never gesture-only: Shift+Enter opens it.
     await press(user, screen.getByRole("button", { name: "New item" }), "{Shift>}{Enter}{/Shift}")
     const quick = await screen.findByRole("menu", { name: "Quick create" })
