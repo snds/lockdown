@@ -13,7 +13,7 @@ import type { StateDef, Step } from "../harness/types"
 import { d, only, w } from "./defs"
 import { WIDTHS } from "../harness/types"
 import { open, webOpen } from "./steps/screens"
-import { DIALOG, answerGate, asClicked, go, onDesktop, openSwitcher, scrollContent, starts } from "./steps/shell"
+import { DIALOG, answerGate, asClicked, go, onDesktop, openSwitcher, scrollContent, sectionsInView, starts } from "./steps/shell"
 import { besideSidebar, bringIntoView, detailsRowAction, healthPlace, healthRow, skipForNow, focusOrgRow, itemAction, keepConflictCopy, openBranch, openDetails, openItem, openItemMenu, orgMenu, orgMenuRow, passkeyDetails, reveal, swipeRow } from "./steps/vault"
 
 /** Search and Quick access by width class (brief X4): Quick access is not offered on a phone. */
@@ -38,7 +38,7 @@ const restFocus = (): Step => ({
 const reload = { broken: false }
 
 export const VAULT_STATES: StateDef[] = [
-  d({ id: "desktop-vault-filled", built: { area: "items", screen: "list", kind: "drawn" }, screen: "Vault", state: "Filled", brief_row: "Vault", notes: "All items, title A to Z: by letter on a desktop, one list on a phone (brief V1, D780). The compact density too.", compact: true, steps: open }),
+  d({ id: "desktop-vault-filled", built: { area: "items", screen: "list", kind: "drawn" }, screen: "Vault", state: "Filled", brief_row: "Vault", notes: "All items, title A to Z: by letter on a desktop, one list on a phone (brief V1, D780). The compact density too. Beside the sidebar, Health's row must end above the footer.", compact: true, steps: [...open, sectionsInView] }),
   d({ id: "desktop-vault-loading", built: { area: "items", screen: "loading", kind: "drawn" }, screen: "Vault", state: "Loading", brief_row: "Vault", notes: "The list's rows have not arrived: skeleton rows and no count (States / 04).", answers: () => ({ list: () => forever() }), steps: open }),
   d({
     id: "desktop-vault-error",

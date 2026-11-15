@@ -13,6 +13,7 @@ import {
   NavSection,
   SectionHeader,
   useAdaptiveSheet,
+  useAppFrame,
   type IconName,
   type NavItemProps,
   type NavMarkProp,
@@ -69,6 +70,8 @@ const vaultIcon = (v: VaultView): IconName => (v.sharing ? "user--multiple" : "u
 export function OrganizationNav({ rows, nav, onNavigate, variant = "sidebar", sharingMark = 0, sharing = true, onPicked }: OrganizationNavProps) {
   const client = useClient()
   const { vaults, reload } = useVaults()
+  const phone = useAppFrame().phone
+  const inSheet = variant === "switcher" && phone
   const [name, setName] = useState<NameAsk | null>(null)
   const [confirm, setConfirm] = useState<ConfirmAsk | null>(null)
   // A change from a menu that asks nothing and failed: one critical line here, in the core's words (cross-app §9).
@@ -405,7 +408,8 @@ export function OrganizationNav({ rows, nav, onNavigate, variant = "sidebar", sh
       {switcher && sharedVaults.length > 0 && (
         <div className="flex flex-col">
           <SectionHeader title="Shared with" count={sharedVaults.length} />
-          <div role="list" aria-label="Shared with">
+          {/* In the phone's sheet the rows run edge to edge and keep their own 16, so their titles stand under the header (Mobile / 12). */}
+          <div role="list" aria-label="Shared with" className={inSheet ? "-mx-4" : undefined}>
             {sharedVaults.map((v) => (
               <ListRow
                 key={v.id}
