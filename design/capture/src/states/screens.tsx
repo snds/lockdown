@@ -9,18 +9,33 @@ import { followColorScheme } from "../../../../apps/web/src/theme"
 
 import { MASTER_PASSWORD } from "../fixture/commands"
 import { uid } from "../fixture/ids"
-import { REVOKED, fresh, signedOut } from "../fixture/lane-screens"
+import { REVOKED, fresh, kitState, onMac, signedOut, updateStatus } from "../fixture/lane-screens"
 import { PERSON } from "../fixture/seed"
 import { backupStatus, status } from "../fixture/story"
 import { ago } from "../fixture/time"
 import { as, fail, forever } from "../host/core"
 import { fakeLink, waitingCredentials } from "../host/web-link"
+import type { World } from "../fixture/world"
 import type { StateDef } from "../harness/types"
 import { d, linkPage, w } from "./defs"
-import { create, kitSaved, open, quickSkipped, settings, settingsAt, toBackups, webOpen } from "./steps/screens"
+import { create, inPage, kitSaved, settingsDrawn, open, quickSkipped, settings, settingsAt, toBackups, webOpen } from "./steps/screens"
 import { DIALOG, go } from "./steps/shell"
 
 const PERSON_LOGIN = PERSON.login
+
+/** Settings' states: the kit in the core's own word, and the updater's status (the version on the status line). */
+function settingsAnswers(w: World, kit: "none" | "made" | "drilled" = "drilled") {
+  const opened = () => {
+    w.lock = { ...w.lock, locked: false, reason: null, idle_secs: 0 }
+    return kitState(status(w), kit)
+  }
+  return {
+    status: () => kitState(status(w), kit),
+    unlock: opened,
+    unlock_with_password: (a: Record<string, unknown>) => (a.password === MASTER_PASSWORD ? opened() : fail("refused", "That isn't the master password for this vault.")),
+    update_status: () => updateStatus(),
+  }
+}
 
 export const SCREENS_STATES: StateDef[] = [
   d({
@@ -239,7 +254,73 @@ export const SCREENS_STATES: StateDef[] = [
     answers: () => ({ audit: () => fail("refused", "The server's public log doesn't include your account's newest key. Sync again; if it still differs, see Help → Key transparency.") }),
     steps: [...open, ...go("status"), { click: /^Check now/ }, { wait: /public log doesn't include/ }],
   }),
-  d({ id: "desktop-settings", screen: "Settings", state: "All sections", brief_row: "Settings", notes: "Appearance, lock, clipboard, approvals, browsers, import and export, backups, security, aliases, quick access.", steps: [...open, ...go("settings")] }),
+  d({
+    id: "desktop-settings",
+    screen: "Settings",
+    state: "This Mac",
+    brief_row: "Settings",
+    notes: "Brief T0 and T1 (Desktop / 12, Mobile / 16): the SettingsFrame, This Mac in one column (Security, Passkeys, Devices 05, Account); on a phone the drawn rows first, then Find a setting and ALL SETTINGS 13.",
+    built: { area: "settings", screen: "this-mac", kind: "drawn" },
+    setup: onMac,
+    answers: settingsAnswers,
+    steps: [...open, ...go("settings"), ...settingsDrawn],
+  }),
+  d({
+    id: "desktop-settings-this-mac",
+    screen: "Settings",
+    state: "This Mac: Devices and Account",
+    brief_row: "Settings",
+    notes: "Brief T1: the lower half of This Mac, the first three devices with REVOKE and ALL, the recovery kit with OPEN, other sessions with END ALL.",
+    setup: onMac,
+    answers: settingsAnswers,
+    steps: [...open, ...go("settings"), ...settingsDrawn, { run: () => [...document.querySelectorAll("h3")].find((h) => h.textContent?.startsWith("Devices"))?.scrollIntoView({ block: "start" }) }, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-settings-find",
+    screen: "Settings",
+    state: "Find a setting",
+    brief_row: "Settings",
+    notes: "Brief T0: Find a setting with \"lock\" typed: what it found, each a way to its section, over the section list.",
+    built: { area: "settings", screen: "find", kind: "undrawn" },
+    setup: onMac,
+    answers: settingsAnswers,
+    steps: [...open, ...go("settings"), { fill: "Find a setting", value: "lock" }, { wait: "Settings found", role: "region" }, { run: () => document.querySelector('[aria-label="Settings found"]')?.parentElement?.scrollIntoView({ block: "start" }) }, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-settings-section-list",
+    screen: "Settings",
+    state: "All settings (phone)",
+    brief_row: "Settings",
+    notes: "Brief T0, Mobile / 16 below the drawn rows: Find a setting, ALL SETTINGS 13 and the sections under their groups; each pushes. Recovery shows its mark: the kit is made, not tested.",
+    built: { area: "settings", screen: "section-list", kind: "undrawn" },
+    widths: [390],
+    setup: onMac,
+    answers: (w) => settingsAnswers(w, "made"),
+    steps: [...open, ...go("settings"), inPage(/All settings/), { run: () => document.querySelector('[data-slot="settings-frame-search"]')?.scrollIntoView({ block: "start" }) }, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-settings-about",
+    screen: "Settings → About",
+    state: "Update ready",
+    brief_row: "Settings",
+    notes: "Brief T10: THIS APP (version, the ready update's line, RESTART TO UPDATE, the restart note, the automatic check) and SERVER; the update mark on About and on the way into Settings.",
+    built: { area: "settings", screen: "about", kind: "undrawn" },
+    setup: onMac,
+    answers: (w) => ({ ...settingsAnswers(w), update_status: () => updateStatus({ state: "ready", offered: "1.8.1" }) }),
+    steps: [...open, ...go("settings-about"), { wait: "Restart to update", role: "button" }, { pause: 300 }],
+  }),
+  ...(["System", "Stone", "Graphite"] as const).map((choice) =>
+    d({
+      id: `desktop-settings-theme-${choice.toLowerCase()}`,
+      screen: "Settings → Appearance",
+      state: `Theme: ${choice}`,
+      brief_row: "Settings",
+      notes: `Brief T0, T6 (cross-app §5): the Theme row with ${choice} chosen, and Density as two chips.${choice === "System" ? " System follows the window's light or dark." : ""}`,
+      setup: onMac,
+      answers: settingsAnswers,
+      steps: [...settingsAt("settings-appearance"), { wait: "Density" }, { click: choice, role: "radio" }, { pause: 300 }],
+    }),
+  ),
   d({ id: "desktop-first-run-kit", screen: "Kit page", state: "Shown once after create", brief_row: "Kit page (D69)", notes: "Step 02: the Secret Key and recovery code in large type, Save as PDF and Print, where to keep it; Continue waits for the box, with its reason.", built: { area: "first-run", screen: "kit", kind: "undrawn" }, setup: fresh, steps: [...create, { wait: "Save your recovery kit", role: "heading" }, { pause: 400 }] }),
   d({ id: "desktop-first-run-kit-saved", screen: "Kit page", state: "Saved as a PDF", brief_row: "Kit page (D69)", notes: "Saved, with the reminder that a PDF on this computer alone won't help if it's lost (doc 38, doc 39).", built: { area: "first-run", screen: "kit-saved", kind: "undrawn" }, setup: fresh, steps: [...create, { wait: "Save your recovery kit", role: "heading" }, { click: "Save as PDF", role: "button" }, { wait: /A PDF on this computer alone/ }] }),
   d({ id: "desktop-first-run-import", screen: "First run", state: "Bring your passwords", brief_row: "First run: create", notes: "The last step: one Nav Item per importer Lockdown has, with how to export, then other apps; Continue waits for something brought in, with its reason; Not now. Screens-8 restyles the wizard it opens.", built: { area: "first-run", screen: "import", kind: "undrawn" }, setup: fresh, steps: [...create, ...kitSaved, ...quickSkipped, { wait: "Bring your passwords", role: "heading" }] }),
@@ -509,7 +590,7 @@ export const SCREENS_STATES: StateDef[] = [
   w({ id: "web-cant-start", screen: "Sign in", state: "Can't start", brief_row: "Sign in", notes: "The core module failed its integrity check.", answers: () => ({ web_state: () => fail("stopped", "The vault's core module didn't match its published hash, so it wasn't run. Reload the page; if this stays, tell the server's operator.") }), steps: [{ wait: "The web vault can't start" }] }),
   w({ id: "web-unlock", screen: "Unlock", state: "Locked", brief_row: "Unlock", notes: "Signed in, locked: the password only (D174). Brief W1 as F1, with Sign out of this tab.", built: { area: "web-unlock", screen: "locked", kind: "undrawn" }, steps: [{ wait: "Lockdown is locked.", role: "heading" }, { wait: "Unlock", role: "button" }] }),
   w({ id: "web-unlock-wrong", screen: "Unlock", state: "Wrong password", brief_row: "Unlock", notes: "The password didn't match: the core's words under the field.", built: { area: "web-unlock", screen: "wrong-password", kind: "undrawn" }, steps: [{ fill: "Master password", value: "wrong" }, { click: "Unlock", role: "button" }, { wait: /didn't match/ }] }),
-  w({ id: "web-settings", screen: "Settings", state: "Tab settings", brief_row: "Settings", notes: "Lock timers, clipboard, density, reveal, This server, the trust note; Sign out of this tab.", steps: [...webOpen, ...go("settings")] }),
+  w({ id: "web-settings", screen: "Settings", state: "This browser", brief_row: "Settings", notes: "Brief T0, T1 and W1: four sections; This browser holds Auto-lock (no Never), the tab's out-of-view lock, Clipboard and Reveal, then THIS WEB VAULT: signed in as, the trust note (D180), Sign out of this tab.", steps: [...webOpen, ...go("settings"), inPage(/Auto-lock|Appearance/), { pause: 300 }] }),
   w({ id: "web-link-share", screen: "Link page", state: "Share link: before opening", brief_row: "Link page (`/s/…`, `/r/…`)", notes: "Brief W2: the views left and the last day as mono lines; Open link. No way into a vault.", built: { area: "link-page", screen: "share", kind: "undrawn" }, mount: () => linkPage("share"), steps: [{ wait: "Open link", role: "button" }, { pause: 300 }] }),
   w({ id: "web-link-share-opened", screen: "Link page", state: "Share link: opened", brief_row: "Link page (`/s/…`, `/r/…`)", notes: "The info Banner, then one row per value: a Field Row for text, a SecretField for a secret.", built: { area: "link-page", screen: "share-opened", kind: "undrawn" }, mount: () => linkPage("share"), steps: [{ click: /^Open/, role: "button" }, { wait: "Rivera-Guest" }, { pause: 300 }] }),
   w({ id: "web-link-request", screen: "Link page", state: "Request link", brief_row: "Link page (`/s/…`, `/r/…`)", notes: "Answer a request for a secret: what they asked for, What it is, the secret, Send.", built: { area: "link-page", screen: "request", kind: "undrawn" }, mount: () => linkPage("request"), steps: [{ wait: "Send", role: "button" }, { pause: 300 }] }),

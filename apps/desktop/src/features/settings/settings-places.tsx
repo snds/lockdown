@@ -1,52 +1,119 @@
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 
-import { AppFrameInset, AppFramePageHead, SettingsFrame, useAppFrame } from "@unicron/ui"
+import { AppFrameInset, AppFramePageHead, NavItem, SearchField, SectionHeader, SettingsFrame, useAppFrame, type NavMarkProp } from "@unicron/ui"
 
+import { useCrumb } from "@/app/crumbs"
 import { NeedsYouSlot, useNeedsYouBlock } from "@/app/needs-you"
 import { deviceName, settingsSections, usePlaces, type SettingsSection } from "@/app/places"
 import { isMac } from "@/features/palette/palette-model"
+import { count } from "@/lib/format"
+
+import { findSettings } from "./settings-index"
 
 /** The Settings groups' overlines; the device's is its real kind (cross-app decisions §5). */
 const GROUP_TITLES = { account: "Account", vault: "Vault", lockdown: "Lockdown" } as const
 
+/** Section heads' lines where the brief words them (T0, T10); the rest are the places table's. */
+const LINES: Partial<Record<SettingsSection, string>> = {
+  "this-device": "How Lockdown locks and copies on this computer.",
+  about: "The version that runs, and its updates.",
+}
+
 interface SettingsPlacesProps {
-  /** On a phone and at medium width: the device's own rows, drawn first, above the list of every other section (brief T0). */
+  /** On a phone: the device's own rows, drawn first, above "Find a setting" and the list of every other section (brief T0, Mobile / 16). */
   overview?: ReactNode
+  /** A mark on a section's row: Recovery while the kit is untested, About while an update is ready (brief T0). */
+  marks?: Partial<Record<SettingsSection, NavMarkProp>>
   /** The open section's content. */
   children: (shown: SettingsSection) => ReactNode
 }
 
 /**
- * Settings as places (brief T0, doc 64): unicron's `SettingsFrame` over the
- * sections `places.ts` lists for this build, with the open one read from
- * and written to the shell's `Nav`. The desktop app and the web vault both
- * mount it and give it their own sections' content. With room for two
- * columns the section list stands beside the open section; narrower, the
- * device's rows come first, then the list, and a section is a pushed screen.
+ * Settings as places (brief T0, doc 64, doc 79): unicron's `SettingsFrame`
+ * over the sections `places.ts` lists for this build, with the open one
+ * read from and written to the shell's `Nav`. The desktop app and the web
+ * vault both mount it and give it their own sections' content.
+ *
+ * - Expanded: the section list beside the open section (This Mac first),
+ *   and the breadcrumb `SETTINGS // THIS MAC`.
+ * - Phone and medium: the drawn rows first (`overview`), then "Find a setting",
+ *   `ALL SETTINGS NN` and the other sections; each pushes.
+ * - "Find a setting" from ten sections up: what it finds shows under the
+ *   field, each a way to its section.
  */
-export function SettingsPlaces({ overview, children }: SettingsPlacesProps) {
+export function SettingsPlaces({ overview, marks, children }: SettingsPlacesProps) {
   const { nav, surface, go } = usePlaces()
   const frame = useAppFrame()
   const needsYou = useNeedsYouBlock()
+  const [query, setQuery] = useState("")
   const device = deviceName(surface, isMac())
   const all = settingsSections(surface)
-  // Narrower than two columns the device's rows are the overview, so its section is not listed twice.
-  const listed = frame.split || !overview ? all : all.filter((p) => p.nav.section !== "this-device")
+  // Narrower than two columns (a phone, and medium width as found-3 built it) the device's rows are the overview, so its section is not listed twice.
+  const drawsOverview = !frame.split && Boolean(overview)
+  const listed = drawsOverview ? all.filter((p) => p.nav.section !== "this-device") : all
+  const labelOf = (section: SettingsSection | undefined, label: string) => (section === "this-device" ? device : label)
   const sections = listed.map((p) => ({
     value: p.nav.section as string,
-    label: p.nav.section === "this-device" ? device : p.label,
+    label: labelOf(p.nav.section, p.label),
     icon: p.icon,
     group: p.settingsGroup === "device" ? device : GROUP_TITLES[p.settingsGroup ?? "account"],
-    description: p.description,
+    description: surface === "web" && p.nav.section === "this-device" ? "How Lockdown locks and copies in this tab." : (LINES[p.nav.section as SettingsSection] ?? p.description),
+    mark: p.nav.section ? marks?.[p.nav.section] : undefined,
   }))
   const open = nav.section && listed.some((p) => p.nav.section === nav.section) ? nav.section : null
   const shown = open ?? (frame.split ? (listed[0]?.nav.section ?? null) : null)
+  // The first section shows without being chosen: the breadcrumb still names it.
+  useCrumb(frame.split && !open && shown ? [labelOf(shown, sections[0]?.label ?? "")] : null)
+
+  const sectionLabel = (section: SettingsSection) => labelOf(section, all.find((p) => p.nav.section === section)?.label ?? "")
+  const found = findSettings(
+    surface,
+    query,
+    // Every section, the phone's drawn rows too: what they hold is found as well.
+    all.map((p) => ({ section: p.nav.section as SettingsSection, label: labelOf(p.nav.section, p.label), description: p.description })),
+  )
+  const search = (
+    <div className="flex flex-col gap-6">
+      <SearchField aria-label="Find a setting" placeholder="Find a setting" value={query} onValueChange={setQuery} />
+      {query.trim() && (
+        <div className="flex flex-col gap-1" role="region" aria-label="Settings found">
+          <SectionHeader level={2} title="Found" count={found.length} />
+          {found.length === 0 ? (
+            <p className="type-body text-text-secondary py-3">No setting for {query.trim()}.</p>
+          ) : (
+            <ul role="list" className="flex flex-col gap-1">
+              {found.map((f) => (
+                <li key={`${f.section}:${f.name}`}>
+                  <NavItem
+                    label={f.name}
+                    description={f.name === sectionLabel(f.section) ? undefined : sectionLabel(f.section)}
+                    icon={all.find((p) => p.nav.section === f.section)?.icon}
+                    onClick={() => {
+                      setQuery("")
+                      if (drawsOverview && f.section === "this-device") {
+                        // On a phone the device's rows are the top of this screen, not a section of their own.
+                        go("settings")
+                        document.querySelector('[data-slot="settings-frame-overview"]')?.scrollIntoView({ block: "start" })
+                      } else go(`settings-${f.section}`)
+                    }}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {drawsOverview && <SectionHeader level={2} title="All settings" count={count(listed.length)} />}
+    </div>
+  )
+
   return (
     <SettingsFrame
       sections={sections}
       value={open}
       onValueChange={(value) => go(value ? `settings-${value}` : "settings")}
-      overview={overview ? <AppFrameInset>{overview}</AppFrameInset> : undefined}
+      search={search}
+      overview={drawsOverview ? <AppFrameInset>{overview}</AppFrameInset> : undefined}
       head={frame.phone ? undefined : <AppFramePageHead title="Settings" size="sm" gap="sm" />}
     >
       {shown ? (

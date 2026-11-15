@@ -33,3 +33,22 @@ type SettingsPlace = Extract<PlaceId, `settings-${string}`>
 export const settings: Step[] = [...settingsAt("settings-appearance"), { wait: "Density" }]
 /** Settings is taller than a capture: bring Backups (its last section) into the picture. */
 export const toBackups: Step = { run: () => document.getElementById("backup-crown-jewels")?.scrollIntoView({ block: "start" }) }
+
+/** Waits, up to 6 s, until the page's text holds `words`, in view or not (a row below the fold). */
+export const inPage = (words: RegExp): Step => ({
+  run: async () => {
+    for (let i = 0; i < 60 && !words.test(document.body.textContent ?? ""); i++) await new Promise((r) => setTimeout(r, 100))
+    if (!words.test(document.body.textContent ?? "")) throw new Error(`waited 6 s for ${words} in the page`)
+  },
+})
+/** Settings has drawn its rows and its numbers, at any width: This Mac's rows and its sessions line, or (medium) the section list. */
+export const settingsDrawn: Step[] = [
+  inPage(/Auto-lock|Import and export/),
+  {
+    run: async () => {
+      const text = () => document.body.textContent ?? ""
+      for (let i = 0; i < 60 && /Other sessions/.test(text()) && !/\d+ others|None/.test(text()); i++) await new Promise((r) => setTimeout(r, 100))
+    },
+  },
+  { pause: 300 },
+]
