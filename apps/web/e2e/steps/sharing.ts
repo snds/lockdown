@@ -40,7 +40,7 @@ export async function showAnswer(answer: Locator) {
 // --- people -----------------------------------------------------------------------
 
 /** The code a person reads out to be checked. */
-export const yourCode = (page: Page): Locator => page.getByLabel("Your code")
+export const yourCode = (page: Page): Locator => page.getByLabel("Your code to paste")
 
 /** Looks someone up by their sign-in and hands back the compare dialog. */
 export async function lookUp(page: Page, login: string): Promise<Locator> {

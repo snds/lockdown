@@ -72,3 +72,60 @@ export const pressReview: Step = {
 export const review: Step[] = [...waits, pressReview, { see: '[data-slot="approval-sheet"]' }, { pause: 700 }]
 /** Lets go of focus, so the picture shows the screen and not the ring of the last press. */
 export const rest: Step = { run: () => (document.activeElement as HTMLElement | null)?.blur() }
+
+// --- Sharing (edges-7, doc 90) ----------------------------------------------------------
+
+/** Waits until a predicate holds, a frame at a time, for up to 4 s. */
+async function until<T>(find: () => T | null | undefined, what: string): Promise<T> {
+  for (let i = 0; i < 80; i++) {
+    const found = find()
+    if (found) return found
+    await new Promise((r) => setTimeout(r, 50))
+  }
+  throw new Error(`no ${what}`)
+}
+
+const shown = (e: Element) => (e as HTMLElement).getClientRects().length > 0
+const buttonNamed = (name: string | RegExp, root: ParentNode = document) =>
+  [...root.querySelectorAll<HTMLElement>("button, [role=\"button\"]")].find((b) => shown(b) && (typeof name === "string" ? (b.getAttribute("aria-label") ?? b.textContent?.trim()) === name : name.test(b.getAttribute("aria-label") ?? b.textContent?.trim() ?? "")))
+
+/** Opens a row of a Sharing list (People, Vaults) by its title: its detail beside the list, or pushed over it. */
+export const openRow = (list: "People" | "Vaults", title: string): Step => ({
+  run: async () => {
+    const row = await until(() => {
+      const l = document.querySelector(`[role="list"][aria-label="${list}"]`)
+      return l && buttonNamed(title, l)
+    }, `${title} in ${list}`)
+    row.click()
+    await until(() => document.querySelector(`section[aria-label="${list}: open"]`), `${list}'s detail`)
+  },
+})
+
+/** Opens a person's row only where the detail stands beside the list (the expanded width), so a phone keeps its list. */
+export const openRowBeside = (list: "People" | "Vaults", title: string): Step => ({
+  run: async () => {
+    if (window.innerWidth < 1024) return
+    await (openRow(list, title) as { run: () => Promise<void> }).run()
+  },
+})
+
+/**
+ * Runs one of the open person's actions: the detail's own button, the phone's bottom row (COMPARE), or the
+ * top bar's ⋯ menu (CHECK WITH A PHRASE, FORGET), as the shell draws them at this width.
+ */
+export const personAction = (name: "Compare fingerprints" | "Check with a phrase" | "Forget"): Step => ({
+  run: async () => {
+    const direct = buttonNamed(name) ?? (name === "Compare fingerprints" ? buttonNamed("Compare") : undefined)
+    if (direct) {
+      direct.click()
+      return
+    }
+    const more = await until(() => buttonNamed(/^More actions for /), "the top bar's More actions")
+    more.click()
+    const item = await until(
+      () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"], [data-slot="adaptive-menu-item"]')].find((e) => shown(e) && e.textContent?.trim() === name),
+      `${name} in the menu`,
+    )
+    item.click()
+  },
+})
