@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from "react"
 
-import { Button, RadioGroup, RadioRow, TextField } from "@unicron/ui"
+import { Button, RadioGroup, RadioRow, SectionHeader, TextField } from "@unicron/ui"
 
 import { describeError } from "@/core/client"
+import { count } from "@/lib/format"
 import { foundWords, hostOf, stateWords, type Candidate } from "@/features/unlock/first-run-client"
 
 interface PickerProps {
@@ -18,17 +19,23 @@ interface PickerProps {
   label?: string
   /** The radio group's name, unique per screen. */
   name: string
+  /**
+   * Draw the label as a Section Header at this level, with the count of what
+   * was found (Settings → Server: `SERVERS FOUND 02`, brief T5); without it,
+   * a plain overline (the join form's field).
+   */
+  headingLevel?: 2 | 3
 }
 
 /**
  * The servers discovery found, as a list to pick from, with a field to
  * type one (docs/plan/39-first-run.md §1.7, §1.9 screen J, §1.11; brief T5
  * and F3): Radio Rows under the group's overline, each saying where it was
- * found and what a check found; only a ready one can be chosen. Look again
- * and Type an address are text buttons; a typed address is a Text Field
+ * found and what a check found; only a ready one can be chosen. LOOK AGAIN
+ * and TYPE ADDRESS are text buttons; a typed address is a Text Field
  * with Check. A policy that locks the choice hides the field.
  */
-export function ServerPicker({ candidates, chosen, onChoose, onCheck, onLookAgain, looking, label = "Server", name }: PickerProps) {
+export function ServerPicker({ candidates, chosen, onChoose, onCheck, onLookAgain, looking, label = "Server", name, headingLevel }: PickerProps) {
   const [typing, setTyping] = useState(false)
   const [typed, setTyped] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -49,9 +56,13 @@ export function ServerPicker({ candidates, chosen, onChoose, onCheck, onLookAgai
   const labelId = `${name}-label`
   return (
     <div className="flex flex-col gap-3">
-      <p id={labelId} className="type-overline text-text-label">
-        {label}
-      </p>
+      {headingLevel ? (
+        <SectionHeader id={labelId} level={headingLevel} title={label} count={looking && candidates.length === 0 ? undefined : count(candidates.length)} />
+      ) : (
+        <p id={labelId} className="type-overline text-text-label">
+          {label}
+        </p>
+      )}
       {candidates.length === 0 && !looking && <p className="type-caption text-text-secondary">No Lockdown server found on this computer or your network.</p>}
       {candidates.length > 0 && (
         <RadioGroup aria-labelledby={labelId} name={name} value={chosen ?? ""} onValueChange={(v) => onChoose(String(v))}>
@@ -77,12 +88,12 @@ export function ServerPicker({ candidates, chosen, onChoose, onCheck, onLookAgai
         </Button>
         {!locked && !typing && (
           <Button type="button" variant="ghost" onClick={() => setTyping(true)}>
-            Type an address
+            Type address
           </Button>
         )}
       </div>
       {!locked && typing && (
-        <form onSubmit={check} className="flex flex-col gap-3" aria-label="Type an address">
+        <form onSubmit={check} className="flex flex-col gap-3" aria-label="Type address">
           <TextField
             id={`${name}-typed`}
             label="Server address"

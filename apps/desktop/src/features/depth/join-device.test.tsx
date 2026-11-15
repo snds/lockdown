@@ -108,7 +108,7 @@ describe("screen J's ways in (brief F3)", () => {
     expect(screen.getByLabelText("Code from the other device")).toBeInTheDocument()
     expect(screen.getByText("Step 01 // 03")).toBeInTheDocument()
     // One way to name the server, not two.
-    expect(screen.queryByRole("button", { name: "Type an address" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Type address" })).not.toBeInTheDocument()
     expect(screen.getAllByRole("button", { name: "Join" })).toHaveLength(1)
   })
 

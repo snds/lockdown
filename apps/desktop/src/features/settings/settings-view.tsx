@@ -104,11 +104,7 @@ export function SettingsView({ status, onStatus, lock: _lock, onLock, onChanged,
                 <RecoveryView status={status} onChanged={onChanged} onNotice={onNotice} onEmergency={() => go("sharing-emergency")} />
               </Embedded>
             )}
-            {shown === "status" && (
-              <Embedded>
-                <StatusView status={status} onStatus={onStatus} onNotice={onNotice} />
-              </Embedded>
-            )}
+            {shown === "status" && <StatusView status={status} onStatus={onStatus} onNotice={onNotice} />}
             {shown === "server" && (
               <div className="flex flex-col gap-8">
                 {frc ? (

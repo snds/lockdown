@@ -253,14 +253,30 @@ export const SCREENS_STATES: StateDef[] = [
     answers: settingsAnswers,
     steps: [...open, ...go("recovery"), inPage(/What the drill checks/), { pause: 300 }],
   }),
-  d({ id: "desktop-status", screen: "Status", state: "Proofs", brief_row: "Status", notes: "The proofs, account and sync, this device.", steps: [...open, ...go("status")] }),
-  d({ id: "desktop-status-checked", screen: "Status", state: "Check now: passed", brief_row: "Status", notes: "Check now re-ran the audit; each line in words.", steps: [...open, ...go("status"), { click: /^Check now/ }, { wait: /signed by one of your devices/ }] }),
+  d({
+    id: "desktop-status",
+    screen: "Status",
+    state: "Proofs",
+    brief_row: "Status",
+    notes: "Brief T4 (doc 82): LOCKED, EVEN FROM US with one Field Row per proof and its VERIFIED Badge, CHECK NOW secondary in the header; ACCOUNT AND SYNC (server, login, last sync, session) with SYNC NOW as text; THIS DEVICE with the persona as a fact; DETAILS shut. No filled button.",
+    built: { area: "settings-status", screen: "proofs", kind: "undrawn" },
+    setup: onMac,
+    steps: [...open, ...go("status"), inPage(/Locked, even from us/), { pause: 300 }],
+  }),
+  d({
+    id: "desktop-status-checked",
+    screen: "Status",
+    state: "Check now: passed",
+    brief_row: "Status",
+    notes: "CHECK NOW passed: the rows stay as they are, with no message; the check's lines are under DETAILS, opened here.",
+    steps: [...open, ...go("status"), { click: /^Check now/ }, { pause: 400 }, { click: /^Details/ }, { wait: /signed by one of your devices/ }],
+  }),
   d({
     id: "desktop-status-check-failed",
     screen: "Status",
     state: "Check now: failed",
     brief_row: "Status",
-    notes: "A check failed, in plain words.",
+    notes: "CHECK NOW failed: a compact critical Banner under the header, in the core's words and what to do.",
     answers: () => ({ audit: () => fail("refused", "The server's public log doesn't include your account's newest key. Sync again; if it still differs, see Help → Key transparency.") }),
     steps: [...open, ...go("status"), { click: /^Check now/ }, { wait: /public log doesn't include/ }],
   }),
@@ -563,27 +579,88 @@ export const SCREENS_STATES: StateDef[] = [
     answers: settingsAnswers,
     steps: [...open, ...go("recovery"), { click: "Open", nth: 0 }, DIALOG, { wait: "Done", role: "button" }, { pause: 300 }],
   }),
-  d({ id: "desktop-status-no-account", screen: "Status", state: "No account", brief_row: "Status", notes: "This device only: Log in or Register.", answers: (w) => ({ status: () => ({ ...status(w), account: null }), unlock: () => ({ ...status(w), account: null }), unlock_with_password: () => ({ ...status(w), account: null }) }), steps: [...open, ...go("status")] }),
+  d({ id: "desktop-status-no-account", screen: "Status", state: "No account", brief_row: "Status", notes: "No account: one sentence, REGISTER and SIGN IN, both secondary; no CHECK NOW.", answers: (w) => ({ status: () => ({ ...status(w), account: null }), unlock: () => ({ ...status(w), account: null }), unlock_with_password: () => ({ ...status(w), account: null }) }), steps: [...open, ...go("status")] }),
   d({ id: "desktop-status-register", screen: "Status", state: "Register an account", brief_row: "Status", notes: "Adding an account later, from Status.", answers: (w) => ({ status: () => ({ ...status(w), account: null }), unlock: () => ({ ...status(w), account: null }), unlock_with_password: () => ({ ...status(w), account: null }) }), steps: [...open, ...go("status"), { click: /^Register/ }, DIALOG] }),
-  d({ id: "desktop-status-split", screen: "Status", state: "Mirror disagrees", brief_row: "Status", notes: "A mirror saw a different log: the split-view warning (D327, D328).", answers: (w) => ({ status: () => {
-    const s = status(w)
-    s.account!.transparency!.mirrors = [{ url: "https://kt.witness.example", named_by: "settings", at: ago(0.01), state: "split", message: "The mirror has a different log at size 48,209." }]
-    return s
-  } }), steps: [...open, ...go("status")] }),
-  d({ id: "desktop-settings-server", screen: "Settings → Server", state: "Found servers", brief_row: "Settings", notes: "What discovery found (the server in use, one on the network, one that needs https), Look again, and a typed address (doc 39 §1.11).", steps: [...settingsAt("settings-server"), { wait: /nas\.rivera\.example/ }, { run: () => document.getElementById("server-settings-title")?.scrollIntoView({ block: "start" }) }, { pause: 200 }] }),
-  d({ id: "desktop-settings-server-local", screen: "Settings → Server", state: "Kept on this computer", brief_row: "Settings", notes: "A local account: the vault is kept on this computer only; no server words above it until one is found.", setup: (w) => { w.device = { ...w.device, local: true } }, steps: [...settingsAt("settings-server"), { wait: /kept on this computer only/ }, { run: () => document.getElementById("server-settings-title")?.scrollIntoView({ block: "start" }) }, { pause: 200 }] }),
+  d({ id: "desktop-status-split", screen: "Status", state: "Mirror disagrees", brief_row: "Status", notes: "A mirror saw a different log: one critical Banner with D328's whole sentence and the mirror's words (D327, D375); no LOG MIRRORS row.", built: { area: "settings-status", screen: "split", kind: "undrawn" }, setup: onMac, answers: (w) => {
+    const split = () => {
+      const s = status(w)
+      s.account!.transparency!.mirrors = [{ url: "https://kt.witness.example", named_by: "settings", at: ago(0.01), state: "split", message: "The mirror has a different log at size 48,209." }]
+      return s
+    }
+    const opened = () => {
+      w.lock = { ...w.lock, locked: false, reason: null, idle_secs: 0 }
+      return split()
+    }
+    return { status: split, unlock: opened, unlock_with_password: opened }
+  }, steps: [...open, ...go("status"), inPage(/doesn't match a mirror/), { pause: 300 }] }),
+  d({
+    id: "desktop-status-sign-in",
+    screen: "Status",
+    state: "Sign in again",
+    brief_row: "Status",
+    notes: "The server wouldn't renew this device's session: the shell's critical Banner on Status opens the SIGN IN form (Server, Login name, Master password, Secret Key), a 640 dialog or a phone sheet.",
+    built: { area: "settings-status", screen: "sign-in", kind: "undrawn" },
+    setup: onMac,
+    answers: (w) => {
+      const ended = () => {
+        const s = status(w)
+        s.account!.sign_in = { reason: "idle", message: "This device went unused for longer than the server allows, so its session can't be renewed. Sign in again with your master password." }
+        return s
+      }
+      return { status: ended, unlock: ended, unlock_with_password: ended }
+    },
+    steps: [...open, ...go("status"), inPage(/Lockdown isn't syncing/), { click: "Sign in", role: "button" }, DIALOG, { wait: "Login name" }, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-settings-server",
+    screen: "Settings → Server",
+    state: "Found servers",
+    brief_row: "Settings",
+    notes: "Brief T5 (doc 82): YOUR VAULT \"Syncs with\" the host and LEARN MORE; SERVERS FOUND 03 as Radio Rows (in use, on the network, needs https), LOOK AGAIN and TYPE ADDRESS; then THIS SERVER: RESTORE DRILL with its Badge, LOG MIRRORS NN, Your own mirrors and SAVE MIRRORS.",
+    built: { area: "settings-server", screen: "discovery", kind: "undrawn" },
+    setup: onMac,
+    steps: [...settingsAt("settings-server"), { wait: /nas\.rivera\.example/ }, inPage(/Restore drill/), { pause: 300 }],
+  }),
+  d({ id: "desktop-settings-server-local", screen: "Settings → Server", state: "Kept on this computer", brief_row: "Settings", notes: "A local account: YOUR VAULT \"On this computer only\", what discovery found, and no This server.", setup: (w) => { w.device = { ...w.device, local: true } }, steps: [...settingsAt("settings-server"), { wait: /On this computer only/ }, { wait: /nas\.rivera\.example/ }, { pause: 200 }] }),
+  d({
+    id: "desktop-settings-server-confirm",
+    screen: "Settings → Server",
+    state: "Confirm the server's key",
+    brief_row: "Settings",
+    notes: "Choosing a found server asks first: \"Use nas.rivera.example:8443?\", ADDRESS, FOUND and SERVER KEY in DigitGroups, the one sentence, focus on CANCEL and USE THIS SERVER (a review 560 dialog; a sheet on a phone).",
+    built: { area: "settings-server", screen: "confirm-key", kind: "undrawn" },
+    setup: (w) => {
+      onMac()
+      w.device = { ...w.device, local: true }
+    },
+    steps: [...settingsAt("settings-server"), { click: /^nas\.rivera\.example/ }, DIALOG, { wait: "Use this server", role: "button" }, { pause: 300 }],
+  }),
   d({
     id: "desktop-settings-server-move",
     screen: "Settings → Server",
     state: "Move to your own server",
     brief_row: "Settings",
-    notes: "A local account moving to a found server: after its key is confirmed, the login there and the master password (doc 39 §1.11).",
+    notes: "A local account moving to a found server, after its key is confirmed: \"Move your vault to\" the host, the login there, the master password, the caption, MOVE MY VAULT (a 640 dialog; on a phone the section holds the form and MOVE MY VAULT ends the bottom row).",
+    built: { area: "settings-server", screen: "move", kind: "undrawn" },
     setup: (w) => {
+      onMac()
       w.device = { ...w.device, local: true }
     },
-    steps: [...settingsAt("settings-server"), { click: /^nas\.rivera\.example/ }, DIALOG, { click: "Continue", role: "button" }, { wait: /Your login on/ }],
+    steps: [...settingsAt("settings-server"), { click: /^nas\.rivera\.example/ }, DIALOG, { click: "Use this server", role: "button" }, { wait: /Move your vault to/ }, { wait: "Login on this server" }, { pause: 300 }],
   }),
-  d({ id: "desktop-status-local", screen: "Status", state: "Kept on this computer", brief_row: "Status", notes: "A local account: this computer's proofs, and one line about sync (doc 39 §1.8).", setup: (w) => { w.device = { ...w.device, local: true } }, steps: [...open, ...go("status"), { wait: /kept on this computer only/ }] }),
+  d({
+    id: "desktop-status-local",
+    screen: "Status",
+    state: "Kept on this computer",
+    brief_row: "Status",
+    notes: "A local account (doc 39 §1.8, brief T4): this computer's proofs, no server words; SYNC holds \"Your vault is kept on this computer only.\" and SET UP SYNC.",
+    built: { area: "settings-status", screen: "local", kind: "undrawn" },
+    setup: (w) => {
+      onMac()
+      w.device = { ...w.device, local: true }
+    },
+    steps: [...open, ...go("status"), { wait: /kept on this computer only/ }, { pause: 300 }],
+  }),
   d({ id: "desktop-settings-compact", screen: "Settings", state: "Compact density chosen", brief_row: "Settings", notes: "Appearance set to compact: the whole app tightens.", steps: [...settings, { click: "Compact" }, { pause: 300 }] }),
   d({ id: "desktop-settings-import", screen: "Import / export", state: "Import: pick a format", brief_row: "Import / export", notes: "Twenty formats; a preview before anything is kept.", steps: [...settingsAt("settings-import-export"), { click: /^Import…/ }, DIALOG] }),
   d({ id: "desktop-settings-export", screen: "Import / export", state: "Export", brief_row: "Import / export", notes: "Four file kinds plus age; crown jewels left out unless opted in.", steps: [...settingsAt("settings-import-export"), { click: /^Export…/ }, DIALOG, { pause: 400 }] }),
@@ -733,7 +810,7 @@ export const SCREENS_STATES: StateDef[] = [
     screen: "Status",
     state: "This device was revoked",
     brief_row: "Status",
-    notes: "Another device revoked this one: the password doesn't bring it back, so Status offers no Log in again; it joins again as a new device (doc 35 §1).",
+    notes: "Another device revoked this one: a critical Banner in the core's sentence and no sign-in, since the password doesn't bring it back; it joins again as a new device (doc 35 §1).",
     answers: (w) => {
       const revoked = () => {
         const s = status(w)

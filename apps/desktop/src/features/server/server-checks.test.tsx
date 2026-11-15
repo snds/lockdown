@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { vi } from "vitest"
 
@@ -42,7 +42,9 @@ describe("Settings → This server", () => {
     )
     expect(await screen.findByText(/last proved its backup restores on 2026-10-18/)).toBeInTheDocument()
     expect(await screen.findByText(/Agrees with this server's log \(its copy has 12 entries\)/)).toBeInTheDocument()
-    expect(screen.getByText(/named by the server/)).toBeInTheDocument()
+    expect(screen.getByText("Named by the server")).toBeInTheDocument()
+    expect(screen.getByText("Passed")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: /Log mirrors/ })).toHaveTextContent("01")
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
 
@@ -53,8 +55,9 @@ describe("Settings → This server", () => {
         <ServerChecks onNotice={() => {}} />
       </ServerClientProvider>,
     )
-    const line = await screen.findByText(/failed: tell whoever runs the server/)
-    expect(line.className).toContain("text-destructive")
+    const row = (await screen.findByText(/failed: tell whoever runs the server/)).closest('[data-slot="field-row"]') as HTMLElement
+    // The server's word, said once, in a Badge beside its sentence.
+    expect(within(row).getByText("Failed")).toBeInTheDocument()
   })
 
   it("warns in words on a split view", async () => {
@@ -93,7 +96,17 @@ describe("Settings → This server", () => {
     await userEvent.type(screen.getByLabelText("Your own mirrors"), "https://a.example{enter}https://b.example")
     await userEvent.click(screen.getByRole("button", { name: "Save mirrors" }))
     expect(setKtMirrors).toHaveBeenLastCalledWith(["https://a.example", "https://b.example"])
-    expect(onNotice).toHaveBeenCalledWith("Mirrors saved. The next sync compares against them.")
+    expect(onNotice).toHaveBeenCalledWith("Mirrors saved. The next sync compares against them")
+  })
+
+  it("says a server that sends no drill report so, in a Badge", async () => {
+    render(
+      <ServerClientProvider value={fake({ restoreDrill: () => Promise.resolve({ ...drill, reported: false, last_passed: null, last_success_at: null, words: "This server doesn't report restore drills." }) })}>
+        <ServerChecks onNotice={() => {}} />
+      </ServerClientProvider>,
+    )
+    expect(await screen.findByText("This server doesn't report restore drills.")).toBeInTheDocument()
+    expect(screen.getByText("Not reported")).toBeInTheDocument()
   })
 
   it("isn't shown without a server client, and the warning is nothing without a split", () => {
