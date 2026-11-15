@@ -213,7 +213,7 @@ for (const motion of ["no-preference", "reduce"] as const) {
             if (b) {
               const opacity = getComputedStyle(b).opacity
               const after = getComputedStyle(b, "::after")
-              if (b.disabled && !b.dataset.arming && opacity === "0.6") out.covered = true
+              if (b.disabled && !b.dataset.arming && opacity === "0.5") out.covered = true
               if (b.disabled && b.dataset.arming && out.covered) out.arming.push(`${opacity} ${after.animationName} ${after.content}`)
               if (!b.disabled && out.arming.length > 0) {
                 out.armed = { opacity, arming: "arming" in b.dataset }
@@ -564,7 +564,7 @@ test("a sign-up field is offered a strong password under the site's published ru
   await page.focus("#pass");
   const menu = await lockdownFrame(page);
   const suggest = menu.getByRole("button", { name: /Use a strong password/ });
-  await expect(suggest).toContainText("Follows 1800flowers.com's password rules");
+  await expect(suggest).toContainText("Follows 1800flowers.com's rules");
   await expect(suggest).toBeEnabled();
   // Nothing is made until the pick: the fields are still empty.
   await expect(page.locator("#pass")).toHaveValue("");

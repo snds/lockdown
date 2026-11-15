@@ -114,6 +114,16 @@ async function frameStructure(frame: Frame) {
   await expect(frame.getByRole("main", { name: "Lockdown" })).toBeVisible();
 }
 
+/** Brief B2: the frame draws in Geist and Geist Mono, files from the extension's own origin. */
+async function ownFonts(frame: Frame) {
+  const faces = await frame.evaluate(async () => {
+    await document.fonts.ready;
+    return [...document.fonts].filter((f) => f.status === "loaded").map((f) => f.family.replace(/["']/g, ""));
+  });
+  // Only tokens.css declares these faces, with relative fonts/ sources: loaded, they came from the extension.
+  expect(new Set(faces)).toEqual(new Set(["Geist Variable", "Geist Mono Variable"]));
+}
+
 for (const scheme of SCHEMES) {
   test(`the fill menu has no serious or critical axe violation, its logins a list of items (${scheme})`, async () => {
     const page = await ctx.newPage();
@@ -125,6 +135,7 @@ for (const scheme of SCHEMES) {
     await expect(pick).toBeEnabled();
     await inScheme(menu, scheme);
     await frameStructure(menu);
+    await ownFonts(menu);
     const list = menu.getByRole("list");
     await expect(list).toHaveAccessibleName(`Lockdown's choices for localhost:${port}`);
     await expect(list.getByRole("listitem")).toHaveCount(await list.getByRole("button").count());
@@ -145,6 +156,7 @@ for (const scheme of SCHEMES) {
     await expect(prompt.getByRole("button", { name: "Save" })).toBeEnabled();
     await inScheme(prompt, scheme);
     await frameStructure(prompt);
+    await ownFonts(prompt);
     // The username under the question is secondary text: it must still read (R4).
     await expect(prompt.locator(".sub")).toHaveText(`reader-${scheme}`);
     expect(blocking(await axeIn(prompt))).toEqual([]);
