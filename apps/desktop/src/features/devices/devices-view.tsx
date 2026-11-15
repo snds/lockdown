@@ -111,7 +111,9 @@ export function DevicesView({ status, onChanged, onNotice, focus }: DevicesViewP
                 ref={d.id === focus ? focused : undefined}
                 tabIndex={d.id === focus ? -1 : undefined}
                 aria-current={d.id === focus ? "true" : undefined}
-                className={d.id === focus ? "bg-primary-soft edge-l outline-none" : undefined}
+                // The device you came for, as a selected row; its label takes the secondary ink there, as a selected
+                // ListRow's meta does (stone's label ink on primary-soft is 4.21:1).
+                className={d.id === focus ? "bg-primary-soft edge-l outline-none [--muted-foreground:var(--text-secondary)]" : undefined}
               >
                 <FieldRow
                   size={rowSize}
