@@ -55,7 +55,7 @@ describe("Settings → Server (brief T5, doc 82; doc 39 §1.11)", () => {
     const sheet = await screen.findByRole("dialog", { name: "Use nas.example:8443?" })
     // Moving the vault asks first: the server's key, focus on Cancel, the yes repeats the verb.
     expect(sheet).toHaveTextContent("Use nas.example:8443?")
-    expect(within(sheet).getByRole("button", { name: "Cancel" })).toHaveFocus()
+    await waitFor(() => expect(within(sheet).getByRole("button", { name: "Cancel" })).toHaveFocus())
     // The server key in DigitGroups: its six groups, as the other end shows them.
     const groups = Array.from(sheet.querySelectorAll('[data-slot="digit-groups-group"]'), (g) => g.textContent)
     expect(groups.join(" ")).toBe("12345 67890 13579 24680 11223 34455")

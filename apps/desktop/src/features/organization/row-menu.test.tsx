@@ -202,7 +202,7 @@ describe("a row's menu (brief V1, cross-app decisions §10)", () => {
     expect(within(menu).getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Restore", "History", "Delete for good"])
     await user.click(within(menu).getByRole("menuitem", { name: "Delete for good" }))
     const ask = await screen.findByRole("dialog", { name: 'Delete "gone" for good?' })
-    expect(within(ask).getByRole("button", { name: "Cancel" })).toHaveFocus()
+    await waitFor(() => expect(within(ask).getByRole("button", { name: "Cancel" })).toHaveFocus())
     await user.click(within(ask).getByRole("button", { name: "Delete for good" }))
     await waitFor(() => expect(purge).toHaveBeenCalledWith("gone", {}))
   })

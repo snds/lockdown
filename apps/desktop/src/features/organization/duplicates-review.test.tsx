@@ -100,7 +100,7 @@ describe("Duplicates", () => {
     const ask = await screen.findByRole("dialog")
     expect(ask).toHaveTextContent('Merge into "Forum old"?')
     // Focus starts on Cancel: Enter never merges by accident.
-    expect(within(ask).getByRole("button", { name: "Cancel" })).toHaveFocus()
+    await waitFor(() => expect(within(ask).getByRole("button", { name: "Cancel" })).toHaveFocus())
     expect(mergeDuplicates).not.toHaveBeenCalled()
     await user.click(within(ask).getByRole("button", { name: "Merge" }))
     await waitFor(() => expect(mergeDuplicates).toHaveBeenCalledWith("b", ["a"], {}))

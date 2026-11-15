@@ -119,7 +119,7 @@ describe("screen J's ways in (brief F3)", () => {
     await user.click(screen.getByRole("button", { name: "Sign in" }))
     const question = await screen.findByRole("dialog", { name: "Connect to vault.example?" })
     expect(question).toHaveTextContent("Only continue if you recognize this server.")
-    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus()
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus())
     await user.click(screen.getByRole("button", { name: "Cancel" }))
     expect(accountLoginSealed).not.toHaveBeenCalled()
   })

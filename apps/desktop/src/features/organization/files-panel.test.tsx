@@ -103,7 +103,7 @@ describe("files on an item", () => {
     const ask = await screen.findByRole("dialog", { name: "Remove scan.pdf?" })
     expect(ask).toHaveTextContent("Earlier versions in its history still hold the file.")
     // Focus starts on Cancel (cross-app §10); nothing is removed until the yes.
-    expect(within(ask).getByRole("button", { name: "Cancel" })).toHaveFocus()
+    await waitFor(() => expect(within(ask).getByRole("button", { name: "Cancel" })).toHaveFocus())
     expect(detach).not.toHaveBeenCalled()
     await user.click(within(ask).getByRole("button", { name: "Remove" }))
     await waitFor(() => expect(detach).toHaveBeenCalledWith("i1", "att-0", {}))

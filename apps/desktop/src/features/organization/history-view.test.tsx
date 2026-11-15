@@ -77,7 +77,7 @@ describe("an item's history (brief I6)", () => {
     const user = userEvent.setup()
     await user.click(await screen.findByRole("button", { name: "Restore version 2" }))
     const ask = await screen.findByRole("dialog", { name: "Restore version 2?" })
-    expect(within(ask).getByRole("button", { name: "Cancel" })).toHaveFocus()
+    await waitFor(() => expect(within(ask).getByRole("button", { name: "Cancel" })).toHaveFocus())
     expect(restoreVersion).not.toHaveBeenCalled()
     await user.click(within(ask).getByRole("button", { name: "Restore" }))
     await waitFor(() => expect(restoreVersion).toHaveBeenCalledWith("i1", 2, {}))
