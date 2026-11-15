@@ -6,11 +6,13 @@ import { GateProvider } from "@/app/gate"
 import { SettingsProvider } from "@/app/settings"
 import { TemplatesProvider } from "@/app/templates"
 import { ClientProvider, type Client } from "@/core/client"
-import type { GateInput, ItemSummary } from "@/core/types"
+import type { GateInput, ItemSummary, VaultView } from "@/core/types"
 import { fakeClient } from "@/test/fake-client"
 import { fakeQuick } from "@/test/fake-quick"
 import { HygieneClientProvider, type HygieneClient } from "@/features/hygiene/hygiene-client"
+import { VaultsProvider } from "@/features/organization/vaults-context"
 import { QuickClientProvider, type QuickClient } from "@/features/quick/quick-client"
+import { clearTyped, typedWords } from "@/features/vault/search-words"
 import { TEMPLATES } from "@/test/templates-fixture"
 
 import { matches, searchWords } from "./palette-model"
@@ -33,6 +35,12 @@ const row = (over: Partial<ItemSummary> & Pick<ItemSummary, "id" | "kind" | "tit
   copy: null,
   ...over,
 })
+
+/** The options in ITEMS: GO TO's places and the last row are options too, so counts look inside ITEMS. */
+const itemOptions = (): HTMLElement[] => {
+  const items = screen.queryByRole("group", { name: "Items" })
+  return items ? within(items).queryAllByRole("option") : []
+}
 
 const ROWS: ItemSummary[] = [
   row({ id: "l1", kind: "login", title: "Forum", site: "https://forum.example.com/login", username: "me", subtitle: "me", copy: { field_id: "pw", how: "secret", label: "password" } }),
@@ -99,8 +107,8 @@ describe("the quick-access palette (D111)", () => {
     render(<Harness client={fakeClient({ templates: () => Promise.resolve(TEMPLATES), copySecret })} rows={rows} onOpen={() => {}} onNotice={() => {}} />)
     const user = userEvent.setup()
     await user.keyboard("{Control>}k{/Control}")
-    const input = await screen.findByPlaceholderText(/Search titles/)
-    const shown = () => screen.queryAllByRole("option").map((o) => o.textContent ?? "")
+    const input = await screen.findByPlaceholderText(/Search your items/)
+    const shown = () => itemOptions().map((o) => o.textContent ?? "")
     const search = async (text: string) => {
       await user.clear(input)
       if (text) await user.type(input, text)
@@ -123,7 +131,7 @@ describe("the quick-access palette (D111)", () => {
     // An empty search lists both, each with an explicit value, its copy described with its key.
     await search("")
     await waitFor(() => expect(shown()).toHaveLength(2))
-    for (const option of screen.getAllByRole("option")) {
+    for (const option of itemOptions()) {
       expect(option).toHaveAttribute("data-value", expect.stringMatching(/^[0-9a-f-]{36}$/))
       expect(option).toHaveAttribute("aria-keyshortcuts", "Control+Enter")
       expect(option).toHaveAccessibleDescription("Copy password, Control Enter")
@@ -136,7 +144,7 @@ describe("the quick-access palette (D111)", () => {
     render(<Harness client={fakeClient({ templates: () => Promise.resolve(TEMPLATES), copySecret })} onOpen={onOpen} onNotice={() => {}} />)
     const user = userEvent.setup()
     await user.keyboard("{Control>}k{/Control}")
-    await user.type(await screen.findByPlaceholderText(/Search titles/), "home")
+    await user.type(await screen.findByPlaceholderText(/Search your items/), "home")
     // The button is hidden from assistive tech (the result describes it); a pointer still clicks it.
     const home = await screen.findByRole("option", { description: "Copy Wi-Fi password, Control Enter" })
     await user.click(home.querySelector<HTMLElement>('[data-slot="command-item-action"]')!)
@@ -149,7 +157,7 @@ describe("the quick-access palette (D111)", () => {
     render(<Harness client={fakeClient({ templates: () => Promise.resolve(TEMPLATES) })} onOpen={onOpen} onNotice={() => {}} />)
     const user = userEvent.setup()
     await user.keyboard("{Control>}k{/Control}")
-    const input = await screen.findByPlaceholderText("Search titles, usernames, websites, kinds")
+    const input = await screen.findByPlaceholderText("Search your items and places")
     expect(screen.queryByText("Old plans")).not.toBeInTheDocument()
     await user.type(input, "home")
     await waitFor(() => expect(screen.queryByText("Forum")).not.toBeInTheDocument())
@@ -164,7 +172,7 @@ describe("the quick-access palette (D111)", () => {
     render(<Harness client={fakeClient({ templates: () => Promise.resolve(TEMPLATES), copySecret })} onOpen={() => {}} onNotice={onNotice} />)
     const user = userEvent.setup()
     await user.keyboard("{Control>}k{/Control}")
-    await user.type(await screen.findByPlaceholderText(/Search titles/), "forum")
+    await user.type(await screen.findByPlaceholderText(/Search your items/), "forum")
     await user.keyboard("{Control>}{Enter}{/Control}")
     await waitFor(() => expect(copySecret).toHaveBeenCalledWith("l1", "pw", 30, {}))
     expect(onNotice).toHaveBeenCalledWith("Copied the password for Forum, clears in 30 s")
@@ -208,10 +216,10 @@ describe("the quick-access palette (D111)", () => {
     render(<Harness client={fakeClient({ templates: () => Promise.resolve(TEMPLATES) })} onOpen={() => {}} onNotice={() => {}} quick={fakeQuick(ROWS, {}, { forun: ["l1"] })} />)
     const user = userEvent.setup()
     await user.keyboard("{Control>}k{/Control}")
-    const input = await screen.findByPlaceholderText(/Search titles/)
+    const input = await screen.findByPlaceholderText(/Search your items/)
     await waitFor(() => expect(input).toHaveFocus())
     await user.type(input, "forun")
-    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1))
+    await waitFor(() => expect(itemOptions()).toHaveLength(1))
     expect(screen.getByRole("option", { name: /Forum/ })).toHaveTextContent("Close match")
   })
 
@@ -229,10 +237,12 @@ describe("the quick-access palette (D111)", () => {
     )
     const user = userEvent.setup()
     await user.keyboard("{Control>}k{/Control}")
-    await user.type(await screen.findByPlaceholderText(/Search titles/), "bank")
-    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1))
+    await user.type(await screen.findByPlaceholderText(/Search your items/), "bank")
+    await waitFor(() => expect(itemOptions()).toHaveLength(1))
     await user.keyboard("{Alt>}{Enter}{/Alt}")
-    expect(await screen.findByLabelText("Code 4 8 2 9 1 3")).toBeInTheDocument()
+    // A compact CodeDisplay (brief X4), its digits in groups, with its own copy.
+    const code = await screen.findByRole("button", { name: "Copy code" })
+    expect(code.closest('[data-slot="code-display"]')?.querySelector('[data-slot="code-display-code"]')?.textContent?.replace(/\s/g, "")).toBe("482913")
     expect(quickCode).toHaveBeenCalledWith("c1", "code.0", {})
     expect(protect).toHaveBeenCalledWith(true)
     // The action bar offers it by pointer too; a login has no code to show.
@@ -245,15 +255,15 @@ describe("the quick-access palette (D111)", () => {
     render(<Harness client={fakeClient({ templates: () => Promise.resolve(TEMPLATES) })} onOpen={() => {}} onNotice={onNotice} quick={fakeQuick(ROWS, { quickFill })} />)
     const user = userEvent.setup()
     await user.keyboard("{Control>}k{/Control}")
-    await user.type(await screen.findByPlaceholderText(/Search titles/), "forum")
-    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1))
+    await user.type(await screen.findByPlaceholderText(/Search your items/), "forum")
+    await waitFor(() => expect(itemOptions()).toHaveLength(1))
     await screen.findByRole("button", { name: /Fill in the browser/ })
     await user.keyboard("{Shift>}{Enter}{/Shift}")
     await waitFor(() => expect(quickFill).toHaveBeenCalledWith("l1"))
     expect(onNotice).toHaveBeenCalledWith(expect.stringContaining("Opened forum.example.com"))
     await user.keyboard("{Control>}k{/Control}")
-    await user.type(await screen.findByPlaceholderText(/Search titles/), "cold")
-    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1))
+    await user.type(await screen.findByPlaceholderText(/Search your items/), "cold")
+    await waitFor(() => expect(itemOptions()).toHaveLength(1))
     expect(screen.queryByRole("button", { name: /Fill in the browser/ })).not.toBeInTheDocument()
   })
 
@@ -274,15 +284,151 @@ describe("the quick-access palette (D111)", () => {
       </ClientProvider>,
     )
     const user = userEvent.setup()
-    const input = await screen.findByPlaceholderText(/Search titles/)
+    const input = await screen.findByPlaceholderText(/Search your items/)
     await waitFor(() => expect(input).toHaveFocus())
     await user.type(input, "home")
-    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1))
+    await waitFor(() => expect(itemOptions()).toHaveLength(1))
     await user.keyboard("{Enter}")
     await waitFor(() => expect(openMain).toHaveBeenCalledWith("w1"))
     expect(hide).toHaveBeenCalled()
     await user.type(input, "x")
     await user.keyboard("{Escape}")
     expect(hide).toHaveBeenCalledTimes(2)
+  })
+
+  describe("GO TO and the last row (brief X4)", () => {
+    const VAULTS: VaultView[] = [
+      { id: "v1", name: "Personal", primary: true, items: 3, trash_days: 30, folders: [] },
+      { id: "v2", name: "Family", primary: false, items: 1, trash_days: 30, folders: [] },
+    ]
+    function GoHarness({ onGo, onLock, surface }: { onGo: (id: string) => void; onLock: () => void; surface?: "desktop" | "web" }) {
+      const [open, setOpen] = useState(true)
+      return (
+        <ClientProvider value={fakeClient({ templates: () => Promise.resolve(TEMPLATES) })}>
+          <SettingsProvider>
+            <TemplatesProvider>
+              <GateProvider>
+                <QuickClientProvider value={fakeQuick(ROWS)}>
+                  <VaultsProvider value={{ vaults: VAULTS, reload: () => {} }}>
+                    <QuickPalette open={open} onOpenChange={setOpen} rows={ROWS} onOpen={() => {}} onNotice={() => {}} onGo={onGo} onLock={onLock} surface={surface} />
+                  </VaultsProvider>
+                </QuickClientProvider>
+              </GateProvider>
+            </TemplatesProvider>
+          </SettingsProvider>
+        </ClientProvider>
+      )
+    }
+    const goTo = () => screen.queryByRole("group", { name: "Go to" })
+    const places = () => (goTo() ? within(goTo()!).getAllByRole("option").map((o) => o.textContent ?? "") : [])
+
+    it("lists nothing before a word, then the places whose name matches, each vault, and Lock", async () => {
+      const onGo = vi.fn()
+      const onLock = vi.fn()
+      render(<GoHarness onGo={onGo} onLock={onLock} />)
+      const user = userEvent.setup()
+      const input = await screen.findByPlaceholderText("Search your items and places")
+      expect(goTo()).not.toBeInTheDocument()
+      // One letter names nearly every place: GO TO starts at two.
+      await user.type(input, "b")
+      await waitFor(() => expect(screen.getByRole("option", { name: "Search everything for “b”" })).toBeInTheDocument())
+      expect(goTo()).not.toBeInTheDocument()
+      await user.clear(input)
+      await user.type(input, "brow")
+      await waitFor(() => expect(places()).toEqual([expect.stringMatching(/^Browsers\s*Settings/)]))
+      await user.clear(input)
+      await user.type(input, "family")
+      await waitFor(() => expect(places()).toEqual([expect.stringMatching(/^Family\s*Vaults/)]))
+      await user.clear(input)
+      await user.type(input, "lock")
+      await waitFor(() => expect(places()).toEqual(["Lock"]))
+      // The fake index forgives "lock" into items too, so the highlight starts on ITEMS: point at Lock.
+      await user.click(within(goTo()!).getByRole("option", { name: "Lock" }))
+      expect(onLock).toHaveBeenCalledTimes(1)
+      expect(onGo).not.toHaveBeenCalled()
+      // Lock closes the palette first (brief X5).
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Quick access" })).not.toBeInTheDocument())
+    })
+
+    it("goes to the place on Enter, by its id, and closes", async () => {
+      const onGo = vi.fn()
+      render(<GoHarness onGo={onGo} onLock={() => {}} />)
+      const user = userEvent.setup()
+      await user.type(await screen.findByPlaceholderText("Search your items and places"), "health")
+      const health = await screen.findByRole("option", { name: /^Health$/ })
+      await user.click(health)
+      expect(onGo).toHaveBeenCalledWith("health")
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Quick access" })).not.toBeInTheDocument())
+    })
+
+    it("lists only the places this build draws: the web vault has no Browsers section", async () => {
+      render(<GoHarness onGo={() => {}} onLock={() => {}} surface="web" />)
+      const user = userEvent.setup()
+      const input = await screen.findByPlaceholderText("Search your items and places")
+      await user.type(input, "browsers")
+      await waitFor(() => expect(screen.getByRole("option", { name: /Search everything/ })).toBeInTheDocument())
+      expect(goTo()).not.toBeInTheDocument()
+      await user.clear(input)
+      await user.type(input, "this")
+      await waitFor(() => expect(places()).toEqual([expect.stringMatching(/^This browser\s*Settings/)]))
+    })
+
+    it("the last row opens Search with the words", async () => {
+      const onGo = vi.fn()
+      render(<GoHarness onGo={onGo} onLock={() => {}} />)
+      const user = userEvent.setup()
+      await user.type(await screen.findByPlaceholderText("Search your items and places"), "netf")
+      // Nothing saved matches: the line says so, and GO TO and the last row still show.
+      expect(await screen.findByText("No matches. Try fewer letters.")).toBeInTheDocument()
+      const last = screen.getByRole("option", { name: "Search everything for “netf”" })
+      expect(last).toHaveAttribute("aria-selected", "true")
+      await user.keyboard("{Enter}")
+      expect(onGo).toHaveBeenCalledWith("search")
+      expect(typedWords()).toBe("netf")
+      clearTyped()
+    })
+
+    it("⌘↵ on a place or the last row does nothing: it copies items only", async () => {
+      const onGo = vi.fn()
+      const onLock = vi.fn()
+      render(<GoHarness onGo={onGo} onLock={onLock} />)
+      const user = userEvent.setup()
+      await user.type(await screen.findByPlaceholderText("Search your items and places"), "lock")
+      await waitFor(() => expect(places()).toEqual(["Lock"]))
+      const lock = within(goTo()!).getByRole("option", { name: "Lock" })
+      await user.hover(lock)
+      await waitFor(() => expect(lock).toHaveAttribute("aria-selected", "true"))
+      await user.keyboard("{Control>}{Enter}{/Control}")
+      expect(onLock).not.toHaveBeenCalled()
+      expect(onGo).not.toHaveBeenCalled()
+    })
+
+    it("marks the matched words in an item's title and its mono line, a crown jewel's in its title only", async () => {
+      render(<GoHarness onGo={() => {}} onLock={() => {}} />)
+      const user = userEvent.setup()
+      const input = await screen.findByPlaceholderText("Search your items and places")
+      await user.type(input, "forum")
+      await waitFor(() => expect(itemOptions()).toHaveLength(1))
+      const marks = Array.from(itemOptions()[0]!.querySelectorAll("mark")).map((m) => m.textContent)
+      expect(marks).toEqual(["Forum", "forum"])
+      await user.clear(input)
+      await user.type(input, "cold")
+      await waitFor(() => expect(itemOptions()).toHaveLength(1))
+      const wallet = itemOptions()[0]!
+      expect(Array.from(wallet.querySelectorAll("mark")).map((m) => m.textContent)).toEqual(["Cold"])
+      expect(wallet.querySelector('[data-slot="list-row-meta"]')).toBeNull()
+    })
+
+    it("names the keys for the highlighted item under the list", async () => {
+      render(<GoHarness onGo={() => {}} onLock={() => {}} />)
+      const user = userEvent.setup()
+      await user.type(await screen.findByPlaceholderText("Search your items and places"), "bank")
+      const keys = await screen.findByRole("group", { name: "Keys for Bank code" })
+      expect(keys).toHaveTextContent(/Open/)
+      expect(keys).toHaveTextContent(/Copy code/)
+      expect(within(keys).getByRole("button", { name: /Show code/ })).toBeInTheDocument()
+      // No browser to fill in from a code.
+      expect(within(keys).queryByRole("button", { name: /Fill in the browser/ })).not.toBeInTheDocument()
+    })
   })
 })

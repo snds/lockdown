@@ -33,6 +33,7 @@ import { folderPaths, inScope, rowMenuOffers, scopeTitle, targetOf, type Organiz
 import { RowMenuItems } from "@/features/organization/row-menu"
 import { useRowMenuLayers } from "@/features/organization/row-menu-layers"
 import { useVaults } from "@/features/organization/vaults-context"
+import { useOfferRoutes } from "@/features/palette/palette-routes"
 import { count, countName } from "@/lib/format"
 
 import { kindWord } from "./detail-model"
@@ -55,7 +56,7 @@ import {
   type RowGroup,
   type SortKey,
 } from "./list-model"
-import { searchWith } from "./search-words"
+import { rememberWhere, searchWith } from "./search-words"
 
 interface VaultViewProps {
   view: ListView
@@ -314,6 +315,14 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
   const [version, setVersion] = useState(0)
   const [editor, setEditor] = useState<EditorTarget | null>(null)
   const findings = useFindings(!frame.phone, rows)
+  // Quick access's GO TO goes through the shell's go (palette-routes.ts).
+  useOfferRoutes()
+  // Search opened from here offers this list as its second chip, and Escape comes back (brief X4).
+  const whereKey = JSON.stringify(nav)
+  useEffect(() => {
+    rememberWhere(JSON.parse(whereKey) as typeof nav)
+    return () => rememberWhere(null)
+  }, [whereKey])
 
   // Letter headers belong to All items, as Desktop / 01 draws it; a view or a scope is one list (Desktop / 03) unless grouped by type.
   const letters = view === "all" && !scope

@@ -1,4 +1,4 @@
-import { Icon, ListRow, SwipeRow } from "@unicron/ui"
+import { Highlight, Icon, ListRow, SwipeRow } from "@unicron/ui"
 import { CrownJewelMark } from "@unicron/ui/security/crown-jewel"
 
 import { useCallback, useRef, type ReactNode } from "react"
@@ -31,6 +31,11 @@ interface ItemRowProps {
    * the row's menu (WCAG 2.5.7). Left out, the row does not swipe.
    */
   swipe?: RowSwipeHandlers | null
+  /**
+   * Search's words (brief X4): marked with unicron's Highlight in the title
+   * and the mono line. A crown jewel has no mono line, so only its title is.
+   */
+  highlight?: string
 }
 
 /**
@@ -42,7 +47,7 @@ interface ItemRowProps {
  * button. The title is the row's one button: it opens the item; the ⋯
  * beside it is a separate control.
  */
-export function ItemRow({ row, selected, onSelect, actions, words, position, swipe = null }: ItemRowProps) {
+export function ItemRow({ row, selected, onSelect, actions, words, position, swipe = null, highlight }: ItemRowProps) {
   const { settings } = useSettings()
   const item = useRef<HTMLLIElement>(null)
   // MORE opens the row's own menu, as its right click does. After the tap's own events, when the row has closed.
@@ -60,6 +65,8 @@ export function ItemRow({ row, selected, onSelect, actions, words, position, swi
         {row.favourite && <Icon name="star--filled" label="Favorite" />}
       </>
     ) : undefined
+  const line = monoLine(row)
+  const mark = highlight?.trim() || undefined
   const posinset = position ? position.index + 1 : undefined
   const listRow = (
     <ListRow
@@ -69,9 +76,9 @@ export function ItemRow({ row, selected, onSelect, actions, words, position, swi
       render={swipes ? <div /> : <li aria-posinset={posinset} aria-setsize={position?.of} />}
       selected={selected}
       onClick={() => onSelect(row.id)}
-      title={title}
+      title={mark ? <Highlight text={title} query={mark} /> : title}
       marks={marks}
-      meta={monoLine(row) || undefined}
+      meta={line ? mark ? <Highlight text={line} query={mark} /> : line : undefined}
       status={words ?? rowWords(row, { view: "all" })}
       menu={actions}
       menuLabel="More for"

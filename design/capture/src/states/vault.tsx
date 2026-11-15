@@ -16,6 +16,11 @@ import { open, webOpen } from "./steps/screens"
 import { DIALOG, MENU, answerGate, go, openSwitcher, scrollContent, starts } from "./steps/shell"
 import { besideSidebar, focusOrgRow, itemAction, openBranch, openItem, openItemMenu, orgMenu, orgMenuRow, passkeyDetails, reveal, swipeRow } from "./steps/vault"
 
+/** Search and Quick access by width class (brief X4): Quick access is not offered on a phone. */
+const PHONE = WIDTHS.filter((x) => x < 600)
+const WIDE = WIDTHS.filter((x) => x >= 1024)
+const NOT_PHONE = WIDTHS.filter((x) => x >= 600)
+
 /** The failed-reload state's switch: the list reads until a step turns it on. */
 const reload = { broken: false }
 
@@ -47,8 +52,52 @@ export const VAULT_STATES: StateDef[] = [
     steps: [...open, { run: () => void (reload.broken = true) }, { click: /^More for Alex Rivera/ }, { click: /^(Add to favorites|Favorite)$/, role: "menuitem" }, { wait: "Couldn't load your items." }, { run: () => (document.activeElement as HTMLElement | null)?.blur() }, { pause: 300 }],
   }),
   d({ id: "desktop-vault-long", built: { area: "items", screen: "long", kind: "undrawn" }, screen: "Vault", state: "A long list", brief_row: "Vault", notes: "A vault of 300 rows: only the rows in view are drawn (brief X6), the letter headers stay sticky.", setup: longVault, steps: open }),
-  d({ id: "desktop-vault-search", screen: "Vault", state: "Search", brief_row: "Vault", notes: "A search narrowing the list: the Search place (typing in All items' field opens it).", steps: [...open, ...go("search"), { fill: /^Search/, value: "blue" }] }),
-  d({ id: "desktop-vault-search-none", screen: "Vault", state: "Search, no match", brief_row: "Vault", notes: "A search with no match.", steps: [...open, ...go("search"), { fill: /^Search/, value: "zebra" }] }),
+  d({
+    id: "desktop-vault-search",
+    built: { area: "search", screen: "results", kind: "drawn" },
+    screen: "Search",
+    state: "Results",
+    brief_row: "Vault",
+    notes: "Mobile / 15: the words typed, the results grouped by vault with counts, the words marked (brief X4). The search button current, no tab active.",
+    widths: PHONE,
+    steps: [...open, ...go("search"), { fill: /^Search/, value: "key" }, { pause: 200 }],
+  }),
+  d({
+    id: "desktop-vault-search-wide",
+    built: { area: "search", screen: "results", kind: "undrawn" },
+    screen: "Search",
+    state: "Results beside the detail",
+    brief_row: "Vault",
+    notes: "Desktop / 11's frame with results: the field and the groups in the list pane, a result open beside it; SEARCH in the breadcrumb, NN RESULTS in the status line (brief X4).",
+    widths: WIDE,
+    steps: [...open, ...go("search"), { fill: /^Search/, value: "key" }, ...openItem("Studio deploy key"), { run: () => (document.activeElement as HTMLElement | null)?.blur() }, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-vault-search-none",
+    built: { area: "search", screen: "no-results", kind: "drawn" },
+    screen: "Search",
+    state: "No results",
+    brief_row: "Vault",
+    notes: "Mobile / 14, Desktop / 11: SEARCH // 00, No item for {words}., NEW LOGIN with the words as the website (the drawn RESULTS // 00 and ITEMS // SEARCH change, undrawn 6.3).",
+    steps: [...open, ...go("search"), { fill: /^Search/, value: "zebra" }, { pause: 200 }],
+  }),
+  d({
+    id: "desktop-vault-search-recent",
+    built: { area: "search", screen: "recently-used", kind: "undrawn" },
+    screen: "Search",
+    state: "Before typing",
+    brief_row: "Vault",
+    notes: "Before typing: the field in focus and RECENTLY USED, five at most, from what this device used (brief X4).",
+    steps: [...open, ...go("search"), { pause: 300 }],
+  }),
+  d({
+    id: "desktop-vault-search-scoped",
+    screen: "Search",
+    state: "From a vault",
+    brief_row: "Vault",
+    notes: "Opened from the Family vault: EVERYWHERE and FAMILY; FAMILY chosen, SEARCH // FAMILY in the breadcrumb (brief X4).",
+    steps: [...open, ...go("vault-family"), ...go("search"), { click: /^Family/, role: "radio" }, { fill: /^Search/, value: "home" }, { pause: 200 }],
+  }),
   d({ id: "desktop-vault-sort-menu", built: { area: "items", screen: "sort-menu", kind: "undrawn" }, screen: "Vault", state: "Sort and group", brief_row: "Vault", notes: "Sort A to Z, recently changed or used; group by letter (A to Z only), by type or none. Kept on this device.", steps: [...open, { click: "Sort and group" }, { wait: "By type" }] }),
   d({
     id: "desktop-vault-ungrouped",
@@ -169,15 +218,45 @@ export const VAULT_STATES: StateDef[] = [
   }),
   d({ id: "desktop-security-filled", screen: "Security", state: "Findings in three groups", brief_row: null, notes: "Fix now, fix soon, worth doing; the breach check and account alerts.", steps: [...open, ...go("security")] }),
   d({ id: "desktop-security-empty", screen: "Security", state: "Nothing to fix", brief_row: null, notes: "No findings.", answers: () => ({ security_report: () => ({ findings: [], dismissed: [], counts: { urgent: 0, important: 0, suggested: 0 }, passwords: 19, breach: { enabled: true, source: "Pwned Passwords (k-anonymity range API)", checked_at: Math.floor(Date.now() / 1000) - 600, checked: 19, unchecked: 0, message: null }, alerts: { account: true, checked_at: Math.floor(Date.now() / 1000) - 600, message: null }, directory: { source: "2fa.directory", licence: "MIT", date: "2026-10-01", sites: 3412 }, generated_at: Math.floor(Date.now() / 1000) }) }), steps: [...open, ...go("security")] }),
-  d({ id: "desktop-palette", screen: "Quick-access palette", state: "Open", brief_row: "Quick-access palette", notes: "⌘K / Ctrl+K: recent items first.", steps: [...open, { key: "Control+k" }, DIALOG] }),
-  d({ id: "desktop-palette-search", screen: "Quick-access palette", state: "Search", brief_row: "Quick-access palette", notes: "A search: codes shown in place, crown jewels by title only.", steps: [...open, { key: "Control+k" }, DIALOG, { fill: /Search/i, value: "north" }, { pause: 300 }] }),
-  d({ id: "desktop-quick-window-locked", screen: "Quick-access window", state: "Locked", brief_row: "Quick-access palette", notes: "The system-wide shortcut's window while the vault is locked.", mount: () => <QuickWindow />, steps: [{ wait: "Lockdown is locked." }] }),
+  d({ id: "desktop-palette", screen: "Quick-access palette", state: "Open", brief_row: "Quick-access palette", notes: "⌘K / Ctrl+K: recent items first. Not offered on a phone.", widths: NOT_PHONE, steps: [...open, { key: "Control+k" }, DIALOG] }),
+  d({
+    id: "desktop-palette-search",
+    built: { area: "quick-access", screen: "items", kind: "undrawn" },
+    screen: "Quick-access palette",
+    state: "Search",
+    brief_row: "Quick-access palette",
+    notes: "ITEMS as compact rows with the words marked, CLOSE MATCH where the index forgave a typo, the last row, and the keys for the highlighted item (brief X4).",
+    widths: WIDE,
+    steps: [...open, { key: "Control+k" }, DIALOG, { fill: /^Search Lockdown$/, value: "north" }, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-palette-go-to",
+    built: { area: "quick-access", screen: "go-to", kind: "undrawn" },
+    screen: "Quick-access palette",
+    state: "GO TO",
+    brief_row: "Quick-access palette",
+    notes: "GO TO: the places whose name matches, Settings with its key, then the last row, Search everything for “…” (brief X4).",
+    widths: WIDE,
+    steps: [...open, { key: "Control+k" }, DIALOG, { fill: /^Search Lockdown$/, value: "sett" }, { pause: 300 }],
+  }),
+  d({
+    id: "desktop-quick-window-locked",
+    built: { area: "quick-access", screen: "window-locked", kind: "undrawn" },
+    screen: "Quick-access window",
+    state: "Locked",
+    brief_row: "Quick-access palette",
+    notes: "The system-wide shortcut's window while the vault is locked: the focus frame's mark, one sentence, UNLOCK and NOT NOW (brief X4).",
+    widths: WIDE,
+    mount: () => <QuickWindow />,
+    steps: [{ wait: "Lockdown is locked." }],
+  }),
   d({
     id: "desktop-quick-window-open",
     screen: "Quick-access window",
     state: "Open",
     brief_row: "Quick-access palette",
     notes: "The system-wide shortcut's window: only the palette.",
+    widths: NOT_PHONE,
     mount: () => <QuickWindow />,
     setup: (w) => {
       w.lock = { ...w.lock, locked: false }
@@ -295,7 +374,7 @@ export const VAULT_STATES: StateDef[] = [
   d({ id: "desktop-security-pq-on", screen: "Security", state: "Quantum-safe signatures: on", brief_row: "Security", notes: "Every device reads the stronger signatures (docs/plan/30-pq-status-line.md).", answers: () => ({ pq_status: () => ({ state: "on", reason: null, headline: "Quantum-safe signatures: on", explanation: "Every change your devices make to your vaults is signed in a way that even a future quantum computer couldn't fake.", without_level_1: [], without_level_2: [] }) }), steps: [...open, ...go("security")] }),
   d({ id: "desktop-security-pq-unknown", screen: "Security", state: "Quantum-safe signatures: can't check", brief_row: "Security", notes: "The server didn't report the account's devices.", answers: () => ({ pq_status: () => ({ state: "unknown", reason: "silent", headline: "Quantum-safe signatures: can't check right now", explanation: "Your server didn't report your account's devices. It may be an older version.", without_level_1: [], without_level_2: [] }) }), steps: [...open, ...go("security")] }),
   d({ id: "desktop-security-error", screen: "Security", state: "Error", brief_row: "Security", notes: "The report could not be made.", answers: () => ({ security_report: () => fail("refused", "The security report needs the vault's index, which is still being rebuilt. Try again in a minute.") }), steps: [...open, ...go("security"), { pause: 600 }] }),
-  d({ id: "desktop-palette-crown-jewel", screen: "Quick-access palette", state: "Crown jewel by title", brief_row: "Quick-access palette", notes: "Crown jewels are listed by title only; copying asks first.", steps: [...open, { key: "Control+k" }, DIALOG, { fill: /Search/i, value: "cold" }, { pause: 400 }] }),
+  d({ id: "desktop-palette-crown-jewel", screen: "Quick-access palette", state: "Crown jewel by title", brief_row: "Quick-access palette", notes: "Crown jewels are listed by title only; copying asks first.", widths: NOT_PHONE, steps: [...open, { key: "Control+k" }, DIALOG, { fill: /^Search Lockdown$/, value: "cold" }, { pause: 400 }] }),
   d({
     id: "desktop-item-passkey-upgraded",
     built: { area: "item", screen: "passkey-upgraded", kind: "undrawn" },
