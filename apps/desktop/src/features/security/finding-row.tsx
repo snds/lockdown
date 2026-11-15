@@ -1,97 +1,54 @@
-import {
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  Icon,
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemMedia,
-  ItemTitle,
-} from "@unicron/ui"
+import { Button, ListRow } from "@unicron/ui"
 
 import type { Finding } from "@/core/types"
-import { whenLocal } from "@/lib/format"
+import { fullDate } from "@/lib/format"
 
-import { GuideButton } from "@/features/bridges/setup-guide"
-
-import { FindingFix } from "./finding-actions"
-import { KIND_ICONS, SNOOZES, dismissedWords, snoozeUntil } from "./security-model"
+import { KIND_WORDS, hostOf } from "./security-model"
 
 interface FindingRowProps {
   finding: Finding
-  busy: boolean
-  onWhatToDo: (f: Finding) => void
-  onOpenItem: (id: string) => void
-  /** `until: null` dismisses; a time snoozes. */
-  onDismiss: (f: Finding, until: number | null) => void
-  onRestore: (f: Finding) => void
-  onNotice: (text: string) => void
-  onDevices?: () => void
+  /** The finding open beside the list: primary-soft with the 2 px edge. */
+  selected?: boolean
+  /** Opens the finding (brief H2). */
+  onOpen: (f: Finding) => void
+  /** A dismissed or snoozed finding's BRING BACK. */
+  onRestore?: (f: Finding) => void
+  busy?: boolean
+}
+
+/** What a dismissed finding's mono line says: when, and until when for a snooze. */
+export function dismissedLine(f: Finding): string {
+  if (!f.dismissed) return ""
+  return f.dismissed.until ? `Snoozed until ${fullDate(f.dismissed.until)}` : `Dismissed ${fullDate(f.dismissed.at)}`
 }
 
 /**
- * One finding: what it is, which item, the particulars, then What to do
- * (the playbook), the fix where there is one (Change password, Turn it
- * on, Go to Devices), Open item, and Dismiss with its snoozes. A
- * dismissed finding offers Bring back instead.
+ * One finding in Health's lists (brief H1): the item's title (an account
+ * alert's own title), its site as the mono line, the kind as the word at
+ * the end. A press opens it beside the list, or as a pushed screen. A
+ * dismissed finding says when, and offers BRING BACK in the row.
  */
-export function FindingRow({ finding: f, busy, onWhatToDo, onOpenItem, onDismiss, onRestore, onNotice, onDevices }: FindingRowProps) {
-  const where = [f.item_title, f.at ? whenLocal(f.at) : null].filter(Boolean).join(" · ")
+export function FindingRow({ finding: f, selected = false, onOpen, onRestore, busy = false }: FindingRowProps) {
+  const title = f.item_title ?? f.title
+  const host = hostOf(f.site)
+  const meta = f.dismissed ? [host, dismissedLine(f)].filter(Boolean).join(" // ") : host || undefined
   return (
-    <Item role="listitem" variant="outline" size="sm">
-      <ItemMedia variant="icon">
-        <Icon name={KIND_ICONS[f.kind]} />
-      </ItemMedia>
-      <ItemContent>
-        <ItemTitle>{f.title}</ItemTitle>
-        {where && <ItemDescription>{where}</ItemDescription>}
-        <ItemDescription>{f.dismissed ? `${dismissedWords(f, whenLocal)}. ${f.detail}` : f.detail}</ItemDescription>
-      </ItemContent>
-      <ItemActions>
-        {f.dismissed ? (
-          <Button size="sm" variant="ghost" onClick={() => onRestore(f)} disabled={busy}>
-            <Icon name="undo" data-icon="inline-start" />
+    <ListRow
+      layout="inline"
+      metaStyle="plain"
+      render={<li />}
+      selected={selected}
+      title={title}
+      meta={meta}
+      status={KIND_WORDS[f.kind]}
+      onClick={() => onOpen(f)}
+      action={
+        f.dismissed && onRestore ? (
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => onRestore(f)} aria-label={`Bring back: ${title}`}>
             Bring back
           </Button>
-        ) : (
-          <>
-            <Button size="sm" variant="outline" onClick={() => onWhatToDo(f)}>
-              <Icon name="help" data-icon="inline-start" />
-              What to do
-            </Button>
-            <FindingFix finding={f} onNotice={onNotice} onDevices={onDevices} />
-            {f.kind === "missing_2fa" && f.item_id && <GuideButton itemId={f.item_id} onNotice={onNotice} />}
-            {f.item_id && (
-              <Button size="sm" variant="ghost" onClick={() => f.item_id && onOpenItem(f.item_id)}>
-                Open item
-              </Button>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button size="sm" variant="ghost" disabled={busy} aria-label={`Dismiss: ${f.title}`} />}>
-                <Icon name="time" data-icon="inline-start" />
-                Dismiss
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {f.alert === null &&
-                  SNOOZES.map((s) => (
-                    <DropdownMenuItem key={s.days} onClick={() => onDismiss(f, snoozeUntil(s.days, Math.floor(Date.now() / 1000)))}>
-                      {s.label}
-                    </DropdownMenuItem>
-                  ))}
-                {f.alert === null && <DropdownMenuSeparator />}
-                <DropdownMenuItem onClick={() => onDismiss(f, null)}>
-                  {f.kind === "missing_2fa" ? "I already use two-step sign-in here" : "Dismiss, I've dealt with it"}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        )}
-      </ItemActions>
-    </Item>
+        ) : undefined
+      }
+    />
   )
 }

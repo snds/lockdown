@@ -216,3 +216,20 @@ export const detailsRowAction = (row: string, action: string): Step => ({
     await new Promise((r) => setTimeout(r, 300))
   },
 })
+
+// --- Health (brief H1 to H4, V3) ------------------------------------------------------------------
+
+/** Opens a row of Health's lists by its title (a finding's item, an item in Needs attention or Expiring), and waits for its detail. */
+export const healthRow = (title: string): Step[] => [{ click: starts(title), within: "main" }, { wait: title, role: "heading" }]
+
+/** SKIP FOR NOW's menu on the open finding: its button beside the fix on a desktop, the top bar's ⋯ on a phone. */
+export const skipForNow = (): Step => ({
+  run: async () => {
+    if (shown(/^Skip for now/)) await runSteps([{ click: /^Skip for now/, role: "button" }])
+    else await runSteps([{ click: "More for this finding", role: "button" }])
+    await runSteps([{ see: '[role="menu"], [role="dialog"]' }, { pause: 200 }])
+  },
+})
+
+/** One of Health's MORE HELP rows, or the Find of the Duplicates row, by its name. */
+export const healthPlace = (name: "Accounts you sign in with" | "Something happened?" | "Find duplicates"): Step[] => [{ click: name, role: "button" }, { pause: 300 }]

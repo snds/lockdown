@@ -1,13 +1,13 @@
 import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 
 import { GateProvider } from "@/app/gate"
 import { DEFAULT_SETTINGS, SettingsProvider } from "@/app/settings"
 import { ClientProvider, type Client } from "@/core/client"
 import { fakeClient } from "@/test/fake-client"
 import { BridgesProvider, type BridgesClient, type IncidentView } from "./bridges-client"
-import { IncidentsSection } from "./incidents"
+import { IncidentDetail, IncidentsList, useIncidents } from "./incidents"
 import { fakeBridges } from "./fake-bridges"
 
 const NOW = Math.floor(Date.now() / 1000)
@@ -29,14 +29,26 @@ function mount(ui: ReactNode, bridges: BridgesClient | null, over: Partial<Clien
   )
 }
 
-describe("the bridges views", () => {
+/** Something happened? as Health lays it out: the list of flows, and the flow chosen. */
+function Guides({ onAction }: { onAction: (a: string) => void }) {
+  const g = useIncidents()
+  const [chosen, setChosen] = useState<string | null>(null)
+  if (!g.available) return null
+  return (
+    <>
+      <IncidentsList list={g.list} failed={g.failed} chosen={chosen} onChoose={setChosen} onTryAgain={g.reload} />
+      {chosen && <IncidentDetail id={chosen} onOpenItem={vi.fn()} onAction={onAction} onNotice={vi.fn()} onProgress={g.reload} />}
+    </>
+  )
+}
 
-  it("the incidents says nothing where the host has no bridges client (the web vault)", () => {
-    const { container } = mount(<IncidentsSection onOpenItem={vi.fn()} onAction={vi.fn()} onNotice={vi.fn()} />, null)
+describe("Something happened?", () => {
+  it("says nothing where the host has no bridges client (the web vault)", () => {
+    const { container } = mount(<Guides onAction={vi.fn()} />, null)
     expect(container.textContent).toBe("")
   })
 
-  it("a guided flow asks what it is about, then ticks steps and items off", async () => {
+  it("a flow asks what it is about, then ticks steps and items off", async () => {
     const steps = (done: boolean): IncidentView["steps"] => [
       { id: "change", title: "Change the password on that site", detail: "Use Change password.", action: "change_passwords", done, items: [{ item_id: "i1", title: "Shop", host: "shop.example", done: false }] },
       { id: "verify", title: "Check it worked", detail: "Choose Check now.", action: "check", done: false, items: [] },
@@ -60,10 +72,15 @@ describe("the bridges views", () => {
       incidentMark,
     })
     const onAction = vi.fn()
-    mount(<IncidentsSection onOpenItem={vi.fn()} onAction={onAction} onNotice={vi.fn()} />, bridges)
+    mount(<Guides onAction={onAction} />, bridges)
     const user = userEvent.setup()
-    await user.click(await screen.findByRole("button", { name: "Start" }))
-    const dialog = await screen.findByRole("dialog")
+    const flows = await screen.findByRole("list", { name: "Guided help" })
+    expect(within(flows).getByText("Start")).toBeInTheDocument()
+    await user.click(within(flows).getByRole("button", { name: "A site I use was breached" }))
+    const dialog = await screen.findByRole("article", { name: "A site I use was breached" })
+    expect(within(dialog).getByText("Something happened // 0 of 2 done")).toBeInTheDocument()
+    // The first open step carries NEXT.
+    expect(within(dialog).getByText("Next")).toBeInTheDocument()
     const first = within(dialog).getByRole("checkbox", { name: "Done: Change the password on that site" })
     expect(first.getAttribute("aria-disabled") === "true" || first.hasAttribute("disabled") || first.hasAttribute("data-disabled")).toBe(true)
     await user.selectOptions(within(dialog).getByLabelText("Which site"), "i1")

@@ -26,7 +26,6 @@ import { useTemplates } from "@/app/templates"
 import { MasterDetail } from "@/components/master-detail"
 import { useClient } from "@/core/client"
 import type { Finding, ItemSummary } from "@/core/types"
-import { DuplicatesReview } from "@/features/organization/duplicates-review"
 import { groupByExpiry } from "@/features/organization/expiry"
 import { OrganizePrompt } from "@/features/organization/organize-prompt"
 import { folderPaths, inScope, rowMenuOffers, scopeTitle, targetOf, type OrganizeTarget, type Scope } from "@/features/organization/org-model"
@@ -297,12 +296,11 @@ const ROW_HEIGHT = { comfortable: 92, compact: 56 } as const
  */
 export function VaultView({ view, rows, error, onChanged, onNotice, selected, onSelect, scope }: VaultViewProps) {
   const { vaults } = useVaults()
-  const { surface, navigate, nav, go } = usePlaces()
+  const { navigate, nav, go } = usePlaces()
   const { settings } = useSettings()
   const { templates } = useTemplates()
   const frame = useAppFrame()
   const [organizing, setOrganizing] = useState<OrganizeTarget | null>(null)
-  const [duplicates, setDuplicates] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const paths = useMemo(() => folderPaths(vaults), [vaults])
   const scoped = useMemo(() => (rows && scope ? inScope(rows, scope, vaults) : rows), [rows, scope, vaults])
@@ -353,15 +351,12 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
   // --- the head ------------------------------------------------------------------------------
   const sortTrigger = <IconButton label="Sort and group" icon="settings--adjust" variant="ghost" />
   const sortMenu = (trigger: React.ReactElement<Record<string, unknown>>) => <SortMenu trigger={trigger} sort={order.sort} group={group} letters={letters} onSort={order.setSort} onGroup={order.setGroup} />
-  // Find duplicates moved to Health (D152, vault-8). The web vault's Health has no way in yet, so it stays here there.
-  const duplicatesButton = surface === "web" ? <IconButton label="Find duplicates" icon="merge" variant="ghost" onClick={() => setDuplicates(true)} /> : null
   const head = usePageHead({
     title: paneTitle,
     count: rows ? inView : undefined,
     actions: (
       <>
         {sortMenu(sortTrigger)}
-        {duplicatesButton}
       </>
     ),
   })
@@ -396,7 +391,6 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
             trailing={
               <>
                 {sortMenu(sortTrigger)}
-                {duplicatesButton}
                 {shellActions}
               </>
             }
@@ -417,7 +411,6 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
             action={
               <>
                 {sortMenu(<Button variant="ghost" size="sm">Sort</Button>)}
-                {duplicatesButton}
                 {shellActions}
               </>
             }
@@ -612,21 +605,6 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
         }}
       />
       {menuLayers.layers}
-      {surface === "web" && (
-        <DuplicatesReview
-          open={duplicates}
-          onOpenChange={setDuplicates}
-          rows={rows ?? []}
-          onChanged={(text) => {
-            bump()
-            onNotice(text)
-          }}
-          onOpen={(id) => {
-            setDuplicates(false)
-            setSelected(id)
-          }}
-        />
-      )}
     </>
   )
 }
