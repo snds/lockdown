@@ -7,7 +7,7 @@ import { useClient } from "@/core/client"
 import type { Finding } from "@/core/types"
 import { count } from "@/lib/format"
 
-import { PlaybookDialog } from "./playbook-dialog"
+import { WhatToDo } from "./playbook-dialog"
 import { findingsForItem } from "./security-model"
 import { usePlaybooks } from "./use-playbooks"
 
@@ -95,7 +95,7 @@ export function ItemSecurity({ itemId, onNotice, state }: ItemSecurityProps) {
           </Button>
         </p>
       )}
-      <PlaybookDialog
+      <WhatToDo
         finding={open}
         playbook={open ? (playbooks?.[open.playbook] ?? null) : null}
         onClose={() => setOpen(null)}

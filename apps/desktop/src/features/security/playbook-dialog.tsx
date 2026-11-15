@@ -31,7 +31,7 @@ export function PlaybookSteps({ playbook, heading = true }: { playbook: Playbook
   )
 }
 
-interface PlaybookDialogProps {
+interface WhatToDoProps {
   finding: Finding | null
   playbook: Playbook | null
   onClose: () => void
@@ -45,7 +45,7 @@ interface PlaybookDialogProps {
  * its own words, the playbook's steps, and the one action that fixes it
  * beside Close. Health reads the same steps in place (brief H2).
  */
-export function PlaybookDialog({ finding, playbook, onClose, onNotice, onOpenItem, onDevices }: PlaybookDialogProps) {
+export function WhatToDo({ finding, playbook, onClose, onNotice, onOpenItem, onDevices }: WhatToDoProps) {
   const fix = useFix(finding, { onNotice, onDevices, onOpenItem: onOpenItem ? (id) => (onClose(), onOpenItem(id)) : undefined })
   return (
     <AdaptiveDialog
