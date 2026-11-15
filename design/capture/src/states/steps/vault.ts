@@ -161,3 +161,41 @@ export const swipeRow = (title: string, side: "trailing" | "leading"): Step => (
     await new Promise((r) => setTimeout(r, 500))
   },
 })
+
+// --- an item's Details, files and history (brief I4 to I6, vault-6) ---------------------------
+
+/**
+ * Scrolls the open item until a part of it is at the top of its column: the Details header
+ * (`Details`), a section by its name (`Files`), or a Field Row by its label. Waits for it first.
+ */
+export const bringIntoView = (name: string): Step => ({
+  run: async () => {
+    const find = () =>
+      Array.from(document.querySelectorAll<HTMLElement>('[data-slot="section-header-trigger"], section[aria-label], [data-slot="field-row"]')).find((el) => {
+        const label = el.getAttribute("aria-label") ?? el.textContent?.replace(/\s+/g, " ").trim() ?? ""
+        return el.offsetParent !== null && (label === name || label.startsWith(`${name} `) || el.querySelector(`[id="${el.getAttribute("aria-labelledby") ?? ""}"]`)?.textContent === name)
+      })
+    const start = performance.now()
+    while (!find() && performance.now() - start < 6000) await new Promise((r) => setTimeout(r, 50))
+    const el = find()
+    if (!el) throw new Error(`nothing named ${name} on the open item`)
+    el.scrollIntoView({ block: "start" })
+    // The click that opened Details leaves its focus ring; a picture of the zone shows it at rest.
+    if (document.activeElement instanceof HTMLElement && document.activeElement.closest('[data-slot="section-header"]')) document.activeElement.blur()
+    await new Promise((r) => setTimeout(r, 300))
+  },
+})
+
+/** Presses a Details row's own action ("Change", "Move", "History") by the row's label. */
+export const detailsRowAction = (row: string, action: string): Step => ({
+  run: async () => {
+    await runSteps([openDetails(), bringIntoView(row)])
+    const el = Array.from(document.querySelectorAll<HTMLElement>('[data-slot="field-row"]')).find(
+      (r) => r.offsetParent !== null && document.getElementById(r.getAttribute("aria-labelledby") ?? "")?.textContent === row,
+    )
+    const button = Array.from(el?.querySelectorAll<HTMLElement>("button") ?? []).find((b) => b.textContent?.trim() === action)
+    if (!button) throw new Error(`no ${action} on the ${row} row`)
+    button.click()
+    await new Promise((r) => setTimeout(r, 300))
+  },
+})

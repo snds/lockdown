@@ -38,7 +38,8 @@ import { codeKey, useCodes } from "@/features/codes/use-codes"
 import { fullDate } from "@/lib/format"
 
 import { FillFixPanel } from "@/features/bridges/fill-fix"
-import { ItemProtection } from "@/features/depth/item-protection"
+import { TIER_WORDS } from "@/features/depth/depth-client"
+import { EmergencyAccess, ItemProtection, useExposure } from "@/features/depth/item-protection"
 import { ExportOptIn } from "@/features/export/export-opt-in"
 import { useCaptureProtect } from "@/features/hygiene/hygiene-client"
 import { FilesPanel } from "@/features/organization/files-panel"
@@ -47,6 +48,7 @@ import { MarkdownView } from "@/features/organization/markdown-view"
 import type { OrganizeTarget } from "@/features/organization/org-model"
 import { matchRuleWords } from "@/features/organization/org-model"
 import { OrganizePrompt } from "@/features/organization/organize-prompt"
+import { PlacePanel } from "@/features/organization/place-panel"
 import { useVaults } from "@/features/organization/vaults-context"
 import { PasskeysBlock } from "@/features/passkeys/passkeys-block"
 import { ItemSecurity } from "@/features/security/item-security"
@@ -410,9 +412,14 @@ function ItemOpen({ id, rows, item, setItem, onEdit, onTrashed, onChanged, onNot
   // The type roles balance their lines (text-wrap), so the cut sits on an inner span that sets its own wrap.
   const titleLines = oneLine ? "block truncate" : "line-clamp-2 break-words"
 
+  // --- Details (brief I4): shut by default; its one line names where it is and who can get its values ---
   const [detailsOpen, setDetailsOpen] = useState(readDetailsOpen)
   const folder = vault?.folders.find((f) => f.id === item.organization?.folder)
-  const detailsSummary = [vault?.name, folder?.path].filter(Boolean).join(" // ") || `Version ${item.version}`
+  const guarded = !trashed && !fillOnly
+  const [exposure, setExposure] = useExposure(item.id, guarded && canEdit)
+  const detailsSummary =
+    [vault?.name, folder?.path, guarded && canEdit && exposure ? TIER_WORDS[exposure.tier].name : null].filter(Boolean).join(" // ") || `Version ${item.version}`
+  const live = canEdit && !trashed
 
   return (
     <article ref={paneRef} aria-label={title} className="flex flex-col pb-12">
@@ -529,36 +536,43 @@ function ItemOpen({ id, rows, item, setItem, onEdit, onTrashed, onChanged, onNot
               writeDetailsOpen(o)
             }}
           >
-            <div className="flex flex-col gap-6 pt-2">
-              {access && <AccessNote access={access} />}
-              <div className="flex flex-col">
-                {vault && (
-                  <FieldRow size={size} label="Vault">
-                    {vault.name}
-                  </FieldRow>
-                )}
-                {folder && (
-                  <FieldRow size={size} label="Folder">
-                    {folder.path}
-                  </FieldRow>
-                )}
-                {(item.organization?.tags.length ?? 0) > 0 && (
-                  <FieldRow size={size} label="Tags">
-                    {item.organization!.tags.map((t) => `#${t}`).join("  ")}
-                  </FieldRow>
-                )}
-                <FieldRow size={size} label="Version" action={<FieldRowAction onClick={() => menu.openHistory()}>History</FieldRowAction>}>
-                  {`${item.version} // edited ${fullDate(item.edited_at)}`}
-                </FieldRow>
-              </div>
-              {!trashed && !fillOnly && (item.kind === "login" || (item.away?.length ?? 0) > 0) && (
-                <AwayBlock itemId={item.id} title={title} away={item.away ?? []} canEdit={canEdit} onChanged={onChanged} />
+            <div className="flex flex-col pt-2">
+              {access && (
+                <div className="pb-3">
+                  <AccessNote access={access} />
+                </div>
               )}
-              {!trashed && !fillOnly && <ItemProtection key={`protection:${item.id}:${item.version}`} itemId={item.id} crownJewel={item.crown_jewel === true} onNotice={onNotice} />}
-              {item.crown_jewel && !trashed && <ExportOptIn item={item} onChanged={setItem} onNotice={onNotice} />}
-              {item.kind === "login" && !trashed && !fillOnly && <FillFixPanel key={item.id} itemId={item.id} crownJewel={item.crown_jewel} canEdit={canEdit} onNotice={onNotice} />}
+              {/* One list of Field Rows; each shows only when it applies and the person may change it. */}
+              <PlacePanel item={item} title={title} rows={rows} size={size} canEdit={canEdit} onChanged={onChanged} onReplaced={(newId, notice) => (onReplaced ? onReplaced(newId, notice) : onChanged(notice))} onError={setActionError} />
+              {guarded && <ItemProtection itemId={item.id} itemTitle={title} size={size} canEdit={canEdit} exposure={exposure} onExposure={setExposure} />}
+              {item.kind === "login" && guarded && <FillFixPanel key={item.id} itemId={item.id} crownJewel={item.crown_jewel} canEdit={canEdit} host={site ? hostOf(site) : null} size={size} />}
+              {guarded && (item.kind === "login" || (item.away?.length ?? 0) > 0) && <AwayBlock itemId={item.id} title={title} away={item.away ?? []} canEdit={canEdit} onChanged={onChanged} size={size} />}
+              {live && (
+                <FieldRow
+                  size={size}
+                  label="Crown jewel"
+                  action={item.crown_jewel_fixed ? undefined : <FieldRowAction onClick={() => menu.askJewel(!item.crown_jewel)}>Change</FieldRowAction>}
+                  description={item.crown_jewel_fixed ? "Its kind or a field keeps it a crown jewel." : undefined}
+                >
+                  {item.crown_jewel_fixed ? "Always" : item.crown_jewel ? "Yes" : "No"}
+                </FieldRow>
+              )}
+              {item.kind === "card" && (
+                <FieldRow size={size} label="Ask before the security code">
+                  {item.reprompt ? "Yes" : "No"}
+                </FieldRow>
+              )}
+              <FieldRow size={size} label="Version" action={canEdit ? <FieldRowAction onClick={() => menu.openHistory()}>History</FieldRowAction> : undefined}>
+                {`${item.version} // edited ${fullDate(item.edited_at)}`}
+              </FieldRow>
+              {item.crown_jewel && live && <EmergencyAccess itemId={item.id} canEdit={canEdit} />}
+              {item.crown_jewel && !trashed && canEdit && <ExportOptIn item={item} onChanged={setItem} />}
               {/* On a phone the Share entry waits here until the ⋯ can open it (edges-8). */}
-              {inTopBar && <ItemShare item={item} title={title} onNotice={onNotice} />}
+              {inTopBar && (
+                <div className="pt-4">
+                  <ItemShare item={item} title={title} onNotice={onNotice} />
+                </div>
+              )}
             </div>
           </SectionHeader>
         </div>
@@ -1009,6 +1023,8 @@ function useItemMenu({ item, title, rows, summary, canEdit, onChanged, onReplace
     toggleFavorite,
     archive,
     openHistory: () => setHistory(true),
+    /** Details' CROWN JEWEL row asks the menu's own Question (brief I4): today's words, one dialog. */
+    askJewel: (on: boolean) => setAsk(on ? "jewel-on" : "jewel-off"),
   }
 }
 

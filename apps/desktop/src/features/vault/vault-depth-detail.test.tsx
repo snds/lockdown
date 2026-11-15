@@ -150,11 +150,15 @@ describe("vault depth in the detail (docs/plan/21-vault-depth.md)", () => {
     // Signed in elsewhere is in Details, shut by default (brief I4).
     await userEvent.click(await screen.findByRole("button", { name: /^Details/ }))
     const block = await screen.findByRole("region", { name: "Signed in elsewhere" })
-    expect(within(block).getByText("Hotel TV")).toBeInTheDocument()
-    expect(within(block).getByText("Sign out now")).toBeInTheDocument()
-    await userEvent.click(within(block).getByRole("button", { name: "Signed out" }))
+    // One Field Row per sign-in: where, when it reminds, and DUE once the reminder is due.
+    const row = within(block).getByRole("group", { name: "Signed in elsewhere" })
+    expect(row).toHaveTextContent("Hotel TV // reminds")
+    expect(row).toHaveTextContent("Due")
+    await userEvent.click(within(row).getByRole("button", { name: "Signed out" }))
     await waitFor(() => expect(clearAway.mock.calls[0]!.slice(0, 2)).toEqual(["i1", 100]))
-    await userEvent.click(within(block).getByRole("button", { name: "Signing in on a TV?" }))
+    // Another sign-in is logged from the item's ⋯ menu.
+    await userEvent.click(screen.getByRole("button", { name: "More for this item" }))
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Signing in on a TV?" }))
     // D237's words on the dialog too (design review R5).
     expect(await screen.findByRole("heading", { name: "Signing in on a TV?" })).toBeInTheDocument()
     await userEvent.type(await screen.findByLabelText("Where"), "Rental flat")
@@ -171,10 +175,10 @@ describe("vault depth in the detail (docs/plan/21-vault-depth.md)", () => {
     const storageUsage = () => Promise.resolve({ used: 1_200_000_000, quota: 5_000_000_000, used_words: "1.2 GB", quota_words: "5 GB" })
     const { onChanged } = mount(fakeClient({ ...base, attachChoose, attachChosen, attach, storageUsage, show: () => Promise.resolve(item("note", [], { attachments: [] })) }))
     expect(await screen.findByText("1.2 GB of 5 GB used for files on your server.")).toBeInTheDocument()
-    await userEvent.click(screen.getByRole("button", { name: "Attach a file" }))
+    await userEvent.click(screen.getByRole("button", { name: "Attach" }))
     await waitFor(() => expect(attachChosen.mock.calls[0]!.slice(0, 2)).toEqual(["i1", 7]))
     expect(attach).not.toHaveBeenCalled()
-    expect(onChanged).toHaveBeenCalledWith('Attached "lease.pdf".')
+    expect(onChanged).toHaveBeenCalledWith("Attached lease.pdf")
   })
 
   it("saves a file to the disk through the shell, never as bytes here", async () => {

@@ -101,6 +101,80 @@ describe("the detail frame (brief I1)", () => {
   })
 })
 
+describe("Details: one list of rows, only those that apply (brief I4)", () => {
+  const ROWS = ["Folder", "Tags", "Signed in elsewhere", "Crown jewel", "Ask before the security code", "Version"] as const
+  const shown = () => ROWS.filter((name) => screen.queryByRole("group", { name }))
+  // Details remembers on this device that it was opened, so a second item opens with it open.
+  const openDetails = async () => {
+    const toggle = await screen.findByRole("button", { name: /^Details/ })
+    if (toggle.getAttribute("aria-expanded") !== "true") await userEvent.setup().click(toggle)
+  }
+
+  it("a login of one's own: where it is, signed in elsewhere, crown jewel and version; no card row", async () => {
+    mount(shows(item("login", [plain("user", "username", "sam")])))
+    await openDetails()
+    expect(shown()).toEqual(["Folder", "Tags", "Signed in elsewhere", "Crown jewel", "Version"])
+    expect(screen.getByRole("group", { name: "Signed in elsewhere" })).toHaveTextContent("Nowhere")
+    expect(screen.getByRole("group", { name: "Crown jewel" })).toHaveTextContent("No")
+    expect(screen.queryByRole("switch", { name: "Include in exports and backups" })).not.toBeInTheDocument()
+  })
+
+  it("a note has no sign-in rows; a card says whether it asks before its security code", async () => {
+    const { unmount } = mount(shows(item("note", [plain("body", "Note", "Gate code 4411")])))
+    await openDetails()
+    expect(shown()).toEqual(["Folder", "Tags", "Crown jewel", "Version"])
+    unmount()
+    mount(shows(item("card", [plain("card.type", "Brand", "Visa")], { reprompt: true })))
+    await openDetails()
+    expect(shown()).toEqual(["Folder", "Tags", "Crown jewel", "Ask before the security code", "Version"])
+    expect(screen.getByRole("group", { name: "Ask before the security code" })).toHaveTextContent("Yes")
+  })
+
+  it("a share this person can only view: the version and nothing to press", async () => {
+    mount(shows(item("login", [plain("user", "username", "sam")], { access: "view" })))
+    await openDetails()
+    expect(shown()).toEqual(["Version"])
+    expect(within(screen.getByRole("group", { name: "Version" })).queryByRole("button")).not.toBeInTheDocument()
+  })
+
+  it("a crown jewel: CHANGE asks today's question, and its two switches follow the version", async () => {
+    mount(shows(item("login", [plain("user", "username", "sam")], { crown_jewel: true, export_opt_in: false })))
+    await openDetails()
+    const user = userEvent.setup()
+    const row = screen.getByRole("group", { name: "Crown jewel" })
+    expect(row).toHaveTextContent("Yes")
+    expect(screen.getByRole("switch", { name: "Include in exports and backups" })).not.toBeChecked()
+    await user.click(within(row).getByRole("button", { name: "Change" }))
+    expect(await screen.findByRole("dialog", { name: "Stop keeping it as a crown jewel?" })).toBeInTheDocument()
+  })
+
+  it("a crown jewel by its kind says Always, with nothing to change", async () => {
+    mount(shows(item("crypto-wallet", [], { crown_jewel: true, crown_jewel_fixed: true })))
+    await openDetails()
+    const row = screen.getByRole("group", { name: "Crown jewel" })
+    expect(row).toHaveTextContent("Always")
+    expect(within(row).queryByRole("button")).not.toBeInTheDocument()
+  })
+
+  it("shut, its one line names where it is and who can get its values", async () => {
+    const exposure: ExposureView = { id: "i1", tier: "ask", source: "chosen", default_tier: "fill", reason: null, choices: ["fill", "ask", "app-only"] }
+    render(
+      <ClientProvider value={shows(item("login", [plain("user", "username", "sam")]))}>
+        <DepthClientProvider value={fakeDepth({ exposure: () => Promise.resolve(exposure) })}>
+          <SettingsProvider>
+            <TemplatesProvider>
+              <GateProvider>
+                <DetailPane id="i1" rows={[]} onEdit={() => {}} onTrashed={() => {}} onChanged={() => {}} onNotice={() => {}} />
+              </GateProvider>
+            </TemplatesProvider>
+          </SettingsProvider>
+        </DepthClientProvider>
+      </ClientProvider>,
+    )
+    expect(await screen.findByText("Ask each time")).toBeInTheDocument()
+  })
+})
+
 describe("the item's ⋯ menu (brief I1)", () => {
   const login = (access?: Access) => item("login", [plain("user", "username", "sam"), hidden("pw", "password", "password")], { access })
   const rowsOf = async () => {
@@ -332,12 +406,13 @@ describe("one Security box (design review R2)", () => {
     localStorage.setItem("lockdown.detail.details-open", "1")
     const { rerender } = render(tree(false))
     await screen.findByRole("region", { name: "Security" })
-    await screen.findByRole("region", { name: "Protection" })
+    // Who can get its values is one row of Details now (brief I4), drawn once however often the pane redraws.
+    await screen.findByRole("group", { name: "Who can get its values" })
     for (let poll = 0; poll < 3; poll += 1) {
       rerender(tree(false))
       await act(() => Promise.resolve())
     }
     expect(screen.getAllByRole("region", { name: "Security" })).toHaveLength(1)
-    expect(screen.getAllByRole("region", { name: "Protection" })).toHaveLength(1)
+    expect(screen.getAllByRole("group", { name: "Who can get its values" })).toHaveLength(1)
   })
 })
