@@ -38,10 +38,10 @@ export async function showGuestCard(page: Page) {
 }
 /** Puts the guest card away. */
 export async function hideGuestCard(page: Page) {
-  await page.getByRole("button", { name: "Hide" }).click()
+  await page.getByRole("dialog").getByRole("button", { name: "Done" }).click()
 }
 /** The guest card's code for a network. */
-export const guestCode = (page: Page, network: string): Locator => page.getByRole("img", { name: `The code to join ${network}` })
+export const guestCode = (page: Page, network: string): Locator => page.getByRole("img", { name: `QR code to join ${network}` })
 
 /** The list's quiet notices (a shared vault that left something out). */
 export const notices = (page: Page): Locator => page.getByRole("note")

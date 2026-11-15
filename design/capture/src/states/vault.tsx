@@ -14,7 +14,7 @@ import { d, only, w } from "./defs"
 import { WIDTHS } from "../harness/types"
 import { open, webOpen } from "./steps/screens"
 import { DIALOG, MENU, answerGate, go, openSwitcher, scrollContent, starts } from "./steps/shell"
-import { besideSidebar, bringIntoView, detailsRowAction, focusOrgRow, itemAction, openBranch, openDetails, openItem, openItemMenu, orgMenu, orgMenuRow, passkeyDetails, reveal, swipeRow } from "./steps/vault"
+import { besideSidebar, bringIntoView, detailsRowAction, focusOrgRow, itemAction, keepConflictCopy, openBranch, openDetails, openItem, openItemMenu, orgMenu, orgMenuRow, passkeyDetails, reveal, swipeRow } from "./steps/vault"
 
 /** Search and Quick access by width class (brief X4): Quick access is not offered on a phone. */
 const PHONE = WIDTHS.filter((x) => x < 600)
@@ -184,8 +184,8 @@ export const VAULT_STATES: StateDef[] = [
     notes: "Details' WHO CAN GET ITS VALUES → CHANGE (D245): the tiers as RadioRows with their sentences, in a popover with its header (a sheet on a phone).",
     steps: [...open, ...openItem("Meadowlark Streaming"), detailsRowAction("Who can get its values", "Change"), { see: '[role="radiogroup"]' }],
   }),
-  d({ id: "desktop-item-conflict", screen: "Item detail", state: "Conflict copy", brief_row: "Needs attention", notes: "Two devices changed it at once: keep this copy or the other (D58).", steps: [...open, ...openItem("Tern Airlines (conflict copy from Sam's phone)")] }),
-  d({ id: "desktop-item-conflict-confirm", screen: "Item detail", state: "Conflict: keep this copy?", brief_row: "Needs attention", notes: "The confirm before the other copy goes to the trash.", steps: [...open, ...openItem("Tern Airlines (conflict copy from Sam's phone)"), { click: "Keep this copy" }, DIALOG] }),
+  d({ id: "desktop-item-conflict", built: { area: "item", screen: "conflict", kind: "undrawn" }, screen: "Item detail", state: "Conflict copy", brief_row: "Needs attention", notes: "Two devices changed it at once (D58): the needs-you block at the top of the detail (X3 row 5) with KEEP THIS COPY and KEEP OTHER COPY; the strip on a phone.", steps: [...open, ...openItem("Tern Airlines (conflict copy from Sam's phone)")] }),
+  d({ id: "desktop-item-conflict-confirm", built: { area: "item", screen: "conflict-confirm", kind: "undrawn" }, screen: "Item detail", state: "Conflict: keep this copy?", brief_row: "Needs attention", notes: "The Question before the other copy goes to Recently deleted; focus on Cancel. On a phone it opens from the strip's sheet.", steps: [...open, ...openItem("Tern Airlines (conflict copy from Sam's phone)"), keepConflictCopy("Keep this copy"), DIALOG, { pause: 300 }] }),
   d({ id: "desktop-item-stress", built: { area: "item", screen: "stress", kind: "undrawn" }, screen: "Item detail", state: "Long title and values", brief_row: "Item detail", notes: "Stress: a very long title, username, address and note.", steps: [...open, { click: /^Riverside Community/, within: "main" }, { wait: /Riverside Community/, role: "heading" }] }),
   d({ id: "desktop-item-shared-view", built: { area: "item", screen: "shared-view", kind: "undrawn" }, screen: "Item detail", state: "Shared with you (view)", brief_row: "Item detail", notes: "An item someone shared with view rights: nothing offered that the right doesn't allow.", steps: [...open, ...openItem("Kids' school portal")] }),
   d({ id: "desktop-item-code-steam", built: { area: "item", screen: "code-steam", kind: "undrawn" }, screen: "Item detail", state: "Code: Steam Guard", brief_row: "Codes view", notes: "A five-character Steam Guard code, full width, with Show large type.", steps: [...open, ...openItem("Kestrel Arcade · Steam Guard")] }),
@@ -204,14 +204,14 @@ export const VAULT_STATES: StateDef[] = [
   d({ id: "desktop-item-ssh", built: { area: "item", screen: "ssh-key", kind: "undrawn" }, screen: "Item detail", state: "SSH key", brief_row: "Item detail", notes: "Public parts in plain text, private key masked, allowed hosts.", steps: [...open, ...openItem("Studio deploy key")] }),
   d({ id: "desktop-item-pgp", built: { area: "item", screen: "pgp-key", kind: "undrawn" }, screen: "Item detail", state: "PGP key", brief_row: "Item detail", notes: "The PGP variant of an SSH key item.", steps: [...open, ...openItem("Personal signing key")] }),
   d({ id: "desktop-item-api", built: { area: "item", screen: "api-key", kind: "undrawn" }, screen: "Item detail", state: "API credential, expiring", brief_row: "Item detail", notes: "A token expiring in nine days.", steps: [...open, ...openItem("Cobalt Cloud API token")] }),
-  d({ id: "desktop-item-wallet", screen: "Item detail", state: "Crown jewel: crypto wallet", brief_row: "Item detail", notes: "The whole detail under the crown-jewel treatment.", steps: [...open, ...openItem("Cold wallet")] }),
+  d({ id: "desktop-item-wallet", built: { area: "item", screen: "crown-jewel", kind: "undrawn" }, screen: "Item detail", state: "Crown jewel: crypto wallet", brief_row: "Item detail", notes: "The whole detail under the crown-jewel treatment.", steps: [...open, ...openItem("Cold wallet")] }),
   d({ id: "desktop-item-server", built: { area: "item", screen: "server", kind: "undrawn" }, screen: "Item detail", state: "Server", brief_row: "Item detail", notes: "A server's host, port and sign-in.", steps: [...open, ...openItem("Build server")] }),
   d({ id: "desktop-item-database", built: { area: "item", screen: "database", kind: "undrawn" }, screen: "Item detail", state: "Database", brief_row: "Item detail", notes: "A database's connection.", steps: [...open, ...openItem("Analytics database")] }),
   d({ id: "desktop-item-licence", built: { area: "item", screen: "software-license", kind: "undrawn" }, screen: "Item detail", state: "Software licence", brief_row: "Item detail", notes: "A licence key, masked.", steps: [...open, ...openItem("Lumen Photo Editor")] }),
   d({ id: "desktop-item-membership", built: { area: "item", screen: "membership", kind: "undrawn" }, screen: "Item detail", state: "Membership", brief_row: "Item detail", notes: "A membership with its number and PIN.", steps: [...open, ...openItem("Trailhead Climbing Gym")] }),
   d({ id: "desktop-item-custom", built: { area: "item", screen: "custom", kind: "undrawn" }, screen: "Item detail", state: "Custom item", brief_row: "Item detail", notes: "Fields of the person's own.", steps: [...open, ...openItem("Bike lock")] }),
   d({ id: "desktop-item-passkey", built: { area: "item", screen: "passkey-on-its-own", kind: "undrawn" }, screen: "Item detail", state: "Passkey on its own", brief_row: "Item detail", notes: "A passkey made by a site, view only.", steps: [...open, ...openItem("Lumen Photo forum")] }),
-  d({ id: "desktop-item-trashed", screen: "Item detail", state: "In the trash", brief_row: "Item detail", notes: "Restore or delete now.", steps: [...open, ...go("deleted"), ...openItem("Old gym account")] }),
+  d({ id: "desktop-item-trashed", built: { area: "item", screen: "trashed", kind: "undrawn" }, screen: "Item detail", state: "In the trash", brief_row: "Item detail", notes: "An info Banner with the vault's days; RESTORE on a desktop, the bottom row's Restore on a phone; Delete for good in the ⋯.", steps: [...open, ...go("deleted"), ...openItem("Old gym account")] }),
   d({ id: "desktop-item-loading", built: { area: "item", screen: "loading", kind: "undrawn" }, screen: "Item detail", state: "Loading", brief_row: "Item detail", notes: "The item has not arrived yet.", answers: () => ({ show: () => forever() }), steps: [...open, { click: starts("Northwind Mail"), within: "main" }, { pause: 300 }] }),
   d({
     id: "desktop-item-error",
@@ -224,7 +224,7 @@ export const VAULT_STATES: StateDef[] = [
     steps: [...open, { click: starts("Northwind Mail"), within: "main" }, { wait: /Couldn't open this item/ }],
   }),
   d({ id: "desktop-item-trash-confirm", built: { area: "item", screen: "trash-toast", kind: "undrawn" }, screen: "Item detail", state: "Moved to Recently deleted, with UNDO", brief_row: "Item detail", notes: "Move to Recently deleted asks nothing; its toast offers UNDO (Q14).", steps: [...open, ...openItem("Quill Notes"), itemAction("Trash"), { wait: /^Moved Quill Notes to Recently deleted/ }] }),
-  d({ id: "desktop-item-purge-confirm", screen: "Item detail", state: "Delete for good?", brief_row: "Item detail", notes: "Deleting a trashed item now.", steps: [...open, ...go("deleted"), ...openItem("Old gym account"), itemAction("Delete for good"), DIALOG] }),
+  d({ id: "desktop-item-purge-confirm", built: { area: "item", screen: "purge", kind: "undrawn" }, screen: "Item detail", state: "Delete for good?", brief_row: "Item detail", notes: "Deleting a trashed item now.", steps: [...open, ...go("deleted"), ...openItem("Old gym account"), itemAction("Delete for good"), DIALOG] }),
   d({
     id: "desktop-item-wallet-revealed",
     screen: "Item detail",
@@ -234,7 +234,8 @@ export const VAULT_STATES: StateDef[] = [
     setup: (w) => {
       w.settings = { ...w.settings, reveal: "toggle" }
     },
-    steps: [...open, ...openItem("Cold wallet"), reveal("Recovery phrase"), ...answerGate("correct horse"), { pause: 500 }],
+    // The gate arms its buttons after a moment (doc 68): Confirm is pressed once it is armed, and the value is waited for.
+    steps: [...open, ...openItem("Cold wallet"), reveal("Recovery phrase"), { see: '[role="dialog"]' }, { pause: 700 }, ...answerGate("correct horse"), { gone: "Confirm it's you" }, { pause: 500 }],
   }),
   d({
     id: "desktop-item-revealed",
@@ -394,20 +395,20 @@ export const VAULT_STATES: StateDef[] = [
     steps: [...open, ...openItem("Northwind Mail"), itemAction("History"), DIALOG, { click: "Show version 6" }, { see: 'section[aria-label="Version 6"]' }, restFocus()],
   }),
   d({ id: "desktop-item-jewel-on", built: { area: "item", screen: "crown-jewel-ask", kind: "undrawn" }, screen: "Where it is, item menu", state: "Keep as a crown jewel?", brief_row: "Where it is, item menu", notes: "Moving an item into the crown-jewel class: the menu's question, which Details' CROWN JEWEL → CHANGE also asks.", steps: [...open, ...openItem("Bluefin Bank"), itemAction("Keep as a crown jewel"), DIALOG] }),
-  d({ id: "desktop-item-lookalike", screen: "Lookalike warning", state: "Site imitates another", brief_row: "Lookalike warning", notes: "First in the detail: this login's site imitates the bank's.", steps: [...open, ...openItem("Bluefin Bank alerts")] }),
-  d({ id: "desktop-item-wifi-card", screen: "Wi-Fi guest card", state: "Join the network", brief_row: "Wi-Fi guest card", notes: "A QR guests scan; hides after 60 s.", steps: [...open, ...openItem("Guest Wi-Fi"), { click: /Guest card/ }, DIALOG, { pause: 300 }] }),
-  d({ id: "desktop-item-large-type", screen: "Large type", state: "Wi-Fi password", brief_row: "Large type", notes: "Read across a room; 120 s.", steps: [...open, ...openItem("Guest Wi-Fi"), { click: /Show large type/ }, DIALOG, { pause: 400 }] }),
-  d({ id: "desktop-item-large-type-code", screen: "Large type", state: "A code", brief_row: "Large type", notes: "A code's current value in large type.", steps: [...open, ...openItem("Driftwood Forum"), { click: /Show large type/ }, DIALOG, { pause: 400 }] }),
+  d({ id: "desktop-item-lookalike", built: { area: "item", screen: "lookalike", kind: "undrawn" }, screen: "Lookalike warning", state: "Site imitates another", brief_row: "Lookalike warning", notes: "First in the detail: one critical Banner with the finding's title and detail and WHAT TO DO (D130); any other finding is one line, NN more in Health.", steps: [...open, ...openItem("Bluefin Bank alerts")] }),
+  d({ id: "desktop-item-wifi-card", built: { area: "item", screen: "wifi-card", kind: "undrawn" }, screen: "Wi-Fi guest card", state: "Join the network", brief_row: "Wi-Fi guest card", notes: "A viewer: the network on a Tile with its QR code (dark on light in both themes), HIDES IN 01:00, PRINT CARD and DONE (brief I9).", steps: [...open, ...openItem("Guest Wi-Fi"), { click: /Guest card/ }, DIALOG, { pause: 300 }] }),
+  d({ id: "desktop-item-large-type", built: { area: "item", screen: "large-type", kind: "undrawn" }, screen: "Large type", state: "Wi-Fi password", brief_row: "Large type", notes: "Read across a room; 120 s.", steps: [...open, ...openItem("Guest Wi-Fi"), { click: /Show large type/ }, DIALOG, { pause: 400 }] }),
+  d({ id: "desktop-item-large-type-code", built: { area: "item", screen: "large-type-code", kind: "undrawn" }, screen: "Large type", state: "A code", brief_row: "Large type", notes: "A code's current value in large type.", steps: [...open, ...openItem("Driftwood Forum"), { click: /Show large type/ }, DIALOG, { pause: 400 }] }),
   d({ id: "desktop-item-away-dialog", built: { area: "item", screen: "away", kind: "undrawn" }, screen: "Signed in elsewhere", state: "Log a sign-in", brief_row: "Signed in elsewhere", notes: "Signing in on a TV? (brief I4's third Form, D237): where, when to remind, REMIND ME.", steps: [...open, ...openItem("Tern Airlines"), itemAction("Signing in on a TV?"), DIALOG] }),
   d({ id: "desktop-item-passkey-delete", built: { area: "item", screen: "passkey-delete", kind: "undrawn" }, screen: "Passkeys block", state: "Delete: the only way in", brief_row: "Passkeys block", notes: "Deleting the only passkey warns that the account would have no way in.", steps: [...open, ...openItem("Pixelforge"), passkeyDetails(), DIALOG, { click: /^Delete passkey/ }, { wait: "Delete this passkey?" }] }),
   d({ id: "desktop-item-setup-guide", screen: "Set-up guide", state: "Two-step sign-in for a site", brief_row: "Set-up guide", notes: "What Harbor Health offers for two-step sign-in, and how (from its Security finding).", steps: [...open, ...go("security"), { click: /Set-up guide/ }, DIALOG] }),
   d({ id: "desktop-item-playbook", screen: "Playbook (\"What to do\")", state: "From the item", brief_row: "Playbook (\"What to do\")", notes: "Steps ending in how to confirm the fix.", steps: [...open, ...openItem("Parcelpost"), { click: "What to do" }, DIALOG] }),
   d({ id: "desktop-item-file-remove", built: { area: "item", screen: "files-remove", kind: "undrawn" }, screen: "Files", state: "Remove a file?", brief_row: "Files", notes: "Removing a file asks first (brief I5): the item saves a version without it; its history keeps it. Focus on Cancel.", steps: [...open, ...openItem("Home insurance"), bringIntoView("Files"), { click: "Remove policy-2026.pdf" }, DIALOG] }),
-  d({ id: "desktop-item-fill-only", screen: "Item detail", state: "Shared fill-only", brief_row: "Item Share menu", notes: "An item shared fill-only: no copy, no reveal, no large type.", setup: (w) => {
+  d({ id: "desktop-item-fill-only", built: { area: "item", screen: "fill-only", kind: "undrawn" }, screen: "Item detail", state: "Shared fill-only", brief_row: "Item Share menu", notes: "An item shared fill-only: no copy, no reveal, no large type.", setup: (w) => {
     const it = w.items.find((i) => i.title === "Kids' school portal")!
     it.access = "fill-only"
   }, steps: [...open, ...openItem("Kids' school portal")] }),
-  d({ id: "desktop-item-tier", screen: "Item detail", state: "Risk tier badge", brief_row: "Item detail", notes: "The RiskTierBadge seam: no item carries a tier in the vault model yet, so this one is given one by the fixture.", setup: (w) => {
+  d({ id: "desktop-item-tier", built: { area: "item", screen: "tier", kind: "undrawn" }, screen: "Item detail", state: "Risk tier badge", brief_row: "Item detail", notes: "The RiskTierBadge seam: no item carries a tier in the vault model yet, so this one is given one by the fixture.", setup: (w) => {
     w.items.find((i) => i.title === "Cobalt Cloud console")!.tier = "official"
   }, steps: [...open, { click: starts("Cobalt Cloud console"), within: "main" }, { wait: /^Cobalt Cloud console/, role: "heading" }] }),
   d({ id: "desktop-security-checking", screen: "Security", state: "Checking", brief_row: "Security", notes: "Check now running.", answers: () => ({ security_check: () => forever() }), steps: [...open, ...go("security"), { wait: /Checking/ }] }),
@@ -435,6 +436,6 @@ export const VAULT_STATES: StateDef[] = [
   // --- the web vault -----------------------------------------------------------------
   w({ id: "web-vault", built: { area: "items", screen: "web-list", kind: "undrawn" }, screen: "Vault", state: "Filled", brief_row: "Vault", notes: "The desktop's vault view in the web build: Links, People, Devices and Settings in the sidebar.", steps: webOpen }),
   w({ id: "web-item-login", built: { area: "item", screen: "web-login", kind: "undrawn" }, screen: "Item detail", state: "Login", brief_row: "Item detail", notes: "A login in the web build: copies go through the page's clipboard.", steps: [...webOpen, ...openItem("Northwind Mail")] }),
-  w({ id: "web-item-wallet", screen: "Item detail", state: "Crown jewel", brief_row: "Item detail", notes: "A crown jewel in the web build.", steps: [...webOpen, ...openItem("Cold wallet")] }),
+  w({ id: "web-item-wallet", built: { area: "item", screen: "web-crown-jewel", kind: "undrawn" }, screen: "Item detail", state: "Crown jewel", brief_row: "Item detail", notes: "A crown jewel in the web build.", steps: [...webOpen, ...openItem("Cold wallet")] }),
   w({ id: "web-security", screen: "Security", state: "Quantum-safe line", brief_row: "Security", notes: "The web vault's Security screen: the quantum-safe line; password checks stay in the desktop app.", steps: [...webOpen, ...go("security")] }),
 ]

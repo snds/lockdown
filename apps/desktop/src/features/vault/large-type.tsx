@@ -44,7 +44,8 @@ export function ShowLargeType({ title, getSecret, groupSize = 3 }: LargeTypeButt
 /** Large type for one hidden field of an item, through the core's `reveal`. */
 export function ShowFieldLargeType({ itemId, fieldId, title }: { itemId: string; fieldId: string; title: string }) {
   const client = useClient()
-  const gate = useGate()
-  const getSecret = useCallback(() => gate.run((g) => client.reveal(itemId, fieldId, g)), [client, gate, itemId, fieldId])
+  // `run` stays the same while the gate asks, so the viewer does not read again (and ask again) once it closes.
+  const { run } = useGate()
+  const getSecret = useCallback(() => run((g) => client.reveal(itemId, fieldId, g)), [client, run, itemId, fieldId])
   return <ShowLargeType title={title} getSecret={getSecret} />
 }

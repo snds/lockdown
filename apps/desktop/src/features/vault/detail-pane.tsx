@@ -29,6 +29,7 @@ import { SecretFieldRemoteButton, useSecretFieldRemote } from "@unicron/ui/secur
 
 import { useDetailBottomRow } from "@/app/detail-bottom-row"
 import { useGate } from "@/app/gate"
+import { WaitingOnYou, useNeedsYouSource } from "@/app/needs-you"
 import { deletedWords, notify } from "@/app/notify"
 import { useTemplates } from "@/app/templates"
 import { useDetailTopBar } from "@/components/master-detail"
@@ -295,6 +296,22 @@ function ItemOpen({ id, rows, item, setItem, onEdit, onTrashed, onChanged, onNot
     }
   }
 
+  // A conflict waits on the person (X3 row 5, D58): the block at the top of this item's detail on a desktop, the strip
+  // on a phone, a WAITING ON YOU row when a request outranks it. Each answer is a Question; nothing runs from here.
+  useNeedsYouSource(
+    !trashed && other && canEdit
+      ? {
+          id: `conflict:${id}`,
+          priority: 5,
+          title: "Conflict // 2 copies",
+          line: `Two devices changed this item at the same time. The other copy: edited ${fullDate(other.edited_at)}.`,
+          action: { label: "Keep this copy", onClick: () => setResolving("keep-this") },
+          textAction: { label: "Keep other copy", onClick: () => setResolving("keep-other") },
+          shows: { item: id },
+        }
+      : null,
+  )
+
   // --- the phone's bottom row, chosen by the row's quick copy (brief I1) ------------------------
   const remote = useSecretFieldRemote()
   const quickCopy = useQuickCopy(onNotice)
@@ -471,7 +488,8 @@ function ItemOpen({ id, rows, item, setItem, onEdit, onTrashed, onChanged, onNot
           )}
         </header>
 
-        {/* One notice (brief I8; vault-7 fills the slot): what changes what the person should do, before the fields. */}
+        {/* One notice (brief I8): what changes what the person should do, before the fields. At most one Banner; a
+            conflict is the needs-you block at the top of the detail (row 5), or a WAITING ON YOU row when more waits. */}
         <div className="flex flex-col gap-4 empty:hidden">
           {trashed && (
             <Banner
@@ -486,33 +504,29 @@ function ItemOpen({ id, rows, item, setItem, onEdit, onTrashed, onChanged, onNot
               }
             />
           )}
-          {archived && !trashed && (
-            <Banner
-              tone="info"
-              title="Archived. It still syncs and exports."
-              action={
-                canEdit ? (
-                  <Button variant="secondary" size="sm" onClick={() => void menu.archive()}>
-                    Unarchive
-                  </Button>
+          {!trashed && (
+            <ItemSecurity
+              key={`security:${item.id}:${item.version}`}
+              itemId={item.id}
+              onNotice={onNotice}
+              state={
+                archived ? (
+                  <Banner
+                    tone="info"
+                    title="Archived. It still syncs and exports."
+                    action={
+                      canEdit ? (
+                        <Button variant="secondary" size="sm" onClick={() => void menu.archive()}>
+                          Unarchive
+                        </Button>
+                      ) : undefined
+                    }
+                  />
                 ) : undefined
               }
             />
           )}
-          {!trashed && other && canEdit && (
-            <section aria-label="Resolve the conflict" className="flex flex-col gap-2">
-              <Banner tone="warning" title="Two devices changed this item at the same time." body={<span className="type-meta">The other copy: edited {fullDate(other.edited_at)}</span>} />
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="secondary" onClick={() => setResolving("keep-this")}>
-                  Keep this copy
-                </Button>
-                <Button size="sm" variant="secondary" onClick={() => setResolving("keep-other")}>
-                  Keep the other
-                </Button>
-              </div>
-            </section>
-          )}
-          {!trashed && <ItemSecurity key={`security:${item.id}:${item.version}`} itemId={item.id} onNotice={onNotice} />}
+          {!trashed && <WaitingOnYou />}
         </div>
 
         {/* Use it (brief I1 #5). */}
@@ -594,7 +608,7 @@ function ItemOpen({ id, rows, item, setItem, onEdit, onTrashed, onChanged, onNot
         tone="destructive"
         title={resolving === "keep-this" ? "Keep this copy?" : "Keep the other copy?"}
         description={`${resolving === "keep-this" ? `"${other?.title}"` : `"${title}"`} moves to Recently deleted. Nothing is destroyed: it stays readable there through its grace period and can be restored from there.`}
-        confirmLabel={resolving === "keep-this" ? "Keep this copy" : "Keep the other"}
+        confirmLabel={resolving === "keep-this" ? "Keep this copy" : "Keep other copy"}
         onConfirm={() => (resolving ? resolve(resolving) : undefined)}
       />
     </article>

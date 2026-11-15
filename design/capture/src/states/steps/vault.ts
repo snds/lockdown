@@ -60,6 +60,23 @@ const ACTIONS = {
 /** One of the open item's own actions, by its name. */
 export const itemAction = (name: keyof typeof ACTIONS): Step => ACTIONS[name]
 
+/**
+ * Answers the open item's conflict (brief I8, X3 row 5): the needs-you block's button on a desktop; on a
+ * phone the strip (its RESOLVE, or the strip itself where a phone on its side drops the word), then the sheet's button. Either opens the Question.
+ */
+export const keepConflictCopy = (which: "Keep this copy" | "Keep other copy"): Step => ({
+  run: async () => {
+    if (!shown(which)) {
+      // The strip's own button opens the sheet; a phone on its side draws the strip without RESOLVE.
+      const strip = document.querySelector<HTMLElement>('[data-needs-you-row="5"] button')
+      if (!strip) throw new Error("no needs-you strip for the conflict")
+      strip.click()
+      await runSteps([{ see: '[role="dialog"]' }, { pause: 300 }])
+    }
+    await runSteps([{ click: which, role: "button" }])
+  },
+})
+
 /** Reveals a masked field of the open item (Show with the toggle setting, Hold to show with hold). */
 export const reveal = (label: string): Step => ({ click: new RegExp(`^(Show|Reveal) ${label}`) })
 

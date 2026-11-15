@@ -117,7 +117,10 @@ export function ItemField({ itemId, field, onNotice: _onNotice, format = "plain"
     [client, gate, itemId, fieldId, hygiene],
   )
   // Large type reads through the same gate; the window stays capture-protected while it is up.
-  const getLarge = useCallback(() => gate.run((g) => client.reveal(itemId, fieldId, g)), [client, gate, itemId, fieldId])
+  // Held by `run`, which stays the same while the gate asks: a new function would make the viewer read again
+  // once the gate closes, with no proof left, and ask a second time.
+  const gateRun = gate.run
+  const getLarge = useCallback(() => gateRun((g) => client.reveal(itemId, fieldId, g)), [client, gateRun, itemId, fieldId])
   // Every layer closes on lock (brief 4.0).
   const bigOpen = big && !locked
   useCaptureProtect(bigOpen)
