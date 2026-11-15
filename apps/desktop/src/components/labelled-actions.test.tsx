@@ -1,9 +1,11 @@
 import { act, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
+import { Dialog, DialogContent, DialogTitle } from "@unicron/ui"
 import { CrownJewelGate } from "@unicron/ui/security/crown-jewel"
 
 import { GateProvider, useGate } from "@/app/gate"
+import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
 import { ClientProvider } from "@/core/client"
 import type { DeviceInfo, Status } from "@/core/types"
 import { DeviceApproval } from "@/features/approvals/approval-sheet"
@@ -50,27 +52,32 @@ function expectStackedPrimaryLast(primary: HTMLElement) {
   expect(row.lastElementChild).toBe(primary)
 }
 
-const pairing: PendingPairing = { request_id: "a1", code: "653540", name: "Chrome on Linux", family: "chromium", extension_id: "x", expires_in_secs: 110 }
-
 describe("dialog actions at 390 px (R1)", () => {
-  it("revoking a device: Cancel, then Revoke", async () => {
-    const devices: DeviceInfo[] = [
-      { id: "d-mine", name: "This laptop", platform: "linux", enrolled_at: 1, revoked_at: null, this_device: true },
-      { id: "d-phone", name: "Old phone", platform: "android", enrolled_at: 1, revoked_at: null, this_device: false },
-    ]
-    const status = { devices: 2, devices_revoked: 0, account: null } as unknown as Status
+  // Devices' revoke moved to unicron's ConfirmDialog (doc 85; below). The row itself is still
+  // used by other dialogs until the fold, so it keeps its own case: Cancel, then the yes, in words.
+  it("the shared action row: Cancel, then Revoke", async () => {
     render(
-      <ClientProvider value={fakeClient({ deviceList: () => Promise.resolve(devices) })}>
-        <DevicesView status={status} onChanged={() => {}} onNotice={() => {}} />
-      </ClientProvider>,
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Revoke Old phone?</DialogTitle>
+          <LabelledActions>
+            <LabelledAction kind="cancel" onClick={() => {}}>
+              Cancel
+            </LabelledAction>
+            <LabelledAction kind="destructive" onClick={() => {}}>
+              Revoke
+            </LabelledAction>
+          </LabelledActions>
+        </DialogContent>
+      </Dialog>,
     )
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Revoke" }))
     const dialog = await screen.findByRole("dialog")
     expectWords("Cancel", dialog)
     expectStackedPrimaryLast(expectWords("Revoke", dialog))
   })
-
 })
+
+const pairing: PendingPairing = { request_id: "a1", code: "653540", name: "Chrome on Linux", family: "chromium", extension_id: "x", expires_in_secs: 110 }
 
 /*
  * Two unicron components draw their own actions: the crown-jewel gate and
@@ -128,6 +135,23 @@ describe("unicron's own dialog actions at 390 px (R1)", () => {
     remove = applySheets()
   })
   afterEach(() => remove())
+
+  it("revoking a device: Cancel, then Revoke, on unicron's ConfirmDialog (doc 85)", async () => {
+    const devices: DeviceInfo[] = [
+      { id: "d-mine", name: "This laptop", platform: "linux", enrolled_at: 1, revoked_at: null, this_device: true },
+      { id: "d-phone", name: "Old phone", platform: "android", enrolled_at: 1, revoked_at: null, this_device: false },
+    ]
+    const status = { devices: 2, devices_revoked: 0, account: null } as unknown as Status
+    render(
+      <ClientProvider value={fakeClient({ deviceList: () => Promise.resolve(devices) })}>
+        <DevicesView status={status} onChanged={() => {}} onNotice={() => {}} />
+      </ClientProvider>,
+    )
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Revoke" }))
+    const dialog = await screen.findByRole("dialog", { name: "Revoke Old phone?" })
+    expectComputedWords("Cancel", dialog)
+    expectComputedWords("Revoke", dialog)
+  })
 
   it("the window gate on a computer with no built-in check keeps Cancel and the action's own verb (doc 68)", async () => {
     // The core asks for the window's confirm the first time, then takes the call. From doc 68 it is
