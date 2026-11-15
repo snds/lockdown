@@ -140,7 +140,8 @@ describe("Backups in Settings", () => {
     const user = userEvent.setup()
     await user.click(await screen.findByRole("button", { name: "Turn off backups" }))
     const ask = await screen.findByRole("dialog", { name: "Turn off backups?" })
-    expect(within(ask).getByRole("button", { name: "Cancel" })).toHaveFocus()
+    // ConfirmDialog moves focus to Cancel a frame after it opens, as in gate.test.tsx.
+    await waitFor(() => expect(within(ask).getByRole("button", { name: "Cancel" })).toHaveFocus())
     expect(backupOff).not.toHaveBeenCalled()
     await user.click(within(ask).getByRole("checkbox", { name: "Also forget the backup password on this computer" }))
     await user.click(within(ask).getByRole("button", { name: "Turn off" }))
