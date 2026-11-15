@@ -1,62 +1,46 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@unicron/ui"
+import { Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, useAppFrame } from "@unicron/ui"
+
+import { ClosedFrame } from "./closed-frame"
 
 /**
- * The welcome layout (docs/plan/39-first-run.md §1.9, §1.12): the first
- * run, joining, the migration, a forgotten password and the unlock screen
- * all draw in one roomy column, the same at either density, from the
- * `--c-welcome-*` knobs in `app-extension.css`. One `h1` per screen, and
- * focus moves to it when the screen changes, so a screen reader hears
- * each step.
+ * The first run's steps, written as the focus frame's folio says them
+ * (brief F2; cross-app decisions §4): `Step 01 // 04`. A flow of one step,
+ * Welcome and the proof show none.
  */
-export function WelcomeColumn({ children, locked = false }: { children: ReactNode; locked?: boolean }) {
-  return (
-    <main
-      data-welcome=""
-      className={`flex min-h-full justify-center px-(--c-page-gutter-narrow) py-(--c-welcome-pad-block) sm:px-(--c-page-gutter) ${locked ? "bg-surface-locked/70" : "bg-background"}`}
-    >
-      <div className="flex w-full max-w-(--c-welcome-column) flex-col gap-(--c-welcome-gap) self-center">{children}</div>
-    </main>
-  )
+export function stepFolio([n, of]: [number, number]): string {
+  const two = (x: number) => String(x).padStart(2, "0")
+  return `Step ${two(n)} // ${two(of)}`
 }
 
-/** The Lockdown mark: a padlock on the brand square, in the theme's own ink. */
-export function LockdownMark({ unlock = false }: { unlock?: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 32 32"
-      aria-hidden="true"
-      className={`self-center text-foreground ${unlock ? "size-(--c-welcome-mark-unlock)" : "size-(--c-welcome-mark)"}`}
-    >
-      <rect width="32" height="32" rx="7" fill="currentColor" />
-      <path
-        className="fill-background"
-        d="M11 14v-3a5 5 0 0 1 10 0v3h1.5a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 8 23.5v-8a1.5 1.5 0 0 1 1.5-1.5H11zm2.5 0h5v-3a2.5 2.5 0 0 0-5 0v3z"
-      />
-    </svg>
-  )
+/**
+ * The frame every screen before the vault draws in (brief F2, F3, F4;
+ * cross-app decisions §4): Unicron's focus frame, one 432 column with the
+ * lockup at its top and the step folio at the end of the lockup's row. The
+ * first run, joining, the migration and a forgotten password share it with
+ * the lock screen (`ClosedFrame`). Nothing animates in; nothing of the vault
+ * is drawn.
+ */
+export function WelcomeColumn({ children, folio }: { children: ReactNode; folio?: ReactNode; /** Kept for callers; the wash is gone (Q15). */ locked?: boolean }) {
+  return <ClosedFrame folio={folio}>{children}</ClosedFrame>
 }
 
 interface ScreenProps {
-  /** "Step 1 of 4"; absent on Welcome, the proof and the side paths. */
-  step?: [number, number]
   title: string
   sentence: ReactNode
-  /** The Learn more dialog: its title and paragraphs. */
+  /** The Learn more dialog (D94): its title and short paragraphs. */
   learnMore?: { title: string; paragraphs: string[] }
-  /** The mark above the heading (Welcome, unlock). */
-  mark?: "welcome" | "unlock"
-  /** Centre the heading block (Welcome, unlock). */
-  centered?: boolean
   children?: ReactNode
 }
 
 /**
- * One screen of the welcome layout: the step line, the heading, the one
- * sentence with Learn more, then the screen's own groups.
+ * One screen's heading (brief F2): the title in the title role (the screen's
+ * one `h1`, which takes the focus when the step changes, so a screen reader
+ * hears each step), then one sentence, then `Learn more`, a text button that
+ * opens a question dialog of short paragraphs with `Got it` (D94).
  */
-export function WelcomeScreen({ step, title, sentence, learnMore, mark, centered = false, children }: ScreenProps) {
+export function WelcomeScreen({ title, sentence, learnMore, children }: ScreenProps) {
   const heading = useRef<HTMLHeadingElement>(null)
   const [open, setOpen] = useState(false)
   useEffect(() => {
@@ -64,41 +48,34 @@ export function WelcomeScreen({ step, title, sentence, learnMore, mark, centered
   }, [title])
   return (
     <>
-      {mark && <LockdownMark unlock={mark === "unlock"} />}
-      <div className={`flex flex-col gap-(--c-welcome-gap-tight) ${centered ? "text-center" : ""}`}>
-        {step && (
-          <p className="text-sm text-muted-foreground">
-            Step {step[0]} of {step[1]}
-          </p>
-        )}
-        <h1 ref={heading} tabIndex={-1} className="text-3xl font-semibold tracking-tight outline-none">
+      <div className="flex flex-col gap-4">
+        <h1 ref={heading} tabIndex={-1} className="type-title text-text-body outline-none">
           {title}
         </h1>
-        <p className="text-lg text-muted-foreground [&>[data-slot=button]]:text-foreground [&>[data-slot=button]]:underline [&>[data-slot=button]]:underline-offset-4">
-          {sentence}
-          {learnMore && (
-            <>
-              {" "}
-              <Button variant="link" size="inline" onClick={() => setOpen(true)}>
-                Learn more
-              </Button>
-            </>
-          )}
-        </p>
+        <p className="type-body text-text-secondary">{sentence}</p>
+        {learnMore && (
+          // A text button hangs its word on the column's edge, as the title does.
+          <div className="-ms-4 -mt-2">
+            <Button variant="ghost" onClick={() => setOpen(true)}>
+              Learn more
+            </Button>
+          </div>
+        )}
       </div>
       {children}
       {learnMore && (
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent>
+          <DialogContent size="question">
             <DialogHeader>
               <DialogTitle>{learnMore.title}</DialogTitle>
-              <DialogDescription>{learnMore.paragraphs[0]}</DialogDescription>
             </DialogHeader>
-            <div className="flex flex-col gap-3 text-sm">
-              {learnMore.paragraphs.slice(1).map((p) => (
-                <p key={p}>{p}</p>
+            <DialogBody>
+              {learnMore.paragraphs.map((p) => (
+                <p key={p} className="type-body text-text-body">
+                  {p}
+                </p>
               ))}
-            </div>
+            </DialogBody>
             <DialogFooter>
               <Button onClick={() => setOpen(false)}>Got it</Button>
             </DialogFooter>
@@ -111,10 +88,15 @@ export function WelcomeScreen({ step, title, sentence, learnMore, mark, centered
 
 /** A group of controls inside a screen: label, field, help, tight together. */
 export function WelcomeGroup({ children }: { children: ReactNode }) {
-  return <div className="flex flex-col gap-(--c-welcome-gap-tight) text-base">{children}</div>
+  return <div className="flex flex-col gap-3">{children}</div>
 }
 
-/** The actions: full width, primary first, stacked. */
+/**
+ * The screen's buttons (brief F2): full column width and labelled at every
+ * width, one primary, then a secondary, then a text button. On a phone they
+ * sit at the foot of the column.
+ */
 export function WelcomeActions({ children }: { children: ReactNode }) {
-  return <div className="flex flex-col gap-(--c-welcome-gap-tight) [&>[data-slot=button]]:w-full">{children}</div>
+  const { phone } = useAppFrame()
+  return <div className={`flex flex-col gap-3 [&>[data-slot=button]]:w-full ${phone ? "mt-auto" : ""}`}>{children}</div>
 }

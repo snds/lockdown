@@ -17,7 +17,7 @@ import { as, fail, forever } from "../host/core"
 import { fakeLink, waitingCredentials } from "../host/web-link"
 import type { StateDef } from "../harness/types"
 import { d, linkPage, w } from "./defs"
-import { create, kitSaved, open, settings, settingsAt, toBackups, webOpen } from "./steps/screens"
+import { create, kitSaved, open, quickSkipped, settings, settingsAt, toBackups, webOpen } from "./steps/screens"
 import { DIALOG, go } from "./steps/shell"
 
 const PERSON_LOGIN = PERSON.login
@@ -118,7 +118,8 @@ export const SCREENS_STATES: StateDef[] = [
     screen: "First run",
     state: "Welcome",
     brief_row: "First run: create",
-    notes: "Nothing on this computer: the tagline, once, Create a new vault and I already use Lockdown, and the server discovery found (D94; doc 39 screen 0).",
+    notes: "Brief F2: nothing on this computer. The focus frame with no folio, the tagline, once, Learn more, the server discovery found as a compact info Banner, New vault, I already use Lockdown (D94; doc 39 screen 0).",
+    built: { area: "first-run", screen: "welcome", kind: "undrawn" },
     setup: (w) => {
       w.device = { identity: false, deviceKey: false }
     },
@@ -129,7 +130,8 @@ export const SCREENS_STATES: StateDef[] = [
     screen: "First run",
     state: "Learn more",
     brief_row: "First run: create",
-    notes: "The detail behind the first screen, in a dialog (progressive disclosure, D94).",
+    notes: "The detail behind the first screen, in a question dialog with Got it (D94).",
+    built: { area: "first-run", screen: "learn-more", kind: "undrawn" },
     setup: (w) => {
       w.device = { identity: false, deviceKey: false }
     },
@@ -140,11 +142,12 @@ export const SCREENS_STATES: StateDef[] = [
     screen: "First run",
     state: "Name and master password",
     brief_row: "First run: create",
-    notes: "Screen 1: the one password to remember, said plainly, with the strength meter.",
+    notes: "Step 01: the one password to remember, said plainly; the name, the master password with the 3-segment strength rule and the core's word, Type it again, Create my vault.",
+    built: { area: "first-run", screen: "password", kind: "undrawn" },
     setup: (w) => {
       w.device = { identity: false, deviceKey: false }
     },
-    steps: [{ click: "Create a new vault" }, { wait: "Choose your master password", role: "heading" }, { fill: "Your name", value: "Sam Rivera" }, { fill: "Master password", value: MASTER_PASSWORD }, { pause: 400 }],
+    steps: [{ click: "New vault", role: "button" }, { wait: "Choose your master password", role: "heading" }, { fill: "Your name", value: "Sam Rivera" }, { fill: "Master password", value: MASTER_PASSWORD }, { pause: 400 }],
   }),
   d({
     id: "desktop-first-run-join",
@@ -211,19 +214,21 @@ export const SCREENS_STATES: StateDef[] = [
     steps: [...open, ...go("status"), { click: /^Check now/ }, { wait: /public log doesn't include/ }],
   }),
   d({ id: "desktop-settings", screen: "Settings", state: "All sections", brief_row: "Settings", notes: "Appearance, lock, clipboard, approvals, browsers, import and export, backups, security, aliases, quick access.", steps: [...open, ...go("settings")] }),
-  d({ id: "desktop-first-run-kit", screen: "Kit page", state: "Shown once after create", brief_row: "Kit page (D69)", notes: "Screen 2: the Secret Key and recovery code in large print, Save as PDF, Print, and where to keep it.", setup: fresh, steps: [...create, { wait: "Save your recovery kit", role: "heading" }, { pause: 400 }] }),
-  d({ id: "desktop-first-run-kit-saved", screen: "Kit page", state: "Saved as a PDF", brief_row: "Kit page (D69)", notes: "Saved, with the reminder that a PDF on this computer alone won't help if it's lost (doc 38, doc 39).", setup: fresh, steps: [...create, { wait: "Save your recovery kit", role: "heading" }, { click: "Save as PDF", role: "button" }, { wait: /A PDF on this computer alone/ }] }),
-  d({ id: "desktop-first-run-import", screen: "First run", state: "Bring your passwords", brief_row: "First run: create", notes: "Screen 4: the importers Lockdown has, each with how to export, and Skip for now.", setup: fresh, steps: [...create, ...kitSaved, { wait: "Bring your passwords", role: "heading" }] }),
-  d({ id: "desktop-first-run-proofs", screen: "First run", state: "Locked, even from us", brief_row: "First run: create", notes: "The proofs, once, as part of account creation (D95).", setup: fresh, steps: [...create, ...kitSaved, { click: "Skip for now" }, { wait: "Locked, even from us", role: "heading" }] }),
+  d({ id: "desktop-first-run-kit", screen: "Kit page", state: "Shown once after create", brief_row: "Kit page (D69)", notes: "Step 02: the Secret Key and recovery code in large type, Save as PDF and Print, where to keep it; Continue waits for the box, with its reason.", built: { area: "first-run", screen: "kit", kind: "undrawn" }, setup: fresh, steps: [...create, { wait: "Save your recovery kit", role: "heading" }, { pause: 400 }] }),
+  d({ id: "desktop-first-run-kit-saved", screen: "Kit page", state: "Saved as a PDF", brief_row: "Kit page (D69)", notes: "Saved, with the reminder that a PDF on this computer alone won't help if it's lost (doc 38, doc 39).", built: { area: "first-run", screen: "kit-saved", kind: "undrawn" }, setup: fresh, steps: [...create, { wait: "Save your recovery kit", role: "heading" }, { click: "Save as PDF", role: "button" }, { wait: /A PDF on this computer alone/ }] }),
+  d({ id: "desktop-first-run-import", screen: "First run", state: "Bring your passwords", brief_row: "First run: create", notes: "The last step: one Nav Item per importer Lockdown has, with how to export, then other apps; Continue waits for something brought in, with its reason; Not now. Screens-8 restyles the wizard it opens.", built: { area: "first-run", screen: "import", kind: "undrawn" }, setup: fresh, steps: [...create, ...kitSaved, ...quickSkipped, { wait: "Bring your passwords", role: "heading" }] }),
+  d({ id: "desktop-first-run-quick", screen: "First run", state: "Unlock with Touch ID?", brief_row: "First run: create", notes: "Step 03, where the computer has Touch ID or Windows Hello: Use Touch ID disabled with the core's reason (it doesn't open the vault yet, #37), Not now.", built: { area: "first-run", screen: "quick-unlock", kind: "undrawn" }, setup: fresh, steps: [...create, ...kitSaved, { wait: "Unlock with Touch ID?", role: "heading" }, { wait: /needs the signed Lockdown app/ }] }),
+  d({ id: "desktop-first-run-proofs", screen: "First run", state: "Locked, even from us", brief_row: "First run: create", notes: "The proofs, once, as part of account creation (D95): no folio, three checkmark lines, Open vault.", built: { area: "first-run", screen: "proof", kind: "undrawn" }, setup: fresh, steps: [...create, ...kitSaved, ...quickSkipped, { click: "Not now", role: "button" }, { wait: "Locked, even from us", role: "heading" }] }),
   {
     ...d({
       id: "desktop-first-run-weak-password",
       screen: "First run",
       state: "Weak password",
       brief_row: "First run: create",
-      notes: "Under fair is refused (Q3), under the field, in the core's words.",
+      notes: "Under fair is refused (Q3), under the field, in the core's words; the strength rule shows one segment and Weak.",
+      built: { area: "first-run", screen: "weak-password", kind: "undrawn" },
       setup: fresh,
-      steps: [{ click: "Create a new vault" }, { fill: "Your name", value: "Sam Rivera" }, { fill: "Master password", value: "sam1988" }, { fill: "Type it again", value: "sam1988" }, { click: "Continue", role: "button" }, { wait: /at least fair/ }],
+      steps: [{ click: "New vault", role: "button" }, { fill: "Your name", value: "Sam Rivera" }, { fill: "Master password", value: "sam1988" }, { fill: "Type it again", value: "sam1988" }, { click: "Create my vault", role: "button" }, { wait: /at least fair/ }],
     }),
   },
   d({ id: "desktop-first-run-join-device", screen: "Join from another device", state: "Code or QR", brief_row: "Join from another device", notes: "Approve from another device with a code or QR, then compare six digits (D246).", setup: fresh, steps: [{ click: "I already use Lockdown" }, { click: /^Approve from another device/ }, { pause: 400 }] }),

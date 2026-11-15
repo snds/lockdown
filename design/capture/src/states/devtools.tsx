@@ -59,13 +59,13 @@ export const DEVTOOLS_STATES: StateDef[] = [
     screen: "First run",
     state: "With the demo",
     brief_row: "First run: create",
-    notes: "A development build: Explore the demo under the three doors (docs/plan/40-devtools.md §3). Not in a release.",
+    notes: "A development build: Explore demo under the doors (docs/plan/40-devtools.md §3). Not in a release.",
     widths: WIDTHS,
     setup: (w) => {
       w.device = { identity: false, deviceKey: false }
     },
     mount: app,
-    steps: [{ wait: "Explore the demo", role: "button" }],
+    steps: [{ wait: "Explore demo", role: "button" }],
   },
   {
     id: "desktop-devtools-menu",
