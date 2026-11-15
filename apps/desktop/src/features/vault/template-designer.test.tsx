@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
 import { TemplatesProvider } from "@/app/templates"
@@ -35,15 +35,18 @@ describe("a person's own templates (D232)", () => {
     const saveUserTemplate = vi.fn<Client["saveUserTemplate"]>(() => Promise.resolve("t9"))
     const onNotice = mount(fakeClient({ templates: () => Promise.resolve(TEMPLATES), userTemplates: () => Promise.resolve([]), saveUserTemplate }))
     const user = userEvent.setup()
-    expect(await screen.findByText(/None yet/)).toBeInTheDocument()
+    // None yet: the Empty State, its one action NEW TEMPLATE (brief E4).
+    expect(await screen.findByText("No templates yet.")).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "New template" }))
     await user.type(await screen.findByLabelText("Name"), "Pet")
     await user.type(screen.getByLabelText("Field 1's label"), "Microchip number")
-    await user.click(screen.getByRole("switch", { name: "Field 1 is needed" }))
+    await user.click(screen.getByRole("checkbox", { name: "Field 1 is needed" }))
     await user.click(screen.getByRole("button", { name: "Add a field" }))
     await user.type(screen.getByLabelText("Field 2's label"), "Vet's portal password")
     await user.selectOptions(screen.getByLabelText("Field 2's kind"), "hidden")
     await user.click(screen.getByRole("button", { name: "Move field 2 up" }))
+    // After a move, focus stays on the field that moved.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Move field 1 up" })).toHaveFocus())
     await user.click(screen.getByRole("button", { name: "Save template" }))
     await waitFor(() => expect(saveUserTemplate).toHaveBeenCalled())
     expect(saveUserTemplate.mock.calls[0]![0]).toEqual({
@@ -76,7 +79,11 @@ describe("a person's own templates (D232)", () => {
     expect(sent.id).toBe("t1")
     expect(sent.template.fields[0]).toEqual({ key: "locker", label: "Locker number", kind: "text", required: true })
     await user.click(await screen.findByRole("button", { name: "Delete Gym locker" }))
-    await user.click(await screen.findByRole("button", { name: "Delete" }))
+    // A Question over the layer; focus starts on CANCEL.
+    const question = await screen.findByRole("dialog", { name: "Delete Gym locker?" })
+    expect(question).toHaveTextContent("It goes to Recently deleted like an item.")
+    await waitFor(() => expect(within(question).getByRole("button", { name: "Cancel" })).toHaveFocus())
+    await user.click(within(question).getByRole("button", { name: "Delete" }))
     await waitFor(() => expect(deleteUserTemplate).toHaveBeenCalledWith("t1"))
   })
 })

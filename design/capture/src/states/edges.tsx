@@ -13,16 +13,22 @@ import { as, fail } from "../host/core"
 import { Standalone } from "../harness/standalone"
 import type { StateDef } from "../harness/types"
 import { WIDE, d, only, w } from "./defs"
-import { choose, newItem, newItemMenu, rest, review, waits } from "./steps/edges"
+
+/** A phone only: the type sheet and quick create are the phone's forms of the menu. */
+const PHONE = [390]
+import { choose, newItem, newItemMenu, openGroup, rest, review, waits } from "./steps/edges"
 import { open, webOpen } from "./steps/screens"
 import { DIALOG, MENU, go } from "./steps/shell"
 import { healthDevice, itemAction, openItem } from "./steps/vault"
 
 export const EDGES_STATES: StateDef[] = [
-  d({ id: "desktop-vault-new-item-menu", screen: "Vault", state: "New item menu", brief_row: "Item edit", notes: "Every creatable kind and variant from the core's templates, and the person's own.", steps: [...open, newItemMenu, { pause: 300 }] }),
-  d({ id: "desktop-editor-new-login", screen: "Item edit", state: "New login", brief_row: "Item edit", notes: "The one editor, for a new Login.", steps: [...open, ...newItem(/^Login/), DIALOG] }),
-  d({ id: "desktop-editor-edit-login", screen: "Item edit", state: "Edit a login", brief_row: "Item edit", notes: "An existing Login; secrets kept unless retyped.", steps: [...open, ...openItem("Northwind Mail"), itemAction("Edit"), DIALOG] }),
-  d({ id: "desktop-editor-edit-card", screen: "Item edit", state: "Edit a card", brief_row: "Item edit", notes: "A card's editor.", steps: [...open, ...openItem("Bluefin Visa"), itemAction("Edit"), DIALOG] }),
+  d({ id: "desktop-vault-new-item-menu", screen: "Vault", state: "New item menu", brief_row: "Item edit", notes: "Brief E1 on a desktop: the menu under NEW ITEM. Login, Payment card, Note, One-time code and Wi-Fi network first with their counts in two digits (no Passkey, Q18); the four groups as submenus; YOUR TEMPLATES 01; Your templates at the foot.", widths: WIDE, built: { area: "new-item", screen: "menu", kind: "undrawn" }, steps: [...open, newItemMenu, { pause: 300 }, rest] }),
+  d({ id: "desktop-vault-new-item-sheet", screen: "Vault", state: "Type sheet", brief_row: "Item edit", notes: "Brief E1 on a phone (Mobile / 06): the sheet, NEW ITEM // PERSONAL VAULT, the five first with counts, the four groups as closed Section Headers, YOUR TEMPLATES and Your templates.", widths: PHONE, built: { area: "new-item", screen: "type-sheet", kind: "drawn" }, steps: [...open, newItemMenu, { see: '[data-adaptive="menu"]' }, { pause: 300 }, rest] }),
+  d({ id: "desktop-vault-new-item-sheet-group", screen: "Vault", state: "Type sheet, a group open", brief_row: "Item edit", notes: "Brief E1 on a phone: IDENTITIES AND DOCUMENTS opened in place, its kinds and variants with their counts.", widths: PHONE, built: { area: "new-item", screen: "type-sheet-group", kind: "undrawn" }, steps: [...open, newItemMenu, { see: '[data-adaptive="menu"]' }, openGroup("Identities and documents"), { pause: 300 }, rest] }),
+  d({ id: "desktop-vault-quick-create", screen: "Vault", state: "Quick create", brief_row: "Item edit", notes: "States / 03: a long press on create (Shift+Enter here) over the menu scrim: CREATE // LONG PRESS, Login, Payment card, Note, One-time code, no counts; the create button turned to close.", widths: PHONE, built: { area: "new-item", screen: "quick-create", kind: "drawn" }, steps: [...open, { run: () => document.querySelector<HTMLElement>('button[aria-label="New item"]')?.focus() }, { key: "Shift+Enter", target: 'button[aria-label="New item"]' }, MENU, { wait: /^Login/, role: "menuitem" }] }),
+  d({ id: "desktop-editor-new-login", screen: "Item edit", state: "New login", brief_row: "Item edit", notes: "Brief E2 (Mobile / 07, Desktop / 05): NEW LOGIN // PERSONAL VAULT, the title following the website typed, Website, Username, the password made when you save with the core's words and strength, Add a one-time code on with its field, VAULT with CHANGE, More options shut; CANCEL and SAVE LOGIN (the checkmark in the phone's top bar).", built: { area: "new-item", screen: "login", kind: "drawn" }, steps: [...open, ...newItem(/^Login/), DIALOG, { fill: "Website", value: "pinecone.example" }, { fill: "Username", value: "sam.rivera" }, { click: "Generate password" }, { click: "Add a one-time code", role: "switch" }, { pause: 400 }, rest] }),
+  d({ id: "desktop-editor-edit-login", screen: "Item edit", state: "Edit a login", brief_row: "Item edit", notes: "Brief E2: EDIT LOGIN // PERSONAL VAULT, the item's title, the secrets kept unless retyped (GENERATE, REMOVE), its code, More options open because it holds values; the caption about History, CANCEL and SAVE.", built: { area: "new-item", screen: "edit-login", kind: "undrawn" }, steps: [...open, ...openItem("Northwind Mail"), itemAction("Edit"), DIALOG, { pause: 300 }, rest] }),
+  d({ id: "desktop-editor-edit-card", screen: "Item edit", state: "Edit a card", brief_row: "Item edit", notes: "Brief E2: a card's essentials (Card number, Name on card, Expires, Security code), VAULT, then More options.", built: { area: "new-item", screen: "card", kind: "undrawn" }, steps: [...open, ...openItem("Bluefin Visa"), itemAction("Edit"), DIALOG, { pause: 300 }, rest] }),
   d({ id: "desktop-codes-filled", screen: "Codes view", state: "Filled", brief_row: "Codes view", notes: "Brief C1 (Mobile / 08, Desktop / 06): CODES // NN, rows on a phone and tiles from the medium width up on unicron's CodeDisplay; TOTP, eight digits, Steam Guard and a counter; one code four seconds from its end, its rule and seconds critical.", built: { area: "codes", screen: "list", kind: "drawn" }, answers: expiringCode("Northwind Mail"), steps: [...open, ...go("codes"), { wait: "Northwind" }] }),
   d({ id: "desktop-codes-expiring", screen: "Codes view", state: "A code about to change", brief_row: "Codes view", notes: "One code four seconds from its end, where the countdown turns critical; the rest have their full time.", answers: expiringCode("Northwind Mail"), steps: [...open, ...go("codes"), { wait: "Northwind" }] }),
   d({ id: "desktop-codes-empty", screen: "Codes view", state: "Empty", brief_row: "Codes view", notes: "Brief C1: CODES // 00, \"No codes yet.\", the one line, ADD CODE.", built: { area: "codes", screen: "empty", kind: "undrawn" }, setup: only((i) => !Object.keys(i.fields).some((k) => k.startsWith("code."))), steps: [...open, ...go("codes"), { wait: "No codes yet." }] }),
@@ -43,19 +49,20 @@ export const EDGES_STATES: StateDef[] = [
   d({ id: "desktop-item-share-person", screen: "Item Share menu", state: "With someone", brief_row: "Item Share menu", notes: "Share one item with a verified contact: view or fill only.", steps: [...open, ...openItem("Harbor Health"), itemAction("Share"), { click: /^With someone/, role: "menuitem" }, DIALOG] }),
   d({ id: "desktop-item-share-link", screen: "Item Share menu", state: "As a share link", brief_row: "Item Share menu", notes: "Lifetime, opens, password.", steps: [...open, ...openItem("Guest Wi-Fi"), itemAction("Share"), { click: /^As a share link/, role: "menuitem" }, DIALOG] }),
   d({ id: "desktop-item-share-link-once", screen: "Link shown once", state: "Copy the link", brief_row: "Link shown once", notes: "The new link, shown one time.", steps: [...open, ...openItem("Guest Wi-Fi"), itemAction("Share"), { click: /^As a share link/, role: "menuitem" }, DIALOG, { click: "Make the link" }, { wait: "Copy the link" }] }),
-  d({ id: "desktop-editor-new-wifi", screen: "Item edit", state: "New Wi-Fi network", brief_row: "Item edit", notes: "The editor for another kind.", steps: [...open, ...newItem(/^Wi-Fi network/), DIALOG] }),
-  d({ id: "desktop-editor-new-passport", screen: "Item edit", state: "New passport", brief_row: "Item edit", notes: "A template variant.", steps: [...open, ...newItem(/^Passport/), DIALOG] }),
-  d({ id: "desktop-editor-generator", screen: "Generator options", state: "Characters", brief_row: "Generator options", notes: "Generate with options; strength without a value.", steps: [...open, ...newItem(/^Login/), DIALOG, { click: "Generate password" }, { pause: 400 }] }),
-  d({ id: "desktop-editor-templates", screen: "Your templates", state: "List", brief_row: "Your templates", notes: "The person's own templates.", steps: [...open, ...newItem(/templates/), DIALOG] }),
-  d({ id: "desktop-editor-template-new", screen: "Your templates", state: "New template", brief_row: "Your templates", notes: "Designing a form of your own.", steps: [...open, ...newItem(/templates/), DIALOG, { click: "New template" }, { pause: 300 }] }),
+  d({ id: "desktop-editor-new-wifi", screen: "Item edit", state: "New Wi-Fi network", brief_row: "Item edit", notes: "Brief E2: Network name, Password (GENERATE), Security, VAULT; the title following the network name.", built: { area: "new-item", screen: "wifi", kind: "undrawn" }, steps: [...open, ...newItem(/^Wi-Fi network/), DIALOG, { fill: "Network name", value: "cabin-net" }, { pause: 300 }, rest] }),
+  d({ id: "desktop-editor-new-passport", screen: "Item edit", state: "New passport", brief_row: "Item edit", notes: "Brief E2: a variant from IDENTITIES AND DOCUMENTS; Title, the Passport section and every required field, VAULT, then More options (Holder, Notes).", built: { area: "new-item", screen: "passport", kind: "undrawn" }, steps: [...open, ...newItem(/^Passport/, "Identities and documents"), DIALOG, { pause: 300 }, rest] }),
+  d({ id: "desktop-editor-generator", screen: "Generator options", state: "Characters", brief_row: "Generator options", notes: "Brief E3: OPTIONS opens the picker by the password (a popover with GENERATOR // Password options on a desktop, a sheet on a phone): Make, Length with steppers, Digits, Symbols, No look-alikes, Leave out; the core's words, bits and a strength Badge; no DONE.", built: { area: "new-item", screen: "generator", kind: "undrawn" }, steps: [...open, ...newItem(/^Login/), DIALOG, { click: "Generate password" }, { click: "Options for password" }, { see: '[data-adaptive="popover"]' }, { pause: 500 }] }),
+  d({ id: "desktop-editor-templates", screen: "Your templates", state: "List", brief_row: "Your templates", notes: "Brief E4: YOUR TEMPLATES 01, one compact row per template (name, what it's for, 02 FIELDS) with CHANGE and DELETE; CLOSE and NEW TEMPLATE.", built: { area: "new-item", screen: "templates", kind: "undrawn" }, steps: [...open, ...newItem(/^Your templates$/), DIALOG, { pause: 300 }, rest] }),
+  d({ id: "desktop-editor-template-new", screen: "Your templates", state: "New template", brief_row: "Your templates", notes: "Brief E4: the designer in the same layer: Name, What it's for, FIELDS 01 (label, kind, Needed, move up and down, drop), Add a field; BACK and SAVE TEMPLATE.", built: { area: "new-item", screen: "template-new", kind: "undrawn" }, steps: [...open, ...newItem(/^Your templates$/), DIALOG, { click: "New template" }, { pause: 300 }, rest] }),
   d({
     id: "desktop-editor-save-error",
     screen: "Item edit",
     state: "Error on save",
     brief_row: "Item edit",
-    notes: "The core refused the save; inline error.",
+    notes: "Brief E2: the core refused the save: a compact critical Banner above the footer (at the top of the form on a phone) with the core's sentence; the form keeps what was typed.",
+    built: { area: "new-item", screen: "save-error", kind: "undrawn" },
     answers: () => ({ edit_item: () => fail("refused", "This item changed on another device while you edited it. Your edit was kept as a conflict copy.") }),
-    steps: [...open, ...openItem("Quill Notes"), itemAction("Edit"), DIALOG, { click: "Save", role: "button" }, { pause: 500 }],
+    steps: [...open, ...openItem("Quill Notes"), itemAction("Edit"), DIALOG, { click: /^Save$/, role: "button" }, { wait: "Not saved" }, { pause: 300 }, rest],
   }),
   d({ id: "desktop-codes-scan-paste", screen: "Sign in a TV or console", state: "Paste: refused", brief_row: "Sign in a TV or console", notes: "Brief C2: a pasted code is never approved. The Review says Refused in a critical Banner with the core's words, the facts, and SCAN AGAIN; no approve control.", built: { area: "codes", screen: "tv-refused", kind: "undrawn" }, steps: [...open, ...go("codes"), { click: "Sign in TV" }, DIALOG, { click: "Paste", role: "tab" }, { fill: "The code's address", value: "https://watch.meadowlark.example/activate?code=WDJB-MJHT" }, { click: "Check it" }, { wait: "Refused" }, { pause: 300 }] }),
   d({ id: "desktop-codes-search", screen: "Codes view", state: "Search", brief_row: "Codes view", notes: "Brief C1: from ten codes up, a search field in the page head (desktop; a phone finds codes through Search). One match.", built: { area: "codes", screen: "search", kind: "undrawn" }, widths: WIDE, setup: moreCodes, steps: [...open, ...go("codes"), { fill: "Search codes", value: "cobalt" }, { pause: 200 }] }),
@@ -190,16 +197,17 @@ export const EDGES_STATES: StateDef[] = [
     screen: "Generator options",
     state: "Six words: strong",
     brief_row: "Generator options",
-    notes: "The default passphrase, six words (77.5 bits), reads strong: weak under 50 bits, fair under 75 (D230 as changed by D375).",
+    notes: "Brief E3, a passphrase: Words with steppers, Between words, A capital on each word, A digit on one word. The default six words (77.5 bits) read strong: weak under 50 bits, fair under 75 (D230 as changed by D375).",
+    built: { area: "new-item", screen: "generator-words", kind: "undrawn" },
     steps: [
       ...open,
       ...newItem(/^Login/),
       DIALOG,
       { click: "Generate password" },
-      { click: "Options" },
+      { click: "Options for password" },
       { pause: 300 },
       { run: () => choose('[aria-label="Generator options"] select', "words") },
-      { wait: /bits, strong/ },
+      { wait: /bits\s*Strong/ },
     ],
   }),
   d({

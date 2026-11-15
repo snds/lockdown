@@ -4,8 +4,46 @@ import type { Step } from "../../harness/types"
 
 /** Opens the New item menu. */
 export const newItemMenu: Step = { click: /^New item/ }
-/** Starts a new item of one kind (or the menu's templates entry) from the New item menu: a menu beside the sidebar, a sheet of the same rows on a phone. */
-export const newItem = (entry: RegExp): Step[] => [newItemMenu, { click: entry, within: '[data-adaptive="menu"]' }]
+/** Where a group's rows are: the desktop's submenu; on a phone (no submenu) the sheet itself. */
+const GROUP_ROWS = '[data-slot="dropdown-menu-sub-content"]'
+/** Opens one of the menu's four groups (brief E1): a submenu on a desktop, a closed Section Header on a phone. */
+export const openGroup = (group: string): Step => ({
+  run: async () => {
+    const menu = document.querySelector('[data-adaptive="menu"]')
+    const trigger = menu && [...menu.querySelectorAll<HTMLElement>('[aria-haspopup="menu"], [data-slot="section-header"] button, button[aria-expanded]')].find((e) => e.textContent?.trim().startsWith(group))
+    if (!trigger) throw new Error(`no group ${group} in the menu`)
+    trigger.focus()
+    trigger.click()
+    // A desktop submenu also opens from the keyboard, as a person would with the arrow key.
+    if (trigger.getAttribute("aria-haspopup") === "menu") {
+      await new Promise((r) => setTimeout(r, 100))
+      if (!document.querySelector(GROUP_ROWS)) trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", code: "ArrowRight", bubbles: true, cancelable: true }))
+    }
+  },
+})
+/**
+ * Starts a new item of one kind (or "Your templates") from the New item menu: a menu beside the sidebar,
+ * a sheet of the same rows on a phone. A kind outside the five first is in a group: name it.
+ */
+export const newItem = (entry: RegExp, group?: string): Step[] => (group ? [newItemMenu, openGroup(group), pickInGroup(entry)] : [newItemMenu, { click: entry, within: '[data-adaptive="menu"]' }])
+
+/** Picks a row inside an opened group: the desktop's submenu once it shows, or the phone's sheet (never a row of the list behind it). */
+const pickInGroup = (entry: RegExp): Step => ({
+  run: async () => {
+    for (let i = 0; i < 80; i++) {
+      const root = document.querySelector(GROUP_ROWS) ?? document.querySelector('[data-slot="sheet-content"][data-adaptive="menu"]')
+      const row = root && [...root.querySelectorAll<HTMLElement>('[role="menuitem"], [data-slot="adaptive-menu-item"]')].find((e) => entry.test(e.textContent?.trim() ?? ""))
+      if (row) {
+        row.click()
+        return
+      }
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    throw new Error(`no ${String(entry)} in the open group`)
+  },
+})
+/** The editor's More options, opened. */
+export const moreOptions: Step = { click: /^More options/ }
 
 /** Picks an option of a native select the way a person would, so React hears the change. */
 export function choose(selector: string, value: string) {
