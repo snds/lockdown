@@ -1,5 +1,5 @@
 import { useRef, useState } from "react"
-import { toast } from "sonner"
+import { toast } from "@unicron/ui"
 
 import { CodeDisplay, type CodeDisplayDensity, type CodeDisplayWarning } from "@unicron/ui/security/code-display"
 

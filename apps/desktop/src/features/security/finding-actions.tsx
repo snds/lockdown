@@ -42,7 +42,7 @@ export function FindingFix({ finding, onNotice, onDevices }: FixProps) {
     }
     return (
       <Button size="sm" variant="outline" onClick={() => void change()} disabled={busy}>
-        <Icon name="open_in_new" data-icon="inline-start" />
+        <Icon name="launch" data-icon="inline-start" />
         Change password
       </Button>
     )
@@ -51,7 +51,7 @@ export function FindingFix({ finding, onNotice, onDevices }: FixProps) {
     const url = finding.setup_url
     return (
       <Button size="sm" variant="outline" onClick={() => void client.openSite(url).catch((e) => onNotice(describeError(e)))}>
-        <Icon name="open_in_new" data-icon="inline-start" />
+        <Icon name="launch" data-icon="inline-start" />
         Turn it on
       </Button>
     )

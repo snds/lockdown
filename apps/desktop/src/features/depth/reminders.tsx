@@ -1,18 +1,14 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 
 import {
+  AdaptiveDialog,
   Badge,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
+  Button,
+  ConfirmDialog,
   Field,
   FieldDescription,
-  FieldError,
   FieldLabel,
   Icon,
-  Input,
   Item,
   ItemContent,
   ItemGroup,
@@ -20,28 +16,52 @@ import {
   NativeSelect,
   NativeSelectOption,
 } from "@unicron/ui"
+import { SecretField } from "@unicron/ui/security/secret-field"
 
-import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
+import { useNeedsYouSource, type NeedsYouEntry } from "@/app/needs-you"
 import { describeError } from "@/core/client"
 import { dateLocal } from "@/lib/format"
 import { KitDialog } from "@/features/account/kit-dialog"
 
-import { PASSWORD_DAYS, promptFor, useDepthClient, type DrillCheck, type RemindersView } from "./depth-client"
+import { PASSWORD_DAYS, useDepthClient, type DrillCheck, type RemindersView } from "./depth-client"
+
+/** The reminders that are due now, in the X3 table's order (rows 7, 8, 9). */
+export function dueReminders(r: RemindersView | null): Array<"kit-test" | "password" | "drill"> {
+  if (!r) return []
+  const due: Array<"kit-test" | "password" | "drill"> = []
+  if (r.drill.kit_test_pending) due.push("kit-test")
+  if (r.password.applies && r.password.due) due.push("password")
+  if (r.drill.due && r.drill.kit !== "none") due.push("drill")
+  return due
+}
+
+/** The skip question's words (D251, D383): its one yes is the sentence the person accepts. */
+export const SKIP_WORDS = "I understand an untested kit can fail"
 
 /**
- * The reminders around recovery, asked once each time they come due
- * (docs/plan/22-security-depth.md §7): the first run's kit test
- * (skipped only by pressing "I understand an untested kit can fail", D251),
- * the master password
- * every 14 days where unlocking never asks for it, and the yearly drill.
+ * The reminders around recovery (docs/plan/22-security-depth.md §7), read
+ * once after unlock and shown as needs-you rows 7 to 9 (brief X3, Q4), not
+ * as a dialog: the block on a desktop, the strip on a phone.
+ *
+ *   7  RECOVERY KIT // NOT TESTED   TEST IT NOW (the kit test), SKIP (a
+ *      question whose one yes is "I understand an untested kit can fail",
+ *      D251, D383; it asks again in a week)
+ *   8  MASTER PASSWORD // 14 DAYS   TYPE IT (a one-field form, checked on
+ *      this device), TOMORROW (D252)
+ *   9  RECOVERY DRILL // DUE        RUN DRILL (the kit test), NEXT WEEK (D253)
+ *
+ * Each leaves when it is answered; the next due one then shows.
  */
 export function RemindersPrompt({ onNotice, onChanged }: { onNotice: (text: string) => void; onChanged: () => void }) {
   const depth = useDepthClient()
   const [reminders, setReminders] = useState<RemindersView | null>(null)
   const [kit, setKit] = useState(false)
-  const [dismissed, setDismissed] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [skipping, setSkipping] = useState(false)
+  const [typing, setTyping] = useState(false)
+  const [password, setPassword] = useState("")
+  // A failed answer, in the core's words, on the reminder it belongs to.
+  const [error, setError] = useState<{ which: string; text: string } | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
 
   useEffect(() => {
     if (!depth) return
@@ -51,83 +71,121 @@ export function RemindersPrompt({ onNotice, onChanged }: { onNotice: (text: stri
       .catch(() => setReminders(null))
   }, [depth])
 
-  if (!depth) return null
-  const which = dismissed ? null : promptFor(reminders)
-
-  const act = async (f: () => Promise<RemindersView>) => {
-    setBusy(true)
+  const act = async (which: string, f: () => Promise<RemindersView>): Promise<boolean> => {
+    setBusy(which)
     setError(null)
     try {
       setReminders(await f())
+      return true
     } catch (e) {
-      setError(describeError(e))
+      setError({ which, text: describeError(e) })
+      return false
     } finally {
-      setBusy(false)
+      setBusy(null)
     }
   }
 
+  const due = dueReminders(reminders)
+  const lineOf = (which: string, line: string) => (error?.which === which ? error.text : line)
+  const entry = (which: (typeof due)[number]): NeedsYouEntry | null => {
+    if (!depth || !reminders) return null
+    if (which === "kit-test")
+      return {
+        id: "reminder:kit-test",
+        priority: 7,
+        shows: "every",
+        title: "Recovery kit // not tested",
+        line: lineOf("kit-test", "Test your recovery kit."),
+        action: { label: "Test it now", onClick: () => setKit(true) },
+        textAction: { label: "Skip", onClick: () => setSkipping(true), busy: busy === "kit-test" },
+      }
+    if (which === "password")
+      return {
+        id: "reminder:password",
+        priority: 8,
+        shows: "every",
+        title: `Master password // ${reminders.password.every_days} days`,
+        line: lineOf("password", "Type your master password once more."),
+        action: { label: "Type it", onClick: () => setTyping(true) },
+        textAction: { label: "Tomorrow", onClick: () => void act("password", () => depth.passwordSnooze()), busy: busy === "password" },
+      }
+    return {
+      id: "reminder:drill",
+      priority: 9,
+      shows: "every",
+      title: "Recovery drill // due",
+      line: lineOf("drill", "Time for the recovery drill."),
+      action: { label: "Run drill", onClick: () => setKit(true) },
+      textAction: { label: "Next week", onClick: () => void act("drill", () => depth.drillSnooze()), busy: busy === "drill" },
+    }
+  }
+  useNeedsYouSource(due.includes("kit-test") ? entry("kit-test") : null)
+  useNeedsYouSource(due.includes("password") ? entry("password") : null)
+  useNeedsYouSource(due.includes("drill") ? entry("drill") : null)
+
+  if (!depth) return null
+
   const checkPassword = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    const form = e.currentTarget
-    const password = String(new FormData(form).get("password") ?? "")
-    await act(() => depth.passwordCheck(password))
-    form.reset()
+    if (!password) return
+    const typed = password
+    setPassword("")
+    if (await act("password-form", () => depth.passwordCheck(typed))) setTyping(false)
   }
 
   return (
     <>
-      <Dialog open={which !== null && !kit} onOpenChange={(o) => !o && setDismissed(true)}>
-        <DialogContent>
-          {which === "password" ? (
-            <form onSubmit={checkPassword} className="flex flex-col gap-4">
-              <DialogHeader>
-                <DialogTitle>Your master password, once more</DialogTitle>
-                <DialogDescription>
-                  This device opens without it, so it's easy to forget. A new device will need it. Type it here to keep it fresh; it's checked
-                  without leaving this device.
-                </DialogDescription>
-              </DialogHeader>
-              <Field>
-                <FieldLabel htmlFor="reminder-password">Master password</FieldLabel>
-                <Input id="reminder-password" name="password" type="password" required autoComplete="current-password" />
-              </Field>
-              {error && <FieldError role="alert">{error}</FieldError>}
-              <LabelledActions>
-                <LabelledAction kind="cancel" type="button" onClick={() => void act(() => depth.passwordSnooze())} disabled={busy}>
-                  Tomorrow
-                </LabelledAction>
-                <LabelledAction kind="confirm" type="submit" disabled={busy}>
-                  Check
-                </LabelledAction>
-              </LabelledActions>
-            </form>
-          ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle>{which === "kit-test" ? "Test your recovery kit" : "Time for the recovery drill"}</DialogTitle>
-                <DialogDescription>
-                  {which === "kit-test"
-                    ? "Type the Secret Key and recovery code from the kit back in. It takes a minute and proves the page you kept gets you back in. Skip it, and Lockdown asks again in a week."
-                    : "Once a year, type the kit back in, and check that your emergency contacts' keys still hold."}
-                </DialogDescription>
-              </DialogHeader>
-              {error && <FieldError role="alert">{error}</FieldError>}
-              <LabelledActions>
-                <LabelledAction
-                  kind="cancel"
-                  onClick={() => void act(() => (which === "kit-test" ? depth.kitTestSkip(true) : depth.drillSnooze()))}
-                  disabled={busy}
-                >
-                  {which === "kit-test" ? "I understand an untested kit can fail" : "Next week"}
-                </LabelledAction>
-                <LabelledAction kind="confirm" onClick={() => setKit(true)} disabled={busy}>
-                  Test it now
-                </LabelledAction>
-              </LabelledActions>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* SKIP: the question whose one yes is D251's sentence. Focus starts on Cancel. */}
+      <ConfirmDialog
+        open={skipping}
+        onOpenChange={(o) => !o && setSkipping(false)}
+        overline="Recovery kit"
+        title="Skip the kit test?"
+        description="Typing the kit back in takes a minute and proves the page you kept gets you back in. Skip it, and Lockdown asks again in a week."
+        confirmLabel={SKIP_WORDS}
+        error={error?.which === "kit-skip" ? error.text : undefined}
+        onConfirm={async () => {
+          if (!(await act("kit-skip", () => depth.kitTestSkip(true)))) throw new Error("not skipped")
+          setSkipping(false)
+        }}
+        onCancel={() => setSkipping(false)}
+      />
+      {/* TYPE IT: a one-field form. The password is checked without leaving this device. */}
+      <AdaptiveDialog
+        open={typing}
+        onOpenChange={(o) => {
+          if (o) return
+          setTyping(false)
+          setPassword("")
+          setError(null)
+        }}
+        size="form"
+        overline="Master password"
+        title="Your master password, once more"
+        description="This device opens without it, so it's easy to forget. A new device will need it. Type it here to keep it fresh; it's checked without leaving this device."
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setTyping(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="reminder-password-form" loading={busy === "password-form"}>
+              Check
+            </Button>
+          </>
+        }
+      >
+        <form id="reminder-password-form" onSubmit={checkPassword}>
+          <SecretField
+            mode="edit"
+            id="reminder-password"
+            label="Master password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="current-password"
+            error={error?.which === "password-form" ? error.text : undefined}
+          />
+        </form>
+      </AdaptiveDialog>
       <KitDialog
         kind={kit ? "kit-verify" : null}
         hasAccount
@@ -187,7 +245,7 @@ export function DrillSection() {
           <Item key={`${c.what}-${i}`} role="listitem" size="sm" variant="outline" data-row="">
             <ItemContent>
               <ItemTitle>
-                <Icon name={c.ok ? "check_circle" : "error"} aria-label={c.ok ? "fine" : "needs you"} />
+                <Icon name={c.ok ? "checkmark--outline" : "warning"} aria-label={c.ok ? "fine" : "needs you"} />
                 {c.words}
               </ItemTitle>
             </ItemContent>

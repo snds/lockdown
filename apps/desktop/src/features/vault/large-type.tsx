@@ -33,7 +33,7 @@ export function ShowLargeType({ title, getSecret, groupSize = 3 }: LargeTypeButt
   return (
     <>
       <Button variant="ghost" size="sm" disabled={asking} onClick={() => setOpen(true)}>
-        <Icon name="format_size" data-icon="inline-start" />
+        <Icon name="text--scale" data-icon="inline-start" />
         Show large type
       </Button>
       <LargeTypeView open={open} onOpenChange={setOpen} getSecret={getSecret} title={title} groupSize={groupSize} lifetime={LARGE_TYPE_LIFETIME_S} />

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react"
 
-import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Icon, ItemGroup, Spinner } from "@unicron/ui"
+import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Icon, Spinner } from "@unicron/ui"
 
 import { useTemplates } from "@/app/templates"
 import { LabelledAction, LabelledActions } from "@/components/labelled-actions"
@@ -196,13 +196,17 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
     }
     const view = codes.codes?.find((c) => c.field_id === f.field_id)
     return view ? (
-      <div key={f.field_id} className="flex flex-col items-start gap-1">
+      // The code takes the block's width: unicron 1.0's code field measures its own box to lay
+      // itself out, so a wrapper that shrinks it to its content shrinks it to nothing.
+      <div key={f.field_id} className="flex flex-col gap-1">
         <ItemCodeDisplay code={view} now={codes.now} expiresAt={codes.expiresAt[codeKey(view)] ?? null} />
         {item.kind === "code" && (
-          <ShowLargeType
-            title={`Code · ${[view.issuer, view.account].filter(Boolean).join(" · ") || title}`}
-            getSecret={() => Promise.resolve(new TextEncoder().encode(view.current))}
-          />
+          <div>
+            <ShowLargeType
+              title={`Code · ${[view.issuer, view.account].filter(Boolean).join(" · ") || title}`}
+              getSecret={() => Promise.resolve(new TextEncoder().encode(view.current))}
+            />
+          </div>
         )}
       </div>
     ) : (
@@ -232,11 +236,11 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
         {trashed && canEdit && (
           <div className="flex shrink-0 items-center gap-1">
             <Button variant="outline" size="sm" onClick={restore}>
-              <Icon name="restore_from_trash" data-icon="inline-start" />
+              <Icon name="reset" data-icon="inline-start" />
               Restore
             </Button>
             <Button variant="ghost-destructive" size="sm" onClick={() => setPurging(true)}>
-              <Icon name="delete_forever" data-icon="inline-start" />
+              <Icon name="trash-can" data-icon="inline-start" />
               Delete now
             </Button>
           </div>
@@ -255,7 +259,7 @@ export function DetailPane({ id, rows, onEdit, onTrashed, onChanged, onNotice, o
             )}
             {canEdit && (
               <Button variant="ghost-destructive" size="sm" onClick={() => setConfirm(true)}>
-                <Icon name="delete" data-icon="inline-start" />
+                <Icon name="trash-can" data-icon="inline-start" />
                 Trash
               </Button>
             )}
@@ -386,9 +390,12 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2" aria-label={title}>
       <h3 className="text-xs font-medium text-muted-foreground uppercase">{title}</h3>
-      <ItemGroup>
+      {/* A plain list, not unicron's ItemGroup: from 1.0 a row inside an ItemGroup is a list item
+          itself, and each child here already sits in one (ListItems), so a row would be an item
+          inside an item (R7). */}
+      <div role="list" className="flex w-full flex-col">
         <ListItems>{children}</ListItems>
-      </ItemGroup>
+      </div>
     </section>
   )
 }

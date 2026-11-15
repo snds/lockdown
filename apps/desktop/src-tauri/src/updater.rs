@@ -192,6 +192,10 @@ mod tests {
             "https://objects.githubusercontent.com/github-production-release-asset/1/2?x=y",
             "https://release-assets.githubusercontent.com/github-production-release-asset/1/2",
             "https://GitHub.com/snds/lockdown/releases/download/main-build/Lockdown.app.tar.gz",
+            // The shared feed (docs/plan/66-shared-feed.md): another repository
+            // on the same hosts, so the rule already lets it through unchanged.
+            "https://github.com/snds/releases/releases/download/lockdown-main/latest.json",
+            "https://github.com/snds/releases/releases/download/lockdown-main/Lockdown.app.tar.gz",
         ] {
             assert_eq!(allowed(ok, &hosts), Ok(()), "{ok}");
         }

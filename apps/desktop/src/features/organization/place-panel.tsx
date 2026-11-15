@@ -93,15 +93,14 @@ export function PlacePanel({ item, title, rows, onChanged, onReplaced, onError }
       {!trashed && (
         <IconButton
           label={org.favourite ? "Remove from favourites" : "Add to favourites"}
-          icon="star"
-          fill={org.favourite}
+          icon={org.favourite ? "star--filled" : "star"}
           size="icon-sm"
           onClick={() => void star()}
         />
       )}
       {vaults.length > 1 && vault && (
         <Chip variant="outline">
-          <Icon name="shelves" />
+          <Icon name="user--avatar" />
           {vault.name}
         </Chip>
       )}
@@ -122,34 +121,34 @@ export function PlacePanel({ item, title, rows, onChanged, onReplaced, onError }
           size="sm"
           onClick={() => setOrganizing({ id: item.id, title, vaultId: item.vault_id ?? "", organization: org })}
         >
-          <Icon name="sell" data-icon="inline-start" />
+          <Icon name="tag" data-icon="inline-start" />
           {folder || org.tags.length ? "Change folder and tags" : "Add a folder or tags"}
         </Button>
       )}
       <span className="flex-1" />
       <DropdownMenu>
-        <DropdownMenuTrigger render={<IconButton label="More for this item" icon="more_horiz" size="icon-sm" />} />
+        <DropdownMenuTrigger render={<IconButton label="More for this item" icon="overflow-menu--horizontal" size="icon-sm" />} />
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => setHistory(true)}>
-            <Icon name="history" />
+            <Icon name="recently-viewed" />
             History
           </DropdownMenuItem>
           {!trashed && (
             <>
               <DropdownMenuItem onClick={() => void archive()}>
-                <Icon name={archived ? "unarchive" : "archive"} />
+                <Icon name={archived ? "reset" : "archive"} />
                 {archived ? "Unarchive" : "Archive"}
               </DropdownMenuItem>
               {others.length > 0 && (
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger>
-                    <Icon name="drive_file_move" />
+                    <Icon name="folder--move-to" />
                     Move to vault
                   </DropdownMenuSubTrigger>
                   <DropdownMenuSubContent>
                     {others.map((v) => (
                       <DropdownMenuItem key={v.id} onClick={() => void move(v.id, v.name)}>
-                        <Icon name="shelves" />
+                        <Icon name="user--avatar" />
                         {v.name}
                       </DropdownMenuItem>
                     ))}
@@ -159,13 +158,13 @@ export function PlacePanel({ item, title, rows, onChanged, onReplaced, onError }
               <DropdownMenuSeparator />
               {!item.crown_jewel && (
                 <DropdownMenuItem onClick={() => setAsk("jewel-on")}>
-                  <Icon name="lock" />
+                  <Icon name="locked" />
                   Keep as a crown jewel
                 </DropdownMenuItem>
               )}
               {item.crown_jewel && !item.crown_jewel_fixed && (
                 <DropdownMenuItem onClick={() => setAsk("jewel-off")}>
-                  <Icon name="lock_open" />
+                  <Icon name="unlocked" />
                   Stop keeping as a crown jewel
                 </DropdownMenuItem>
               )}

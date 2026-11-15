@@ -29,3 +29,19 @@ Regular and Bold (crates/app/assets/fonts/), cut down to the Windows-1252
 characters, Copyright 2020 The JetBrains Mono Project Authors
 (https://github.com/JetBrains/JetBrainsMono), under the SIL Open Font License
 1.1; the licence is in crates/app/assets/fonts/OFL.txt.
+
+The desktop app, the web vault and the browser extension's popup are built
+with unicron (https://github.com/snds/unicron; @unicron/ui and
+@unicron/tokens, Copyright 2026 Sean Sands, Apache-2.0), and their bundles
+carry two things it brings:
+
+- The icons are IBM Carbon's drawings (@carbon/icons,
+  https://github.com/carbon-design-system/carbon), Copyright IBM Corp., under
+  the Apache License, Version 2.0. Each is Carbon's 32 px art, unchanged,
+  held inside @unicron/ui and drawn as inline SVG.
+- The typefaces are Geist and Geist Mono
+  (https://github.com/vercel/geist-font), Copyright 2024 The Geist Project
+  Authors, under the SIL Open Font License, Version 1.1. The font files come
+  from @fontsource-variable/geist and @fontsource-variable/geist-mono and
+  ship unchanged, as files, beside each bundle; the licence text is in each
+  of those packages (LICENSE).

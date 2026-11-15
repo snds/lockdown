@@ -30,6 +30,7 @@ _It builds on D62 (wire and stored shapes only grow), D86 and D87 (the session t
   - `.github/workflows/release.yml`: `meta`, `macos`, `windows` and `main-channel`.
   - `.github/workflows/ci.yml`: `updater`, `update-e2e` and `keychain-macos`.
   - `packaging/update/`.
+  - `docs/plan/66-shared-feed.md`: since 2026-11-14 the same signed files also go to `lockdown-main` on snds/releases. The app still reads `main-build`.
 - **Do not:**
   - Give the webview an updater permission. The page asks through the five commands.
   - Pass `TAURI_SIGNING_PRIVATE_KEY` to any step of a run other than a push to `main`. In the build jobs the expression yields an empty string unless `meta.publish` is true, and `main-channel` checks the event and the ref itself.

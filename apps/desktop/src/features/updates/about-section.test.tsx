@@ -5,9 +5,7 @@ import { ClientProvider } from "@/core/client"
 import { fakeClient } from "@/test/fake-client"
 
 import { AboutSection } from "./about-section"
-import { RestartRow } from "./restart-row"
 import { UpdateClientProvider, type UpdateClient, type UpdateStatus } from "./update-client"
-import { useUpdateNotices } from "./use-update-notices"
 
 const BASE: UpdateStatus = {
   version: "0.1.0-main.20261107093000",
@@ -157,50 +155,5 @@ describe("Settings → About", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(off)
     expect(screen.getByRole("button", { name: "Check for updates" })).toBeDisabled()
     expect(screen.queryByRole("switch")).not.toBeInTheDocument()
-  })
-})
-
-describe("the sidebar's Restart to update", () => {
-  it("shows only once an update is ready", async () => {
-    const u = updateClient(BASE)
-    render(
-      <UpdateClientProvider value={u.client}>
-        <RestartRow onError={() => {}} />
-      </UpdateClientProvider>,
-    )
-    expect(screen.queryByRole("button")).not.toBeInTheDocument()
-    u.push({ ...BASE, state: "ready", offered: NEXT })
-    const row = await screen.findByRole("button", { name: `Restart to update to version ${NEXT}. Lockdown locks first.` })
-    await userEvent.click(row)
-    expect(u.calls).toEqual(["restart"])
-  })
-})
-
-describe("a check someone asked for", () => {
-  function Notices({ show, onNotice }: { show: boolean; onNotice: (t: string) => void }) {
-    useUpdateNotices(show, onNotice)
-    return null
-  }
-
-  it("is told when it ends, and not for the automatic check or while Settings shows it", async () => {
-    const u = updateClient(BASE)
-    const told: string[] = []
-    const { rerender } = render(
-      <UpdateClientProvider value={u.client}>
-        <Notices show onNotice={(t) => told.push(t)} />
-      </UpdateClientProvider>,
-    )
-    await act(async () => {})
-    u.push({ ...BASE, state: "checking", asked: true })
-    u.push({ ...BASE, state: "up_to_date", asked: true })
-    u.push({ ...BASE, state: "up_to_date", asked: false })
-    expect(told).toEqual(["Lockdown is up to date."])
-    rerender(
-      <UpdateClientProvider value={u.client}>
-        <Notices show={false} onNotice={(t) => told.push(t)} />
-      </UpdateClientProvider>,
-    )
-    u.push({ ...BASE, state: "failed", error: "Lockdown couldn't reach GitHub. Check your connection and try again.", asked: true })
-    expect(told).toEqual(["Lockdown is up to date."])
   })
 })

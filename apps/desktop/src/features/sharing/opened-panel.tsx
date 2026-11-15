@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 
-import { Button, Icon, Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@unicron/ui"
+import { Button, Icon, Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@unicron/ui"
 import { SecretField, type SecretFieldReferenceHost } from "@unicron/ui/security/secret-field"
 
 import { ListItems } from "@/components/list-items"
@@ -63,7 +63,8 @@ export function OpenedPanel({ opened, onNotice }: OpenedPanelProps) {
   return (
     <section aria-label={`Opened: ${opened.title || "shared with you"}`} className="flex flex-col gap-2 rounded-xl border p-3">
       <h3 className="text-sm font-semibold">{opened.title || "Shared with you"}</h3>
-      <ItemGroup>
+      {/* A plain list, as a detail block's (detail-pane.tsx): each child sits in ListItems' own list item. */}
+      <div role="list" className="flex w-full flex-col">
         <ListItems>
           {opened.values.map((v, index) =>
             v.secret ? <OpenedSecret key={index} index={index} label={v.label} /> : <OpenedPlain key={index} index={index} label={v.label} />,
@@ -85,11 +86,11 @@ export function OpenedPanel({ opened, onNotice }: OpenedPanelProps) {
             </Item>
           )}
         </ListItems>
-      </ItemGroup>
+      </div>
       {!opened.file && (
         <div>
           <Button variant="outline" size="sm" disabled={saved} onClick={() => void keep()}>
-            <Icon name="inventory_2" data-icon="inline-start" />
+            <Icon name="folder" data-icon="inline-start" />
             {saved ? "Kept in your vault" : "Keep in my vault"}
           </Button>
         </div>

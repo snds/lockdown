@@ -1,47 +1,39 @@
 import { useEffect, useState } from "react"
 
-import { Button, Icon } from "@unicron/ui"
-
 import { useClient } from "@/core/client"
-import type { BackupStatus } from "@/core/types"
 
-import { backupLine } from "./bridges-model"
+/** How often an open vault asks how backups went. */
+export const BACKUP_LOOK_MS = 60_000
 
 /**
- * The last-backup line in the sidebar (docs/plan/23-bridges.md §10): when
- * the last backup ran, or that none did, outside Settings, so a backup that
- * stopped is seen. Opens Settings, where backups are set. Says nothing
- * where the host has no backups (the web vault refuses the call).
+ * Whether backups are on and the last one failed, in the core's words, read
+ * at unlock and every minute while the vault is open. It feeds the critical
+ * Banner at the top of Items and of Settings → Backups (brief X2 table 4,
+ * D754), which replaced the sidebar's backup line (D274): a stopped backup
+ * is still seen, and "Backed up 3 hours ago" lives in Settings. Null where
+ * all is well, and where the host has no backups (the web vault refuses
+ * the call).
  */
-export function BackupIndicator({ onOpen }: { onOpen: () => void }) {
+export function useBackupTrouble(open: boolean): string | null {
   const client = useClient()
-  const [status, setStatus] = useState<BackupStatus | null>(null)
-  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000))
+  const [error, setError] = useState<string | null>(null)
   useEffect(() => {
+    if (!open) {
+      setError(null)
+      return
+    }
     let live = true
-    const load = () =>
+    const look = () =>
       client
         .backupStatus()
-        .then((s) => live && setStatus(s))
-        .catch(() => live && setStatus(null))
-    void load()
-    const t = window.setInterval(() => {
-      setNow(Math.floor(Date.now() / 1000))
-      void load()
-    }, 60_000)
+        .then((s) => live && setError(s.enabled && s.last_error ? s.last_error : null))
+        .catch(() => live && setError(null))
+    void look()
+    const t = window.setInterval(() => void look(), BACKUP_LOOK_MS)
     return () => {
       live = false
       window.clearInterval(t)
     }
-  }, [client])
-  if (!status) return null
-  const { text, late } = backupLine(status, now)
-  return (
-    <Button variant="ghost" size="sm" onClick={onOpen} aria-label={`${text}. Open backup settings`}>
-      <span className={late ? "text-attention-text" : "text-muted-foreground"}>
-        <Icon name={late ? "warning" : "backup"} />
-      </span>
-      <span className={late ? "text-attention-text" : "text-muted-foreground"}>{text}</span>
-    </Button>
-  )
+  }, [client, open])
+  return error
 }

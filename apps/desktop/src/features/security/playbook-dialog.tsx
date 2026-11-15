@@ -65,7 +65,7 @@ export function PlaybookDialog({ finding, playbook, onClose, onNotice, onOpenIte
                     if (id) onOpenItem(id)
                   }}
                 >
-                  <Icon name="arrow_forward" data-icon="inline-start" />
+                  <Icon name="arrow--right" data-icon="inline-start" />
                   Open item
                 </Button>
               )}

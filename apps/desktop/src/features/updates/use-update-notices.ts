@@ -1,15 +1,15 @@
 import { useEffect, useRef } from "react"
 
-import { updateLine } from "@unicron/ui"
-
 import { useUpdateClient } from "./update-client"
 
 /**
- * The outcome of a check someone asked for (the macOS menu's "Check for
- * Updates…", or the button) as a notice, while Settings isn't showing it:
- * the same line About shows (unicron's `updateLine`).
+ * A check someone asked for (the macOS menu's "Check for Updates…") while
+ * Settings → About isn't showing: About opens, where the update rows say
+ * how it went. An update is never a toast or a status-line button
+ * (cross-app decisions §3, D755); the automatic check opens nothing.
+ * `onAsked` runs once per asked check, as it starts.
  */
-export function useUpdateNotices(show: boolean, onNotice: (text: string) => void) {
+export function useUpdateNotices(show: boolean, onAsked: () => void) {
   const client = useUpdateClient()
   const showRef = useRef(show)
   useEffect(() => {
@@ -19,10 +19,13 @@ export function useUpdateNotices(show: boolean, onNotice: (text: string) => void
     if (!client) return
     let live = true
     let off: (() => void) | null = null
+    // An asked check starts as `checking` with `asked`: open About there, once per check.
+    let before: string | null = null
     void client
       .onStatus((s) => {
-        if (!s.asked || !showRef.current) return
-        if (s.state === "up_to_date" || s.state === "failed" || s.state === "ready" || s.state === "available") onNotice(updateLine(s, "Lockdown"))
+        const starts = s.asked && s.state === "checking" && before !== "checking"
+        before = s.state
+        if (starts && showRef.current) onAsked()
       })
       .then((f) => {
         if (live) off = f
@@ -32,5 +35,5 @@ export function useUpdateNotices(show: boolean, onNotice: (text: string) => void
       live = false
       off?.()
     }
-  }, [client, onNotice])
+  }, [client, onAsked])
 }

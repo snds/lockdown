@@ -49,7 +49,10 @@ describe("the Status screen", () => {
     )
     const filled = screen.getAllByRole("button").filter((b) => b.className.split(" ").includes("bg-primary"))
     expect(filled).toEqual([screen.getByRole("button", { name: "Check now" })])
-    expect(screen.getByRole("button", { name: "Sync now" }).className).toContain("border-border")
+    // unicron 1.0's secondary: no fill, a 1px ink edge drawn as an inset ring.
+    const sync = screen.getByRole("button", { name: "Sync now" })
+    expect(sync).toHaveAttribute("data-variant", "outline")
+    expect(sync.className.split(" ")).toEqual(expect.arrayContaining(["inset-ring", "inset-ring-foreground"]))
   })
 
   it("shows the verified log, and the audit's words when a sync is refused", async () => {

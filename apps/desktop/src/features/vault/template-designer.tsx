@@ -118,8 +118,8 @@ export function TemplateDesigner({ template, onDone, onCancel }: TemplateDesigne
                   ))}
                 </NativeSelect>
                 <Switch aria-label={`Field ${i + 1} is needed`} checked={f.required} onCheckedChange={(required) => patch(i, { required })} />
-                <IconButton label={`Move field ${i + 1} up`} icon="arrow_upward" size="icon-sm" onClick={() => move(i, -1)} />
-                <IconButton label={`Move field ${i + 1} down`} icon="arrow_downward" size="icon-sm" onClick={() => move(i, 1)} />
+                <IconButton label={`Move field ${i + 1} up`} icon="arrow--up" size="icon-sm" onClick={() => move(i, -1)} />
+                <IconButton label={`Move field ${i + 1} down`} icon="arrow--down" size="icon-sm" onClick={() => move(i, 1)} />
                 <IconButton label={`Drop field ${i + 1}`} icon="close" size="icon-sm" onClick={() => setFields((fs) => fs.filter((_, j) => j !== i))} />
               </Field>
             ))}
@@ -200,7 +200,7 @@ export function TemplatesManager({ open, onOpenChange, onNotice }: TemplatesMana
                 {userTemplates.map((t) => (
                   <Item key={t.id} role="listitem" size="sm">
                     <ItemMedia variant="icon">
-                      <Icon name="category" />
+                      <Icon name="categories" />
                     </ItemMedia>
                     <ItemContent>
                       <ItemTitle>{t.name}</ItemTitle>
@@ -208,7 +208,7 @@ export function TemplatesManager({ open, onOpenChange, onNotice }: TemplatesMana
                     </ItemContent>
                     <ItemActions>
                       <IconButton label={`Change ${t.name}`} icon="edit" size="icon-sm" onClick={() => setEditing(t)} />
-                      <IconButton label={`Delete ${t.name}`} icon="delete" size="icon-sm" variant="ghost-destructive" onClick={() => setDeleting(t)} />
+                      <IconButton label={`Delete ${t.name}`} icon="trash-can" size="icon-sm" variant="ghost-destructive" onClick={() => setDeleting(t)} />
                     </ItemActions>
                   </Item>
                 ))}

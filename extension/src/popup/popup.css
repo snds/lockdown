@@ -1,8 +1,10 @@
 /*
  * The popup on the shared design system (docs/plan/26-desktop-finish.md §9):
- * Tailwind, unicron's tokens (the same release as the desktop app), Inter,
- * the Material Symbols font and the primitives' classes. Nothing of the
- * in-page frame uses this sheet; it stays plain (static/ui.css).
+ * Tailwind, unicron's tokens (the same release as the desktop app, from 1.0
+ * with Lockdown's theme, picked by `data-theme="lockdown"` in popup.html),
+ * Geist and Geist Mono as files in the extension's own package, and the
+ * primitives' classes. Icons are inline SVG. Nothing of the in-page frame
+ * uses this sheet; it stays plain (static/ui.css).
  */
 @import "@unicron/ui/styles";
 @source "./";

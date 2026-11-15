@@ -20,6 +20,13 @@
 #   tagged `<the main-channel version>` and `main`, with build provenance.
 #   It needs no secret (GITHUB_TOKEN with `packages: write`), and a pull
 #   request never reaches it.
+# - The same push also writes the shared feeds on snds/releases, where
+#   every app's feed lives (docs/plan/66-shared-feed.md): `main-channel`
+#   copies the signed update files to `lockdown-main`, and `server-feed`
+#   names the pushed image in `lockdown-server-main`. Both need the secret
+#   RELEASES_TOKEN and are skipped with a notice without it. `main-build`
+#   on this repository is still published first, and never removed: it is
+#   what installed apps and running servers read.
 # - Every build but a tag's carries the version `<x.y.z>-main.<commit time,
 #   UTC, YYYYMMDDHHMMSS>`, stamped into every manifest that has one
 #   (packaging/update/stamp-version.py); a tag keeps its plain version.
@@ -46,6 +53,10 @@
 #   WINDOWS_MSIX_PUBLISHER                               (the certificate's subject)
 #   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 #                                   (the updater's key; read on a push to main only)
+#   RELEASES_TOKEN                  (writes the shared feeds on snds/releases; a
+#                                    fine-grained token for that repository only,
+#                                    Contents read and write; read on a push to
+#                                    main only)
 #   MACOS_SELFSIGNED_CERTIFICATE, MACOS_SELFSIGNED_CERTIFICATE_PASSWORD
 #                                   (the stable self-signed Mac identity, D684;
 #                                    packaging/macos/make-self-signed-identity.sh)
@@ -829,6 +840,64 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
+  # The server's feed (docs/plan/66-shared-feed.md §3): on a push to main,
+  # after `server-image` pushed the image and moved `main`, this build is
+  # named in `latest.json` on the rolling pre-release `lockdown-server-main`
+  # of snds/releases, in the shape every server's feed has (app, version,
+  # commit, pubDate, images). Last, so it never names an image that isn't in
+  # the registry; packaging/update/write-server-manifest.py never takes it
+  # backwards. No running server reads it yet: servers still read
+  # `server_image` in main-build's latest.json, which stays (the bridge).
+  # It needs the secret RELEASES_TOKEN; without it the job says so and
+  # passes. The token is in no other step of this job, and this job can
+  # write nothing in this repository or the registry.
+  server-feed:
+    name: server feed · lockdown-server-main on snds/releases
+    needs: [meta, server-image]
+    if: needs.meta.outputs.publish == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    concurrency:
+      group: server-feed-publish
+      cancel-in-progress: false
+    env:
+      HAVE_FEED_TOKEN: ${{ secrets.RELEASES_TOKEN != '' }}
+      VERSION: ${{ needs.meta.outputs.version }}
+      DIGEST: ${{ needs.server-image.outputs.digest }}
+      FEED_REPO: snds/releases
+      FEED_TAG: lockdown-server-main
+    steps:
+      - name: Without the releases token, the server feed isn't written
+        if: env.HAVE_FEED_TOKEN != 'true'
+        run: |
+          echo "::notice title=Server feed skipped::the secret RELEASES_TOKEN isn't set, so $FEED_TAG on $FEED_REPO wasn't written. The image was pushed, and main-build's latest.json names it."
+          echo "The server feed \`$FEED_TAG\` on $FEED_REPO was **not** written: the secret \`RELEASES_TOKEN\` isn't set." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@v4
+        if: env.HAVE_FEED_TOKEN == 'true'
+      - name: Name this build in lockdown-server-main on snds/releases
+        if: env.HAVE_FEED_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/lockdown-server"
+          packaging/update/publish-feed.sh previous "$FEED_REPO" "$FEED_TAG" "$RUNNER_TEMP/server-published.json"
+          mkdir feed
+          code=0
+          python3 packaging/update/write-server-manifest.py --version "$VERSION" --commit "$GITHUB_SHA" \
+            --image "$image@$DIGEST" --previous "$RUNNER_TEMP/server-published.json" --out feed/latest.json || code=$?
+          case "$code" in
+            0) ;;
+            3|4) echo "::notice::$FEED_TAG on $FEED_REPO already names this build or a newer one: it stays"; exit 0 ;;
+            *) echo "::error::the server feed's manifest couldn't be written"; exit 1 ;;
+          esac
+          cat feed/latest.json
+          packaging/update/publish-feed.sh publish "$FEED_REPO" "$FEED_TAG" "Lockdown server main ($VERSION)" \
+            "The newest image of the Lockdown server: $image:$VERSION ($DIGEST), built from $GITHUB_REPOSITORY@$GITHUB_SHA. Not a release." \
+            feed
+          echo "Published $VERSION to [\`$FEED_TAG\`](https://github.com/$FEED_REPO/releases/tag/$FEED_TAG)." >> "$GITHUB_STEP_SUMMARY"
+
   # CycloneDX SBOMs: the Rust workspace (every crate, every feature, from
   # Cargo.lock) and each JavaScript app (from its pnpm lock file).
   sbom:
@@ -960,7 +1029,15 @@ jobs:
   #    desktop channel still publishes, without the digest;
   # 4. the pre-release `main-build` (made on the first run, its tag moved to
   #    this commit on every run) gets the new files, latest.json last, then
-  #    loses the old ones. It is always a pre-release and never "latest".
+  #    loses the old ones. It is always a pre-release and never "latest";
+  # 5. the same signed update files then go to the shared feed, the rolling
+  #    pre-release `lockdown-main` on snds/releases, with a second latest.json
+  #    that differs only in where the files are (docs/plan/66-shared-feed.md
+  #    §2). That repository is not this one, so the step needs the secret
+  #    RELEASES_TOKEN (a fine-grained token: snds/releases only, Contents
+  #    read and write). Without it the step is skipped with a notice and the
+  #    run passes. Step 4 is never skipped for it and never removed:
+  #    `main-build` is what every installed app reads.
   #
   # A pull request never reaches it: `publish` is true only for a push to
   # refs/heads/main (the meta job), the job's `if` checks the event and the
@@ -989,6 +1066,9 @@ jobs:
       VERSION: ${{ needs.meta.outputs.version }}
       GH_TOKEN: ${{ github.token }}
       SERVER_IMAGE_DIGEST: ${{ needs.server-image.result == 'success' && needs.server-image.outputs.digest || '' }}
+      HAVE_FEED_TOKEN: ${{ secrets.RELEASES_TOKEN != '' }}
+      FEED_REPO: snds/releases
+      FEED_TAG: lockdown-main
     steps:
       - name: Without the signing key, nothing is published
         if: env.HAVE_KEY != 'true'
@@ -1064,3 +1144,42 @@ jobs:
             echo "$keep" | grep -qxF "$old" || gh release delete-asset main-build "$old" --repo "$repo" --yes
           done
           gh release view main-build --repo "$repo" --json isPrerelease,tagName,assets -q '{prerelease: .isPrerelease, tag: .tagName, files: [.assets[].name]}'
+      # The shared feed (docs/plan/66-shared-feed.md §2). After main-build, so a
+      # failure here (an expired token) leaves every installed app updating.
+      - name: Without the releases token, the shared feed isn't written
+        if: env.HAVE_KEY == 'true' && env.HAVE_FEED_TOKEN != 'true'
+        run: |
+          echo "::notice title=Shared feed skipped::the secret RELEASES_TOKEN isn't set, so $FEED_TAG on $FEED_REPO wasn't written. main-build on this repository was."
+          echo "The shared feed \`$FEED_TAG\` on $FEED_REPO was **not** written: the secret \`RELEASES_TOKEN\` isn't set. \`main-build\` was published as usual." >> "$GITHUB_STEP_SUMMARY"
+      - name: Write latest.json again, for the shared feed
+        if: env.HAVE_KEY == 'true' && env.HAVE_FEED_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          packaging/update/publish-feed.sh previous "$FEED_REPO" "$FEED_TAG" "$RUNNER_TEMP/shared-published.json"
+          # Only the files the manifest names, each with the signature checked
+          # above. The page people download from by hand stays on this repository.
+          mkdir shared
+          for f in dist/*_universal.app.tar.gz dist/*-setup.exe dist/*.deb; do cp "$f" "$f.sig" shared/; done
+          python3 packaging/update/write-manifest.py --version "$VERSION" \
+            --pub-date "$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)" \
+            --base-url "https://github.com/$FEED_REPO/releases/download/$FEED_TAG" \
+            --notes "Built from $GITHUB_SHA on main." \
+            --bundle "darwin=$(ls shared/*_universal.app.tar.gz)" \
+            --bundle "windows=$(ls shared/*-setup.exe)" \
+            --bundle "linux=$(ls shared/*.deb)" \
+            --server-image-digest "$SERVER_IMAGE_DIGEST" \
+            --previous "$RUNNER_TEMP/shared-published.json" --out shared/latest.json
+          cat shared/latest.json
+          # The two manifests name the same build, the same files and the same signatures.
+          diff <(jq -S 'del(.platforms[].url)' dist/latest.json) <(jq -S 'del(.platforms[].url)' shared/latest.json)
+          diff <(jq -r '.platforms[].url | split("/") | last' dist/latest.json) <(jq -r '.platforms[].url | split("/") | last' shared/latest.json)
+      - name: Replace the shared feed's files (lockdown-main on snds/releases)
+        if: env.HAVE_KEY == 'true' && env.HAVE_FEED_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          packaging/update/publish-feed.sh publish "$FEED_REPO" "$FEED_TAG" "Lockdown main ($VERSION)" \
+            "The newest build of $GITHUB_REPOSITORY's main branch ($VERSION, $GITHUB_SHA): the files Lockdown's desktop app updates itself from. Not a release, and not the place to download Lockdown by hand: that is https://github.com/$GITHUB_REPOSITORY/releases/tag/main-build." \
+            shared
+          echo "Published $VERSION to [\`$FEED_TAG\`](https://github.com/$FEED_REPO/releases/tag/$FEED_TAG)." >> "$GITHUB_STEP_SUMMARY"

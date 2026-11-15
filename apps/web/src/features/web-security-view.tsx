@@ -9,7 +9,7 @@ import { PqStatusLine } from "@/features/security/pq-status-line"
 export function WebSecurityView({ onDevice }: { onDevice: (id: string) => void }) {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 md:p-6">
-      <PaneHeader title="Security" />
+      <PaneHeader title="Health" />
       <PqStatusLine onDevice={onDevice} />
       <p className="text-sm text-muted-foreground">Checks for weak, reused and breached passwords are in the desktop app.</p>
     </div>

@@ -2,11 +2,10 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 
 import { ClientProvider } from "@/core/client"
-import "@/app/icon-codepoints"
 
-import "sonner/dist/styles.css"
 import "./index.css"
 import { WebApp } from "./app/web-app"
+import { startBuildWatch } from "./core/build-watch-dom"
 import { WebClipboard } from "./core/clipboard"
 import { WorkerLink } from "./core/link"
 import { linkFromLocation } from "./core/page-link"
@@ -29,6 +28,13 @@ if (page) window.history.replaceState(null, "", window.location.pathname)
 // A page the desktop app opened for a security key: the id is all it holds.
 const keyPage = page ? null : keyPageFromHash(window.location.hash)
 
+// The vault's own session, made once: the app uses it, and the build watch
+// asks it one thing (whether anyone is signed in in this tab).
+const session = webSession(link)
+// The vault only. A link page and a security-key page hold a key from the
+// address in memory, so they never reload by themselves (docs/plan/66-shared-feed.md §4).
+if (!page && !keyPage) startBuildWatch(session)
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     {page ? (
@@ -39,7 +45,7 @@ createRoot(document.getElementById("root")!).render(
       <SecurityKeyPage link={link} id={keyPage.id} credentials={navigator.credentials} />
     ) : (
       <ClientProvider value={webClient(link, clipboard)}>
-        <WebApp session={webSession(link)} server={window.location.origin} link={link} clipboard={clipboard} />
+        <WebApp session={session} server={window.location.origin} link={link} clipboard={clipboard} />
       </ClientProvider>
     )}
   </StrictMode>,

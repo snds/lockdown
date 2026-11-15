@@ -268,7 +268,7 @@ function Outcome({ outcome, account, onAccount, started }: { outcome: ScanOutcom
       {started && (
         <div className="flex flex-col gap-1">
           <p className="flex items-center gap-2 text-sm">
-            <Icon name="open_in_browser" /> {started.service}'s page is open in your browser.
+            <Icon name="launch" /> {started.service}'s page is open in your browser.
           </p>
           {!started.code_in_url && (
             <>

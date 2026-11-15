@@ -11,8 +11,8 @@ import {
   NativeSelect,
   NativeSelectOption,
   Spinner,
+  toast,
 } from "@unicron/ui"
-import { toast } from "sonner"
 
 import { PaneHeader } from "@/components/master-detail"
 import { describeError } from "@/core/client"

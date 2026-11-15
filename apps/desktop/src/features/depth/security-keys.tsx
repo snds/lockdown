@@ -63,7 +63,7 @@ export function SecurityKeysSection({ onNotice }: { onNotice: (text: string) => 
           Security keys
         </h2>
         <Button size="sm" variant="outline" onClick={add}>
-          <Icon name="key" data-icon="inline-start" />
+          <Icon name="password" data-icon="inline-start" />
           Add a key
         </Button>
       </div>

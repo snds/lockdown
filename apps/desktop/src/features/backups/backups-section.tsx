@@ -172,7 +172,7 @@ export function BackupsSection({ onChanged, onNotice }: BackupsSectionProps) {
           <FieldTitle>Folder</FieldTitle>
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="outline" onClick={() => void pick()} disabled={busy}>
-              <Icon name="folder_open" data-icon="inline-start" />
+              <Icon name="folder--open" data-icon="inline-start" />
               Choose folder…
             </Button>
             <span className="text-sm text-muted-foreground">{shownFolder ?? "None chosen yet"}</span>

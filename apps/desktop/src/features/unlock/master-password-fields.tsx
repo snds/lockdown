@@ -9,7 +9,12 @@ import { WelcomeGroup } from "./welcome"
 
 const STRENGTH_WORDS: Record<SecretStrength, string> = { weak: "Weak", fair: "Fair", strong: "Strong" }
 const FILLED: Record<SecretStrength, number> = { weak: 1, fair: 2, strong: 3 }
-const TONE: Record<SecretStrength, string> = { weak: "bg-destructive", fair: "bg-attention", strong: "bg-secure" }
+// The fills of unicron's own strength meter (the secret field's knobs), so the two meters read alike.
+const TONE: Record<SecretStrength, string> = {
+  weak: "bg-(--c-secret-field-meter-weak)",
+  fair: "bg-(--c-secret-field-meter-fair)",
+  strong: "bg-(--c-secret-field-meter-strong)",
+}
 
 /** The strength meter: three segments and the word, from the core's estimate. */
 export function StrengthMeter({ strength }: { strength: SecretStrength | undefined }) {

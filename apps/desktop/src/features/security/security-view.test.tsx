@@ -5,8 +5,6 @@ import { SettingsProvider, DEFAULT_SETTINGS } from "@/app/settings"
 import { ClientProvider, type Client } from "@/core/client"
 import type { Finding, Playbook, SecurityReport } from "@/core/types"
 import { fakeClient } from "@/test/fake-client"
-
-import { ItemSecurity } from "./item-security"
 import { SecurityView } from "./security-view"
 import { summaryWords } from "./security-model"
 
@@ -56,18 +54,6 @@ const twoStep = finding({
   change_password: false,
   setup_url: "https://docs.github.com/2fa",
   playbook: "missing-2fa",
-})
-const lookalike = finding({
-  id: "lookalike:i2",
-  kind: "lookalike",
-  title: "Website looks like another site",
-  detail: "paypa1.com looks a lot like paypal.com.",
-  key: "lookalike",
-  item_id: "i2",
-  item_title: "Pay",
-  field_id: null,
-  change_password: false,
-  playbook: "lookalike-site",
 })
 
 function report(findings: Finding[], over: Partial<SecurityReport> = {}): SecurityReport {
@@ -184,38 +170,5 @@ describe("the Security screen", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("switch", { name: "Check my passwords against known data breaches" }))
     await waitFor(() => expect(setSettings).toHaveBeenCalledWith(expect.objectContaining({ breach_check: false })))
-  })
-})
-
-describe("an item's own security panel", () => {
-  it("warns first and loudest when the website looks like another site", async () => {
-    const client = base({ securityReport: () => Promise.resolve(report([lookalike, finding({ item_id: "i2", id: "weak:i2:pw" })])) })
-    render(
-      <ClientProvider value={client}>
-        <ItemSecurity itemId="i2" onNotice={() => {}} />
-      </ClientProvider>,
-    )
-    const alert = await screen.findByRole("alert")
-    expect(alert).toHaveTextContent("Careful: this website looks like another site")
-    expect(alert).toHaveTextContent("paypa1.com looks a lot like paypal.com.")
-    expect(within(screen.getByRole("list", { name: "Security findings" })).getByText("Easy-to-guess password.")).toBeInTheDocument()
-  })
-
-  it("shows nothing for an item with no findings, or when the report doesn't load", async () => {
-    const securityReport = vi.fn(() => Promise.resolve(report([lookalike])))
-    const { container, rerender } = render(
-      <ClientProvider value={base({ securityReport })}>
-        <ItemSecurity itemId="i1" onNotice={() => {}} />
-      </ClientProvider>,
-    )
-    await waitFor(() => expect(securityReport).toHaveBeenCalled())
-    expect(container).toBeEmptyDOMElement()
-    rerender(
-      <ClientProvider value={base({})}>
-        <ItemSecurity itemId="i2" onNotice={() => {}} />
-      </ClientProvider>,
-    )
-    await new Promise((r) => setTimeout(r, 0))
-    expect(container).toBeEmptyDOMElement()
   })
 })

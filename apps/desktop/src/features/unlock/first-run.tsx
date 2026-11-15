@@ -401,7 +401,7 @@ function QuickScreen({ quick, step, onDone }: { quick: QuickUnlock | null; step:
           ],
         }}
       />
-      <Icon name="fingerprint" aria-hidden="true" />
+      <Icon name="fingerprint-recognition" aria-hidden="true" />
       <WelcomeActions>
         <Button size="lg" onClick={onDone} disabled={!quick?.available}>
           {hello ? "Use Windows Hello" : "Use Touch ID"}
@@ -457,7 +457,7 @@ function ImportScreen({ step, onDone }: { step: [number, number]; onDone: () => 
                 <span className="font-medium">{f.name}</span>
                 <span className="text-sm text-muted-foreground">{f.how}</span>
               </span>
-              <Icon name="chevron_right" aria-hidden="true" />
+              <Icon name="chevron--right" aria-hidden="true" />
             </button>
           </li>
         ))}
@@ -495,7 +495,7 @@ export function ProofScreen({ onOpen }: { onOpen: () => void }) {
           "Your vault's history is signed on this computer, so a swapped or older copy is caught.",
         ].map((line) => (
           <li key={line} className="flex items-start gap-3">
-            <Icon name="check_circle" aria-hidden="true" />
+            <Icon name="checkmark--outline" aria-hidden="true" />
             <span>{line}</span>
           </li>
         ))}

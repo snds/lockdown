@@ -273,17 +273,17 @@ These came out of slices 13–29. Each is a rule a new screen has to follow, wit
 
 ## 8. Lockdown app-extension token roles (tier 2 aliases only)
 
-Declared in `apps/desktop/src/styles/app-extension.css`, written as Mailbird's is. Each aliases a `--g-*` or `--*` value, swaps only in `.dark`, and is exposed through the file's own `@theme inline` block. No raw values.
+Declared in `apps/desktop/src/styles/app-extension.css`, written as Mailbird's is, and exposed through the file's own `@theme inline` block. No raw values. **From unicron 1.0 (doc 62 §4)** each aliases a core role (`--*`), never a `--g-*` ramp, so each is the same on both grounds and there is no `.dark` swap; the app's own colours come from `data-theme="lockdown"`, set in each page's HTML, and the `dark` class picks graphite (no class is stone). The table as built, with every role, is doc 10 §4.
 
-| Role | Light alias | Dark alias | Used for |
+| Role | Aliases (unicron 1.0) | Before 1.0 (light / dark) | Used for |
 |---|---|---|---|
-| `--surface-chrome` | `--g-neutral-50` | `--g-neutral-900` | Sidebar and list pane (same name as Mailbird, so the siblings rhyme) |
-| `--surface-canvas` | `--g-neutral-0` | `--g-neutral-950` | Detail pane |
-| `--surface-selected` | `--g-neutral-100` | `--g-neutral-800` | Selected row |
-| `--surface-locked` | `--g-neutral-100` | `--g-neutral-900` | The wash over the vault while locked |
-| `--verified` | `--g-green-500` | `--g-green-400` | KT-verified, manifest verified, drill passed; always paired with a word |
-| `--attention` | `--warning` (adopted in tokens 0.2.0) | `--warning` (the tokens swap it) | Needs attention, expiring, unverified |
-| `--area-codes` | `--g-blue-500` | `--g-blue-400` | The one wayfinding hue, for the Codes view and the palette's code rows |
+| `--surface-chrome` | `--surface-ground` | `--g-neutral-50` / `--g-neutral-900` | Sidebar and list pane (same name as Mailbird, so the siblings rhyme) |
+| `--surface-canvas` | `--surface-ground` | `--g-neutral-0` / `--g-neutral-950` | Detail pane |
+| `--surface-selected` | `--primary-soft` | `--g-neutral-100` / `--g-neutral-800` | Selected row |
+| `--surface-locked` | `--surface-ground` | `--g-neutral-100` / `--g-neutral-900` | The wash over the vault while locked |
+| `--verified` (built as `--secure`) | `--text-body`: **legacy, no new use** | `--g-green-500` / `--g-green-400` | KT-verified, manifest verified, drill passed; always paired with a word. The primary is green now, so the word carries it; a new one is a neutral Badge with the word (proposed D701) |
+| `--attention-text` | `--attention-foreground` on stone, `--warning` on graphite (amber 600 / 300, as before): **legacy, no new use** | `--attention-foreground` (the core's, tokens 0.15.0+) | Needs attention, expiring, unverified, as words. The core's `attention` is the needs-you yellow at 1.0, which only says "this waits on you"; a new state word is a warning Badge. The app declares no `--attention` of its own (doc 10 §4) |
+| `--area-codes` | `--secondary-live`: **legacy, no new use** | `--g-blue-500` / `--g-blue-400` | The one wayfinding hue, for the Codes view and the palette's code rows. The app's second colour is for work happening now: a code counting down, not a nav entry |
 
 The six components take no app-extension tokens; their colors come from core tier 2 roles, the three the specs added (`warning`, `info`, `protected`) among them.
 

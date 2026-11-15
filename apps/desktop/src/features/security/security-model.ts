@@ -18,13 +18,13 @@ export const SEVERITY_TEXT: Record<Severity, string> = {
 
 /** One icon per kind of finding (decorative; the words carry the meaning). */
 export const KIND_ICONS: Record<Finding["kind"], IconName> = {
-  breached: "gpp_bad",
-  reused: "content_copy",
+  breached: "rule--cancelled",
+  reused: "copy",
   weak: "password",
-  missing_2fa: "lock_person",
-  lookalike: "report",
+  missing_2fa: "user--access-locked",
+  lookalike: "warning--hex",
   new_sign_in: "devices",
-  exposed_email: "mail",
+  exposed_email: "email",
 }
 
 /** Open findings by severity, in the core's order. */
@@ -32,6 +32,17 @@ export function groupBySeverity(findings: Finding[]): Record<Severity, Finding[]
   const out: Record<Severity, Finding[]> = { urgent: [], important: [], suggested: [] }
   for (const f of findings) out[f.severity].push(f)
   return out
+}
+
+/**
+ * How many things there are to fix (redesign brief H1): the findings to fix
+ * now and soon, and the rows in the Needs attention list. From the cached
+ * report and the loaded rows only; `null` while no report has been read
+ * counts the list alone. The nav marks and the Health tab read this.
+ */
+export function toFixCount(report: SecurityReport | null, rows: ReadonlyArray<{ views: readonly string[] }>): number {
+  const findings = report ? report.counts.urgent + report.counts.important : 0
+  return findings + rows.filter((r) => r.views.includes("attention")).length
 }
 
 /** The one-line summary at the top of the screen. */

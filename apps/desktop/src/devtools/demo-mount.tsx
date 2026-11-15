@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { toast } from "sonner"
+import { toast } from "@unicron/ui"
 
 import { describeError } from "@/core/client"
 import type { Status } from "@/core/types"

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react"
+import { useState, useSyncExternalStore, type ReactNode } from "react"
 
 import {
   Button,
@@ -11,14 +11,20 @@ import {
   Switch,
   ToggleGroup,
   ToggleGroupItem,
+  toast,
 } from "@unicron/ui"
 
 import { useSettings } from "@/app/settings"
-import { PaneHeader } from "@/components/master-detail"
+import { usePlaces } from "@/app/places"
+import { Embedded } from "@/components/master-detail"
 import { describeError, useClient } from "@/core/client"
-import type { Density, LockState, RevealGesture } from "@/core/types"
+import type { Density, LockState, RevealGesture, Status } from "@/core/types"
+import { DevicesView } from "@/features/devices/devices-view"
+import { SettingsPlaces } from "@/features/settings/settings-places"
 import { ServerChecks } from "@/features/server/server-checks"
-import { toast } from "sonner"
+import { ThemeSetting } from "@/features/settings/theme-setting"
+
+import { setThemeChoice, subscribeTheme, themeChoice } from "../theme"
 
 const IDLE_CHOICES: Array<[string, number | null]> = [
   ["1 minute", 60],
@@ -32,6 +38,10 @@ const IDLE_CHOICES: Array<[string, number | null]> = [
 const CLIPBOARD_CHOICES = [10, 20, 30, 45, 60, 90]
 
 interface WebSettingsViewProps {
+  /** For the Devices section: every session signed in to the account. */
+  status: Status
+  onChanged: () => void
+  onNotice: (text: string) => void
   server: string
   login: string
   onLock: (state: LockState) => void
@@ -48,17 +58,21 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 /**
- * The web vault's settings: the lock timers (the core's, as on the
+ * The web vault's settings, in four sections (redesign brief T0 and W1:
+ * This browser, Appearance, Devices, Server): the lock timers (the core's, as on the
  * desktop), the clipboard timer, density and the reveal gesture, and this
  * tab's place: where it signed in and how to sign out. They hold for this
  * tab; a new sign-in starts from the defaults. Idle has no "never" here:
  * a browser tab is too easy to walk away from.
  */
-export function WebSettingsView({ server, login, onLock, onSignOut }: WebSettingsViewProps) {
+export function WebSettingsView({ status, onChanged, onNotice, server, login, onLock, onSignOut }: WebSettingsViewProps) {
   const client = useClient()
+  const { nav } = usePlaces()
   const { settings, update } = useSettings()
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // The ground is a choice kept in this browser (src/theme.ts), not a setting of the vault (doc 62 §3).
+  const theme = useSyncExternalStore(subscribeTheme, themeChoice)
 
   const save = async (change: Parameters<typeof update>[0]) => {
     setBusy(true)
@@ -73,15 +87,8 @@ export function WebSettingsView({ server, login, onLock, onSignOut }: WebSetting
     }
   }
 
-  return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4 md:p-6">
-      <PaneHeader title="Settings" />
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-
+  const thisBrowser = (
+    <div className="flex flex-col gap-6">
       <Section title="Lock">
         <FieldGroup>
           <Field orientation="horizontal">
@@ -136,14 +143,7 @@ export function WebSettingsView({ server, login, onLock, onSignOut }: WebSetting
         </FieldGroup>
       </Section>
 
-      <Section title="Appearance">
-        <Field orientation="horizontal">
-          <FieldLabel id="density-label">Density</FieldLabel>
-          <ToggleGroup aria-labelledby="density-label" value={[settings.density]} onValueChange={(v) => v[0] && void save({ density: v[0] as Density })} disabled={busy}>
-            <ToggleGroupItem value="comfortable">Comfortable</ToggleGroupItem>
-            <ToggleGroupItem value="compact">Compact</ToggleGroupItem>
-          </ToggleGroup>
-        </Field>
+      <Section title="Reveal">
         <Field orientation="horizontal">
           <FieldLabel id="reveal-label">Showing a hidden value</FieldLabel>
           <ToggleGroup aria-labelledby="reveal-label" value={[settings.reveal]} onValueChange={(v) => v[0] && void save({ reveal: v[0] as RevealGesture })} disabled={busy}>
@@ -152,9 +152,6 @@ export function WebSettingsView({ server, login, onLock, onSignOut }: WebSetting
           </ToggleGroup>
         </Field>
       </Section>
-
-      <ServerChecks onNotice={(text) => toast(text)} framed={false} />
-
       <Section title="This web vault">
         <p className="text-sm text-muted-foreground">
           Signed in as <span className="font-medium text-foreground">{login}</span> at <span className="font-mono">{new URL(server).host}</span>. The page's code
@@ -171,5 +168,45 @@ export function WebSettingsView({ server, login, onLock, onSignOut }: WebSetting
         </div>
       </Section>
     </div>
+  )
+  return (
+    <SettingsPlaces overview={thisBrowser}>
+      {(shown) => (
+        <div className="flex flex-col gap-6">
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          {shown === "this-device" && thisBrowser}
+          {shown === "appearance" && (
+            <>
+      <Section title="Appearance">
+        <ThemeSetting value={theme} onChange={setThemeChoice} />
+        <Field orientation="horizontal">
+          <FieldLabel id="density-label">Density</FieldLabel>
+          <ToggleGroup aria-labelledby="density-label" value={[settings.density]} onValueChange={(v) => v[0] && void save({ density: v[0] as Density })} disabled={busy}>
+            <ToggleGroupItem value="comfortable">Comfortable</ToggleGroupItem>
+            <ToggleGroupItem value="compact">Compact</ToggleGroupItem>
+          </ToggleGroup>
+        </Field>
+      </Section>
+
+            </>
+          )}
+          {shown === "devices" && (
+            <Embedded>
+              <DevicesView status={status} onChanged={onChanged} onNotice={onNotice} focus={nav.device} />
+            </Embedded>
+          )}
+          {shown === "server" && (
+            <>
+      <ServerChecks onNotice={(text) => toast(text)} framed={false} />
+
+            </>
+          )}
+        </div>
+      )}
+    </SettingsPlaces>
   )
 }

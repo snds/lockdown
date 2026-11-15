@@ -48,7 +48,7 @@ export function ItemSecurity({ itemId, onNotice }: ItemSecurityProps) {
       {lookalike && (
         <div role="alert" className="flex flex-col gap-2">
           <p className={`flex items-center gap-2 font-semibold ${SEVERITY_TEXT[lookalike.severity]}`}>
-            <Icon name="report" />
+            <Icon name="warning--hex" />
             Careful: this website looks like another site
           </p>
           <p>{lookalike.detail} Don't sign in there unless you're sure it's the real site.</p>

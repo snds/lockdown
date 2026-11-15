@@ -43,7 +43,7 @@ export function LinkOnce({ link, label = "The link", note }: LinkOnceProps) {
       <Input id="link-once" readOnly value={link} spellCheck={false} onFocus={(e) => e.currentTarget.select()} />
       <div>
         <Button variant="outline" size="sm" onClick={() => void copy()}>
-          <Icon name="content_copy" data-icon="inline-start" />
+          <Icon name="copy" data-icon="inline-start" />
           Copy the link
         </Button>
       </div>

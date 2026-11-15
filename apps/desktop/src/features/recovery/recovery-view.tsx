@@ -61,7 +61,7 @@ export function RecoveryView({ status, onChanged, onNotice, onEmergency }: Recov
           </ItemContent>
           <ItemActions>
             <Button size="sm" variant={kit === "made" ? "default" : "outline"} disabled={kit === "none"} onClick={() => setDialog("kit-verify")}>
-              <Icon name="health_and_safety" data-icon="inline-start" />
+              <Icon name="health-cross" data-icon="inline-start" />
               Run the drill
             </Button>
           </ItemActions>

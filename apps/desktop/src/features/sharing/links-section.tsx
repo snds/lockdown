@@ -128,7 +128,7 @@ export function ShareLinksSection({ online, onNotice }: LinksProps) {
             setMaking(true)
           }}
         >
-          <Icon name="add_link" data-icon="inline-start" />
+          <Icon name="link" data-icon="inline-start" />
           Share some text…
         </Button>
       </div>
@@ -166,7 +166,7 @@ export function ShareLinksSection({ online, onNotice }: LinksProps) {
         </FieldGroup>
         <div>
           <Button type="submit" variant="outline" size="sm">
-            <Icon name="lock_open" data-icon="inline-start" />
+            <Icon name="unlocked" data-icon="inline-start" />
             Open
           </Button>
         </div>
@@ -313,7 +313,7 @@ export function RequestLinksSection({ online, onNotice }: LinksProps) {
             setMaking(true)
           }}
         >
-          <Icon name="inbox" data-icon="inline-start" />
+          <Icon name="email" data-icon="inline-start" />
           Ask someone for a secret…
         </Button>
       </div>

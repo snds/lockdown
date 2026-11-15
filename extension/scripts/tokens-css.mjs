@@ -7,12 +7,27 @@
 //
 // The source is @unicron/tokens' own built sheet (dist/tokens.css), at the
 // version the popup and the desktop use (the override in pnpm-workspace.yaml).
-// That sheet is meant for Tailwind: dark mode is a `.dark` class and it ends
+// That sheet is meant for Tailwind: the ground is a `.dark` class and it ends
 // in a Tailwind-only `@theme` block. A frame has neither, so this keeps only
-// the colour roles the frames draw with, the primitives those roles name,
+// the colour roles the frames draw with and everything those roles stand on,
 // and moves the dark values under `prefers-color-scheme: dark`, which is how
 // a frame learns the browser's scheme. Values are never changed or invented:
-// every role is unicron's declaration, copied as written.
+// every declaration is unicron's, copied as written.
+//
+// From unicron 1.0 a role is a chain (docs/plan/62-unicron-1-0.md §6):
+//
+//   --popover            the name static/ui.css aliases (the shadcn contract)
+//   → --surface-raised   the canonical role, named as in Figma
+//   → --g-theme-stone-raised / --g-theme-graphite-raised
+//                        the app's theme slot for each ground
+//   → a hex value        under [data-theme="lockdown"], set on <html> in
+//                        static/frame.html
+//
+// So the sheet carries, in this order: the lockdown theme's slots (stone and
+// graphite), the shared primitives the chain names (the critical colours),
+// the roles on stone, and the same roles on graphite under the media query.
+// A slot is written only under [data-theme="lockdown"]: a frame without the
+// attribute would draw unicron's default app, which is not Lockdown.
 
 import { readFileSync, writeFileSync } from "node:fs"
 import { createRequire } from "node:module"
@@ -22,6 +37,9 @@ import { fileURLToPath } from "node:url"
 const here = join(dirname(fileURLToPath(import.meta.url)), "..")
 const out = join(here, "static", "tokens.css")
 const require = createRequire(import.meta.url)
+
+/** The app theme the frames are drawn in (`data-theme` on static/frame.html). */
+export const THEME = "lockdown"
 
 /** The roles the frames' sheet (static/ui.css) aliases. */
 export const ROLES = [
@@ -40,54 +58,86 @@ export const ROLES = [
   "ring",
 ]
 
-/** The declarations of every top-level block whose selector is `selector`, in order. */
-function blocks(css, selector) {
-  const decls = new Map()
-  const re = new RegExp(`(^|\\n)${selector.replace(".", "\\.")}\\s*\\{([^}]*)\\}`, "g")
-  for (const m of css.matchAll(re)) {
-    for (const d of m[2].matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) decls.set(d[1], d[2].trim())
-  }
-  return decls
+/** unicron's comment over each block of its sheet, which names the block whatever its selector is. */
+const HEADS = {
+  primitives: "Tier 1 · Global primitives",
+  theme: `Tier 1 · App theme: ${THEME}`,
+  light: "Tier 2 · Semantic roles (--*) · light",
+  dark: "Tier 2 · Semantic roles (--*) · dark",
 }
 
-/** The `--g-*` primitives a value names. */
-const primitives = (value) => Array.from(value.matchAll(/var\((--g-[a-z0-9-]+)\)/g), (m) => m[1])
+/** The declarations of the block that follows the comment starting with `head`, in order. */
+function block(css, head, version) {
+  const at = css.indexOf(`/* ── ${head}`)
+  if (at < 0) throw new Error(`@unicron/tokens ${version} has no block headed "${head}"`)
+  const open = css.indexOf("{", at)
+  const close = css.indexOf("}", open)
+  const decls = new Map()
+  for (const d of css.slice(open + 1, close).matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) decls.set(d[1], d[2].trim())
+  return { selector: css.slice(css.indexOf("*/", at) + 2, open).trim(), decls }
+}
+
+/** Every custom property a value names. */
+const named = (value) => Array.from(value.matchAll(/var\((--[a-z0-9-]+)\)/g), (m) => m[1])
 
 export function render() {
   const pkgFile = require.resolve("@unicron/tokens/package.json")
   const { version } = JSON.parse(readFileSync(pkgFile, "utf8"))
   const css = readFileSync(join(dirname(pkgFile), "dist", "tokens.css"), "utf8")
-  const root = blocks(css, ":root")
-  const dark = blocks(css, ".dark")
+  const primitives = block(css, HEADS.primitives, version)
+  const theme = block(css, HEADS.theme, version)
+  const light = block(css, HEADS.light, version)
+  const dark = block(css, HEADS.dark, version)
+  if (theme.selector !== `[data-theme="${THEME}"]`) throw new Error(`@unicron/tokens ${version}: the ${THEME} theme is under ${theme.selector}`)
 
-  const light = ROLES.map((r) => {
-    const v = root.get(`--${r}`)
-    if (!v) throw new Error(`@unicron/tokens ${version} has no --${r}`)
-    return [r, v]
-  })
-  const darkRoles = ROLES.filter((r) => dark.has(`--${r}`)).map((r) => [r, dark.get(`--${r}`)])
-  const named = new Set([...light, ...darkRoles].flatMap(([, v]) => primitives(v)))
-  for (const g of named) if (!root.has(g)) throw new Error(`@unicron/tokens ${version} has no ${g}`)
+  // Follow each role down its chain, on both grounds: a role may name roles
+  // (--popover → --surface-raised), and a role names primitives (--g-*).
+  const roles = new Set()
+  const prims = new Set()
+  const follow = (name) => {
+    if (name.startsWith("--g-")) {
+      prims.add(name)
+      return
+    }
+    if (roles.has(name)) return
+    const values = [light.decls.get(name), dark.decls.get(name)].filter((v) => v !== undefined)
+    if (!light.decls.has(name)) throw new Error(`@unicron/tokens ${version} has no ${name}`)
+    roles.add(name)
+    for (const v of values) for (const n of named(v)) follow(n)
+  }
+  for (const r of ROLES) follow(`--${r}`)
+
+  // Each primitive is the app theme's slot or a shared one; none may be missing.
+  const slots = [...theme.decls.keys()].filter((g) => prims.has(g))
+  const shared = [...primitives.decls.keys()].filter((g) => prims.has(g) && !theme.decls.has(g))
+  for (const g of prims) if (!theme.decls.has(g) && !primitives.decls.has(g)) throw new Error(`@unicron/tokens ${version} has no ${g}`)
+
   // In unicron's own order, so a tokens update reads as a small diff.
-  const used = [...root.keys()].filter((g) => named.has(g))
+  const lightRoles = [...light.decls.keys()].filter((r) => roles.has(r))
+  const darkRoles = [...dark.decls.keys()].filter((r) => roles.has(r))
 
-  const line = ([name, value]) => `  ${name.startsWith("--") ? name : `--${name}`}: ${value};`
+  const line = (decls) => (name) => `  ${name}: ${decls.get(name)};`
   return [
     `/* unicron's colour roles for the extension's in-page frames, as plain CSS.`,
     `   Generated by scripts/tokens-css.mjs from @unicron/tokens ${version}`,
-    `   (dist/tokens.css): the roles static/ui.css aliases and the primitives they`,
-    `   name, values as unicron declares them; dark under prefers-color-scheme.`,
+    `   (dist/tokens.css): the roles static/ui.css aliases, the canonical roles`,
+    `   they point at, and the ${THEME} theme's slots those stand on, values as`,
+    `   unicron declares them; graphite under prefers-color-scheme: dark.`,
     `   Do not edit; run \`node scripts/tokens-css.mjs\` after a tokens update.`,
-    `   It goes when unicron ships a plain-CSS sheet of its own (doc 32 §6). */`,
-    `:root {`,
-    ...used.map((g) => line([g, root.get(g)])),
+    `   The frames move to unicron's own plain sheet (@unicron/tokens/plain.css)`,
+    `   when they are redesigned (doc 62 §6). */`,
+    `[data-theme="${THEME}"] {`,
+    ...slots.map(line(theme.decls)),
     `}`,
     `:root {`,
-    ...light.map(line),
+    ...shared.map(line(primitives.decls)),
+    `}`,
+    `:root {`,
+    ...lightRoles.map(line(light.decls)),
     `}`,
     `@media (prefers-color-scheme: dark) {`,
     `  :root {`,
-    ...darkRoles.map((d) => `  ${line(d)}`),
+    ...darkRoles.map((r) => `  ${line(dark.decls)(r)}`),
     `  }`,
     `}`,
     ``,

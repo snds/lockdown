@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
 import { GateProvider } from "@/app/gate"
@@ -35,7 +35,8 @@ describe("a crown jewel's export opt-in (D121)", () => {
     expect(screen.getByText(/Locked backups carry them unless you turn that off in Settings, Backups/)).toBeInTheDocument()
     const user = userEvent.setup()
     await user.click(screen.getByRole("switch", { name: "Include in exports and backups" }))
-    await user.click(await screen.findByRole("button", { name: "Confirm" }))
+    // The window check names no action here, so its yes is "Continue" (doc 68).
+    await user.click(within(await screen.findByRole("dialog", { name: "Go ahead?" })).getByRole("button", { name: "Continue" }))
     await waitFor(() => expect(changed).toHaveBeenCalledWith(expect.objectContaining({ export_opt_in: true })))
     expect(setExportOptIn).toHaveBeenLastCalledWith("w1", true, { confirmed: true })
   })

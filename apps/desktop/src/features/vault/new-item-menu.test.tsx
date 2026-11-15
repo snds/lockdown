@@ -14,7 +14,7 @@ const GYM: UserTemplateView = {
   vault_id: "v",
   name: "Gym locker",
   summary: "",
-  icon: "fitness_center",
+  icon: "running",
   fields: [{ key: "locker", field_id: "tpl.locker", label: "Locker", kind: "text", required: true }],
   versions: 1,
 }

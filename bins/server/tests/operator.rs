@@ -736,6 +736,9 @@ impl lockdown_server::helper::HostHelper for Helper {
                 ),
                 digest: format!("sha256:{}", "1".repeat(64)),
                 services: vec!["lockdown".into()],
+                images: Vec::new(),
+                before: None,
+                after: None,
             }),
         }
     }
@@ -873,6 +876,7 @@ async fn update_and_reload_ask_the_host_helper_with_the_token_and_land_in_the_lo
         vec![host_helper::UpdateRequest {
             tag: Some(newer.into()),
             expect_digest: None,
+            expect_digests: None,
         }]
     );
 

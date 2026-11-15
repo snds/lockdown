@@ -1,9 +1,12 @@
 /*
- * The desktop's look: the shared design system (unicron), Lockdown's app
- * roles (apps/desktop/src/styles/app-extension.css), the labelled dialog
+ * The desktop's look: the shared design system (unicron 1.0, with Geist,
+ * Geist Mono and sonner's rules as files, so `font-src 'self'` and
+ * `style-src 'self'` hold), Lockdown's app roles
+ * (apps/desktop/src/styles/app-extension.css), the stacked dialog
  * actions (dialog-actions.css, beside it) and the desktop's base
  * rules; then the desktop's sources, which hold the views the web vault
- * draws, for Tailwind to read.
+ * draws, for Tailwind to read. The theme is `data-theme="lockdown"` in
+ * index.html; src/theme.ts picks the ground.
  */
 @import "@unicron/ui/styles";
 @import "../../desktop/src/styles/app-extension.css";

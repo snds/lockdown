@@ -134,7 +134,7 @@ export function WifiCard({ itemId, ssid, hasPassword }: WifiCardProps) {
   return (
     <>
       <Button variant="ghost" size="sm" onClick={() => void open()}>
-        <Icon name="qr_code_2" data-icon="inline-start" />
+        <Icon name="qr-code" data-icon="inline-start" />
         Guest card
       </Button>
       {error && (

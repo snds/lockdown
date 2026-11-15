@@ -47,7 +47,7 @@ export function RowMenu({ row, onOrganize, onChanged, onError }: RowMenuProps) {
   if (row.state === "trashed") return null
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<IconButton label={`More for ${row.title || "this item"}`} icon="more_horiz" size="icon-sm" />} />
+      <DropdownMenuTrigger render={<IconButton label={`More for ${row.title || "this item"}`} icon="overflow-menu--horizontal" size="icon-sm" />} />
       <DropdownMenuContent align="end">
         {!archived && (
           <DropdownMenuItem onClick={() => void run(client.organize(row.id, { favourite: !row.favourite }), row.favourite ? "Removed from favourites." : "Added to favourites.")}>
@@ -75,20 +75,20 @@ export function RowMenu({ row, onOrganize, onChanged, onError }: RowMenuProps) {
         )}
         {!archived && (
           <DropdownMenuItem onClick={() => onOrganize(row)}>
-            <Icon name="sell" />
+            <Icon name="tag" />
             Folder and tags…
           </DropdownMenuItem>
         )}
         {others.length > 0 && (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
-              <Icon name="drive_file_move" />
+              <Icon name="folder--move-to" />
               Move to vault
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               {others.map((v) => (
                 <DropdownMenuItem key={v.id} onClick={() => void run(gate.run((g) => client.moveItem(row.id, v.id, g)), `Moved to ${v.name}.`)}>
-                  <Icon name="shelves" />
+                  <Icon name="user--avatar" />
                   {v.name}
                 </DropdownMenuItem>
               ))}
@@ -97,7 +97,7 @@ export function RowMenu({ row, onOrganize, onChanged, onError }: RowMenuProps) {
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => void run(archived ? client.unarchive(row.id) : client.archive(row.id), archived ? "Back in the list." : "Archived. Find it under Archived.")}>
-          <Icon name={archived ? "unarchive" : "archive"} />
+          <Icon name={archived ? "reset" : "archive"} />
           {archived ? "Unarchive" : "Archive"}
         </DropdownMenuItem>
       </DropdownMenuContent>

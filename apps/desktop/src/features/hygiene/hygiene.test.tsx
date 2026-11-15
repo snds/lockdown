@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { useState } from "react"
 
 import { HygieneClientProvider, useCaptureProtect, type HygieneClient } from "./hygiene-client"
-import { BLUR_WIPE_MS, useSecretWipe, wipeSecretInputs } from "./secret-wipe"
+import { BLUR_WIPE_MS, useSecretWipe, wipeSecretInputs, wipeWords } from "./secret-wipe"
 
 function Form({ onWiped }: { onWiped: (n: number) => void }) {
   const [typed, setTyped] = useState("")
@@ -67,6 +67,14 @@ describe("typed secrets leave the page (docs/plan/26-desktop-finish.md §7)", ()
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe("the toast after a wipe (D315, brief X2)", () => {
+  it("says what was cleared and where, in one line with no full stop", () => {
+    expect(wipeWords(1, "window")).toBe("Lockdown cleared a password you were typing while the window was away")
+    expect(wipeWords(3, "tab")).toBe("Lockdown cleared 3 passwords you were typing while the tab was away")
+    for (const w of [wipeWords(1, "tab"), wipeWords(2, "window")]) expect(w.endsWith(".")).toBe(false)
   })
 })
 

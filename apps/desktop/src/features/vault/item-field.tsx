@@ -165,14 +165,14 @@ export function ItemField({ itemId, field, onNotice, format = "plain", largeType
                 .catch((e) => setError(describeError(e)))
             }
           >
-            <Icon name="open_in_new" data-icon="inline-start" />
+            <Icon name="launch" data-icon="inline-start" />
             Open
           </Button>
         ) : (
           field.value &&
           !boolean && (
             <Button variant="ghost" size="sm" onClick={copyPlain}>
-              <Icon name="content_copy" data-icon="inline-start" />
+              <Icon name="copy" data-icon="inline-start" />
               Copy
             </Button>
           )

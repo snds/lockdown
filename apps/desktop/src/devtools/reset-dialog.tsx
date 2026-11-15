@@ -64,13 +64,14 @@ export function ResetDialog({ client, open, onOpenChange }: { client: DevtoolsCl
         </DialogHeader>
         {state === "restarting" ? (
           <p role="status" className="flex items-center gap-2 text-sm">
-            <Spinner /> Erased. Lockdown is restarting…
+            {/* The words are the status; the spinner beside them is only a picture (unicron 0.23 gave it a status of its own). */}
+            <Spinner aria-hidden /> Erased. Lockdown is restarting…
           </p>
         ) : (
           <div className="flex max-h-[50vh] flex-col gap-4 overflow-y-auto text-sm">
             {!plan && !error && (
               <p role="status" className="flex items-center gap-2 text-muted-foreground">
-                <Spinner /> Finding everything Lockdown keeps…
+                <Spinner aria-hidden /> Finding everything Lockdown keeps…
               </p>
             )}
             {plan && (

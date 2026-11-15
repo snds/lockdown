@@ -20,8 +20,8 @@ interface ItemRowProps {
 /** The three sign-in methods a Login row can carry (brief §1 promise A). */
 const METHODS: Record<string, [IconName, string]> = {
   password: ["password", "password"],
-  passkey: ["passkey", "passkey"],
-  code: ["timer", "one-time code"],
+  passkey: ["locked", "passkey"],
+  code: ["time", "one-time code"],
 }
 
 /**
@@ -44,7 +44,7 @@ export function ItemRow({ row, selected, onSelect, onCopy, actions }: ItemRowPro
         <ItemContent>
           <ItemTitle>
             <span className="truncate">{row.title || row.site || row.id}</span>
-            {row.favourite && <Icon name="star" fill label="favourite" />}
+            {row.favourite && <Icon name="star--filled" label="favourite" />}
             {row.crown_jewel && <CrownJewelMark size="sm" />}
             {row.conflict_copy && <Badge variant="secondary">Conflict copy</Badge>}
             {row.state === "trashed" && <Badge variant="secondary">In the trash</Badge>}
@@ -67,7 +67,7 @@ export function ItemRow({ row, selected, onSelect, onCopy, actions }: ItemRowPro
       </ItemMain>
       {(copy || actions) && (
         <ItemActions>
-          {copy && <IconButton label={`Copy ${copy.label}`} icon="content_copy" size="icon-sm" onClick={() => onCopy?.(row)} />}
+          {copy && <IconButton label={`Copy ${copy.label}`} icon="copy" size="icon-sm" onClick={() => onCopy?.(row)} />}
           {actions}
         </ItemActions>
       )}

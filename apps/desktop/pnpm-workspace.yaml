@@ -7,12 +7,12 @@ onlyBuiltDependencies:
 overrides:
   # The shared design system (03-architecture §9): @unicron/ui pins its
   # tokens by exact version, which is not on a registry; point the
-  # dependency at the same release tarball (unicron docs/05-consuming.md §1).
-  "@unicron/tokens": https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.14.0/unicron-tokens-0.14.0.tgz
-
-
-patchedDependencies:
-  # unicron's Icon draws the glyph by its codepoint when the app gives it
-  # one: Apple's WebKit doesn't shape ligatures in SVG text, so the Mac app
-  # drew no icons (docs/plan/38-mac-fixes.md §2). Drop once unicron ships it.
-  "@unicron/ui@0.22.0": ../../patches/@unicron__ui@0.22.0.patch
+  # dependency at the same tarball the app installs (unicron
+  # docs/05-consuming.md §1).
+  #
+  # unicron 1.0 is not released yet, so both packages are the pre-release
+  # tarballs vendored at the repo root, one copy for the four pnpm roots
+  # (docs/plan/62-unicron-1-0.md §1). Swap to the @unicron/ui@1.0.0 and
+  # @unicron/tokens@1.0.0 release URLs when Unicron 1.0 is released, and
+  # delete vendor/unicron/.
+  "@unicron/tokens": file:../../vendor/unicron/unicron-tokens-1.0.0-pre.2.tgz

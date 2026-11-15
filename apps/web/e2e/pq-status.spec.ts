@@ -3,7 +3,12 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test } from "@playwright/test"
+
+import { deviceRow } from "./steps/devices.ts"
+import { lineDevices, quantumLine } from "./steps/health.ts"
+import { go, vaultOpen } from "./steps/nav.ts"
+import { signIn } from "./steps/unlock.ts"
 
 /**
  * docs/plan/30-pq-status-line.md in the web vault, in Chromium against the
@@ -58,34 +63,28 @@ test.afterAll(() => {
   if (home) rmSync(home, { recursive: true, force: true })
 })
 
-const sidebar = (page: Page) => page.getByRole("navigation", { name: "Sidebar" })
-
 test("the Security screen waits for the old device by name, then says on once it reports level 2", async ({ page }) => {
   const problems: string[] = []
   page.on("pageerror", (e) => problems.push(`page error: ${e.message}`))
   await page.goto("/vault/")
-  const form = page.getByRole("form", { name: "Sign in" })
-  await form.getByLabel("Login name").fill(LOGIN)
-  await form.getByLabel("Master password").fill(PASSWORD)
-  await form.getByLabel("Secret Key").fill(secretKey)
-  await form.getByRole("button", { name: "Sign in" }).click()
-  await expect(page.getByRole("heading", { name: "All items" })).toBeVisible({ timeout: 90_000 })
+  await signIn(page, LOGIN, PASSWORD, secretKey)
+  await expect(vaultOpen(page)).toBeVisible({ timeout: 90_000 })
 
-  await sidebar(page).getByRole("button", { name: "Security" }).click()
-  const line = page.getByRole("status", { name: "Quantum-safe signatures" })
+  await go(page, "security")
+  const line = quantumLine(page)
   await expect(line).toContainText(`Quantum-safe signatures: waiting for ${OLD}`, { timeout: 60_000 })
   await expect(line).toContainText("This device needs the latest Lockdown")
   await expect(line).toHaveAttribute("data-state", "waiting")
   await expect(line).not.toContainText(": on")
 
   // The device is a link to it on the Devices screen.
-  await line.getByRole("button", { name: OLD }).click()
-  const row = page.getByRole("listitem").filter({ hasText: OLD })
+  await lineDevices(line, OLD).click()
+  const row = deviceRow(page, OLD)
   await expect(row).toHaveAttribute("aria-current", "true")
   await expect(row).toBeFocused()
 
   // Back on Security, with the live channel open (the worker looks every three seconds at most).
-  await sidebar(page).getByRole("button", { name: "Security" }).click()
+  await go(page, "security")
   await expect(line).toContainText(`waiting for ${OLD}`)
   await page.waitForTimeout(4000)
 
@@ -95,6 +94,6 @@ test("the Security screen waits for the old device by name, then says on once it
   expect(lockdown(["security"])).toContain("Quantum-safe signatures: on")
   await expect(line).toContainText("Quantum-safe signatures: on", { timeout: 30_000 })
   await expect(line).toHaveAttribute("data-state", "on")
-  await expect(line.getByRole("button")).toHaveCount(0)
+  await expect(lineDevices(line)).toHaveCount(0)
   expect(problems).toEqual([])
 })

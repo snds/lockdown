@@ -174,7 +174,7 @@ export function FilesPanel({ itemId, files, editable, onChanged, onNotice }: Fil
         <h3 className="text-xs font-medium text-muted-foreground uppercase">Files</h3>
         {editable && (
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => void attachFromDisk()}>
-            <Icon name="attach_file" data-icon="inline-start" />
+            <Icon name="attachment" data-icon="inline-start" />
             {busy ? "Attaching…" : "Attach a file"}
           </Button>
         )}
@@ -201,7 +201,7 @@ export function FilesPanel({ itemId, files, editable, onChanged, onNotice }: Fil
           {files.map((f) => (
             <Item key={f.id} role="listitem" size="sm">
               <ItemMedia variant="icon">
-                <Icon name="description" />
+                <Icon name="document" />
               </ItemMedia>
               <ItemContent>
                 <ItemTitle>
@@ -211,7 +211,7 @@ export function FilesPanel({ itemId, files, editable, onChanged, onNotice }: Fil
               </ItemContent>
               <ItemActions>
                 <IconButton label={`Save ${f.name}`} icon="download" size="icon-sm" onClick={() => void save(f)} />
-                {editable && <IconButton label={`Remove ${f.name}`} icon="delete" size="icon-sm" variant="ghost-destructive" onClick={() => setRemoving(f)} />}
+                {editable && <IconButton label={`Remove ${f.name}`} icon="trash-can" size="icon-sm" variant="ghost-destructive" onClick={() => setRemoving(f)} />}
               </ItemActions>
             </Item>
           ))}

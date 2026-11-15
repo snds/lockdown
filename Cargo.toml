@@ -76,13 +76,14 @@ authors = ["Sean Sands"]
 ecosystem-identity = { git = "https://github.com/snds/ecosystem-identity", rev = "35d2a56b9d5dab92ebf2ee447427bd083cef0a04", version = "0.1.0" }
 # The shared update kit (the unified updates proposal, U2): the updater's
 # rules and its Tauri glue, extracted from this repo's slice 59. Pinned by
-# tag; `v0.1.0` is commit 83b0a69 (the lockfile holds the commit).
-snds-app-updates = { git = "https://github.com/snds/app-updates", tag = "v0.1.0", version = "0.1.0" }
+# commit: 2a2a63f is the kit's crate 0.2.0, the one commit every app pins
+# (docs/plan/66-shared-feed.md, D744). It becomes `tag = "v0.2.0"` once that tag is on the remote.
+snds-app-updates = { git = "https://github.com/snds/app-updates", rev = "2a2a63f0f9a48c2e60e454307df237805fc14b20", version = "0.2.0" }
 # The host helper's client (U5, lane D item 3; docs/plan/61-server-updates.md
 # §6, D691): the admin page's one-click Update and Reload ask the helper on
 # the host. The client and the protocol only (`default-features = false`: no
-# allow-list, no Docker code). Pinned by commit until the helper is tagged.
-snds-app-updates-host-helper = { git = "https://github.com/snds/app-updates", rev = "c0ff0bfcb6eab8aa8287f33739ff149016d1e4bf", version = "0.1.0", default-features = false }
+# allow-list, no Docker code). The same commit as the kit above.
+snds-app-updates-host-helper = { git = "https://github.com/snds/app-updates", rev = "2a2a63f0f9a48c2e60e454307df237805fc14b20", version = "0.1.0", default-features = false }
 
 # Workspace crates.
 lockdown-crypto = { path = "crates/crypto", version = "0.1.0" }
@@ -170,7 +171,7 @@ thiserror = "2.0"
 # The local store (03-architecture §11 q.1, decided in 07-workspace §4):
 # plain SQLite holding ciphertext only. `bundled` compiles SQLite in, so
 # every platform links the same version.
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 tempfile = "3"
 
 # Binaries.

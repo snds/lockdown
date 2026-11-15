@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
 import { GateProvider } from "@/app/gate"
@@ -65,7 +65,7 @@ describe("Backups in Settings", () => {
     await user.type(screen.getByLabelText("Backup password"), "a long backup password")
     await user.type(screen.getByLabelText("The same password again"), "a long backup password")
     await user.click(screen.getByRole("button", { name: "Turn on backups" }))
-    await user.click(await screen.findByRole("button", { name: "Confirm" }))
+    await user.click(within(await screen.findByRole("dialog", { name: "Go ahead?" })).getByRole("button", { name: "Continue" }))
     expect(await screen.findByText("On: every 6 hours to /home/ada/Backups, keeping the newest 10.")).toBeInTheDocument()
     const input = backupSetup.mock.calls.at(-1)![0]
     expect(input).toMatchObject({ folder: 9, intervalHours: 6, keepLast: 10 })
@@ -115,7 +115,7 @@ describe("Backups in Settings", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Your next backup will be the first to include your 2 crown jewels.")
 
     await user.click(toggle)
-    await user.click(await screen.findByRole("button", { name: "Confirm" }))
+    await user.click(within(await screen.findByRole("dialog", { name: "Go ahead?" })).getByRole("button", { name: "Continue" }))
     await waitFor(() => expect(screen.getByRole("switch", { name: "Include crown jewels" })).not.toBeChecked())
     expect(backupCrownJewels).toHaveBeenLastCalledWith(false, { confirmed: true })
     expect(screen.getByText(/2 crown jewels aren't in your backups/)).toBeInTheDocument()
@@ -124,7 +124,7 @@ describe("Backups in Settings", () => {
     expect(onNotice).toHaveBeenLastCalledWith("Crown jewels stay out of new backups. Backups you already have keep what they hold.")
 
     await user.click(screen.getByRole("switch", { name: "Include crown jewels" }))
-    await user.click(await screen.findByRole("button", { name: "Confirm" }))
+    await user.click(within(await screen.findByRole("dialog", { name: "Go ahead?" })).getByRole("button", { name: "Continue" }))
     await waitFor(() => expect(screen.getByRole("switch", { name: "Include crown jewels" })).toBeChecked())
     expect(backupCrownJewels).toHaveBeenLastCalledWith(true, { confirmed: true })
     expect(screen.queryByText(/aren't in your backups/)).not.toBeInTheDocument()

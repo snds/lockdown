@@ -30,7 +30,7 @@ export function wipeSecretInputs(root: ParentNode = document): number {
  * Clears typed secrets when the window is hidden (minimised, another
  * desktop, the tab in the background) and when it has been out of focus
  * for a minute; the lock clears them anyway, since the views unmount.
- * `onWiped` hears how many fields were cleared, for a toast.
+ * `onWiped` hears how many fields were cleared, for a toast (`wipeWords`).
  */
 export function useSecretWipe(onWiped?: (n: number) => void) {
   useEffect(() => {
@@ -57,4 +57,12 @@ export function useSecretWipe(onWiped?: (n: number) => void) {
       window.removeEventListener("focus", onFocus)
     }
   }, [onWiped])
+}
+
+/**
+ * The toast after a wipe (D315), in brief X2's form: one line, no full
+ * stop. `where` is the window on the desktop and the tab in the web vault.
+ */
+export function wipeWords(n: number, where: "window" | "tab"): string {
+  return n === 1 ? `Lockdown cleared a password you were typing while the ${where} was away` : `Lockdown cleared ${n} passwords you were typing while the ${where} was away`
 }

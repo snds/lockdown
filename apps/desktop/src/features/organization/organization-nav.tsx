@@ -15,13 +15,19 @@ import {
   DropdownMenuTrigger,
   Icon,
   IconButton,
-  Separator,
+  ListRow,
+  NavItem,
+  NavSection,
+  SectionHeader,
+  toast,
+  type IconName,
+  type NavMarkProp,
 } from "@unicron/ui"
-import { toast } from "sonner"
 
-import { NavRow, type Nav } from "@/app/shell"
+import { currentRow, folderPlace, membersPlace, navFor, tagPlace, vaultPlace, type Nav } from "@/app/places"
 import { describeError, useClient } from "@/core/client"
 import type { ItemSummary, VaultView } from "@/core/types"
+import { countName } from "@/lib/format"
 
 import { ConfirmPrompt, NamePrompt, type ConfirmAsk, type NameAsk } from "./name-prompt"
 import { folderTree, tagTree, type Scope } from "./org-model"
@@ -31,22 +37,37 @@ interface OrganizationNavProps {
   rows: ItemSummary[]
   nav: Nav
   onNavigate: (nav: Nav) => void
+  /**
+   * `sidebar`: the VAULTS group of the desktop sidebar (brief 3.2).
+   * `switcher`: the same rows in the phone's Switch vault sheet and the
+   * medium width's popover (brief X1), led by All vaults, with New vault as
+   * a row and the SHARED WITH rows that open a vault's members.
+   */
+  variant?: "sidebar" | "switcher"
+  /** What waits on the person in Sharing: its row's mark, in the needs-you tone. */
+  sharingMark?: number
+  /** Whether Sharing has a row here (it always does; the web vault's holds People and Links). */
+  sharing?: boolean
+  /** A row was chosen: the sheet or popover that holds the switcher closes. */
+  onPicked?: () => void
 }
 
 /** The grace periods the vault menu offers, in days. */
 const TRASH_DAYS = [7, 14, 30, 60, 90, 365]
 
-const same = (a: Scope | undefined, b: Scope) => (a?.vault ?? "") === (b.vault ?? "") && (a?.folder ?? "") === (b.folder ?? "") && (a?.tag ?? "") === (b.tag ?? "")
+/** A vault's glyph, as drawn: yours alone, or shared. */
+const vaultIcon = (v: VaultView): IconName => (v.sharing ? "user--multiple" : "user--avatar")
 
 /**
- * The sidebar's Vaults, Folders and Tags (brief §3 "Vaults, folders,
- * tags"). Each vault lists its folders as a tree under it; each tag lists
- * the tags nested under it (`work/clients` under `work`). A row narrows
- * the list to it; its menu makes, renames or removes. Every name is sealed
- * in the vault (docs/plan/15-organization.md): this only draws what the
- * core sends.
+ * The vaults, their folders and the tags (brief §3 "Vaults, folders,
+ * tags"; redesign brief 3.2 and X1). Each vault opens its folder tree in
+ * place; Tags is one more row with the tag tree inside (`work/clients`
+ * under `work`); Sharing is the last row. A row narrows the list to it;
+ * its menu makes, renames or removes. Every name is sealed in the vault
+ * (docs/plan/15-organization.md): this only draws what the core sends.
+ * The group is a tree: Up and Down move, Right and Left open and close.
  */
-export function OrganizationNav({ rows, nav, onNavigate }: OrganizationNavProps) {
+export function OrganizationNav({ rows, nav, onNavigate, variant = "sidebar", sharingMark = 0, sharing = true, onPicked }: OrganizationNavProps) {
   const client = useClient()
   const { vaults, reload } = useVaults()
   const [name, setName] = useState<NameAsk | null>(null)
@@ -63,7 +84,15 @@ export function OrganizationNav({ rows, nav, onNavigate }: OrganizationNavProps)
     return { byVault, byFolder }
   }, [rows])
 
-  const go = (scope: Scope) => onNavigate({ area: "vault", view: "all", scope })
+  const go = (scope: Scope) => {
+    onNavigate({ area: "vault", view: "all", scope })
+    onPicked?.()
+  }
+  const goPlace = (id: string) => {
+    const to = navFor(id)
+    if (to) onNavigate(to)
+    onPicked?.()
+  }
   const done = (text: string) => () => {
     reload()
     toast(text)
@@ -144,34 +173,62 @@ export function OrganizationNav({ rows, nav, onNavigate }: OrganizationNavProps)
     })
   const setTrashDays = (v: VaultView, days: number) => client.setTrashDays(v.id, days).then(done(`Trashed items in ${v.name} now stay ${days} days.`)).catch(fail)
 
-  return (
-    <div className="hidden md:flex md:flex-col md:gap-1">
-      <Separator />
-      <div className="flex items-center justify-between px-2 pt-1">
-        <h2 className="text-xs font-medium text-muted-foreground uppercase">Vaults</h2>
-        <IconButton label="New vault" icon="add" size="icon-sm" variant="ghost" onClick={newVault} />
-      </div>
-      <ul aria-label="Vaults" className="flex flex-col gap-1">
-        {vaults.map((v) => (
-          <li key={v.id} className="flex flex-col gap-1">
-            <div className="flex items-center gap-1">
-              <div className="min-w-0 flex-1">
-                <NavRow icon={v.sharing ? (v.sharing.kind === "family" ? "home" : v.sharing.kind === "emergency" ? "emergency" : "group") : "shelves"} label={v.sharing && !v.sharing.owned && v.sharing.owner ? `${v.name} · ${v.sharing.owner}` : v.name} count={counts.byVault.get(v.id)} current={nav.area === "vault" && same(nav.scope, { vault: v.id })} onClick={() => go({ vault: v.id })} />
-              </div>
+  const current = currentRow(nav)
+  // A branch is open when the person opened it, or when the place showing is it or inside it.
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set())
+  const [closed, setClosed] = useState<ReadonlySet<string>>(new Set())
+  const holds = (branch: string) => (branch === "tags" ? Boolean(nav.area === "vault" && nav.scope?.tag) : nav.area === "vault" && (nav.scope?.vault === branch || (nav.scope?.folder !== undefined && vaults.some((v) => v.id === branch && v.folders.some((f) => f.id === nav.scope?.folder)))))
+  const isOpen = (branch: string) => (opened.has(branch) || holds(branch)) && !closed.has(branch)
+  const setOpen = (branch: string, open: boolean) => {
+    const flip = (set: ReadonlySet<string>, on: boolean) => {
+      const next = new Set(set)
+      if (on) next.add(branch)
+      else next.delete(branch)
+      return next
+    }
+    setOpened((set) => flip(set, open))
+    setClosed((set) => flip(set, !open))
+  }
+  const count = (n: number | undefined): NavMarkProp | undefined => (n ? { count: n, label: countName(n, "item") } : undefined)
+  const sharedVaults = vaults.filter((v) => v.sharing && v.sharing.kind !== "received")
+  const switcher = variant === "switcher"
+  const tree = (
+    <>
+      {switcher && <NavItem label="All vaults" icon="folder" current={nav.area === "vault" && current === nav.view && !nav.scope} mark={count(rows.filter((r) => r.state === "live").length)} onClick={() => go({})} />}
+      {vaults.map((v) => {
+        const open = isOpen(v.id)
+        return [
+          <NavItem
+            key={v.id}
+            label={v.name}
+            icon={vaultIcon(v)}
+            description={v.sharing && !v.sharing.owned && v.sharing.owner ? v.sharing.owner : undefined}
+            mark={count(counts.byVault.get(v.id))}
+            current={current === vaultPlace(v.id)}
+            expanded={v.folders.length > 0 ? open : undefined}
+            onExpandedChange={(next) => setOpen(v.id, next)}
+            onClick={() => go({ vault: v.id })}
+            action={
               <DropdownMenu>
-                <DropdownMenuTrigger render={<IconButton label={`${v.name} options`} icon="more_horiz" size="icon-sm" variant="ghost" />} />
+                <DropdownMenuTrigger render={<IconButton label={`${v.name} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" />} />
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => newFolder(v, null)}>
-                    <Icon name="create_new_folder" />
+                    <Icon name="folder--add" />
                     New folder
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => renameVault(v)}>
                     <Icon name="edit" />
                     Rename
                   </DropdownMenuItem>
+                  {v.sharing && v.sharing.kind !== "received" && sharing && (
+                    <DropdownMenuItem onClick={() => goPlace(membersPlace(v.id))}>
+                      <Icon name="user--multiple" />
+                      Members
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSub>
                     <DropdownMenuSubTrigger>
-                      <Icon name="delete" />
+                      <Icon name="trash-can" />
                       Keep trashed items
                     </DropdownMenuSubTrigger>
                     <DropdownMenuSubContent>
@@ -189,26 +246,24 @@ export function OrganizationNav({ rows, nav, onNavigate }: OrganizationNavProps)
                   </DropdownMenuSub>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </div>
-            {v.folders.length > 0 && (
-              <ul aria-label={`Folders in ${v.name}`} className="flex flex-col gap-1">
-                {folderTree(v.folders).map((f) => (
-                  <li key={f.id} className="flex items-center gap-1">
-                    <div className="min-w-0 flex-1">
-                      <NavRow
-                        icon={nav.scope?.folder === f.id ? "folder_open" : "folder"}
-                        label={f.name}
-                        depth={f.depth + 1}
-                        count={counts.byFolder.get(f.id)}
-                        current={nav.area === "vault" && nav.scope?.folder === f.id}
-                        onClick={() => go({ folder: f.id })}
-                      />
-                    </div>
+            }
+          />,
+          ...(open
+            ? folderTree(v.folders).map((f) => (
+                <NavItem
+                  key={f.id}
+                  label={f.name}
+                  icon={nav.scope?.folder === f.id ? "folder--open" : "folder"}
+                  level={f.depth + 1}
+                  mark={count(counts.byFolder.get(f.id))}
+                  current={current === folderPlace(f.id)}
+                  onClick={() => go({ folder: f.id })}
+                  action={
                     <DropdownMenu>
-                      <DropdownMenuTrigger render={<IconButton label={`${f.name} options`} icon="more_horiz" size="icon-sm" variant="ghost" />} />
+                      <DropdownMenuTrigger render={<IconButton label={`${f.name} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" />} />
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => newFolder(v, f.id)}>
-                          <Icon name="create_new_folder" />
+                          <Icon name="folder--add" />
                           New folder inside
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => renameFolder(v, f.id, f.name, f.parent)}>
@@ -217,53 +272,93 @@ export function OrganizationNav({ rows, nav, onNavigate }: OrganizationNavProps)
                         </DropdownMenuItem>
                         {f.parent && (
                           <DropdownMenuItem onClick={() => void client.changeFolder(v.id, f.id, f.name, null).then(done("Moved to the top.")).catch(fail)}>
-                            <Icon name="drive_file_move" />
+                            <Icon name="folder--move-to" />
                             Move to the top
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem variant="destructive" onClick={() => removeFolder(v, f.id, f.name)}>
-                          <Icon name="delete" />
+                          <Icon name="trash-can" />
                           Remove
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </li>
+                  }
+                />
+              ))
+            : []),
+        ]
+      })}
+      {tags.length > 0 && <NavItem label="Tags" icon="tag" expanded={isOpen("tags")} onExpandedChange={(next) => setOpen("tags", next)} />}
+      {tags.length > 0 &&
+        isOpen("tags") &&
+        tags.map((t) => (
+          <NavItem
+            key={t.tag}
+            label={t.name}
+            icon="tag"
+            level={t.depth + 1}
+            mark={count(t.count)}
+            current={current === tagPlace(t.tag)}
+            onClick={() => go({ tag: t.tag })}
+            action={
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<IconButton label={`#${t.tag} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" />} />
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => renameTag(t.tag)}>
+                    <Icon name="edit" />
+                    Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuItem variant="destructive" onClick={() => removeTag(t.tag)}>
+                    <Icon name="trash-can" />
+                    Take off every item
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            }
+          />
         ))}
-      </ul>
-      {tags.length > 0 && (
-        <>
-          <h2 className="px-2 pt-2 text-xs font-medium text-muted-foreground uppercase">Tags</h2>
-          <ul aria-label="Tags" className="flex flex-col gap-1">
-            {tags.map((t) => (
-              <li key={t.tag} className="flex items-center gap-1">
-                <div className="min-w-0 flex-1">
-                  <NavRow icon="sell" label={t.name} depth={t.depth} count={t.count} current={nav.area === "vault" && nav.scope?.tag === t.tag} onClick={() => go({ tag: t.tag })} />
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger render={<IconButton label={`#${t.tag} options`} icon="more_horiz" size="icon-sm" variant="ghost" />} />
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => renameTag(t.tag)}>
-                      <Icon name="edit" />
-                      Rename
-                    </DropdownMenuItem>
-                    <DropdownMenuItem variant="destructive" onClick={() => removeTag(t.tag)}>
-                      <Icon name="delete" />
-                      Take off every item
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </li>
-            ))}
-          </ul>
-        </>
+      {switcher && <NavItem label="New vault" icon="add" onClick={newVault} />}
+      {sharing && !switcher && (
+        <NavItem label="Sharing" icon="share" current={current === "sharing"} mark={sharingMark > 0 ? { count: sharingMark, tone: "needs-you" } : undefined} onClick={() => goPlace("sharing")} />
       )}
+    </>
+  )
+  return (
+    <>
+      {switcher ? (
+        // In the sheet the header already says VAULTS // NN, so the rows stand under it without a second heading.
+        // They are plain rows there, each with a real button to open its branch: a finger has no arrow keys.
+        <div role="list" aria-label="Vaults" className="flex flex-col gap-1">
+          {tree}
+        </div>
+      ) : (
+        <NavSection title="Vaults" count={vaults.length} tree action={<IconButton label="New vault" icon="add" size="icon-sm" variant="ghost" onClick={newVault} />}>
+          {tree}
+        </NavSection>
+      )}
+      {switcher && sharedVaults.length > 0 && (
+        <div className="flex flex-col">
+          <SectionHeader title="Shared with" count={sharedVaults.length} />
+          <div role="list" aria-label="Shared with">
+            {sharedVaults.map((v) => (
+              <ListRow
+                key={v.id}
+                role="listitem"
+                size="compact"
+                title={v.name}
+                meta={`${countName(v.sharing?.people ?? 0, "member")} // ${v.sharing?.owned ? "you own it" : (v.sharing?.owner ?? "shared with you")}`}
+                metaStyle="plain"
+                status={v.sharing?.owned ? "Owner" : undefined}
+                onClick={() => goPlace(membersPlace(v.id))}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      {switcher && sharing && <NavItem label="Sharing" icon="share" current={current === "sharing"} mark={sharingMark > 0 ? { count: sharingMark, tone: "needs-you" } : undefined} onClick={() => goPlace("sharing")} />}
       <NamePrompt ask={name} onClose={() => setName(null)} />
       <ConfirmPrompt ask={confirm} onClose={() => setConfirm(null)} />
-    </div>
+    </>
   )
 }

@@ -97,7 +97,7 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
         title="Locked, even from us"
         actions={
           <Button size="sm" onClick={checkNow} disabled={busy !== null || !account}>
-            {busy === "audit" ? <Spinner /> : <Icon name="verified_user" data-icon="inline-start" />}
+            {busy === "audit" ? <Spinner /> : <Icon name="security" data-icon="inline-start" />}
             Check now
           </Button>
         }
@@ -142,7 +142,7 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
         actions={
           account ? (
             <Button size="sm" variant="outline" onClick={syncNow} disabled={busy !== null}>
-              {busy === "sync" ? <Spinner /> : <Icon name="sync" data-icon="inline-start" />}
+              {busy === "sync" ? <Spinner /> : <Icon name="renew" data-icon="inline-start" />}
               Sync now
             </Button>
           ) : (

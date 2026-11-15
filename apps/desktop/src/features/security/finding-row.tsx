@@ -73,7 +73,7 @@ export function FindingRow({ finding: f, busy, onWhatToDo, onOpenItem, onDismiss
             )}
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button size="sm" variant="ghost" disabled={busy} aria-label={`Dismiss: ${f.title}`} />}>
-                <Icon name="snooze" data-icon="inline-start" />
+                <Icon name="time" data-icon="inline-start" />
                 Dismiss
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">

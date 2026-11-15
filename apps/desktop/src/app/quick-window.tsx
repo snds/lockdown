@@ -2,8 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { listen } from "@tauri-apps/api/event"
 import { ThemeProvider } from "next-themes"
 
-import { Button, Icon, Toaster, TooltipProvider } from "@unicron/ui"
-import { toast } from "sonner"
+import { Button, Icon, Toaster, TooltipProvider, toast } from "@unicron/ui"
 
 import { GateProvider } from "@/app/gate"
 import { SettingsProvider } from "@/app/settings"
@@ -14,6 +13,9 @@ import type { ItemSummary } from "@/core/types"
 import { HygieneClientProvider } from "@/features/hygiene/hygiene-client"
 import { QuickPalette } from "@/features/palette/quick-palette"
 import { QuickClientProvider, useQuickClient } from "@/features/quick/quick-client"
+
+/** How often the open window asks whether the vault locked, as the main window's lock watch does. */
+const LOCK_POLL_MS = 3000
 
 /**
  * The quick-access window the system-wide shortcut opens
@@ -50,6 +52,23 @@ function QuickRoot() {
     }
   }, [refresh])
 
+  // A lock while the window is open closes it (brief X5, Lock): the palette never stays over a locked vault.
+  useEffect(() => {
+    if (locked !== false) return
+    const t = window.setInterval(() => {
+      client
+        .lockState()
+        .then((s) => {
+          if (!s.locked) return
+          setLocked(true)
+          setRows([])
+          void quick.hide()
+        })
+        .catch(() => {})
+    }, LOCK_POLL_MS)
+    return () => window.clearInterval(t)
+  }, [locked, client, quick])
+
   const unlock = () =>
     client
       .unlock()
@@ -60,7 +79,7 @@ function QuickRoot() {
   if (locked) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-        <Icon name="lock" />
+        <Icon name="locked" />
         <p className="text-sm">Lockdown is locked.</p>
         <Button autoFocus onClick={() => void unlock()}>
           Unlock

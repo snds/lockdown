@@ -38,16 +38,25 @@ function markReminded(today: string) {
   }
 }
 
+/** The words of the expiry news (brief X2 table 5): what is due as the title, the soonest as the body. */
+export function expiryNews(due: ReadonlyArray<{ title: string; days: number }>): { title: string; body?: string } | null {
+  const first = due[0]
+  if (!first) return null
+  const soonest = `${first.title} ${expiryWords(first.days)}`
+  return due.length === 1 ? { title: soonest } : { title: `${due.length} items expire soon`, body: `${soonest}.` }
+}
+
 /**
- * Once a day, after unlock: one toast naming what lapses within its
- * reminder lead (a card from sixty days out, a passport from ninety), with
- * "Show" opening the Expiring view. The dates come from the core; what is
- * remembered here is only the day the toast last showed.
+ * Once a day, after unlock: one piece of news naming what lapses within
+ * its reminder lead (a card from sixty days out, a passport from ninety),
+ * with "Show" opening Health at Expiring. It is an info Banner at the top
+ * of All items (D753), not a toast. The dates come from the core; what is
+ * remembered here is only the day the news last came.
  */
 export function useExpiryReminder(
   client: Client,
   open: boolean,
-  notify: (text: string, show: () => void) => void,
+  notify: (news: { title: string; body?: string }, show: () => void) => void,
   onShow: () => void,
 ) {
   const shown = useRef(false)
@@ -63,12 +72,10 @@ export function useExpiryReminder(
     client
       .expiryReminders()
       .then((due) => {
-        const first = due[0]
-        if (!first) return
+        const news = expiryNews(due)
+        if (!news) return
         markReminded(today)
-        const text =
-          due.length === 1 ? `"${first.title}" ${expiryWords(first.days)}.` : `${due.length} items expire soon; "${first.title}" ${expiryWords(first.days)}.`
-        notify(text, onShow)
+        notify(news, onShow)
       })
       .catch(() => {})
   }, [client, open, notify, onShow])

@@ -43,7 +43,7 @@ export function EmergencySheetButton({ onNotice }: { onNotice: (text: string) =>
   return (
     <>
       <Button variant="outline" onClick={() => void open()} disabled={busy}>
-        {busy ? <Spinner data-icon="inline-start" /> : <Icon name="print" data-icon="inline-start" />}
+        {busy ? <Spinner data-icon="inline-start" /> : <Icon name="printer" data-icon="inline-start" />}
         Emergency sheet
       </Button>
       <Dialog open={sheet !== null} onOpenChange={(o) => !o && setSheet(null)}>
@@ -80,7 +80,7 @@ export function EmergencySheetButton({ onNotice }: { onNotice: (text: string) =>
                   Close
                 </LabelledAction>
                 <Button onClick={() => void print().catch((e) => onNotice(describeError(e)))} disabled={printing}>
-                  <Icon name="print" data-icon="inline-start" />
+                  <Icon name="printer" data-icon="inline-start" />
                   Print
                 </Button>
               </LabelledActions>

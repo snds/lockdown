@@ -69,7 +69,7 @@ export function AliasField({ site, onAddress }: { site: string; onAddress: (addr
           </NativeSelect>
         )}
         <Button type="button" variant="outline" size="sm" onClick={() => void make()} disabled={busy}>
-          {busy ? <Spinner data-icon="inline-start" /> : <Icon name="alternate_email" data-icon="inline-start" />}
+          {busy ? <Spinner data-icon="inline-start" /> : <Icon name="at" data-icon="inline-start" />}
           New alias{services.length === 1 ? ` from ${services[0]?.service_name}` : ""}
         </Button>
       </div>

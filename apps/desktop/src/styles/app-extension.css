@@ -1,76 +1,77 @@
 /*
- * Lockdown's app-extension layer, over the shared core (@unicron/tokens).
+ * Lockdown's app-extension layer, over the shared core (@unicron/tokens 1.0).
  *
- * Tier 2 app roles only: which pane is chrome, what a selected row and a
- * locked vault look like, one hue for "verified / secure", one for
- * "danger / revoke", one for the Codes area. Every role aliases a tier-1
- * (--g-*) or tier-2 (--*) token; no raw values; swaps only in .dark;
- * exposed to Tailwind through this file's own @theme inline block
- * (unicron docs/05-consuming.md §3; docs/plan/11-desktop-design-brief.md §8).
+ * The app's theme is not set here. It is set once, in each page's HTML:
+ * `<html data-theme="lockdown">`, and the `dark` class picks the ground
+ * (graphite; no class is stone). Every core role follows both.
+ *
+ * Tier 2 app roles only, and aliases only: each role below points at a
+ * core role (--*), never at a raw value and never at the old `--g-neutral-*`
+ * or accent ramps, which are not themed (unicron docs/07-migrating-to-1.0.md
+ * §1 and §4). A role that only points at core roles is the same on both
+ * grounds, so each is declared once, on the four selectors the core's own
+ * example uses, and follows a nested ground or theme box too. Exposed to
+ * Tailwind through this file's own @theme inline block
+ * (unicron docs/05-consuming.md §3; docs/plan/11-desktop-design-brief.md §8;
+ * the role table is docs/plan/10-desktop-shell.md §4).
  *
  * The six security components (approval sheet, risk-tier badge, secret
  * field, code display, large-type view, crown-jewel treatment) are unicron
- * components (03-architecture §9; @unicron/ui 0.4.0). Their colours and
- * knobs (`--c-crown-jewel-*`, `--c-secret-field-*`, …) come from the core
- * tokens; nothing here redefines them.
+ * components (03-architecture §9). Their colours and knobs
+ * (`--c-crown-jewel-*`, `--c-secret-field-*`, …) come from the core tokens;
+ * nothing here redefines them, and the master-password meter reads the
+ * secret field's own meter knobs.
  *
- * Fill and text are separate roles (@unicron/tokens 0.5.0). A hue's base
- * role (`--secure`, `--attention`, `--area-codes`) is a fill: a dot, a
- * badge, a status fill, with its `-foreground` label. Its `-text` role is
- * the same hue as words on a surface, on the core's text steps (600 light,
- * 300 dark), held to APCA Lc 75 on the page, a card, the chrome and a
- * selected row; the fills read Lc 22-70 as text there, under that floor.
- * A fill's label holds Lc 60: green and blue stay on 500 in dark mode with
- * a white label, as the core's dark `info` does (400 with either label
- * read Lc 51-58). Measured numbers: docs/plan/10-desktop-shell.md §11.
+ * Three roles are retiring (docs/plan/62-unicron-1-0.md §4, proposed D701):
+ * `--secure`, `--area-codes` and `--attention-text`. They keep their names
+ * so that no class silently stops drawing, each marked "legacy, no new use"
+ * below; the screens that still name them drop them as they are rebuilt.
  */
 
-/* ── Tier 2 · App roles (light) ─────────────────────────────────────────── */
-:root {
-  --surface-chrome: var(--g-neutral-50); /* nav rail, list pane */
-  --surface-canvas: var(--g-neutral-0); /* detail pane */
-  --surface-selected: var(--g-neutral-100); /* the selected row */
-  --surface-locked: var(--g-neutral-100); /* the wash over the vault while locked */
+/* ── Tier 2 · App roles (the same on both grounds) ──────────────────────── */
+:root,
+.light,
+.dark,
+[data-theme] {
+  /* The panes sit on the ground, set apart by space and a hairline, not by
+     a fill (unicron 1.0: the sidebar is `surface-ground`). */
+  --surface-chrome: var(--surface-ground); /* nav rail, list pane */
+  --surface-canvas: var(--surface-ground); /* detail pane */
+  --surface-locked: var(--surface-ground); /* the wash over the vault while locked */
+  /* The selected row: the identity colour's soft fill, never a solid. */
+  --surface-selected: var(--primary-soft);
 
-  /* "Locked / secure / verified": the manifest verified, the drill passed,
-     the vault locked as it should be. Always paired with a word. */
-  --secure: var(--g-green-500);
-  --secure-foreground: var(--g-neutral-0);
-  --secure-text: var(--g-green-600);
-  /* "Danger / revoke": revoking a device, moving an item to the trash.
-     The core's `destructive` reads as text in both modes since 0.4.0. */
-  --danger: var(--destructive);
-  /* Needs attention: expiring, unverified, a conflict copy. Aliases the
-     core's `warning` role (brief §8), which is a fill (amber.400). */
-  --attention: var(--warning);
-  --attention-foreground: var(--warning-foreground);
-  --attention-text: var(--g-amber-600);
-  /* The one wayfinding hue: the Codes view and the palette's code rows. */
-  --area-codes: var(--g-blue-500);
-  --area-codes-foreground: var(--g-neutral-0);
-  --area-codes-text: var(--g-blue-600);
+  /* "Danger / revoke": revoking a device, moving an item to the trash. */
+  --danger: var(--critical-text);
 
-  /* The core's sidebar contract, re-pointed at the chrome pane. */
-  --sidebar: var(--surface-chrome);
+  /* Legacy, no new use. "Locked / secure / verified" had its own green.
+     The primary is green now, so a second green would make a selected row,
+     a primary button and "verified" look alike: the word carries it, in
+     body ink. A new "verified" is a neutral Badge with the word. */
+  --secure: var(--text-body);
+  --secure-foreground: var(--surface-ground);
+  --secure-text: var(--text-body);
+
+  /* Legacy, no new use. Needs attention as words: expiring, unverified, a
+     conflict copy. On stone it is the core's attention ink (amber 600,
+     6.9:1 on the ground): the core's `--warning` there is a fill (amber
+     550), and as words on the ground it is 4.0:1, under the floor for
+     text. Graphite is set below. A new state word is a Badge with
+     tone="warning". */
+  --attention-text: var(--attention-foreground);
+
+  /* Legacy, no new use. The Codes wayfinding hue. The app's second colour
+     is for work happening now: a code counting down, not a nav entry. */
+  --area-codes: var(--secondary-live);
+  --area-codes-foreground: var(--surface-ground);
+  --area-codes-text: var(--secondary-live);
 }
 
-/* ── Tier 2 · App roles (dark) ──────────────────────────────────────────── */
+/* The one role that differs by ground. On graphite the core's attention ink
+   is the needs-you yellow, which only says "this waits on you"; needs
+   attention as words is the core's warning ink there (amber 300). */
 .dark {
-  --surface-chrome: var(--g-neutral-900);
-  --surface-canvas: var(--g-neutral-950);
-  --surface-selected: var(--g-neutral-800);
-  --surface-locked: var(--g-neutral-900);
-  --secure: var(--g-green-500);
-  --secure-foreground: var(--g-neutral-0);
-  --secure-text: var(--g-green-300);
-  --danger: var(--destructive);
-  --attention: var(--warning);
-  --attention-foreground: var(--warning-foreground);
-  --attention-text: var(--g-amber-300);
-  --area-codes: var(--g-blue-500);
-  --area-codes-foreground: var(--g-neutral-0);
-  --area-codes-text: var(--g-blue-300);
-  --sidebar: var(--surface-chrome);
+  --attention-text: var(--warning);
 }
 
 /* ── Tier 3 · Lockdown-only component knobs ─────────────────────────────── */
@@ -154,8 +155,6 @@
   --color-secure-foreground: var(--secure-foreground);
   --color-secure-text: var(--secure-text);
   --color-danger: var(--danger);
-  --color-attention: var(--attention);
-  --color-attention-foreground: var(--attention-foreground);
   --color-attention-text: var(--attention-text);
   --color-area-codes: var(--area-codes);
   --color-area-codes-foreground: var(--area-codes-foreground);
