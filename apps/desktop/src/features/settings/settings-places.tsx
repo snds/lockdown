@@ -4,7 +4,6 @@ import { AppFrameInset, AppFramePageHead, NavItem, SearchField, SectionHeader, S
 
 import { useCrumb } from "@/app/crumbs"
 import { NeedsYouSlot, useNeedsYouBlock } from "@/app/needs-you"
-import { pageHeadSize } from "@/app/page-head"
 import { deviceName, settingsSections, usePlaces, type SettingsSection } from "@/app/places"
 import { isMac } from "@/features/palette/palette-model"
 import { count } from "@/lib/format"
@@ -114,7 +113,8 @@ export function SettingsPlaces({ overview, marks, children }: SettingsPlacesProp
       onValueChange={(value) => go(value ? `settings-${value}` : "settings")}
       search={search}
       overview={drawsOverview ? <AppFrameInset>{overview}</AppFrameInset> : undefined}
-      head={frame.phone ? undefined : <AppFramePageHead title="Settings" size={pageHeadSize(frame)} gap="sm" />}
+      // The head stands over the 204 section list, so its title is display/compact, as Desktop / 12 draws it; lg would cut it.
+      head={frame.phone ? undefined : <AppFramePageHead title="Settings" size="md" gap="sm" />}
     >
       {shown ? (
         <AppFrameInset>
