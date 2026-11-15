@@ -135,7 +135,9 @@ describe("a row's menu (brief V1, cross-app decisions §10)", () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     await user.click(await screen.findByRole("button", { name: "More for a" }))
     const menu = await screen.findByRole("menu")
-    for (const name of LIVE) expect(within(menu).getByRole("menuitem", { name }), `${name} at ${width}`).toBeInTheDocument()
+    // A phone's row swipes, and its swipe's FAVORITE heads the menu in place of Add to favorites (doc 72).
+    const names = width < 600 ? ["Favorite", "More", ...LIVE.filter((n) => n !== "Add to favorites")] : LIVE
+    for (const name of names) expect(within(menu).getByRole("menuitem", { name }), `${name} at ${width}`).toBeInTheDocument()
     expect(within(menu).getByText("Move to vault")).toBeInTheDocument()
   })
 

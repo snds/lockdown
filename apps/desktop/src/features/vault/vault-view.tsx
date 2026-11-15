@@ -289,7 +289,8 @@ const ROW_HEIGHT = { comfortable: 92, compact: 56 } as const
  * has a Section Header with its count and SORT; a vault, folder or tag has
  * its header and a chip row of the kinds it holds. On a phone and at medium
  * width the shell's page head is the switcher, with its chips; the list adds
- * its sort button. Rows are unicron's ListRow (`ItemRow`) with a ⋯ menu.
+ * its sort button. Rows are unicron's ListRow (`ItemRow`) with a ⋯ menu;
+ * on a phone they swipe (`SwipeRow`), every swipe action also in that menu.
  * Loading draws skeleton rows; a failed read keeps what loaded with a
  * critical Banner and TRY AGAIN, or says so in a critical Empty State.
  */
@@ -441,6 +442,8 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
   const windowed = inView > WINDOW_FROM
   const rowHeight = ROW_HEIGHT[settings.density === "compact" ? "compact" : "comfortable"]
   const oneVault = Boolean(scopeVault) || vaults.length < 2
+  // A phone's rows swipe (brief V1, States / 01): the same calls and toasts as the row's menu.
+  const swipe = frame.phone ? { onChanged: (text: string) => changed(text), onError: setActionError, onNotice } : null
   const drawRow = (r: ItemSummary, position: { index: number; of: number } | undefined) => (
     <ItemRow
       key={r.id}
@@ -449,6 +452,7 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
       onSelect={setSelected}
       position={position}
       words={rowWords(r, { view, vaults, oneVault, findings })}
+      swipe={swipe}
       actions={
         rowMenuOffers(r) ? (
           <RowMenuItems
@@ -458,6 +462,7 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
             onPurge={menuLayers.onPurge}
             onChanged={(text, moved) => changed(text, moved, r.id)}
             onError={setActionError}
+            swiped={Boolean(swipe)}
           />
         ) : undefined
       }

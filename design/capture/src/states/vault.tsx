@@ -13,8 +13,8 @@ import type { StateDef } from "../harness/types"
 import { d, only, w } from "./defs"
 import { WIDTHS } from "../harness/types"
 import { open, webOpen } from "./steps/screens"
-import { DIALOG, MENU, answerGate, go, openSwitcher, starts } from "./steps/shell"
-import { besideSidebar, focusOrgRow, itemAction, openBranch, openItem, openItemMenu, orgMenu, orgMenuRow, passkeyDetails, reveal } from "./steps/vault"
+import { DIALOG, MENU, answerGate, go, openSwitcher, scrollContent, starts } from "./steps/shell"
+import { besideSidebar, focusOrgRow, itemAction, openBranch, openItem, openItemMenu, orgMenu, orgMenuRow, passkeyDetails, reveal, swipeRow } from "./steps/vault"
 
 /** The failed-reload state's switch: the list reads until a step turns it on. */
 const reload = { broken: false }
@@ -44,7 +44,7 @@ export const VAULT_STATES: StateDef[] = [
       reload.broken = false
       return { list: (a) => (reload.broken ? fail("refused", "The vault's index is busy with another window. Try again in a moment.") : as("list")(a)) }
     },
-    steps: [...open, { run: () => void (reload.broken = true) }, { click: /^More for Alex Rivera/ }, { click: "Add to favorites", role: "menuitem" }, { wait: "Couldn't load your items." }, { run: () => (document.activeElement as HTMLElement | null)?.blur() }, { pause: 300 }],
+    steps: [...open, { run: () => void (reload.broken = true) }, { click: /^More for Alex Rivera/ }, { click: /^(Add to favorites|Favorite)$/, role: "menuitem" }, { wait: "Couldn't load your items." }, { run: () => (document.activeElement as HTMLElement | null)?.blur() }, { pause: 300 }],
   }),
   d({ id: "desktop-vault-long", built: { area: "items", screen: "long", kind: "undrawn" }, screen: "Vault", state: "A long list", brief_row: "Vault", notes: "A vault of 300 rows: only the rows in view are drawn (brief X6), the letter headers stay sticky.", setup: longVault, steps: open }),
   d({ id: "desktop-vault-search", screen: "Vault", state: "Search", brief_row: "Vault", notes: "A search narrowing the list: the Search place (typing in All items' field opens it).", steps: [...open, ...go("search"), { fill: /^Search/, value: "blue" }] }),
@@ -60,6 +60,27 @@ export const VAULT_STATES: StateDef[] = [
     steps: [...open, { click: "Sort and group" }, { click: "Recently changed" }, { run: async () => void (document.querySelector('[role="menu"], [role="dialog"]') && (await runSteps([{ key: "Escape" }]))) }, { gone: "Recently used" }],
   }),
   d({ id: "desktop-vault-row-menu", built: { area: "items", screen: "row-menu", kind: "undrawn" }, screen: "Vault", state: "Row menu", brief_row: "Vault", notes: "A row's own menu: favorites, folder and tags, move, archive, history, Recently deleted.", steps: [...open, { click: /^More for Bluefin Bank/ }, { pause: 300 }] }),
+  // Phone row swipes (States / 01, doc 72): a phone-only gesture, so 390 wide only; the list scrolled, as the frame draws it.
+  d({
+    id: "desktop-vault-swipe-trailing",
+    widths: [390],
+    built: { area: "items", screen: "swipe-actions", kind: "drawn" },
+    screen: "Vault",
+    state: "Swiped left",
+    brief_row: "Vault",
+    notes: "A login with a code, slid left: MORE and CODE neutral, PASSWORD outermost in the primary fill (a full swipe copies it, through the gate for a crown jewel). Every tile is also in the row's ⋯ menu.",
+    steps: [...open, ...scrollContent(220), swipeRow("Bluefin Bank", "trailing")],
+  }),
+  d({
+    id: "desktop-vault-swipe-leading",
+    widths: [390],
+    built: { area: "items", screen: "swipe-favorite", kind: "drawn" },
+    screen: "Vault",
+    state: "Swiped right",
+    brief_row: "Vault",
+    notes: "A row slid right from clear of the back edge: FAVORITE (UNFAVORITE on a favorite), the one leading tile.",
+    steps: [...open, ...scrollContent(220), swipeRow("Bluefin Bank alerts", "leading")],
+  }),
   d({ id: "desktop-vault-duplicates", screen: "Vault", state: "Find duplicates", brief_row: "Vault", notes: "Duplicates review: same password, same network. Reached from Health now (D152).", steps: [...open, ...go("health"), { click: "Duplicates" }, DIALOG] }),
   d({ id: "desktop-vault-organize", screen: "Vault", state: "Folder and tags", brief_row: "Vault", notes: "The organize prompt from a row's menu.", steps: [...open, { click: /^More for Bluefin Bank/ }, { click: /Folder and tags/ }, DIALOG] }),
   d({ id: "desktop-view-favourites", built: { area: "items", screen: "favorites", kind: "undrawn" }, screen: "Smart views", state: "Favorites", brief_row: "Vault", notes: "Starred items.", steps: [...open, ...go("favourites")] }),

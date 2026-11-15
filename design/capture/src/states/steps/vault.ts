@@ -130,3 +130,34 @@ export const besideSidebar = (steps: Step[]): Step => ({
     if (tree && tree.offsetParent !== null) await runSteps(steps)
   },
 })
+
+/**
+ * A finger's swipe on a phone's item row (brief V1, States / 01): pointer events on unicron's
+ * `SwipeRow` around the row whose title is `title`, far enough to open its tiles and short of a full
+ * swipe, so nothing runs. `trailing` slides it left (MORE, CODE, the copy); `leading` slides it right
+ * from 60 px in, clear of the back edge (FAVORITE). Then the row settles.
+ */
+export const swipeRow = (title: string, side: "trailing" | "leading"): Step => ({
+  run: async () => {
+    // The title line holds the title, then its marks' names ("Favorite"): never more words after a space.
+    const line = Array.from(document.querySelectorAll<HTMLElement>('[data-slot="swipe-row"] [data-slot="list-row-title"]')).find((t) => {
+      const text = t.textContent ?? ""
+      return text.startsWith(title) && !/^\s/.test(text.slice(title.length))
+    })
+    const root = line?.closest<HTMLElement>('[data-slot="swipe-row"]')
+    if (!root) throw new Error(`No swiping row named ${title}`)
+    const box = root.getBoundingClientRect()
+    const y = box.top + box.height / 2
+    const from = side === "trailing" ? box.right - 30 : box.left + 60
+    const to = side === "trailing" ? from - 180 : from + 110
+    const at = (type: string, x: number) =>
+      root.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 41, pointerType: "touch", isPrimary: true, button: type === "pointermove" ? -1 : 0, clientX: x, clientY: y }))
+    at("pointerdown", from)
+    for (let i = 1; i <= 10; i++) {
+      at("pointermove", from + ((to - from) * i) / 10)
+      await new Promise((r) => setTimeout(r, 16))
+    }
+    at("pointerup", to)
+    await new Promise((r) => setTimeout(r, 500))
+  },
+})
