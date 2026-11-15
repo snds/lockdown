@@ -91,6 +91,11 @@ const KIND_WORDS: Record<string, string> = {
   custom: "Custom",
 }
 
+/** A kind's own name, singular (`Card`, `Wi-Fi`, `SSH key`): the overline's first part and a list row's words. */
+export function kindWord(kind: string): string {
+  return KIND_WORDS[kind] ?? kind
+}
+
 /** The field that tells one item of a kind apart, after the kind (brief I2: `CARD // VISA`, `SSH KEY // ED25519`). */
 const TELLS: Record<string, string> = {
   card: "card.type",

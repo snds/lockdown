@@ -1,106 +1,119 @@
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-  Icon,
-  IconButton,
-} from "@unicron/ui"
+import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, Icon } from "@unicron/ui"
 
 import { useGate } from "@/app/gate"
+import { archivedWords, deletedWords, notify } from "@/app/notify"
 import { describeError, useClient } from "@/core/client"
 import type { ItemSummary } from "@/core/types"
 
-import { folderTree } from "./org-model"
+import { rowMenuOffers } from "./org-model"
 import { useVaults } from "./vaults-context"
 
-interface RowMenuProps {
-  row: ItemSummary
-  /** Opens the organize prompt (folder, tags, favourite) for this row. */
+/** What a row's menu tells its list. */
+export interface RowMenuHandlers {
+  /** Opens the organize prompt (folder, tags, favorite) for this row. */
   onOrganize: (row: ItemSummary) => void
-  /** Something changed: reload. `moved` is the item's new id after a move. */
+  /** Something changed: reload. `moved` is the item's new id after a move. The words are a toast's. */
   onChanged: (notice: string, moved?: string) => void
   onError: (text: string) => void
+  /** Opens the item's history (one dialog for the whole list: `useRowMenuLayers`). */
+  onHistory: (row: ItemSummary) => void
+  /** Asks before an item in Recently deleted goes for good (`useRowMenuLayers`). */
+  onPurge: (row: ItemSummary) => void
 }
 
 /**
- * A row's own menu ("assign from the list"): star it, file it, tag it,
- * move it to another vault, archive it. Each is one call to the core; a
- * crown jewel's move asks it's you first through the gate.
+ * A row's own menu (brief V1): the items behind the row's ⋯, its right
+ * click, the Menu key and Shift+F10, which unicron's `ListRow` opens. A
+ * live or archived item: Add to favorites, Folder and tags…, Move to vault,
+ * Archive, History, Move to Recently deleted. An item in Recently deleted:
+ * Restore, History and Delete for good. Nothing for a right that may not
+ * change the item (view, fill only), as the detail's ⋯. Share… waits for
+ * `ItemShare` to open from a menu (edges-8). Each is one call to the core;
+ * a crown jewel's move asks it's you first through the gate. Moving to
+ * Recently deleted and archiving say so in a toast with UNDO (Q14).
  */
-export function RowMenu({ row, onOrganize, onChanged, onError }: RowMenuProps) {
+export function RowMenuItems({ row, onOrganize, onChanged, onError, onHistory, onPurge }: { row: ItemSummary } & RowMenuHandlers) {
   const client = useClient()
   const gate = useGate()
   const { vaults } = useVaults()
-  const vault = vaults.find((v) => v.id === row.vault_id)
+  const title = row.title || "this item"
   const others = vaults.filter((v) => v.id !== row.vault_id)
   const archived = row.state === "archived"
   const run = (p: Promise<unknown>, notice: string) =>
     p.then((r) => onChanged(notice, typeof r === "string" ? r : undefined)).catch((e) => onError(describeError(e)))
+  // Undoable, so it asks nothing: the toast offers UNDO, which puts it back (cross-app decisions §10).
+  const undoable = (p: Promise<unknown>, words: string, undo: () => Promise<unknown>, undone: string) =>
+    p
+      .then(() => {
+        notify(words, { action: { label: "Undo", onClick: () => void undo().then(() => onChanged(undone)).catch((e) => onError(describeError(e))) } })
+        onChanged("")
+      })
+      .catch((e) => onError(describeError(e)))
 
-  if (row.state === "trashed") return null
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger render={<IconButton label={`More for ${row.title || "this item"}`} icon="overflow-menu--horizontal" size="icon-sm" />} />
-      <DropdownMenuContent align="end">
-        {!archived && (
-          <DropdownMenuItem onClick={() => void run(client.organize(row.id, { favourite: !row.favourite }), row.favourite ? "Removed from favourites." : "Added to favourites.")}>
-            <Icon name="star" />
-            {row.favourite ? "Remove from favourites" : "Add to favourites"}
-          </DropdownMenuItem>
-        )}
-        {!archived && vault && vault.folders.length > 0 && (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <Icon name="folder" />
-              File in folder
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
-              <DropdownMenuRadioGroup value={row.folder ?? ""} onValueChange={(f) => void run(client.organize(row.id, { folder: String(f) }), f ? "Filed." : "Taken out of its folder.")}>
-                <DropdownMenuRadioItem value="">No folder</DropdownMenuRadioItem>
-                {folderTree(vault.folders).map((f) => (
-                  <DropdownMenuRadioItem key={f.id} value={f.id}>
-                    {f.path}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        )}
-        {!archived && (
-          <DropdownMenuItem onClick={() => onOrganize(row)}>
-            <Icon name="tag" />
-            Folder and tags…
-          </DropdownMenuItem>
-        )}
-        {others.length > 0 && (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <Icon name="folder--move-to" />
-              Move to vault
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
-              {others.map((v) => (
-                <DropdownMenuItem key={v.id} onClick={() => void run(gate.run((g) => client.moveItem(row.id, v.id, g)), `Moved to ${v.name}.`)}>
-                  <Icon name="user--avatar" />
-                  {v.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => void run(archived ? client.unarchive(row.id) : client.archive(row.id), archived ? "Back in the list." : "Archived. Find it under Archived.")}>
-          <Icon name={archived ? "reset" : "archive"} />
-          {archived ? "Unarchive" : "Archive"}
+  if (!rowMenuOffers(row)) return null
+  if (row.state === "trashed") {
+    return (
+      <>
+        <DropdownMenuItem onClick={() => void run(client.restore(row.id), `Restored ${title}`)}>
+          <Icon name="undo" />
+          Restore
         </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        <DropdownMenuItem onClick={() => onHistory(row)}>
+          <Icon name="recently-viewed" />
+          History
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onClick={() => onPurge(row)}>
+          <Icon name="trash-can" />
+          Delete for good
+        </DropdownMenuItem>
+      </>
+    )
+  }
+  return (
+    <>
+      <DropdownMenuItem onClick={() => void run(client.organize(row.id, { favourite: !row.favourite }), row.favourite ? `Removed ${title} from favorites` : `Added ${title} to favorites`)}>
+        <Icon name={row.favourite ? "star--filled" : "star"} />
+        {row.favourite ? "Remove from favorites" : "Add to favorites"}
+      </DropdownMenuItem>
+      {!archived && (
+        <DropdownMenuItem onClick={() => onOrganize(row)}>
+          <Icon name="tag" />
+          Folder and tags…
+        </DropdownMenuItem>
+      )}
+      {others.length > 0 && (
+        // A group, not a submenu: the same rows wherever the menu opens, a phone's narrow column included.
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Move to vault</DropdownMenuLabel>
+          {others.map((v) => (
+            <DropdownMenuItem key={v.id} onClick={() => void run(gate.run((g) => client.moveItem(row.id, v.id, g)), `Moved ${title} to ${v.name}`)}>
+              <Icon name="folder--move-to" />
+              {v.name}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
+      )}
+      {archived ? (
+        <DropdownMenuItem onClick={() => void run(client.unarchive(row.id), `Unarchived ${title}`)}>
+          <Icon name="reset" />
+          Unarchive
+        </DropdownMenuItem>
+      ) : (
+        <DropdownMenuItem onClick={() => void undoable(client.archive(row.id), archivedWords(title), () => client.unarchive(row.id), `Unarchived ${title}`)}>
+          <Icon name="archive" />
+          Archive
+        </DropdownMenuItem>
+      )}
+      <DropdownMenuItem onClick={() => onHistory(row)}>
+        <Icon name="recently-viewed" />
+        History
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem variant="destructive" onClick={() => void undoable(client.trash(row.id), deletedWords(title), () => client.restore(row.id), `Restored ${title}`)}>
+        <Icon name="trash-can" />
+        Move to Recently deleted
+      </DropdownMenuItem>
+    </>
   )
 }

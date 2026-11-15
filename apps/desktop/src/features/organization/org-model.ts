@@ -237,3 +237,8 @@ export function targetOf(row: ItemSummary): OrganizeTarget {
     organization: { folder: row.folder ?? null, tags: row.tags ?? [], favourite: Boolean(row.favourite) },
   }
 }
+
+/** Whether a row's menu has anything to offer: only what the person's right allows (docs/plan/18-sharing.md). */
+export function rowMenuOffers(row: ItemSummary): boolean {
+  return !row.access || row.access === "edit" || row.access === "manage"
+}

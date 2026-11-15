@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
-import { AppFrameInset, Button, EmptyState, ItemGroup, SearchField, SectionHeader } from "@unicron/ui"
+import { AppFrameInset, Button, EmptyState, SearchField, SectionHeader } from "@unicron/ui"
 
 import { usePlaces } from "@/app/places"
 import { useShell } from "@/app/shell"
@@ -13,7 +13,7 @@ import { count, countName } from "@/lib/format"
 import { DetailPane } from "./detail-pane"
 import { ItemRow } from "./item-row"
 import { rowsIn, searchRows, sortRows } from "./list-model"
-import { useQuickCopy } from "./quick-copy"
+import { clearTyped, typedWords } from "./search-words"
 
 interface SearchViewProps {
   rows: ItemSummary[] | null
@@ -31,6 +31,7 @@ function searchLabel(names: string[]): string {
   return `Search ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
 }
 
+
 /**
  * Search as a place (redesign brief X4; this is its basic form, edges-6
  * finishes it): the field, then the live items in every vault that match,
@@ -43,9 +44,16 @@ export function SearchView({ rows, selected, onSelect, onChanged, onNotice }: Se
   const { vaults } = useVaults()
   const { go } = usePlaces()
   const { edit } = useShell()
-  const [query, setQuery] = useState("")
+  const [query, setQuery] = useState(typedWords)
+  // Opened by typing in All items' field: emptying the field goes back to the list, as a search in place would.
+  const [fromList] = useState(() => typedWords() !== "")
+  // Taken once: the next Search starts empty.
+  useEffect(() => clearTyped(), [])
+  const type = (words: string) => {
+    setQuery(words)
+    if (!words && fromList) go("all")
+  }
   const [version, setVersion] = useState(0)
-  const quickCopy = useQuickCopy(onNotice)
   const paths = useMemo(() => folderPaths(vaults), [vaults])
   const q = query.trim()
   const found = useMemo(() => (rows && q ? sortRows(searchRows(rowsIn(rows, "all"), q, paths), "title") : []), [rows, q, paths])
@@ -58,11 +66,11 @@ export function SearchView({ rows, selected, onSelect, onChanged, onNotice }: Se
   }
   const label = searchLabel(vaults.map((v) => v.name))
   const list = (rs: ItemSummary[]) => (
-    <ItemGroup role="list">
+    <ul role="list" className="flex flex-col">
       {rs.map((r) => (
-        <ItemRow key={r.id} row={r} selected={selected === r.id} onSelect={onSelect} onCopy={quickCopy} />
+        <ItemRow key={r.id} row={r} selected={selected === r.id} onSelect={onSelect} />
       ))}
-    </ItemGroup>
+    </ul>
   )
   return (
     <MasterDetail
@@ -73,7 +81,7 @@ export function SearchView({ rows, selected, onSelect, onChanged, onNotice }: Se
           <SearchField
             label={label}
             value={query}
-            onValueChange={setQuery}
+            onValueChange={type}
             autoFocus
             onKeyDown={(e) => {
               // Escape clears first (the field's own); a second one leaves.

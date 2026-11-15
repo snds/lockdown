@@ -167,7 +167,7 @@ describe("the quick-access palette (D111)", () => {
     await user.type(await screen.findByPlaceholderText(/Search titles/), "forum")
     await user.keyboard("{Control>}{Enter}{/Control}")
     await waitFor(() => expect(copySecret).toHaveBeenCalledWith("l1", "pw", 30, {}))
-    expect(onNotice).toHaveBeenCalledWith("Copied the password. The clipboard clears in 30 seconds.")
+    expect(onNotice).toHaveBeenCalledWith("Copied the password for Forum, clears in 30 s")
   })
 
   it("a crown jewel's copy asks first (the core's gate)", async () => {
@@ -201,7 +201,7 @@ describe("the quick-access palette (D111)", () => {
     expect(within(question).getByText(/nothing is checked here/)).toBeInTheDocument()
     await user.click(within(question).getByRole("button", { name: "Copy" }))
     await waitFor(() => expect(copySecret).toHaveBeenLastCalledWith("j1", "seed", 30, { confirmed: true }))
-    expect(onNotice).toHaveBeenCalledWith("Copied the recovery phrase. The clipboard clears in 30 seconds.")
+    expect(onNotice).toHaveBeenCalledWith("Copied the recovery phrase for Cold wallet, clears in 30 s")
   })
 
   it("has its search in focus when it opens, and says when a result is a close match", async () => {

@@ -8,44 +8,71 @@ import { QuickWindow } from "@/app/quick-window"
 import { SHAPE, longVault, withShape } from "../fixture/shape"
 import { ago } from "../fixture/time"
 import { as, fail, forever } from "../host/core"
+import { runSteps } from "../harness/driver"
 import type { StateDef } from "../harness/types"
 import { d, only, w } from "./defs"
 import { open, webOpen } from "./steps/screens"
 import { DIALOG, MENU, answerGate, go, openSwitcher, starts } from "./steps/shell"
 import { itemAction, openItem, openItemMenu, passkeyDetails, reveal } from "./steps/vault"
 
+/** The failed-reload state's switch: the list reads until a step turns it on. */
+const reload = { broken: false }
+
 export const VAULT_STATES: StateDef[] = [
-  d({ id: "desktop-vault-filled", screen: "Vault", state: "Filled", brief_row: "Vault", notes: "All items, grouped by kind, title A to Z (D93).", compact: true, steps: open }),
-  d({ id: "desktop-vault-loading", screen: "Vault", state: "Loading", brief_row: "Vault", notes: "The list's rows have not arrived: skeleton rows.", answers: () => ({ list: () => forever() }), steps: open }),
+  d({ id: "desktop-vault-filled", built: { area: "items", screen: "list", kind: "drawn" }, screen: "Vault", state: "Filled", brief_row: "Vault", notes: "All items, title A to Z: by letter on a desktop, one list on a phone (brief V1, D780). The compact density too.", compact: true, steps: open }),
+  d({ id: "desktop-vault-loading", built: { area: "items", screen: "loading", kind: "drawn" }, screen: "Vault", state: "Loading", brief_row: "Vault", notes: "The list's rows have not arrived: skeleton rows and no count (States / 04).", answers: () => ({ list: () => forever() }), steps: open }),
   d({
     id: "desktop-vault-error",
+    built: { area: "items", screen: "error", kind: "undrawn" },
     screen: "Vault",
     state: "Error",
     brief_row: "Vault",
-    notes: "The list failed to load; the core's words in the list.",
+    notes: "Nothing could load: a critical Empty State with the core's words and Try again.",
     answers: () => ({ list: () => fail("refused", "The vault's index on this device is damaged. Lockdown rebuilt it from the history; reopen the vault to see it.") }),
     steps: open,
   }),
-  d({ id: "desktop-vault-empty", screen: "Vault", state: "Empty", brief_row: "Vault", notes: "Nothing saved yet: import or add.", setup: only(() => false), steps: open }),
-  d({ id: "desktop-vault-long", screen: "Vault", state: "A long list", brief_row: "Vault", notes: "A vault of 300 rows: how the list groups, scrolls and keeps its place.", setup: longVault, steps: open }),
-  d({ id: "desktop-vault-search", screen: "Vault", state: "Search", brief_row: "Vault", notes: "A search narrowing the list.", steps: [...open, { fill: "Search", value: "blue" }] }),
-  d({ id: "desktop-vault-search-none", screen: "Vault", state: "Search, no match", brief_row: "Vault", notes: "A search with no match.", steps: [...open, { fill: "Search", value: "zebra" }] }),
-  d({ id: "desktop-vault-sort-menu", screen: "Vault", state: "Sort menu", brief_row: "Vault", notes: "Sort by title, recently changed or used; group by kind or none.", steps: [...open, { click: "Sort and group" }, { wait: "Sort by" }] }),
-  d({ id: "desktop-vault-ungrouped", screen: "Vault", state: "No groups, recently changed", brief_row: "Vault", notes: "One list, newest change first.", steps: [...open, { click: "Sort and group" }, { click: "Recently changed", role: "menuitemradio" }, { key: "Escape" }, { click: "No groups" }] }),
-  d({ id: "desktop-vault-row-menu", screen: "Vault", state: "Row menu", brief_row: "Vault", notes: "A row's own menu: favourite, folder, tags, move, archive.", steps: [...open, { click: "More for Bluefin Bank" }, { pause: 300 }] }),
-  d({ id: "desktop-vault-duplicates", screen: "Vault", state: "Find duplicates", brief_row: "Vault", notes: "Duplicates review: same password, same network.", steps: [...open, { click: "Find duplicates" }, DIALOG] }),
-  d({ id: "desktop-vault-organize", screen: "Vault", state: "Folder and tags", brief_row: "Vault", notes: "The organize prompt from a row's menu.", steps: [...open, { click: "More for Bluefin Bank" }, { click: /Folder and tags/ }, DIALOG] }),
-  d({ id: "desktop-view-favourites", screen: "Smart views", state: "Favourites", brief_row: "Vault", notes: "Starred items.", steps: [...open, ...go("favourites")] }),
-  d({ id: "desktop-view-passkeys", screen: "Smart views", state: "Passkeys", brief_row: "Vault", notes: "Logins with passkeys and passkeys on their own.", steps: [...open, ...go("passkeys")] }),
-  d({ id: "desktop-view-wifi", screen: "Smart views", state: "Wi-Fi", brief_row: "Vault", notes: "Networks and the router.", steps: [...open, ...go("wi-fi")] }),
-  d({ id: "desktop-view-contacts", screen: "Smart views", state: "Contacts", brief_row: null, notes: "Contacts (never used to fill).", steps: [...open, ...go("contacts")] }),
+  d({ id: "desktop-vault-empty", built: { area: "items", screen: "empty", kind: "undrawn" }, screen: "Vault", state: "Empty", brief_row: "Vault", notes: "Nothing saved yet: NEW ITEM opens the New item menu.", setup: only(() => false), steps: open }),
+  d({
+    id: "desktop-vault-reload-failed",
+    built: { area: "items", screen: "failed-reload", kind: "undrawn" },
+    screen: "Vault",
+    state: "A reload failed",
+    brief_row: "Vault",
+    notes: "A change from a row's menu, and the list could not be read again: the rows that loaded stay, under a critical Banner with Try again (cross-app decisions §9).",
+    answers: () => {
+      reload.broken = false
+      return { list: (a) => (reload.broken ? fail("refused", "The vault's index is busy with another window. Try again in a moment.") : as("list")(a)) }
+    },
+    steps: [...open, { run: () => void (reload.broken = true) }, { click: /^More for Alex Rivera/ }, { click: "Add to favorites", role: "menuitem" }, { wait: "Couldn't load your items." }, { run: () => (document.activeElement as HTMLElement | null)?.blur() }, { pause: 300 }],
+  }),
+  d({ id: "desktop-vault-long", built: { area: "items", screen: "long", kind: "undrawn" }, screen: "Vault", state: "A long list", brief_row: "Vault", notes: "A vault of 300 rows: only the rows in view are drawn (brief X6), the letter headers stay sticky.", setup: longVault, steps: open }),
+  d({ id: "desktop-vault-search", screen: "Vault", state: "Search", brief_row: "Vault", notes: "A search narrowing the list: the Search place (typing in All items' field opens it).", steps: [...open, ...go("search"), { fill: /^Search/, value: "blue" }] }),
+  d({ id: "desktop-vault-search-none", screen: "Vault", state: "Search, no match", brief_row: "Vault", notes: "A search with no match.", steps: [...open, ...go("search"), { fill: /^Search/, value: "zebra" }] }),
+  d({ id: "desktop-vault-sort-menu", built: { area: "items", screen: "sort-menu", kind: "undrawn" }, screen: "Vault", state: "Sort and group", brief_row: "Vault", notes: "Sort A to Z, recently changed or used; group by letter (A to Z only), by type or none. Kept on this device.", steps: [...open, { click: "Sort and group" }, { wait: "By type" }] }),
+  d({
+    id: "desktop-vault-ungrouped",
+    built: { area: "items", screen: "recently-changed", kind: "undrawn" },
+    screen: "Vault",
+    state: "Recently changed, one list",
+    brief_row: "Vault",
+    notes: "Newest change first: letters make no sense out of A to Z order, so the list is one group.",
+    steps: [...open, { click: "Sort and group" }, { click: "Recently changed" }, { run: async () => void (document.querySelector('[role="menu"], [role="dialog"]') && (await runSteps([{ key: "Escape" }]))) }, { gone: "Recently used" }],
+  }),
+  d({ id: "desktop-vault-row-menu", built: { area: "items", screen: "row-menu", kind: "undrawn" }, screen: "Vault", state: "Row menu", brief_row: "Vault", notes: "A row's own menu: favorites, folder and tags, move, archive, history, Recently deleted.", steps: [...open, { click: /^More for Bluefin Bank/ }, { pause: 300 }] }),
+  d({ id: "desktop-vault-duplicates", screen: "Vault", state: "Find duplicates", brief_row: "Vault", notes: "Duplicates review: same password, same network. Reached from Health now (D152).", steps: [...open, ...go("health"), { click: "Duplicates" }, DIALOG] }),
+  d({ id: "desktop-vault-organize", screen: "Vault", state: "Folder and tags", brief_row: "Vault", notes: "The organize prompt from a row's menu.", steps: [...open, { click: /^More for Bluefin Bank/ }, { click: /Folder and tags/ }, DIALOG] }),
+  d({ id: "desktop-view-favourites", built: { area: "items", screen: "favorites", kind: "undrawn" }, screen: "Smart views", state: "Favorites", brief_row: "Vault", notes: "Starred items.", steps: [...open, ...go("favourites")] }),
+  d({ id: "desktop-view-passkeys", built: { area: "items", screen: "passkeys", kind: "undrawn" }, screen: "Smart views", state: "Passkeys", brief_row: "Vault", notes: "Logins with passkeys and passkeys on their own.", steps: [...open, ...go("passkeys")] }),
+  d({ id: "desktop-view-cards", built: { area: "items", screen: "cards", kind: "undrawn" }, screen: "Smart views", state: "Cards", brief_row: "Vault", notes: "A kind's list: its Section Header with the count and SORT, the vault as each row's words (Desktop / 03's list pane).", steps: [...open, ...go("cards")] }),
+  d({ id: "desktop-view-wifi", built: { area: "items", screen: "wi-fi", kind: "undrawn" }, screen: "Smart views", state: "Wi-Fi", brief_row: "Vault", notes: "Networks and the router.", steps: [...open, ...go("wi-fi")] }),
+  d({ id: "desktop-view-contacts", built: { area: "items", screen: "contacts", kind: "undrawn" }, screen: "Smart views", state: "Contacts", brief_row: null, notes: "Contacts (never used to fill).", steps: [...open, ...go("contacts")] }),
   d({ id: "desktop-view-expiring", screen: "Smart views", state: "Expiring", brief_row: "Needs attention", notes: "Soonest first, in sections by how soon.", steps: [...open, ...go("expiring")] }),
   d({ id: "desktop-view-attention", screen: "Needs attention", state: "Filled", brief_row: "Needs attention", notes: "Conflict copies, expiring items, the issuer-equals-login warning, a passkey hidden by its site, a sign-in left on a hotel TV.", steps: [...open, ...go("attention")] }),
   d({ id: "desktop-view-attention-empty", screen: "Needs attention", state: "Empty", brief_row: "Needs attention", notes: "Nothing needs you.", setup: only((i) => ["Bluefin Bank", "Home Wi-Fi", "Spare keys and the alarm"].includes(i.title)), steps: [...open, ...go("attention")] }),
-  d({ id: "desktop-view-archived", screen: "Smart views", state: "Archived", brief_row: null, notes: "Archived items, out of the list and search.", steps: [...open, ...go("archived")] }),
-  d({ id: "desktop-view-deleted", screen: "Smart views", state: "Deleted", brief_row: "Item detail", notes: "The trash: readable through the grace period.", steps: [...open, ...go("deleted")] }),
-  d({ id: "desktop-view-deleted-empty", screen: "Smart views", state: "Deleted, empty", brief_row: "Item detail", notes: "The trash is empty.", setup: only((i) => i.state !== "trashed"), steps: [...open, ...go("deleted")] }),
-  d({ id: "desktop-scope-vault-family", screen: "Vaults and folders", state: "Family vault", brief_row: "Vault", notes: "The list narrowed to the shared Family vault.", steps: [...open, ...go("vault-family")] }),
+  d({ id: "desktop-view-archived", built: { area: "items", screen: "archived", kind: "undrawn" }, screen: "Smart views", state: "Archived", brief_row: null, notes: "Archived items, out of the list and search.", steps: [...open, ...go("archived")] }),
+  d({ id: "desktop-view-deleted", built: { area: "items", screen: "recently-deleted", kind: "undrawn" }, screen: "Smart views", state: "Recently deleted", brief_row: "Item detail", notes: "Readable through each vault's own time, which the caption says; rows offer Restore and Delete for good.", steps: [...open, ...go("deleted")] }),
+  d({ id: "desktop-view-deleted-empty", built: { area: "items", screen: "recently-deleted-empty", kind: "undrawn" }, screen: "Smart views", state: "Recently deleted, empty", brief_row: "Item detail", notes: "Nothing in Recently deleted.", setup: only((i) => i.state !== "trashed"), steps: [...open, ...go("deleted")] }),
+  d({ id: "desktop-scope-vault-family", built: { area: "items", screen: "vault", kind: "undrawn" }, screen: "Vaults and folders", state: "Family vault", brief_row: "Vault", notes: "The list narrowed to the shared Family vault: its header and the chips of the kinds it holds.", steps: [...open, ...go("vault-family")] }),
   d({ id: "desktop-scope-folder-finance", screen: "Vaults and folders", state: "Finance folder", brief_row: "Vault", notes: "The list narrowed to a folder.", steps: [...open, ...go("folder-finance")] }),
   d({ id: "desktop-item-login-full", built: { area: "item", screen: "login-full", kind: "undrawn" }, screen: "Item detail", state: "Login: password, passkey and code", brief_row: "Item detail", notes: "One account, every way in: the methods block first, then the websites.", steps: [...open, ...openItem("Northwind Mail")] }),
   d({ id: "desktop-item-login-methods", built: { area: "item", screen: "login", kind: "drawn" }, screen: "Item detail", state: "Login: password, passkey, a five-character code and a protected note", brief_row: "Item detail", notes: "The design's login: every method, a five-character code, and a recovery note kept masked.", setup: withShape, steps: [...open, ...openItem(SHAPE.login)] }),
@@ -120,8 +147,8 @@ export const VAULT_STATES: StateDef[] = [
   }),
   d({ id: "desktop-security-filled", screen: "Security", state: "Findings in three groups", brief_row: null, notes: "Fix now, fix soon, worth doing; the breach check and account alerts.", steps: [...open, ...go("security")] }),
   d({ id: "desktop-security-empty", screen: "Security", state: "Nothing to fix", brief_row: null, notes: "No findings.", answers: () => ({ security_report: () => ({ findings: [], dismissed: [], counts: { urgent: 0, important: 0, suggested: 0 }, passwords: 19, breach: { enabled: true, source: "Pwned Passwords (k-anonymity range API)", checked_at: Math.floor(Date.now() / 1000) - 600, checked: 19, unchecked: 0, message: null }, alerts: { account: true, checked_at: Math.floor(Date.now() / 1000) - 600, message: null }, directory: { source: "2fa.directory", licence: "MIT", date: "2026-10-01", sites: 3412 }, generated_at: Math.floor(Date.now() / 1000) }) }), steps: [...open, ...go("security")] }),
-  d({ id: "desktop-palette", screen: "Quick-access palette", state: "Open", brief_row: "Quick-access palette", notes: "⌘K / Ctrl+K: recent items first.", steps: [...open, { click: "Quick access" }, DIALOG] }),
-  d({ id: "desktop-palette-search", screen: "Quick-access palette", state: "Search", brief_row: "Quick-access palette", notes: "A search: codes shown in place, crown jewels by title only.", steps: [...open, { click: "Quick access" }, DIALOG, { fill: /Search/i, value: "north" }, { pause: 300 }] }),
+  d({ id: "desktop-palette", screen: "Quick-access palette", state: "Open", brief_row: "Quick-access palette", notes: "⌘K / Ctrl+K: recent items first.", steps: [...open, { key: "Control+k" }, DIALOG] }),
+  d({ id: "desktop-palette-search", screen: "Quick-access palette", state: "Search", brief_row: "Quick-access palette", notes: "A search: codes shown in place, crown jewels by title only.", steps: [...open, { key: "Control+k" }, DIALOG, { fill: /Search/i, value: "north" }, { pause: 300 }] }),
   d({ id: "desktop-quick-window-locked", screen: "Quick-access window", state: "Locked", brief_row: "Quick-access palette", notes: "The system-wide shortcut's window while the vault is locked.", mount: () => <QuickWindow />, steps: [{ wait: "Lockdown is locked." }] }),
   d({
     id: "desktop-quick-window-open",
@@ -165,7 +192,7 @@ export const VAULT_STATES: StateDef[] = [
   d({ id: "desktop-security-pq-on", screen: "Security", state: "Quantum-safe signatures: on", brief_row: "Security", notes: "Every device reads the stronger signatures (docs/plan/30-pq-status-line.md).", answers: () => ({ pq_status: () => ({ state: "on", reason: null, headline: "Quantum-safe signatures: on", explanation: "Every change your devices make to your vaults is signed in a way that even a future quantum computer couldn't fake.", without_level_1: [], without_level_2: [] }) }), steps: [...open, ...go("security")] }),
   d({ id: "desktop-security-pq-unknown", screen: "Security", state: "Quantum-safe signatures: can't check", brief_row: "Security", notes: "The server didn't report the account's devices.", answers: () => ({ pq_status: () => ({ state: "unknown", reason: "silent", headline: "Quantum-safe signatures: can't check right now", explanation: "Your server didn't report your account's devices. It may be an older version.", without_level_1: [], without_level_2: [] }) }), steps: [...open, ...go("security")] }),
   d({ id: "desktop-security-error", screen: "Security", state: "Error", brief_row: "Security", notes: "The report could not be made.", answers: () => ({ security_report: () => fail("refused", "The security report needs the vault's index, which is still being rebuilt. Try again in a minute.") }), steps: [...open, ...go("security"), { pause: 600 }] }),
-  d({ id: "desktop-palette-crown-jewel", screen: "Quick-access palette", state: "Crown jewel by title", brief_row: "Quick-access palette", notes: "Crown jewels are listed by title only; copying asks first.", steps: [...open, { click: "Quick access" }, DIALOG, { fill: /Search/i, value: "cold" }, { pause: 400 }] }),
+  d({ id: "desktop-palette-crown-jewel", screen: "Quick-access palette", state: "Crown jewel by title", brief_row: "Quick-access palette", notes: "Crown jewels are listed by title only; copying asks first.", steps: [...open, { key: "Control+k" }, DIALOG, { fill: /Search/i, value: "cold" }, { pause: 400 }] }),
   d({
     id: "desktop-item-passkey-upgraded",
     built: { area: "item", screen: "passkey-upgraded", kind: "undrawn" },
@@ -180,7 +207,7 @@ export const VAULT_STATES: StateDef[] = [
   }),
 
   // --- the web vault -----------------------------------------------------------------
-  w({ id: "web-vault", screen: "Vault", state: "Filled", brief_row: "Vault", notes: "The desktop's vault view in the web build: Links, People, Devices and Settings in the sidebar.", steps: webOpen }),
+  w({ id: "web-vault", built: { area: "items", screen: "web-list", kind: "undrawn" }, screen: "Vault", state: "Filled", brief_row: "Vault", notes: "The desktop's vault view in the web build: Links, People, Devices and Settings in the sidebar.", steps: webOpen }),
   w({ id: "web-item-login", built: { area: "item", screen: "web-login", kind: "undrawn" }, screen: "Item detail", state: "Login", brief_row: "Item detail", notes: "A login in the web build: copies go through the page's clipboard.", steps: [...webOpen, ...openItem("Northwind Mail")] }),
   w({ id: "web-item-wallet", screen: "Item detail", state: "Crown jewel", brief_row: "Item detail", notes: "A crown jewel in the web build.", steps: [...webOpen, ...openItem("Cold wallet")] }),
   w({ id: "web-security", screen: "Security", state: "Quantum-safe line", brief_row: "Security", notes: "The web vault's Security screen: the quantum-safe line; password checks stay in the desktop app.", steps: [...webOpen, ...go("security")] }),
