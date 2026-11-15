@@ -11,9 +11,10 @@ import { as, fail, forever } from "../host/core"
 import { runSteps } from "../harness/driver"
 import type { StateDef } from "../harness/types"
 import { d, only, w } from "./defs"
+import { WIDTHS } from "../harness/types"
 import { open, webOpen } from "./steps/screens"
 import { DIALOG, MENU, answerGate, go, openSwitcher, starts } from "./steps/shell"
-import { itemAction, openItem, openItemMenu, passkeyDetails, reveal } from "./steps/vault"
+import { besideSidebar, focusOrgRow, itemAction, openBranch, openItem, openItemMenu, orgMenu, orgMenuRow, passkeyDetails, reveal } from "./steps/vault"
 
 /** The failed-reload state's switch: the list reads until a step turns it on. */
 const reload = { broken: false }
@@ -73,7 +74,7 @@ export const VAULT_STATES: StateDef[] = [
   d({ id: "desktop-view-deleted", built: { area: "items", screen: "recently-deleted", kind: "undrawn" }, screen: "Smart views", state: "Recently deleted", brief_row: "Item detail", notes: "Readable through each vault's own time, which the caption says; rows offer Restore and Delete for good.", steps: [...open, ...go("deleted")] }),
   d({ id: "desktop-view-deleted-empty", built: { area: "items", screen: "recently-deleted-empty", kind: "undrawn" }, screen: "Smart views", state: "Recently deleted, empty", brief_row: "Item detail", notes: "Nothing in Recently deleted.", setup: only((i) => i.state !== "trashed"), steps: [...open, ...go("deleted")] }),
   d({ id: "desktop-scope-vault-family", built: { area: "items", screen: "vault", kind: "undrawn" }, screen: "Vaults and folders", state: "Family vault", brief_row: "Vault", notes: "The list narrowed to the shared Family vault: its header and the chips of the kinds it holds.", steps: [...open, ...go("vault-family")] }),
-  d({ id: "desktop-scope-folder-finance", screen: "Vaults and folders", state: "Finance folder", brief_row: "Vault", notes: "The list narrowed to a folder.", steps: [...open, ...go("folder-finance")] }),
+  d({ id: "desktop-scope-folder-finance", built: { area: "items", screen: "folder", kind: "undrawn" }, screen: "Vaults and folders", state: "Finance folder", brief_row: "Vault", notes: "The list narrowed to a folder: the folder current in its open vault beside the list; its path as the head's overline where the head is the switcher.", steps: [...open, ...go("folder-finance")] }),
   d({ id: "desktop-item-login-full", built: { area: "item", screen: "login-full", kind: "undrawn" }, screen: "Item detail", state: "Login: password, passkey and code", brief_row: "Item detail", notes: "One account, every way in: the methods block first, then the websites.", steps: [...open, ...openItem("Northwind Mail")] }),
   d({ id: "desktop-item-login-methods", built: { area: "item", screen: "login", kind: "drawn" }, screen: "Item detail", state: "Login: password, passkey, a five-character code and a protected note", brief_row: "Item detail", notes: "The design's login: every method, a five-character code, and a recovery note kept masked.", setup: withShape, steps: [...open, ...openItem(SHAPE.login)] }),
   d({ id: "desktop-item-login-passkey", built: { area: "item", screen: "passkey", kind: "drawn" }, screen: "Item detail", state: "Login: a passkey and nothing else", brief_row: "Item detail", notes: "The design's passkey login: no password to show, copy or check.", setup: withShape, steps: [...open, ...openItem(SHAPE.passkeyLogin)] }),
@@ -162,9 +163,90 @@ export const VAULT_STATES: StateDef[] = [
     },
     steps: [{ pause: 600 }],
   }),
-  d({ id: "desktop-nav-vault-menu", screen: "Vaults and tags trees", state: "Vault menu", brief_row: "Vaults and tags trees", notes: "A vault's menu: new folder, rename.", steps: [...open, ...openSwitcher(), { click: "Personal options" }, MENU] }),
-  d({ id: "desktop-nav-new-vault", screen: "Vaults and tags trees", state: "New vault", brief_row: "Vaults and tags trees", notes: "Naming a new vault.", steps: [...open, ...openSwitcher(), { click: "New vault" }, DIALOG] }),
-  d({ id: "desktop-nav-tag", screen: "Vaults and tags trees", state: "Narrowed to a tag", brief_row: "Vaults and tags trees", notes: "The list narrowed to #travel.", steps: [...open, ...go("tag-travel")] }),
+  d({
+    id: "desktop-nav-vault-menu",
+    built: { area: "vaults", screen: "menu", kind: "undrawn" },
+    screen: "Vaults and tags trees",
+    state: "Vault menu",
+    brief_row: "Vaults and tags trees",
+    notes: "A vault's ⋯ menu (brief V2): New folder, Rename, Keep deleted items for…, Share…. Beside the sidebar a menu; over the Switch vault sheet on a phone a Menu sheet; a menu over the popover at medium width.",
+    steps: [...open, ...openSwitcher(), ...orgMenu("Personal")],
+  }),
+  d({
+    id: "desktop-nav-new-vault",
+    built: { area: "vaults", screen: "name-prompt", kind: "undrawn" },
+    screen: "Vaults and tags trees",
+    state: "New vault",
+    brief_row: "Vaults and tags trees",
+    notes: "Naming a new vault: a Form with one Text Field, CREATE VAULT (brief X5). The sidebar's + beside VAULTS; the switcher's New vault row.",
+    steps: [...open, ...openSwitcher(), { click: "New vault" }, DIALOG, { fill: "Name", value: "Household" }],
+  }),
+  d({ id: "desktop-nav-tag", built: { area: "items", screen: "tag", kind: "undrawn" }, screen: "Vaults and tags trees", state: "Narrowed to a tag", brief_row: "Vaults and tags trees", notes: "The list narrowed to #travel: Tags open beside the list with #travel current.", steps: [...open, ...go("tag-travel")] }),
+  d({
+    id: "desktop-nav-switch-sheet",
+    widths: WIDTHS.filter((x) => x < 600),
+    built: { area: "vaults", screen: "switch-sheet", kind: "drawn" },
+    screen: "Vaults and tags trees",
+    state: "Switch vault",
+    brief_row: "Vaults and tags trees",
+    notes: "Mobile / 12, extended (brief V2): VAULTS // 03, Switch vault; All vaults with its count, each vault with its count and folder chevron, Tags, New vault; SHARED WITH; Sharing with its mark. Seen as a finger leaves it: no keyboard ring.",
+    steps: [...open, ...openSwitcher(), { run: () => (document.activeElement as HTMLElement | null)?.blur() }, { pause: 200 }],
+  }),
+  d({
+    id: "desktop-nav-folders-open",
+    built: { area: "vaults", screen: "folders-open", kind: "undrawn" },
+    screen: "Vaults and tags trees",
+    state: "Folders and tags open",
+    brief_row: "Vaults and tags trees",
+    notes: "Personal's folders and the tag tree opened in place, without choosing them: by the chevrons in the switcher (the sheet grows), by the chevron beside the sidebar's row.",
+    steps: [...open, ...openSwitcher(), openBranch("Personal"), openBranch("Tags"), { pause: 200 }],
+  }),
+  d({
+    id: "desktop-nav-sidebar-trees",
+    widths: WIDTHS.filter((x) => x >= 1024),
+    built: { area: "vaults", screen: "sidebar-trees", kind: "undrawn" },
+    screen: "Vaults and tags trees",
+    state: "The sidebar's trees",
+    brief_row: "Vaults and tags trees",
+    notes: "VAULTS // 03 with its +, Personal open on Finance (current), Tags open; a folder's ⋯ shown as it is on hover and focus.",
+    steps: [...open, ...go("folder-finance"), besideSidebar([openBranch("Tags"), focusOrgRow("Taxes")])],
+  }),
+  d({
+    id: "desktop-nav-popover",
+    widths: WIDTHS.filter((x) => x >= 600 && x < 1024),
+    screen: "Vaults and tags trees",
+    state: "Switch vault popover",
+    brief_row: "Vaults and tags trees",
+    notes: "At medium width the page head opens the same rows as a popover (brief V2).",
+    steps: [...open, ...openSwitcher(), openBranch("Personal")],
+  }),
+  d({
+    id: "desktop-nav-folder-menu",
+    built: { area: "vaults", screen: "folder-menu", kind: "undrawn" },
+    screen: "Vaults and tags trees",
+    state: "Folder menu",
+    brief_row: "Vaults and tags trees",
+    notes: "A folder's ⋯ menu: New folder inside, Rename, Remove folder (Move to the top for a folder inside another).",
+    steps: [...open, ...openSwitcher(), openBranch("Personal"), ...orgMenu("Finance")],
+  }),
+  d({
+    id: "desktop-nav-keep-deleted",
+    built: { area: "vaults", screen: "keep-deleted", kind: "undrawn" },
+    screen: "Vaults and tags trees",
+    state: "Keep deleted items for…",
+    brief_row: "Vaults and tags trees",
+    notes: "The vault menu's Keep deleted items for…: its six choices replace the rows, the vault's own time checked.",
+    steps: [...open, ...openSwitcher(), ...orgMenu("Work"), orgMenuRow("Keep deleted items for…"), { see: '[role="menuitemradio"], [data-adaptive="menu"] [role="radio"]' }, { pause: 250 }],
+  }),
+  d({
+    id: "desktop-nav-remove-folder",
+    built: { area: "vaults", screen: "remove-folder", kind: "undrawn" },
+    screen: "Vaults and tags trees",
+    state: "Remove folder?",
+    brief_row: "Vaults and tags trees",
+    notes: "Removing a folder asks (brief X5): what moves, and that no item is deleted; focus on Cancel.",
+    steps: [...open, ...openSwitcher(), openBranch("Personal"), ...orgMenu("Gaming"), orgMenuRow("Remove folder"), { wait: 'Remove "Gaming"?' }, { pause: 300 }],
+  }),
   d({ id: "desktop-item-more-menu", built: { area: "item", screen: "more-menu", kind: "undrawn" }, screen: "Where it is, item menu", state: "Item menu", brief_row: "Where it is, item menu", notes: "History, archive, move, crown-jewel on or off.", steps: [...open, ...openItem("Bluefin Bank"), ...openItemMenu()] }),
   d({ id: "desktop-item-history", screen: "Version history", state: "Versions", brief_row: "Version history", notes: "Every version, which device, which fields; hidden values stay hidden.", steps: [...open, ...openItem("Northwind Mail"), itemAction("History"), DIALOG] }),
   d({ id: "desktop-item-jewel-on", screen: "Where it is, item menu", state: "Keep as a crown jewel?", brief_row: "Where it is, item menu", notes: "Moving an item into the crown-jewel class.", steps: [...open, ...openItem("Bluefin Bank"), itemAction("Keep as a crown jewel"), DIALOG] }),

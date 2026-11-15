@@ -68,3 +68,65 @@ export const passkeyDetails = (site?: string): Step => ({ click: site ? `Details
 
 /** A device named on Health's quantum-safe line: pressing it brings the device into view on Devices. */
 export const healthDevice = (name: string): Step => ({ click: name, role: "button" })
+
+// --- vaults, folders and tags (brief V2, doc 71) -------------------------------------------
+
+/** Any vault, folder or tag menu that is open: a menu beside the sidebar and in the popover, a sheet on a phone. */
+export const ORG_MENU: Step = { see: '[data-adaptive="menu"]' }
+
+/** The vaults tree's row by its name: the sidebar's tree item, or the switcher's row button. */
+function orgRow(name: string): HTMLElement | null {
+  const label = (el: HTMLElement) => el.getAttribute("aria-label") ?? ""
+  const named = (el: HTMLElement) => label(el) === name || label(el).startsWith(`${name},`)
+  const shown = (el: HTMLElement) => el.offsetParent !== null
+  const inLayer = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"] [role="list"][aria-label="Vaults"] [data-slot="nav-item-main"]')).filter(shown)
+  const inSidebar = Array.from(document.querySelectorAll<HTMLElement>('nav[aria-label="Sidebar"] [role="tree"] [role="treeitem"]')).filter(shown)
+  return [...inLayer, ...inSidebar].find(named) ?? null
+}
+
+/**
+ * Opens a vault's folders, or the tag tree, without choosing it: the switcher's Expand button (or the
+ * Tags row), the chevron beside the sidebar's tree item. An open branch stays open.
+ */
+export const openBranch = (name: string): Step => ({
+  run: async () => {
+    const start = performance.now()
+    while (!orgRow(name) && performance.now() - start < 6000) await new Promise((r) => setTimeout(r, 50))
+    const row = orgRow(name)
+    if (!row) throw new Error(`no vaults row named ${name}`)
+    const disclosure = row.parentElement?.querySelector<HTMLElement>(':scope > [data-slot="nav-item-disclosure"]')
+    const state = disclosure?.getAttribute("aria-expanded") ?? row.getAttribute("aria-expanded")
+    // The sidebar's chevron is the pointer's way (aria-hidden), so it is read from the tree item.
+    const open = state ?? row.getAttribute("aria-expanded")
+    if (open === "true") return
+    ;(disclosure ?? row).click()
+    await new Promise((r) => setTimeout(r, 150))
+  },
+})
+
+/** Opens the ⋯ menu of a vault, folder or tag row ("Personal", "Finance", "#travel"). */
+export const orgMenu = (name: string): Step[] => [{ click: `${name} options` }, ORG_MENU, { pause: 250 }]
+
+/** A row of the open vault, folder or tag menu: a menu item, or a row button in a phone's sheet. */
+export const orgMenuRow = (row: string): Step => ({
+  run: async () => {
+    const menu = document.querySelector('[role="menu"]')
+    await runSteps([{ click: row, role: menu ? (row.endsWith(" days") || row === "A year" ? "menuitemradio" : "menuitem") : row.endsWith(" days") || row === "A year" ? "radio" : "button" }])
+  },
+})
+
+/** Shows a row's ⋯ the way a pointer finds it: focus on the row (its action shows on hover and focus). */
+export const focusOrgRow = (name: string): Step => ({
+  run: async () => {
+    orgRow(name)?.focus()
+    await new Promise((r) => setTimeout(r, 150))
+  },
+})
+
+/** Steps that only mean something beside the sidebar's tree (the expanded width); elsewhere nothing. */
+export const besideSidebar = (steps: Step[]): Step => ({
+  run: async () => {
+    const tree = document.querySelector<HTMLElement>('nav[aria-label="Sidebar"] [role="tree"]')
+    if (tree && tree.offsetParent !== null) await runSteps(steps)
+  },
+})
