@@ -1,6 +1,6 @@
 /*
  * The popup on the shared design system (docs/plan/26-desktop-finish.md §9,
- * brief B1 in docs/plan/87-redesign-popup.md): Tailwind, unicron 1.0's tokens
+ * brief B1 in docs/plan/87-redesign-popup.md): Tailwind, unicron's tokens
  * (the vendored pre-release the desktop app builds with, Lockdown's theme
  * picked by `data-theme="lockdown"` in popup.html, graphite or stone from the
  * browser's scheme), Geist and Geist Mono as files in the extension's own
@@ -8,6 +8,8 @@
  * in-page frame uses this sheet; it stays plain (static/ui.css).
  */
 @import "@unicron/ui/styles";
+/* Lockdown's theme: Unicron 1.1 ships no app's theme (a copy of the desktop's; test/tokens.spec.ts keeps them equal). */
+@import "./lockdown-theme.css";
 @source "./";
 
 @layer base {

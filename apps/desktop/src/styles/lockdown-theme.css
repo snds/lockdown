@@ -1,0 +1,52 @@
+/*
+ * Lockdown's theme: the 28 theme slots, 14 per ground (graphite and stone),
+ * declared in the app's own layer (Unicron 1.1, decision Unicron 1: the core
+ * ships no app's theme). The values are exactly the ones @unicron/tokens
+ * 1.0.0 shipped under [data-theme="lockdown"], which are Figma's
+ * `lockdown / graphite` and `lockdown / stone` modes; nothing looks
+ * different (docs/plan/62-unicron-1-0.md §3, docs/plan/92-unicron-1-1.md).
+ *
+ * Switched on once, in each page's HTML: `<html data-theme="lockdown">`. The
+ * `dark` class picks graphite; no class is stone.
+ *
+ * Read by three things, so keep it one plain block of raw colours:
+ * - every stylesheet that draws Lockdown: app-extension.css imports
+ *   apps/desktop/src/styles/lockdown-theme.css; the extension builds alone,
+ *   so its popup.css imports an identical copy, extension/src/popup/
+ *   lockdown-theme.css (extension/test/tokens.spec.ts keeps the two equal);
+ * - the extension's frame sheet generator (extension/scripts/tokens-css.mjs),
+ *   which copies the slots its roles stand on into static/tokens.css;
+ * - Unicron's contrast tool, `pnpm contrast` in apps/desktop, which measures
+ *   every pair the components paint on both grounds; the misses it names are
+ *   in contrast-exceptions.json beside this file.
+ */
+[data-theme="lockdown"] {
+  --g-theme-graphite-ground: #171A18;
+  --g-theme-graphite-raised: #1F2320;
+  --g-theme-graphite-rule: #303431;
+  --g-theme-graphite-grid-dot: #373C38;
+  --g-theme-graphite-faint: #5C625E;
+  --g-theme-graphite-label: #B0B6B1;
+  --g-theme-graphite-secondary: #D1D5D2;
+  --g-theme-graphite-body: #EEF1EE;
+  --g-theme-graphite-primary-fill: #008231;
+  --g-theme-graphite-primary-on-fill: #FFFFFF;
+  --g-theme-graphite-primary-text: #67CA85;
+  --g-theme-graphite-primary-soft: #152C1C;
+  --g-theme-graphite-primary-display: #11AE5B;
+  --g-theme-graphite-live: #7CBBF0;
+  --g-theme-stone-ground: #EDF1EE;
+  --g-theme-stone-raised: #F5FAF6;
+  --g-theme-stone-rule: #CED4D0;
+  --g-theme-stone-grid-dot: #B9C0BB;
+  --g-theme-stone-faint: #A0A6A1;
+  --g-theme-stone-label: #656A66;
+  --g-theme-stone-secondary: #3B3E3C;
+  --g-theme-stone-body: #141715;
+  --g-theme-stone-primary-fill: #007625;
+  --g-theme-stone-primary-on-fill: #FFFFFF;
+  --g-theme-stone-primary-text: #007839;
+  --g-theme-stone-primary-soft: #CCE8D2;
+  --g-theme-stone-primary-display: #007625;
+  --g-theme-stone-live: #296898;
+}
