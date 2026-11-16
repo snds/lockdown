@@ -55,7 +55,7 @@ export function BottomRow({ toFix, onCreate, onQuickCreate, onReselect }: Bottom
       end={
         <DropdownMenu
           open={quick}
-          // A press makes an item from the full list; only a long press (Shift+Enter, the Menu key, a right click) opens quick create.
+          // A press makes an item from the full list; only a long press (Shift+F10, the Menu key, a right click; unicron 1.1) opens quick create.
           onOpenChange={(next, details) => (next && details.reason === "trigger-press" ? undefined : setQuick(next))}
         >
           <DropdownMenuTrigger

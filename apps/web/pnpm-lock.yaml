@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@unicron/tokens': file:../../vendor/unicron/unicron-tokens-1.0.0-pre.2.tgz
+  '@unicron/tokens': file:../../vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz
 
 importers:
 
@@ -18,11 +18,11 @@ importers:
         specifier: ^4.3.3
         version: 4.3.3(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0))
       '@unicron/tokens':
-        specifier: file:../../vendor/unicron/unicron-tokens-1.0.0-pre.2.tgz
-        version: file:../../vendor/unicron/unicron-tokens-1.0.0-pre.2.tgz
+        specifier: file:../../vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz
+        version: file:../../vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz
       '@unicron/ui':
-        specifier: file:../../vendor/unicron/unicron-ui-1.0.0-pre.2.tgz
-        version: file:../../vendor/unicron/unicron-ui-1.0.0-pre.2.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: file:../../vendor/unicron/unicron-ui-1.1.0-pre.1.tgz
+        version: file:../../vendor/unicron/unicron-ui-1.1.0-pre.1.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -745,13 +745,14 @@ packages:
   '@types/react@19.3.0':
     resolution: {integrity: sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==}
 
-  '@unicron/tokens@file:../../vendor/unicron/unicron-tokens-1.0.0-pre.2.tgz':
-    resolution: {integrity: sha512-7iWzdjXYGG0kIexvFFnG2y8JWGun/TBxCmt/0qpbCPZZMEQeykDp9Z/TNnu0bjFaLOjOBhtQeBOBD2z46DhBhw==, tarball: file:../../vendor/unicron/unicron-tokens-1.0.0-pre.2.tgz}
-    version: 1.0.0-pre.2
+  '@unicron/tokens@file:../../vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz':
+    resolution: {integrity: sha512-m1hzWK2Juz7UVFupEun42/yG0E/ZWxnrTp9oDLSbGjEYs1llvPl3qTJ2Zx3u/hGejgJBI4Mo8VL28cK7yd76EA==, tarball: file:../../vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz}
+    version: 1.1.0-pre.1
+    hasBin: true
 
-  '@unicron/ui@file:../../vendor/unicron/unicron-ui-1.0.0-pre.2.tgz':
-    resolution: {integrity: sha512-oBb3Kh3VqT9EfDv7z1Kr8JJsG5NfJsXmQrnT2ycrs0f/r2x0aO/PkxbGu9GtdzUI+oXQjuZoySB/NFca+KPcTw==, tarball: file:../../vendor/unicron/unicron-ui-1.0.0-pre.2.tgz}
-    version: 1.0.0-pre.2
+  '@unicron/ui@file:../../vendor/unicron/unicron-ui-1.1.0-pre.1.tgz':
+    resolution: {integrity: sha512-78KpccwxWrmL2O0gWxl8aSIPcZIVmZWO0XPTSs6C0ug3OhwazlastkukDMh4yP6aDxsOqVri/MLfSUzgmZMf1A==, tarball: file:../../vendor/unicron/unicron-ui-1.1.0-pre.1.tgz}
+    version: 1.1.0-pre.1
     hasBin: true
     peerDependencies:
       react: ^19.0.0
@@ -795,6 +796,9 @@ packages:
     resolution: {integrity: sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA==}
     engines: {node: '>=10'}
 
+  apca-w3@0.1.9:
+    resolution: {integrity: sha512-Zrf6AeBeQjNe/fxK7U1jCo5zfdjDl6T4/kdw5Xlky3G7u+EJTZkyItjMYQGtwf9pkftsINxcYyOpuLkzKf1ITQ==}
+
   aria-hidden@1.2.6:
     resolution: {integrity: sha512-ik3ZgC9dY/lYVVM++OISsaYDeg1tb0VtP5uL3ouh1koGOaUMDPpbFIei4JkFimWUFPn90sbMNMXQAIVOlnYKJA==}
     engines: {node: '>=10'}
@@ -829,6 +833,9 @@ packages:
     peerDependencies:
       react: ^18 || ^19 || ^19.0.0-rc
       react-dom: ^18 || ^19 || ^19.0.0-rc
+
+  colorparsley@0.1.8:
+    resolution: {integrity: sha512-rObESTTTE6G5qO5WFwFxWPggpw4KfpxnLC6Ssl8bITBnNVRhDsyCeTRAUxWQNVTx2pRknKlO2nddYTxjkdNFaw==}
 
   css-tree@3.2.1:
     resolution: {integrity: sha512-X7sjQzceUhu1u7Y/ylrRZFU2FS6LRiFVp6rKLPg23y3x3c3DOKAwuXGDp+PAGjh6CSnCjYeAul8pcT8bAl+lSA==}
@@ -1943,14 +1950,16 @@ snapshots:
     dependencies:
       csstype: 3.2.3
 
-  '@unicron/tokens@file:../../vendor/unicron/unicron-tokens-1.0.0-pre.2.tgz': {}
+  '@unicron/tokens@file:../../vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz':
+    dependencies:
+      apca-w3: 0.1.9
 
-  '@unicron/ui@file:../../vendor/unicron/unicron-ui-1.0.0-pre.2.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@unicron/ui@file:../../vendor/unicron/unicron-ui-1.1.0-pre.1.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@base-ui/react': 1.9.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@fontsource-variable/geist': 5.3.0
       '@fontsource-variable/geist-mono': 5.3.0
-      '@unicron/tokens': file:../../vendor/unicron/unicron-tokens-1.0.0-pre.2.tgz
+      '@unicron/tokens': file:../../vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz
       class-variance-authority: 0.7.1
       clsx: 2.1.1
       cmdk: 1.1.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -1989,6 +1998,10 @@ snapshots:
 
   ansi-styles@5.2.0: {}
 
+  apca-w3@0.1.9:
+    dependencies:
+      colorparsley: 0.1.8
+
   aria-hidden@1.2.6:
     dependencies:
       tslib: 2.8.1
@@ -2024,6 +2037,8 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
       - '@types/react-dom'
+
+  colorparsley@0.1.8: {}
 
   css-tree@3.2.1:
     dependencies:

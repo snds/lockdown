@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client"
 import { ClientProvider } from "@/core/client"
 
 import "./index.css"
+import "@/app/app-icons"
 import { WebApp } from "./app/web-app"
 import { startBuildWatch } from "./core/build-watch-dom"
 import { WebClipboard } from "./core/clipboard"

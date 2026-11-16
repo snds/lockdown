@@ -18,3 +18,4 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 if (typeof Element !== "undefined" && typeof Element.prototype.scrollIntoView !== "function") {
   Element.prototype.scrollIntoView = function scrollIntoView() {}
 }
+import "@/app/app-icons"

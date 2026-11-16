@@ -28,8 +28,42 @@ The extension builds and is reviewed on its own (its source archive carries `ext
 
 ## 2. The packages (D1001)
 
-Written with the move to 1.1.0-pre.1, the commit after this one.
+unicron 1.1 is not released until Sean merges its pull request and the Version Packages pull request publishes it. Until then the two packages are the integrator's pre-release tarballs, checked in where 1.0's were (doc 62 §1):
+
+```
+vendor/unicron/unicron-ui-1.1.0-pre.1.tgz       sha256 bcbef0574fbb75d901615719bd05d2129c01afe89b1d1679c769c18de3b73755
+vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz   sha256 b4f3c846da7a523df3ad0cf89adad728eb42ddaad67e97a4cf85e07783fd5b24
+```
+
+The 1.0.0-pre.2 tarballs are gone. All four pnpm roots (`apps/desktop`, `apps/web`, `design/capture`, `extension`) name the new files in their `package.json` and in the `@unicron/tokens` override of their `pnpm-workspace.yaml` (ui pins tokens `1.1.0-pre.1` exactly). **Swap to the `@unicron/ui` and `@unicron/tokens` release URLs when Unicron 1.1 is released, and delete `vendor/unicron/`.** The same line is in each `pnpm-workspace.yaml`.
+
+**Lockfiles**, the way doc 62 §1 says: `apps/web` and `design/capture` with `pnpm install`; `apps/desktop` and `extension` with dsa held out for the install only (this session cannot fetch `@snds/dsa`) and put back, then `pnpm install --frozen-lockfile --lockfile-only` to prove the lockfile matches. Every lockfile carries pnpm's sha512 integrity for both tarballs.
+
+**What arrives inside `@unicron/tokens`:** its contrast tool brings `apca-w3` 0.1.9 (license "Limited W3 License") and, through it, `colorparsley` 0.1.8 (AGPL v3). Neither is bundled into any page or the extension: they run only in `pnpm contrast`. **Flagged for Sean:** an AGPL package in every root's install tree is worth a look; unicron could move the tool's dependency to an optional or separate package.
+
+**The migration notes of 1.1 (unicron `docs/08-migrating-to-1.1.md`), as they touch Lockdown:**
+
+| Note | Done here |
+|---|---|
+| Declare the theme | §1 (D1000), the commit before this one |
+| Contrast in CI | §3 |
+| 47 icons left the set | `star--filled` (a favorite) and `data-backup` (Backups) are registered with `registerIcons()` in `apps/desktop/src/app/app-icons.ts`, with 1.0's exact drawing; each entry and both test setups import it |
+| `timer` and `snooze` are Carbon's own now | Codes (the sidebar, the tab bar, the place table, a code row's kind and its swipe tile) draws `timer`, no longer the clock `time` that Expiring's neighbour also drew; a finding's snooze rows draw `snooze`. The clock notice keeps `time` |
+| A long press from the keyboard is Shift+F10 | the harness's quick-create states and the shell test press Shift+F10; the create button's `aria-keyshortcuts` is unicron's `Shift+F10 ContextMenu` |
+| Washes 4% and 6% | arrive with the core; the frames' `static/tokens.css` is regenerated |
+| `plain.css` follows the browser with no class | no change: the frames' sheet is Lockdown's own cut (`tokens-css.mjs`), graphite under `prefers-color-scheme: dark` already |
+| Counts read three digits | through unicron's parts at once; Lockdown's own `count()` follows in doc 93 (the cross-app settlement) |
+| Shared build watch | **not adopted here:** the web vault keeps its own `core/build-watch*`, whose rule is stricter (reload only when nobody is signed in). The swap is optional in the guide ("when you are ready"); left for a later slice |
 
 ## 3. The contrast check (D1002)
 
-Written with the move to 1.1.0-pre.1.
+`pnpm contrast` in `apps/desktop` runs unicron's `unicron-contrast` over `src/styles/lockdown-theme.css` with `src/styles/contrast-exceptions.json`, and CI's desktop job runs it after Lint. It measures 826 gated pairs on both grounds; 50 named exceptions are reported (Figma values with no room, flagged for Sean in unicron's hand-off: Unicron 16, 21 and 35), and 116 measures are reported only. The exceptions file started from unicron's playground copy for Lockdown; the tool fails on any listed pair that starts passing, so the list stays true.
+
+## 4. Decisions
+
+| ID | Decision | Status |
+|---|---|---|
+| D1000 | **Lockdown declares its own theme**, the 28 slots 1.0 shipped, in `apps/desktop/src/styles/lockdown-theme.css`, with an identical copy in the extension kept equal by a test. Plain version: the app looks exactly as it did, now that the shared kit holds no app's colours. | Built (Sean's ruling on Unicron 1) |
+| D1001 | **Vendored 1.1.0-pre.1 tarballs** replace 1.0.0-pre.2 in all four roots, with the swap line kept. Plain version: Lockdown runs on the 1.1 pre-release until 1.1 is published. | Built |
+| D1002 | **The theme's contrast is a CI gate** (`pnpm contrast`). Plain version: a colour change that makes text too faint fails the build. | Built |
+| D1003 | **The web vault keeps its own build watch** for now (1.1's shared one is optional). Plain version: no change to when the web vault reloads itself. | Proposed |

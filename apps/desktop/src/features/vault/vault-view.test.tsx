@@ -171,7 +171,7 @@ describe("what a row shows (brief V1)", () => {
     expect(screen.getByRole("button", { name: "Everyday card" })).toHaveAccessibleDescription("Personal")
     expect(screen.getByRole("button", { name: "Family card" })).toHaveAccessibleDescription("Family")
     // A kind's list has its Section Header with the count and SORT; no search field.
-    expect(screen.getByRole("heading", { level: 2, name: /Cards\s*02/ })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { level: 2, name: /Cards\s*002/ })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Sort" })).toBeInTheDocument()
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument()
   })

@@ -108,7 +108,7 @@ describe("the desktop block", () => {
     render(<Harness place={{ sharing: false, item: "i1" }} entries={[entry({ id: "c", priority: 5, title: "Conflict // 2 copies", shows: { item: "i1" } }), entry({ id: "one", priority: 1, title: "Sign-in request" })]} />)
     expect(yellow()).toHaveLength(1)
     const waiting = screen.getByRole("region", { name: "Waiting on you" })
-    expect(within(waiting).getByRole("heading")).toHaveTextContent(/Waiting on you\s*01/i)
+    expect(within(waiting).getByRole("heading")).toHaveTextContent(/Waiting on you\s*001/i)
     expect(within(waiting).getByRole("listitem")).toHaveTextContent("Conflict // 2 copies")
     expect(waiting.querySelector('[data-variant="needs-you"]')).toBeNull()
   })

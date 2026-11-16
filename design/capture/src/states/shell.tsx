@@ -85,9 +85,9 @@ export const SHELL_STATES: StateDef[] = [
     screen: "Phone chrome",
     state: "Quick create",
     brief_row: null,
-    notes: "A long press on create (Shift+Enter here): Login, Card, Secure note, One-time code, over the menu scrim (States / 03).",
+    notes: "A long press on create (Shift+F10 here, unicron 1.1): Login, Card, Secure note, One-time code, over the menu scrim (States / 03).",
     built: { area: "shell", screen: "quick-create", kind: "undrawn" },
-    steps: [...open, { run: () => document.querySelector<HTMLElement>('button[aria-label="New item"]')?.focus() }, { key: "Shift+Enter", target: 'button[aria-label="New item"]' }, MENU, { wait: /^Login/, role: "menuitem" }],
+    steps: [...open, { run: () => document.querySelector<HTMLElement>('button[aria-label="New item"]')?.focus() }, { key: "Shift+F10", target: 'button[aria-label="New item"]' }, MENU, { wait: /^Login/, role: "menuitem" }],
   }),
   d({
     id: "shell-settings-list",

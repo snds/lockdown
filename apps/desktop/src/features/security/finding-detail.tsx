@@ -90,7 +90,7 @@ export function FindingDetail({ finding: f, playbook, place, busy, onDismiss, on
         <AdaptiveMenu title="More for this finding" overline={title} trigger={<FloatButton size="l" icon="overflow-menu--horizontal" label="More for this finding" />}>
           {f.alert === null &&
             SNOOZES.map((s) => (
-              <AdaptiveMenuItem key={s.days} icon="time" onSelect={() => onDismiss(f, snoozeUntil(s.days, Math.floor(Date.now() / 1000)))}>
+              <AdaptiveMenuItem key={s.days} icon="snooze" onSelect={() => onDismiss(f, snoozeUntil(s.days, Math.floor(Date.now() / 1000)))}>
                 {s.label}
               </AdaptiveMenuItem>
             ))}

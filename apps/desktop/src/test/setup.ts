@@ -39,3 +39,4 @@ function stubMatchMedia() {
 }
 stubMatchMedia()
 beforeEach(stubMatchMedia)
+import "@/app/app-icons"

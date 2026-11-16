@@ -146,6 +146,12 @@ jobs:
         run: pnpm typecheck
       - name: Lint
         run: pnpm lint
+      # Lockdown declares its own theme (unicron 1.1, docs/plan/92-unicron-1-1.md
+      # §3): unicron's contrast tool measures every pair the components paint
+      # on both grounds, and fails on a miss the exceptions file doesn't name
+      # or on a named one that now passes.
+      - name: Theme contrast
+        run: pnpm contrast
       - name: Component tests
         run: pnpm test
       - name: Build the web UI

@@ -488,7 +488,7 @@ describe("the phone's rows (brief 3.3)", () => {
     const tabs = within(screen.getByRole("tablist", { name: "Sections" })).getAllByRole("tab")
     expect(tabs.map((t) => t.getAttribute("aria-label"))).toEqual(["Items", "Codes", "Health, 3 to fix"])
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "New item" })).toHaveAttribute("aria-keyshortcuts", "Shift+Enter")
+    expect(screen.getByRole("button", { name: "New item" })).toHaveAttribute("aria-keyshortcuts", "Shift+F10 ContextMenu")
   })
 
   it("makes the whole page head the switcher, with the scope and type count over the view's name and its count", async () => {
@@ -527,8 +527,8 @@ describe("the phone's rows (brief 3.3)", () => {
     expect(await within(sheet).findByRole("group", { name: "Sign-ins and money" })).toBeInTheDocument()
     await user.keyboard("{Escape}")
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "What are you saving?" })).toBeNull())
-    // Quick create is never gesture-only: Shift+Enter opens it.
-    await press(user, screen.getByRole("button", { name: "New item" }), "{Shift>}{Enter}{/Shift}")
+    // Quick create is never gesture-only: Shift+F10 opens it (unicron 1.1: Shift+Enter is a new line in a field).
+    await press(user, screen.getByRole("button", { name: "New item" }), "{Shift>}{F10}{/Shift}")
     const quick = await screen.findByRole("menu", { name: "Quick create" })
     expect((await within(quick).findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(TEMPLATES.kinds.filter((t) => !t.variant && ["login", "card", "note", "code"].includes(t.kind)).sort((a, b) => ["login", "card", "note", "code"].indexOf(a.kind) - ["login", "card", "note", "code"].indexOf(b.kind)).map((t) => t.name))
   })

@@ -205,7 +205,7 @@ export function useRowSwipe(row: ItemSummary, handlers: RowSwipeHandlers | null,
       case "more":
         return { label: "More", icon: "overflow-menu--horizontal", tone: "neutral", onAction: openMenu }
       case "code":
-        return { label: "Code", icon: "time", tone: "neutral", reversible: true, onAction: () => void codeCopy(row) }
+        return { label: "Code", icon: "timer", tone: "neutral", reversible: true, onAction: () => void codeCopy(row) }
       case "copy":
         return { label: sentence(row.copy?.label ?? "copy"), icon: "copy", reversible: true, onAction: () => void quickCopy(row) }
       case "unarchive":
