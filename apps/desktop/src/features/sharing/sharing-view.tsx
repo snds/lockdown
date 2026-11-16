@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { Banner, Button, EmptyState, Skeleton, Tabs, TabsList, TabsTrigger, useAppFrame } from "@unicron/ui"
 
@@ -99,6 +99,12 @@ export function SharingView({ section, onSection, vault, rows, onOpenItem, onCha
   // Read again after every sync, which a pull and "Check again" run (brief S1: a pull reads the overview again).
   const synced = rows.length === 0 ? null : rows
   useEffect(load, [load, synced])
+  // On a phone the four tabs with their counts are wider than the screen: the row scrolls, and the
+  // chosen tab is brought fully into view, so a tab cut at the edge is never the one you are on.
+  const tabRow = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    tabRow.current?.querySelector<HTMLElement>('[data-slot="tabs-trigger"][aria-selected="true"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" })
+  }, [tab])
 
   const setGrants = useCallback((emergency: SharingOverview["emergency"]) => setOverview((o) => (o ? { ...o, emergency } : o)), [])
 
@@ -151,7 +157,7 @@ export function SharingView({ section, onSection, vault, rows, onOpenItem, onCha
       {!pushed && <ScreenHead overline={overview ? overlineOf(overview, sharedVaults) : "Sharing"} title="Sharing" />}
       {pushed && !frame.phone && <NeedsYouSlot />}
       {!pushed && (
-        <div className="no-scrollbar -mt-2 overflow-x-auto">
+        <div ref={tabRow} className="no-scrollbar -mt-2 overflow-x-auto">
           <Tabs value={tab} onValueChange={(v) => pick(v as SharingSection)}>
             <TabsList variant="line" aria-label="Sharing">
               {SECTIONS.map((s) => (

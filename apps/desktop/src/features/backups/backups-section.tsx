@@ -217,7 +217,7 @@ export function BackupsSection({ onChanged, onNotice }: BackupsSectionProps) {
   }
 
   if (!status) {
-    if (readError) return <EmptyState tone="critical" overline="Backups // 00" title="Couldn't read your backups" body={readError} actionLabel="Try again" onAction={read} />
+    if (readError) return <EmptyState tone="critical" overline={`Backups // ${count(0)}`} title="Couldn't read your backups" body={readError} actionLabel="Try again" onAction={read} />
     return (
       <div role="status" aria-label="Checking backups" className="flex flex-col gap-1">
         <Skeleton variant="row" />

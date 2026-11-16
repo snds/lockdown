@@ -1,4 +1,5 @@
-import { act, render } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 
 import { CodeLargeType, LARGE_TYPE_LIFETIME_S, codeLargeTitle } from "./large-type"
 
@@ -29,5 +30,37 @@ describe("a code in large type (Lockdown 28)", () => {
       vi.advanceTimersByTime(2)
     })
     expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it("keeps one view across a turnover: Captions and focus stay where the person put them, and the new code shows", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<CodeLargeType open onOpenChange={() => {}} current="123456" named="Northwind" now={100} expiresAt={130} />)
+    const captions = await screen.findByRole("switch", { name: "Captions" })
+    expect(captions).toBeChecked()
+    await user.click(captions)
+    expect(captions).not.toBeChecked()
+    const smaller = screen.getByRole("button", { name: "Smaller" })
+    smaller.focus()
+    const canvas = () => document.querySelector('[data-slot="large-type-view-canvas"]')?.getAttribute("aria-label") ?? ""
+    await waitFor(() => expect(canvas()).toMatch(/3, pause, 4/))
+    rerender(<CodeLargeType open onOpenChange={() => {}} current="654321" named="Northwind" now={130} expiresAt={160} />)
+    await waitFor(() => expect(canvas()).toMatch(/4, pause, 3/))
+    // The same switch, still off; focus did not jump back to Close.
+    expect(screen.getByRole("switch", { name: "Captions" })).toBe(captions)
+    expect(captions).not.toBeChecked()
+    expect(smaller).toHaveFocus()
+  })
+
+  it("once hidden, a new code does not bring the value back", async () => {
+    const { rerender } = render(<CodeLargeType open onOpenChange={() => {}} current="123456" named="Northwind" now={100} expiresAt={130} />)
+    await waitFor(() => expect(document.querySelector('[data-slot="large-type-view"]')?.getAttribute("data-status")).toBe("shown"))
+    act(() => {
+      window.dispatchEvent(new Event("blur"))
+    })
+    await waitFor(() => expect(document.querySelector('[data-slot="large-type-view"]')?.getAttribute("data-status")).toBe("expired"))
+    rerender(<CodeLargeType open onOpenChange={() => {}} current="654321" named="Northwind" now={130} expiresAt={160} />)
+    await act(async () => {})
+    expect(document.querySelector('[data-slot="large-type-view"]')?.getAttribute("data-status")).toBe("expired")
+    expect(screen.getByRole("button", { name: "Show again" })).toBeInTheDocument()
   })
 })

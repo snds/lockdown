@@ -191,7 +191,7 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
         <Proof label="Vault history" ok value={audit?.ok ? checkedWords(audit.at) : "Signed by your devices"} />
         {account && <Proof label="Public log" ok={!!view?.checked_at} value={logValue(view)} />}
         {account && mirrors.length > 0 && !split && (
-          <Proof label="Log mirrors" ok={agree === mirrors.length} value={agree === mirrors.length ? "Other servers agree" : `${count(agree)} of ${count(mirrors.length)} agree`} />
+          <Proof label="Log mirrors" ok={agree === mirrors.length} value={agree === mirrors.length ? "Other servers agree" : `${agree} of ${mirrors.length} agree`} />
         )}
       </section>
 

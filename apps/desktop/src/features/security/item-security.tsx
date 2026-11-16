@@ -5,7 +5,6 @@ import { Banner, Button } from "@unicron/ui"
 import { usePlaces } from "@/app/places"
 import { useClient } from "@/core/client"
 import type { Finding } from "@/core/types"
-import { count } from "@/lib/format"
 
 import { WhatToDo } from "./playbook-dialog"
 import { findingsForItem } from "./security-model"
@@ -91,7 +90,7 @@ export function ItemSecurity({ itemId, onNotice, state }: ItemSecurityProps) {
       {more > 0 && (
         <p className="type-caption text-support-foreground">
           <Button variant="link" size="inline" onClick={() => go("health")}>
-            {`${count(more)} more in Health`}
+            {`${more.toLocaleString("en-US")} more in Health`}
           </Button>
         </p>
       )}

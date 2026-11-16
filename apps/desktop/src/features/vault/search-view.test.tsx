@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState } from "react"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@unicron/ui"
 
@@ -203,8 +203,8 @@ describe("Search (brief X4)", () => {
     const seed = itemRows(family)[0]!
     expect(Array.from(seed.querySelectorAll("mark")).map((m) => m.textContent)).toEqual(["Git"])
     expect(seed.querySelector('[data-slot="list-row-meta"]')).toBeNull()
-    // The status line: 04 RESULTS (the line sets the capitals).
-    expect(await screen.findByText(/^004 results$/i)).toBeInTheDocument()
+    // The status line: 4 RESULTS, a plain number in words (the line sets the capitals).
+    expect(await screen.findByText(/^4 results$/i)).toBeInTheDocument()
   })
 
   it("draws no vault headers with one vault", async () => {
@@ -215,7 +215,7 @@ describe("Search (brief X4)", () => {
     expect(screen.queryByRole("heading", { name: /^Personal/ })).not.toBeInTheDocument()
   })
 
-  it("says SEARCH // 00 when nothing matches, and NEW LOGIN starts a login with the words as its website", async () => {
+  it("says SEARCH // 000 when nothing matches, and NEW LOGIN starts a login with the words as its website", async () => {
     mount()
     const user = userEvent.setup()
     await user.type(await screen.findByRole("searchbox", { name: "Search Personal and Family" }), "netflix")
@@ -251,20 +251,15 @@ describe("Search (brief X4)", () => {
     await waitFor(() => expect(where()).toBe("codes"))
   })
 
-  it("shows a found item's one-time code inside its own row, under its words (Lockdown 19)", async () => {
-    const code: CodeView = { item_id: "GitHub", field_id: "totp", title: "GitHub", issuer: "GitHub", account: "kestrel04", variant: "totp", digits: 6, period: 30, current: "492810", next: null, seconds_left: 20, counter: null, warnings: [] }
+  it("shows no one-time codes in its rows; a code is shown only on request, in Quick access's own row (Lockdown 19)", async () => {
+    const codes = vi.fn(() => Promise.resolve([] as CodeView[]))
     const rows = ROWS.map((r) => (r.id === "GitHub" ? { ...r, codes: 1 } : r))
-    mount({ rows, client: { codes: () => Promise.resolve([code]) } })
+    mount({ rows, client: { codes } })
     const user = userEvent.setup()
     await user.type(field(), "git")
-    const github = await waitFor(() => {
-      const li = itemRows().find((li) => titleOf(li) === "GitHub")
-      if (!li) throw new Error("no GitHub row")
-      return li
-    })
-    await waitFor(() => expect(github.querySelector('[data-slot="code-display"]')).not.toBeNull())
-    // The code sits in GitHub's own row, nowhere else.
-    expect(document.querySelectorAll('[data-slot="code-display"]')).toHaveLength(1)
+    await waitFor(() => expect(itemRows().some((li) => titleOf(li) === "GitHub")).toBe(true))
+    expect(document.querySelector('[data-slot="code-display"]')).toBeNull()
+    expect(codes).not.toHaveBeenCalled()
   })
 
   it("opened from a vault, offers EVERYWHERE and that vault; the vault narrows it, and the crumb says so", async () => {

@@ -5,7 +5,7 @@ import { SecretField } from "@unicron/ui/security/secret-field"
 
 import { describeError } from "@/core/client"
 import { decodeAndWipe, encodeSecret } from "@/core/secret-bytes"
-import { fullDate } from "@/lib/format"
+import { count, fullDate } from "@/lib/format"
 
 import { monthDay } from "./emergency-model"
 import { LastsField, LinkFields, LinkLayer, linkOptions } from "./link-once"
@@ -133,7 +133,7 @@ export function LinksTab({ online, onNotice, onShareLink, canKeep = true, onCoun
         </p>
       )}
       {sends !== null && requests !== null && sends.length + requests.length === 0 && (
-        <EmptyState size="sm" overline="Links // 00" title="No links yet." body="Share some text as a link, or ask someone for a secret." />
+        <EmptyState size="sm" overline={`Links // ${count(0)}`} title="No links yet." body="Share some text as a link, or ask someone for a secret." />
       )}
       {sends !== null && sends.length > 0 && (
         <section aria-label="Share links" className="flex flex-col">

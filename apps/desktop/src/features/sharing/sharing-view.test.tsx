@@ -596,7 +596,7 @@ describe("the Sharing screen", () => {
     const user = userEvent.setup()
     await openTab(user, "Emergency")
     const list = await screen.findByRole("list", { name: "Your emergency contacts" })
-    expect(within(list).getByText(/wait 7 days \/\/ 001 vault/)).toBeInTheDocument()
+    expect(within(list).getByText(/wait 7 days \/\/ 1 vault/)).toBeInTheDocument()
     await user.click(within(list).getByRole("button", { name: /bob@example.com/ }))
     const detail = await screen.findByRole("region", { name: "Emergency: open" })
     expect(within(within(detail).getByRole("list", { name: "What happened" })).getByText("bob@example.com opened your vaults.")).toBeInTheDocument()

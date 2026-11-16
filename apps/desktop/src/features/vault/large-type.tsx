@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { Button, Icon } from "@unicron/ui"
 import { LargeTypeView } from "@unicron/ui/security/large-type-view"
@@ -72,9 +72,13 @@ interface CodeLargeTypeProps {
 /**
  * A one-time code in large type (Lockdown 28, amending D963): it follows the
  * live code, so it never shows a dead one. When the code turns over, the
- * view reads the new one; its title counts down the seconds left. Still
- * kept out of screenshots and screen sharing (`useCaptureProtect`), and it
- * still closes two minutes after it opened, whichever code it shows then.
+ * same view reads the new one (it is never remounted, so Captions, the size,
+ * and focus stay where the person put them); its title counts down the
+ * seconds left. Still kept out of screenshots and screen sharing
+ * (`useCaptureProtect`), and it still closes two minutes after it opened,
+ * whichever code it shows then. Once the view has hidden its value (blur,
+ * lock, lifetime), a new code does not bring it back: Show again reads the
+ * code valid then.
  */
 export function CodeLargeType({ open, onOpenChange, current, named, now, expiresAt, groupSize = 3 }: CodeLargeTypeProps) {
   useCaptureProtect(open)
@@ -88,8 +92,20 @@ export function CodeLargeType({ open, onOpenChange, current, named, now, expires
     const t = window.setTimeout(() => onOpenChange(false), Math.max(0, left))
     return () => window.clearTimeout(t)
   }, [open, onOpenChange])
-  const getSecret = useCallback(() => Promise.resolve(new TextEncoder().encode(current)), [current])
-  const lifetime = Math.max(1, Math.ceil(LARGE_TYPE_LIFETIME_S - (Date.now() - (openedAt.current ?? Date.now())) / 1000))
-  // A new code is a new view: it reads the code again (the view reads its value once, as a secret).
-  return <LargeTypeView key={current} open={open} onOpenChange={onOpenChange} getSecret={getSecret} title={codeLargeTitle(named, now, expiresAt)} groupSize={groupSize} lifetime={lifetime} />
+  // The view reads through `getSecret` when it opens, on Show again, and when the reader changes.
+  // The reader always gives the code valid now; it changes (and so the view reads again) only when
+  // the code turns over while the value is on screen.
+  const latest = useRef(current)
+  latest.current = current
+  const [turn, setTurn] = useState(current)
+  useEffect(() => {
+    const hidden = document.querySelector('[data-slot="large-type-view"]')?.getAttribute("data-status") === "expired"
+    if (!hidden) setTurn(current)
+  }, [current])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `turn` is the trigger: a new reader is a new read
+  const getSecret = useCallback(() => Promise.resolve(new TextEncoder().encode(latest.current)), [turn])
+  // What is left of the two minutes when this code was read: the view's own "Hides in" counts from there.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fixed per read, never per render
+  const lifetime = useMemo(() => Math.max(1, Math.ceil(LARGE_TYPE_LIFETIME_S - (Date.now() - (openedAt.current ?? Date.now())) / 1000)), [turn, open])
+  return <LargeTypeView open={open} onOpenChange={onOpenChange} getSecret={getSecret} title={codeLargeTitle(named, now, expiresAt)} groupSize={groupSize} lifetime={lifetime} />
 }

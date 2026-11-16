@@ -24,7 +24,7 @@ import {
 import { useDetailBottomRow, useDetailTopBarHandUp } from "@/app/detail-bottom-row"
 import { WaitingOnYou } from "@/app/needs-you"
 import { describeError } from "@/core/client"
-import { count } from "@/lib/format"
+import { count, countName } from "@/lib/format"
 import { PhraseIncomingList, SayPhrase } from "@/features/depth/key-check"
 import { CameraView } from "@/features/scan/camera-view"
 import { useScanClient, type Frame } from "@/features/scan/scan-client"
@@ -196,7 +196,7 @@ function PeopleList({ overview, selected, onSelect, onLookedUp, onChanged, onCop
       </form>
       <PhraseIncomingList online={online} onVerified={onChanged} />
       {overview.contacts.length === 0 ? (
-        <EmptyState size="sm" overline="People // 00" title="Nobody yet." body="Look someone up to share with them or name them an emergency contact." />
+        <EmptyState size="sm" overline={`People // ${count(0)}`} title="Nobody yet." body="Look someone up to share with them or name them an emergency contact." />
       ) : (
         <section aria-label="People pinned here" className="flex flex-col">
           <SectionHeader title="People" count={overview.contacts.length} />
@@ -208,7 +208,7 @@ function PeopleList({ overview, selected, onSelect, onLookedUp, onChanged, onCop
                 size="compact"
                 selected={c.account_id === selected}
                 title={c.login}
-                meta={`${count(c.devices)} ${c.devices === 1 ? "device" : "devices"}`}
+                meta={countName(c.devices, "device")}
                 metaStyle="label"
                 status={
                   <>

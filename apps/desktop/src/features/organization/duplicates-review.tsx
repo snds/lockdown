@@ -8,7 +8,7 @@ import { useGate } from "@/app/gate"
 import { notify, deletedWords } from "@/app/notify"
 import { describeError, useClient } from "@/core/client"
 import type { DuplicateGroup, ItemSummary } from "@/core/types"
-import { count, fullDate } from "@/lib/format"
+import { count, countName, fullDate } from "@/lib/format"
 import { hostOf } from "@/features/security/security-model"
 
 import { useVaults, vaultName } from "./vaults-context"
@@ -54,11 +54,11 @@ export const REASON_WORDS: Record<DuplicateGroup["reason"], string> = {
   "same-code": "Same code",
 }
 
-/** What the DUPLICATES row on Health says: "Not checked", "04 groups" or "None". */
+/** What the DUPLICATES row on Health says: "Not checked", "4 groups" or "None". */
 export function duplicatesWords(groups: DuplicateGroup[] | null): string {
   if (groups === null) return "Not checked"
   if (groups.length === 0) return "None"
-  return `${count(groups.length)} ${groups.length === 1 ? "group" : "groups"}`
+  return countName(groups.length, "group")
 }
 
 interface DuplicatesListProps {
@@ -82,7 +82,7 @@ export function DuplicatesList({ groups, failed, chosen, onChoose, onTryAgain }:
         <Skeleton variant="row" />
       </div>
     )
-  if (groups.length === 0) return <EmptyState overline="Duplicates // 00" title="No duplicates." body="Nothing shares a website and username, a password or a code set-up." />
+  if (groups.length === 0) return <EmptyState overline={`Duplicates // ${count(0)}`} title="No duplicates." body="Nothing shares a website and username, a password or a code set-up." />
   return (
     <section aria-labelledby="possible-duplicates" className="flex flex-col">
       <SectionHeader id="possible-duplicates" title="Possible duplicates" count={groups.length} />
@@ -94,7 +94,7 @@ export function DuplicatesList({ groups, failed, chosen, onChoose, onTryAgain }:
             metaStyle="plain"
             selected={chosen === groupKey(g)}
             title={g.words}
-            meta={`${count(g.ids.length)} items`}
+            meta={countName(g.ids.length, "item")}
             status={REASON_WORDS[g.reason]}
             onClick={() => onChoose(groupKey(g))}
           />

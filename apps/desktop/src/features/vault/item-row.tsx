@@ -36,8 +36,6 @@ interface ItemRowProps {
    * and the mono line. A crown jewel has no mono line, so only its title is.
    */
   highlight?: string
-  /** Under the row's words, inside the row: Search's one-time code for this item (Lockdown 19). */
-  detail?: ReactNode
 }
 
 /**
@@ -49,7 +47,7 @@ interface ItemRowProps {
  * button. The title is the row's one button: it opens the item; the ⋯
  * beside it is a separate control.
  */
-export function ItemRow({ row, selected, onSelect, actions, words, position, swipe = null, highlight, detail }: ItemRowProps) {
+export function ItemRow({ row, selected, onSelect, actions, words, position, swipe = null, highlight }: ItemRowProps) {
   const { settings } = useSettings()
   const item = useRef<HTMLLIElement>(null)
   // MORE opens the row's own menu, as its right click does. After the tap's own events, when the row has closed.
@@ -82,7 +80,6 @@ export function ItemRow({ row, selected, onSelect, actions, words, position, swi
       marks={marks}
       meta={line ? mark ? <Highlight text={line} query={mark} /> : line : undefined}
       status={words ?? rowWords(row, { view: "all" })}
-      detail={detail}
       menu={actions}
       menuLabel="More for"
     />

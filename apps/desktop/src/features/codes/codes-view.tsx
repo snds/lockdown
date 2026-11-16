@@ -113,7 +113,7 @@ export function CodesView({ rows, onChanged, onOpenItem }: CodesViewProps) {
       {rail && <div className="flex gap-2">{actions}</div>}
       <ClockSkew />
       {error && (
-        <EmptyState tone="critical" overline="Codes // 00" title="Codes didn't load." body={error} actionLabel="Try again" onAction={reload} />
+        <EmptyState tone="critical" overline={`Codes // ${count(0)}`} title="Codes didn't load." body={error} actionLabel="Try again" onAction={reload} />
       )}
       {!codes && !error && (
         <div className={frame.phone ? "-mx-4" : undefined}>
@@ -125,9 +125,9 @@ export function CodesView({ rows, onChanged, onOpenItem }: CodesViewProps) {
         </div>
       )}
       {codes && total === 0 && (
-        <EmptyState overline="Codes // 00" title="No codes yet." body="Add one from the set-up link a site gives you." actionLabel="Add code" onAction={add} />
+        <EmptyState overline={`Codes // ${count(0)}`} title="No codes yet." body="Add one from the set-up link a site gives you." actionLabel="Add code" onAction={add} />
       )}
-      {codes && total > 0 && shown.length === 0 && <EmptyState overline="Search // 00" title={`No code for ${q}.`} />}
+      {codes && total > 0 && shown.length === 0 && <EmptyState overline={`Search // ${count(0)}`} title={`No code for ${q}.`} />}
       {/* unicron's CodeDisplayList puts its live region beside the codes, so the list is
           Lockdown's own, inside it, with one item per code (review R7). */}
       {shown.length > 0 && (

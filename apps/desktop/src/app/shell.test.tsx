@@ -106,10 +106,10 @@ function Screen() {
   )
 }
 
-function Harness({ surface = "desktop", onLock = () => {} }: { surface?: Surface; onLock?: () => void }) {
+function Harness({ surface = "desktop", onLock = () => {}, templates = TEMPLATES }: { surface?: Surface; onLock?: () => void; templates?: typeof TEMPLATES }) {
   const [nav, setNav] = useState<Nav>({ area: "vault", view: "all" })
   return (
-    <ClientProvider value={fakeClient({ templates: () => Promise.resolve(TEMPLATES), userTemplates: () => Promise.resolve([]) })}>
+    <ClientProvider value={fakeClient({ templates: () => Promise.resolve(templates), userTemplates: () => Promise.resolve([]) })}>
       <TooltipProvider>
         <SettingsProvider>
           <TemplatesProvider>
@@ -533,6 +533,19 @@ describe("the phone's rows (brief 3.3)", () => {
     await press(user, screen.getByRole("button", { name: "New item" }), "{Shift>}{F10}{/Shift}")
     const quick = await screen.findByRole("menu", { name: "Quick create" })
     expect((await within(quick).findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(TEMPLATES.kinds.filter((t) => !t.variant && ["login", "card", "note", "code"].includes(t.kind)).sort((a, b) => ["login", "card", "note", "code"].indexOf(a.kind) - ["login", "card", "note", "code"].indexOf(b.kind)).map((t) => displayTemplate(t).name))
+  })
+
+  it("adds a code from the create menu: \"One-time code\" opens the paste form, not the editor (Lockdown 2)", async () => {
+    const user = userEvent.setup()
+    // The core's One-time code template (crates/vault/src/template.rs), beside the fixture's kinds.
+    const note = TEMPLATES.kinds.find((k) => k.kind === "note")!
+    render(<Harness templates={{ ...TEMPLATES, kinds: [...TEMPLATES.kinds, { ...note, kind: "code", id: "code", name: "One-time code", fields: [] }] }} />)
+    await press(user, screen.getByRole("button", { name: "New item" }), "{Shift>}{F10}{/Shift}")
+    const quick = await screen.findByRole("menu", { name: "Quick create" })
+    await user.click(await within(quick).findByRole("menuitem", { name: /One-time code/ }))
+    const dialog = await screen.findByRole("dialog", { name: "Add a code" })
+    expect(within(dialog).getByText("Paste the otpauth:// or steam:// link the site gave you.")).toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: /^New / })).toBeNull()
   })
 
   it("puts Lock in Settings' top bar, and Back returns to the section the person came from", async () => {
