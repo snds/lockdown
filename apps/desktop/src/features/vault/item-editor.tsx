@@ -322,7 +322,10 @@ function EditorForm({
     rows.length !== startRows.length ||
     rows.some((r) => {
       const was = startRows.find((x) => x.key === r.key)
-      return !was || r.text !== was.text || r.secret !== was.secret || r.flag !== was.flag || r.removed !== was.removed || r.matchRule !== was.matchRule || r.recipe !== was.recipe
+      // "Type one instead" on a password the core would make (Lockdown 29), with nothing typed, loses nothing.
+      if (!was) return true
+      const secretChanged = r.secret !== was.secret && !(was.secret === "generate" && r.secret === "type" && r.text === "")
+      return r.text !== was.text || secretChanged || r.flag !== was.flag || r.removed !== was.removed || r.matchRule !== was.matchRule || r.recipe !== was.recipe
     })
   useEffect(() => onDirty(changed), [changed, onDirty])
 

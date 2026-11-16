@@ -199,7 +199,7 @@ test("the passkey sheet, saving and then signing in, has no serious or critical 
     const list = sheet.getByRole("list", { name: "Passkeys for localhost" });
     await expect(list.getByRole("listitem")).toHaveCount(1);
     // "Use another device" follows the list; it isn't one of its items.
-    await expect(list.getByRole("button", { name: "Use another device or security key" })).toHaveCount(0);
+    await expect(list.getByRole("button", { name: "Other device or key" })).toHaveCount(0);
     expect(blocking(await axeIn(sheet))).toEqual([]);
     await page.close();
   }

@@ -5,7 +5,7 @@
 
 import type { ToBackground, ToContent, Measured, MenuKind, PickWhat } from "../shared/messages"
 import { extensionOrigin } from "../shared/messages"
-import type { FillAnswer, LinkState, LoginCandidate, MenuData, PageMatches, PasswordSuggestion, PickAnswer, SaveOffer, WalletEntry } from "../shared/protocol"
+import type { FillAnswer, LinkState, LoginCandidate, MenuData, PageMatches, PasswordSuggestion, PickAnswer, SaveOffer, SheetData, WalletEntry } from "../shared/protocol"
 import * as bridges from "./bridges"
 import { DesktopError, Link } from "./link"
 import * as matcher from "./matcher"
@@ -88,6 +88,11 @@ async function linkState(): Promise<LinkState> {
   return link.status()
 }
 
+/** A sheet with its host's registrable domain, kept whole on its host line (Lockdown 26). */
+async function withSite(d: SheetData): Promise<SheetData> {
+  return d.host ? { ...d, site: await matcher.siteOf(`https://${d.host}`) } : d
+}
+
 async function menuData(m: Menu): Promise<MenuData> {
   const host = (() => {
     try {
@@ -97,7 +102,7 @@ async function menuData(m: Menu): Promise<MenuData> {
     }
   })()
   const kind = m.kind === "prompt" ? "login" : m.kind
-  const base: MenuData = { kind, link: await linkState(), host, logins: [], wallet: [], lookalike_of: [], note: null, passkeys: [] }
+  const base: MenuData = { kind, link: await linkState(), host, site: await matcher.siteOf(m.frameUrl), logins: [], wallet: [], lookalike_of: [], note: null, passkeys: [] }
   try {
     const never = await fixes.neverWhy(m.frameUrl)
     if (never) {
@@ -456,7 +461,7 @@ async function route(msg: ToBackground, sender: chrome.runtime.MessageSender): P
       return { ok: true }
     case "pk_sheet":
       if (!isExtensionPage(sender, "frame.html")) throw new Error("refused")
-      return passkeys.sheet(msg.nonce, sender)
+      return withSite(passkeys.sheet(msg.nonce, sender))
     case "pk_sheet_pick":
       if (!isExtensionPage(sender, "frame.html")) throw new Error("refused")
       return passkeys.sheetPick(msg.nonce, sender, String(msg.item_id), String(msg.credential_id), msg.confirmed === true, msg.frame_visible)
@@ -473,7 +478,7 @@ async function route(msg: ToBackground, sender: chrome.runtime.MessageSender): P
       return { ok: true }
     case "pk_sheet_retry":
       if (!isExtensionPage(sender, "frame.html")) throw new Error("refused")
-      return passkeys.sheetRetry(msg.nonce, sender)
+      return withSite(await passkeys.sheetRetry(msg.nonce, sender))
 
     // --- Open Lockdown from the popup (docs/plan/37-cli-popup.md §2) ---------
     case "open_app":

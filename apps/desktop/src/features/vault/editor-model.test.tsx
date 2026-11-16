@@ -26,6 +26,14 @@ const existingLogin: ItemDetail = {
 }
 
 describe("the editor's model (D110)", () => {
+  it("a new login's password is made by the core on save, by default; an edit keeps the one it has (Lockdown 29)", () => {
+    expect(initialRows(login, null).find((r) => r.fieldId === "pw")?.secret).toBe("generate")
+    expect(buildChanges(initialRows(login, null))).toContainEqual({ field_id: "pw", action: "generate" })
+    expect(initialRows(login, existingLogin).find((r) => r.fieldId === "pw")?.secret).toBe("keep")
+    // Other kinds start empty, as before.
+    expect(initialRows(wifi, null).find((r) => r.fieldId === "wifi.passphrase")?.secret).toBe("type")
+  })
+
   it("a new item sends only what was filled in, secrets as bytes, a generator as `generate`", () => {
     const rows = initialRows(wifi, null)
     expect(rows.map((r) => r.fieldId)).toEqual(["wifi.ssid", "wifi.passphrase", "wifi.security", "wifi.hidden", "notes"])

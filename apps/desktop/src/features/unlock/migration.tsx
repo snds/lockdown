@@ -27,10 +27,12 @@ const M1_LEARN_MORE = [
  * last time; before the list draws, it gets a master password. Each screen
  * is the focus frame with no folio: this happens once, not as a flow.
  *
- * - M1, a "This device only" install: a name and a master password; Lock
- *   my vault.
+ * - M1, a "This device only" install: a name and a master password;
+ *   Continue when M2 follows, Lock my vault when it doesn't (the yes on the
+ *   step that locks names it, Lockdown 33).
  * - M2, when that install already has a kit: the kit's Secret Key and
- *   recovery code; or "I don't have it", a question whose yes is New kit.
+ *   recovery code, then Lock my vault; or "I don't have it", a question
+ *   whose yes is New kit.
  * - M3, an install with an account on a server: that password, checked
  *   there once; Continue for now when the server can't be reached.
  *
@@ -221,7 +223,7 @@ export function Migration({ status, onDone }: { status: Status; onDone: (s: Stat
               disabled={missing}
               disabledReason={missing && !busy ? "Type both lines from your kit first." : undefined}
             >
-              Continue
+              Lock my vault
             </Button>
             <Button size="lg" block type="button" variant="secondary" onClick={() => setScreen("m1")} disabled={busy}>
               Back
@@ -265,7 +267,7 @@ export function Migration({ status, onDone }: { status: Status; onDone: (s: Stat
         {failure}
         <WelcomeActions>
           <Button size="lg" block type="submit" loading={busy}>
-            Lock my vault
+            {hasKit ? "Continue" : "Lock my vault"}
           </Button>
         </WelcomeActions>
       </form>

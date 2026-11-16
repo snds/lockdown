@@ -44,6 +44,19 @@ interface MasterDetailProps {
  * `useDetailTopBar` and its bottom row with `useDetailBottomRow`
  * (`app/detail-bottom-row.tsx`).
  */
+const DetailNeedsYouContext = createContext(false)
+
+/**
+ * The needs-you block inside an open detail, where the detail puts it: after
+ * the item's title (Lockdown 8). Nothing outside a MasterDetail's detail, on
+ * a phone (the strip says it there), or when nothing waits.
+ */
+export function WaitingInDetail() {
+  const shows = useContext(DetailNeedsYouContext)
+  if (!shows) return null
+  return <NeedsYouSlot />
+}
+
 export function MasterDetail({ header, title, list, detail, onBack, emptyLabel }: MasterDetailProps) {
   const frame = useAppFrame()
   // A pull down on the phone's list runs the place's refresh (brief 3.3); its plain path is "Check again".
@@ -65,16 +78,19 @@ export function MasterDetail({ header, title, list, detail, onBack, emptyLabel }
         {list}
       </AppFrameList>
       <AppFrameDetail open={hasDetail} onBack={onBack}>
-        {needsYou && needsYouInDetail && (
+        {/* With no detail open (a fold's far half), the block tops the column. An open item draws it
+            itself, under the item's title, as Figma draws it (Lockdown 8): the title first says which
+            login a request is about. */}
+        {needsYou && needsYouInDetail && !hasDetail && (
           <AppFrameInset>
             <NeedsYouSlot />
           </AppFrameInset>
         )}
         {hasDetail ? (
-          <>
+          <DetailNeedsYouContext.Provider value={needsYou}>
             {!frame.split && <h1 className="sr-only">{title}</h1>}
             {detail}
-          </>
+          </DetailNeedsYouContext.Provider>
         ) : (
           <AppFrameInset>
             <EmptyState overline={title} title="Nothing open." body={emptyLabel} />

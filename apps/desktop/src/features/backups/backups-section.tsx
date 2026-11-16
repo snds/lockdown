@@ -24,6 +24,7 @@ import { SecretField } from "@unicron/ui/security/secret-field"
 import { useDetailBottomRow } from "@/app/detail-bottom-row"
 import { useGate } from "@/app/gate"
 import { describeError, useClient } from "@/core/client"
+import { ClockTime } from "@/components/clock-time"
 import { encodeSecret } from "@/core/secret-bytes"
 import type { BackupFile, BackupStatus, Chosen, ImportReport } from "@/core/types"
 import { MIN_PASSWORD, passwordProblem } from "@/features/export/export-model"
@@ -216,7 +217,7 @@ export function BackupsSection({ onChanged, onNotice }: BackupsSectionProps) {
   }
 
   if (!status) {
-    if (readError) return <EmptyState tone="critical" overline="Backups // 00" title="Couldn't read your backups" body={readError} actionLabel="Try again" onAction={read} />
+    if (readError) return <EmptyState tone="critical" overline={`Backups // ${count(0)}`} title="Couldn't read your backups" body={readError} actionLabel="Try again" onAction={read} />
     return (
       <div role="status" aria-label="Checking backups" className="flex flex-col gap-1">
         <Skeleton variant="row" />
@@ -340,7 +341,7 @@ export function BackupsSection({ onChanged, onNotice }: BackupsSectionProps) {
         </FieldRow>
         <SaveError text={errors.backup ?? null} />
         <FieldRow size={size} label="Last backup" description={next ?? undefined}>
-          <FieldRowValue truncate="wrap">{lastBackupLine(status)}</FieldRowValue>
+          <FieldRowValue truncate="wrap">{status.last_success_at ? <ClockTime secs={status.last_success_at} prefix="Backed up" /> : lastBackupLine(status)}</FieldRowValue>
         </FieldRow>
         <ToggleRow
           id="backup-crown-jewels"

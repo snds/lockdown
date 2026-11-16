@@ -107,7 +107,7 @@ const HERE = "here"
 export function SearchView({ rows, selected, onSelect, onChanged, onNotice }: SearchViewProps) {
   const { vaults } = useVaults()
   const { go, navigate } = usePlaces()
-  const { edit } = useShell()
+  const { edit, leaveSearch } = useShell()
   const frame = useAppFrame()
   const [query, setQuery] = useState(typedWords)
   // Opened by typing in All items' field: emptying the field goes back to the list, as a search in place would.
@@ -127,9 +127,12 @@ export function SearchView({ rows, selected, onSelect, onChanged, onNotice }: Se
       }),
     [],
   )
+  // Escape leaves for where the person was: the list it was typed in, the list it was opened from, or
+  // any other place, Codes and Settings among them (the shell's place before Search, Lockdown 19).
   const leave = () => {
-    if (from && !fromList) navigate(from)
-    else go("all")
+    if (fromList) go("all")
+    else if (from) navigate(from)
+    else leaveSearch()
   }
   const type = (words: string) => {
     setQuery(words)
@@ -148,7 +151,7 @@ export function SearchView({ rows, selected, onSelect, onChanged, onNotice }: Se
 
   // SEARCH, or SEARCH // FAMILY while that chip is chosen; the status says how many.
   useCrumb(here && narrow ? [narrow.label] : null)
-  useStatusItem(q && rows ? { text: `${count(found.length)} ${found.length === 1 ? "result" : "results"}` } : null)
+  useStatusItem(q && rows ? { text: countName(found.length, "result") } : null)
 
   const bump = () => {
     setVersion((v) => v + 1)

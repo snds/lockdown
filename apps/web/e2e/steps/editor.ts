@@ -134,3 +134,12 @@ export const templateNamed = (manager: Locator, name: string): Locator => manage
 export async function closeManager(manager: Locator) {
   await manager.getByRole("button", { name: "Close", exact: true }).first().click()
 }
+
+/**
+ * A new login's password is made by the core when it is saved (Lockdown 29);
+ * to type one, the person presses "Type one instead" first.
+ */
+export async function typeOwnPassword(dialog: Locator): Promise<Locator> {
+  await dialog.getByRole("button", { name: "Type one instead" }).click()
+  return field(dialog, "Password", true)
+}

@@ -345,7 +345,7 @@ export function SecurityView({ rows: given, onDevices, onRecovery, onChanged, on
     <>
       {findings.length === 0 && !open && (
         <EmptyState
-          overline="Health // 00"
+          overline={`Health // ${count(0)}`}
           title="All clear."
           body={
             report.passwords === 1
@@ -367,7 +367,7 @@ export function SecurityView({ rows: given, onDevices, onRecovery, onChanged, on
               action={
                 cut ? (
                   <Button size="sm" variant="ghost" onClick={() => setShowAll(true)}>
-                    {`Show all ${count(list.length)}`}
+                    {`Show all ${list.length.toLocaleString("en-US")}`}
                   </Button>
                 ) : undefined
               }
@@ -477,7 +477,7 @@ export function SecurityView({ rows: given, onDevices, onRecovery, onChanged, on
               ? "Off"
               : !report.breach.checked_at
                 ? "Not checked yet"
-                : `${breached ? `${count(breached)} breached` : "No breaches"} // checked ${clockWords(report.breach.checked_at * 1000)}`}
+                : `${breached ? `${breached.toLocaleString("en-US")} breached` : "No breaches"} // checked ${clockWords(report.breach.checked_at * 1000)}`}
           </FieldRow>
         )}
         {!web && report && (
@@ -722,7 +722,7 @@ export function SecurityView({ rows: given, onDevices, onRecovery, onChanged, on
       )}
       {fixLists}
       {itemLists}
-      {web && attention.length === 0 && expiring.length === 0 && rows && <EmptyState overline="Health // 00" title="Nothing needs you." body="No item needs attention or expires soon." />}
+      {web && attention.length === 0 && expiring.length === 0 && rows && <EmptyState overline={`Health // ${count(0)}`} title="Nothing needs you." body="No item needs attention or expires soon." />}
       {dismissedList}
     </div>
   )

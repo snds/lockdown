@@ -31,6 +31,8 @@ import { OrganizePrompt } from "@/features/organization/organize-prompt"
 import { folderPaths, inScope, rowMenuOffers, scopeTitle, targetOf, type OrganizeTarget, type Scope } from "@/features/organization/org-model"
 import { RowMenuItems } from "@/features/organization/row-menu"
 import { useRowMenuLayers } from "@/features/organization/row-menu-layers"
+import { useShell } from "@/app/shell"
+import { swipesAt, useCoarsePointer } from "@/lib/pointer"
 import { useVaults } from "@/features/organization/vaults-context"
 import { count, countName } from "@/lib/format"
 
@@ -295,10 +297,12 @@ const ROW_HEIGHT = { comfortable: 92, compact: 56 } as const
  */
 export function VaultView({ view, rows, error, onChanged, onNotice, selected, onSelect, scope }: VaultViewProps) {
   const { vaults } = useVaults()
+  const shell = useShell()
   const { navigate, nav, go } = usePlaces()
   const { settings } = useSettings()
   const { templates } = useTemplates()
   const frame = useAppFrame()
+  const coarsePointer = useCoarsePointer()
   const [organizing, setOrganizing] = useState<OrganizeTarget | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const paths = useMemo(() => folderPaths(vaults), [vaults])
@@ -342,7 +346,8 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
     if (text) onNotice(text)
   }
   const menuLayers = useRowMenuLayers({ onChanged: (text) => changed(text), onError: setActionError })
-  const create = (template: string) => setEditor({ kind: template, item: null, vaultId: scopeVault?.id, folder: scope?.folder, tags: scope?.tag ? [scope.tag] : undefined })
+  // "One-time code" lands on the paste form, the shell's (Lockdown 2), never the empty editor.
+  const create = (template: string) => (template === "code" ? shell.addCode() : setEditor({ kind: template, item: null, vaultId: scopeVault?.id, folder: scope?.folder, tags: scope?.tag ? [scope.tag] : undefined }))
   const creatable = (template: string) => templates?.kinds.some((t) => (t.id ?? t.kind) === template && t.creatable) ?? false
 
   // --- the head ------------------------------------------------------------------------------
@@ -443,8 +448,10 @@ export function VaultView({ view, rows, error, onChanged, onNotice, selected, on
   const windowed = inView > WINDOW_FROM
   const rowHeight = ROW_HEIGHT[settings.density === "compact" ? "compact" : "comfortable"]
   const oneVault = Boolean(scopeVault) || vaults.length < 2
-  // A phone's rows swipe (brief V1, States / 01): the same calls and toasts as the row's menu.
-  const swipe = frame.phone ? { onChanged: (text: string) => changed(text), onError: setActionError, onNotice } : null
+  // A phone's rows swipe (brief V1, States / 01), and a touch tablet's at the medium width (Lockdown 18):
+  // the same calls and toasts as the row's menu. Unicron's SwipeRow makes a full swipe harder on a
+  // side with three tiles (it needs 320 at 390).
+  const swipe = swipesAt(frame.layout, frame.phone, coarsePointer) ? { onChanged: (text: string) => changed(text), onError: setActionError, onNotice } : null
   const drawRow = (r: ItemSummary, position: { index: number; of: number } | undefined) => (
     <ItemRow
       key={r.id}

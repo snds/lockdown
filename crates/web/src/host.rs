@@ -184,12 +184,19 @@ fn refused(message: impl Into<String>) -> AppError {
     AppError::refused(message)
 }
 
+/// The words for a failed OPAQUE sign-in: the login name or the password
+/// may be wrong, and the server cannot say which.
+pub const LOGIN_FAILED: &str = "the login name and password didn't match an account on this server";
+
+/// The words for a wrong password at the lock screen: the login name is
+/// this tab's own, so only the password can be wrong. The same sentence as
+/// every Lockdown lock screen (cross-app decisions §4; Lockdown 32).
+pub const WRONG_MASTER_PASSWORD: &str = "That isn't the master password.";
+
 /// The words for a failed OPAQUE round.
 fn login_error(e: CryptoError) -> AppError {
     match e {
-        CryptoError::LoginFailed => {
-            refused("the login name and password didn't match an account on this server")
-        }
+        CryptoError::LoginFailed => refused(LOGIN_FAILED),
         other => refused(other.to_string()),
     }
 }
@@ -512,16 +519,21 @@ impl WebVault {
             let status = self.app.unlock()?;
             self.app
                 .renew_session(&account.server, &account.login, session)?;
-            Ok((status, resealed))
+            Ok::<_, AppError>((status, resealed))
         })();
         match opened {
             Ok((status, resealed)) => {
                 self.sealed = Some(resealed);
                 Ok(status)
             }
-            Err(e) => {
+            Err(mut e) => {
                 let _ = self.app.lock();
                 self.forget_open_state();
+                // At the lock screen the login name is this tab's own: a
+                // refused round means the password was wrong.
+                if e.message == LOGIN_FAILED {
+                    e.message = WRONG_MASTER_PASSWORD.to_string();
+                }
                 Err(e)
             }
         }

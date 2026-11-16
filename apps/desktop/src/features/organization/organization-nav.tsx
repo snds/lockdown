@@ -215,9 +215,15 @@ export function OrganizationNav({ rows, nav, onNavigate, variant = "sidebar", sh
 
   const vaultMenu = (v: VaultView) => {
     const offers = vaultMenuOffers(v, sharing)
-    return (page: MenuPage, toPage: (p: MenuPage) => void) =>
+    return (page: MenuPage, toPage: (p: MenuPage) => void, close: () => void) =>
       page === "trash-days" ? (
-        <AdaptiveMenuRadioGroup value={String(v.trash_days)} onValueChange={(d) => setTrashDays(v, Number(d))}>
+        <AdaptiveMenuRadioGroup
+          value={String(v.trash_days)}
+          onValueChange={(d) => {
+            close()
+            if (Number(d) !== v.trash_days) setTrashDays(v, Number(d))
+          }}
+        >
           {TRASH_DAYS.map((d) => (
             <AdaptiveMenuRadioItem key={d} value={String(d)}>
               {trashDaysWords(d)}
@@ -237,7 +243,7 @@ export function OrganizationNav({ rows, nav, onNavigate, variant = "sidebar", sh
             </AdaptiveMenuItem>
           )}
           {offers.includes("trash-days") && (
-            <AdaptiveMenuItem icon="trash-can" keepOpen onSelect={() => toPage("trash-days")}>
+            <AdaptiveMenuItem icon="trash-can" onSelect={() => toPage("trash-days")}>
               Keep deleted items for…
             </AdaptiveMenuItem>
           )}
@@ -436,7 +442,12 @@ export function OrganizationNav({ rows, nav, onNavigate, variant = "sidebar", sh
   )
 }
 
-/** A menu shows its rows (`main`) or, after a row that leads on (Keep deleted items for…), that row's choices. */
+/**
+ * A menu shows its rows (`main`). A row that leads on (Keep deleted items
+ * for…) opens its choices as a menu of their own, saved on pick (Lockdown
+ * 20; cross-app §5: five or more choices open a menu, a sheet on a phone),
+ * never as a second page of the first menu.
+ */
 type MenuPage = "main" | "trash-days"
 
 type OrgEntryProps = Pick<NavItemProps, "label" | "icon" | "description" | "mark" | "current" | "expanded" | "onExpandedChange" | "onClick" | "level"> & {
@@ -447,8 +458,8 @@ type OrgEntryProps = Pick<NavItemProps, "label" | "icon" | "description" | "mark
   menuTitle: string
   /** A later page's title (the choices of Keep deleted items for…). */
   pageTitles?: Partial<Record<MenuPage, string>>
-  /** The menu's rows for a page; none when the person's right offers nothing. */
-  menu?: (page: MenuPage, toPage: (page: MenuPage) => void) => ReactNode
+  /** The menu's rows for a page; none when the person's right offers nothing. `close` puts a page's menu away. */
+  menu?: (page: MenuPage, toPage: (page: MenuPage) => void, close: () => void) => ReactNode
 }
 
 /**
@@ -459,7 +470,8 @@ type OrgEntryProps = Pick<NavItemProps, "label" | "icon" | "description" | "mark
  */
 function OrgEntry({ label, icon, description, mark, current, expanded, onExpandedChange, onClick, level = 0, menuLabel, menuOverline, menuTitle, pageTitles, menu }: OrgEntryProps) {
   const [open, setOpen] = useState(false)
-  const [page, setPage] = useState<MenuPage>("main")
+  // The choices a row leads on to, in a menu of their own once the first one closes.
+  const [page, setPage] = useState<MenuPage | null>(null)
   const keys = useRowMenuKeys(() => setOpen(true))
   // In the sidebar's tree the ⋯ is for a pointer only: a tree may own nothing but its items, so the
   // button is out of the tab order and hidden from assistive tech, and the row's Menu key, Shift+F10
@@ -467,11 +479,17 @@ function OrgEntry({ label, icon, description, mark, current, expanded, onExpande
   const inTree = useInNavTree()
   // A desktop menu shows its overline and not its title, so a later page names itself in the overline there.
   const sheet = useAdaptiveSheet()
-  const pageTitle = page === "main" ? menuTitle : (pageTitles?.[page] ?? menuTitle)
+  const pageTitle = page === null ? menuTitle : (pageTitles?.[page] ?? menuTitle)
   const change = (next: boolean) => {
     setOpen(next)
-    if (next) return
-    setPage("main")
+    if (!next && inTree && page === null) requestAnimationFrame(backToRow)
+  }
+  const toPage = (next: MenuPage) => {
+    setOpen(false)
+    setPage(next === "main" ? null : next)
+  }
+  const closePage = () => {
+    setPage(null)
     if (inTree) requestAnimationFrame(backToRow)
   }
   return (
@@ -490,22 +508,35 @@ function OrgEntry({ label, icon, description, mark, current, expanded, onExpande
       onContextMenu={menu ? keys.onContextMenu : undefined}
       action={
         menu ? (
-          <AdaptiveMenu
-            open={open}
-            onOpenChange={change}
-            overline={page === "main" ? menuOverline : sheet ? menuTitle : `${menuTitle} // ${pageTitle}`}
-            title={pageTitle}
-            align="end"
-            trigger={
-              inTree ? (
-                <IconButton label={menuLabel ?? `${label} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" tabIndex={-1} aria-hidden="true" />
-              ) : (
-                <IconButton label={menuLabel ?? `${label} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" />
-              )
-            }
-          >
-            {menu(page, setPage)}
-          </AdaptiveMenu>
+          <span className="relative inline-flex">
+            <AdaptiveMenu
+              open={open}
+              onOpenChange={change}
+              overline={menuOverline}
+              title={menuTitle}
+              align="end"
+              trigger={
+                inTree ? (
+                  <IconButton label={menuLabel ?? `${label} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" tabIndex={-1} aria-hidden="true" />
+                ) : (
+                  <IconButton label={menuLabel ?? `${label} options`} icon="overflow-menu--horizontal" size="icon-sm" variant="ghost" />
+                )
+              }
+            >
+              {menu("main", toPage, () => setOpen(false))}
+            </AdaptiveMenu>
+            {/* The choices' own menu, standing where the ⋯ is; its trigger is never pressed, only stood by. */}
+            <AdaptiveMenu
+              open={page !== null}
+              onOpenChange={(next) => !next && closePage()}
+              overline={sheet ? menuTitle : `${menuTitle} // ${pageTitle}`}
+              title={pageTitle}
+              align="end"
+              trigger={<span aria-hidden="true" tabIndex={-1} className="pointer-events-none absolute inset-0" />}
+            >
+              {page !== null && menu(page, toPage, closePage)}
+            </AdaptiveMenu>
+          </span>
         ) : undefined
       }
     />

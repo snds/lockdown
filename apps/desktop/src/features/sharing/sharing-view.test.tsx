@@ -118,14 +118,19 @@ describe("the Sharing screen", () => {
     expect(within(people).getByText("bob@example.com")).toBeInTheDocument()
     expect(within(people).getByRole("listitem")).toHaveTextContent("Fingerprint not compared")
     expect(screen.getByRole("heading", { level: 1, name: "Sharing" })).toBeInTheDocument()
-    expect(screen.getByText("Sharing // 01 person // 00 shared vaults")).toBeInTheDocument()
+    expect(screen.getByText("Sharing // 001 person // 000 shared vaults")).toBeInTheDocument()
     expect(screen.queryByText("You're offline.")).not.toBeInTheDocument()
   })
 
   it("four tabs, People first; the detail says nothing is open until a person is picked", async () => {
     mount(fakeSharing({ ...empty, overview: () => Promise.resolve(overview()) }))
     const tabs = await screen.findAllByRole("tab")
-    expect(tabs.map((t) => t.textContent)).toEqual(["People01", "Vaults01", "Links00", "Emergency00"])
+    // Each count is in its tab's name, so a screen reader hears what is seen (Lockdown 30); none is hidden.
+    expect(tabs[0]).toHaveAccessibleName("People, 1")
+    expect(tabs[1]).toHaveAccessibleName("Vaults, 1")
+    expect(tabs[2]).toHaveAccessibleName("Links")
+    // Seen in three digits after the label (unicron's mark).
+    expect(tabs[0]).toHaveTextContent(/^People001/)
     expect(screen.getByRole("tab", { name: /^People/ })).toHaveAttribute("aria-selected", "true")
     expect(within(screen.getByRole("region", { name: "People: open" })).getByText("Nothing open.")).toBeInTheDocument()
   })
@@ -591,7 +596,7 @@ describe("the Sharing screen", () => {
     const user = userEvent.setup()
     await openTab(user, "Emergency")
     const list = await screen.findByRole("list", { name: "Your emergency contacts" })
-    expect(within(list).getByText(/wait 7 days \/\/ 01 vault/)).toBeInTheDocument()
+    expect(within(list).getByText(/wait 7 days \/\/ 1 vault/)).toBeInTheDocument()
     await user.click(within(list).getByRole("button", { name: /bob@example.com/ }))
     const detail = await screen.findByRole("region", { name: "Emergency: open" })
     expect(within(within(detail).getByRole("list", { name: "What happened" })).getByText("bob@example.com opened your vaults.")).toBeInTheDocument()

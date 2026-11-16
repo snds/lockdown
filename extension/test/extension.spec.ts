@@ -242,6 +242,9 @@ test("red team: a lookalike page gets a hard stop, in the menu and the popup", a
   const menu = await lockdownFrame(page);
   const stop = menu.getByRole("alert");
   await expect(stop).toHaveText(/^Stop: \S+ isn't www\.paypal\.com\. It looks like a site you have a login for, so Lockdown won't fill here\.$/);
+  // The header's host keeps the registrable domain whole; only the subdomains may give way (Lockdown 26).
+  await expect(menu.locator(".host-end")).toHaveText(/^evil\.net(:\d+)?$/);
+  await expect(menu.locator(".host-start")).toHaveText("paypal.com.");
   // The whole sentence shows (design review R3): the frame takes its larger
   // height for a stop, and the stop's box ends inside it with nothing cut.
   await expect
@@ -394,6 +397,8 @@ test("the popup's quick access forgives a typo and shows a code, never its set-u
   // The code in place is unicron's CodeDisplay (compact), read one character at a time.
   await expect(p.getByRole("group", { name: /^Code for this account: \d \d \d, \d \d \d\./ })).toBeVisible();
   await expect(p.locator("body")).not.toContainText("JBSWY3DP");
+  // Display only (Lockdown 27): the code itself is no copy button; COPY CODE is the row's one copy.
+  await expect(results.getByRole("button", { name: /copy/i })).toHaveCount(1);
   // One action per row (review R16): while the code shows, that same place
   // copies it, through the app.
   await expect(results.getByRole("button", { name: "Show code for Shop code" })).toHaveCount(0);
@@ -467,7 +472,8 @@ test("every popup result has one row anatomy with its action trailing, at 13 px 
   expect(reading.filter((px) => px < 13)).toEqual([]);
   const lines = await results.evaluate((list) =>
     Array.from(list.querySelectorAll('[data-slot="list-row-meta"]')).map((el) => {
-      const css = getComputedStyle(el);
+      // The words sit in unicron 1.1's mono row role (Lockdown 4), inside the row's meta line.
+      const css = getComputedStyle(el.firstElementChild ?? el);
       return { mono: /Geist Mono/.test(css.fontFamily), upper: css.textTransform === "uppercase", px: parseFloat(css.fontSize) };
     }),
   );

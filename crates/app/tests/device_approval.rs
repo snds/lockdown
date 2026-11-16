@@ -201,11 +201,26 @@ fn a_declined_link_writes_nothing_and_a_wrong_qr_stops_the_join() {
     let dir = tempfile::tempdir().unwrap();
     let srv = server();
     let laptop = laptop(dir.path(), &srv);
+    // No link yet: nothing to copy.
+    let none = laptop.link_code_to_use().unwrap_err();
+    assert!(
+        none.message.contains("no device is being added"),
+        "{}",
+        none.message
+    );
     let offered = laptop.link_offer().unwrap();
+    // While it waits, the copy is exactly the code on screen (Lockdown 1).
+    assert_eq!(
+        laptop.link_code_to_use().unwrap().expose(),
+        offered.code.as_bytes()
+    );
     let phone = App::start(paths(dir.path(), "phone"), None, LockPolicy::default());
     phone.join_start_sealed(&srv.url(), &offered.code).unwrap();
     laptop.link_poll().unwrap();
     phone.join_poll().unwrap();
+    // A device asked: the code has done its job and is no longer copied.
+    let used = laptop.link_code_to_use().unwrap_err();
+    assert!(used.message.contains("isn't waiting"), "{}", used.message);
     laptop.link_decline().unwrap();
     let err = phone.join_poll().unwrap_err();
     assert!(err.message.contains("declined"), "{}", err.message);

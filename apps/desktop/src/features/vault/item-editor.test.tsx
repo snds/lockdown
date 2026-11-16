@@ -91,7 +91,7 @@ describe("the generic item editor (D110)", () => {
     const onSaved = mount(fakeClient({ templates, editItem, approvalRoute: () => Promise.resolve({ route: "window", method: "window" }) }), { kind: "card", item: card })
     const user = userEvent.setup()
     expect(await screen.findByRole("heading", { name: "Everyday card" })).toBeInTheDocument()
-    expect(screen.getByText("Edit payment card")).toBeInTheDocument()
+    expect(screen.getByText("Edit card")).toBeInTheDocument()
     expect(screen.getByText("Left empty, it stays as it is.")).toBeInTheDocument()
     // An edit says once that the old version stays.
     expect(screen.getByText("Saves a new version. The old one stays in History.")).toBeInTheDocument()
@@ -164,6 +164,8 @@ describe("the generic item editor (D110)", () => {
     await moreOptions(user)
     await user.type(screen.getByLabelText("Title"), "Forum")
     await user.type(screen.getByLabelText("Username"), "sean")
+    // A new login's password is made on save (Lockdown 29); the person types one instead.
+    await user.click(screen.getByRole("button", { name: "Type one instead" }))
     const password = screen.getByLabelText("Password")
     await user.type(password, "hunter2")
     expect(await screen.findByText("Weak")).toBeInTheDocument()
@@ -229,6 +231,16 @@ describe("the generic item editor (D110)", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }))
     await user.click(within(await screen.findByRole("dialog", { name: "Discard changes?" })).getByRole("button", { name: "Discard" }))
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("a new login closes at once after Type one instead with nothing typed (Lockdown 29)", async () => {
+    const onClose = vi.fn()
+    mount(fakeClient({ templates }), { kind: "login", item: null }, vi.fn(), onClose)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole("button", { name: "Type one instead" }))
+    await user.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole("dialog", { name: "Discard changes?" })).not.toBeInTheDocument()
   })
 
   it("closes at once when nothing was typed", async () => {

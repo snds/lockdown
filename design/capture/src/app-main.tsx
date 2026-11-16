@@ -9,6 +9,7 @@
 // Every state starts from a fresh fixture, so moving between states reloads.
 
 import "./styles.css"
+import "@/app/app-icons"
 
 import { StrictMode, type ReactNode } from "react"
 import { createRoot } from "react-dom/client"

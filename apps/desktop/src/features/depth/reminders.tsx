@@ -83,7 +83,7 @@ export function RemindersPrompt({ onNotice, onChanged, hasAccount = true }: {
       return {
         id: "reminder:kit-test",
         priority: 7,
-        shows: "every",
+        shows: "home",
         title: "Recovery kit // not tested",
         line: lineOf("kit-test", "Test your recovery kit."),
         action: { label: "Test it now", onClick: () => setKit(true) },
@@ -93,7 +93,7 @@ export function RemindersPrompt({ onNotice, onChanged, hasAccount = true }: {
       return {
         id: "reminder:password",
         priority: 8,
-        shows: "every",
+        shows: "home",
         title: `Master password // ${reminders.password.every_days} days`,
         line: lineOf("password", "Type your master password once more."),
         action: { label: "Type it", onClick: () => setTyping(true) },
@@ -102,7 +102,7 @@ export function RemindersPrompt({ onNotice, onChanged, hasAccount = true }: {
     return {
       id: "reminder:drill",
       priority: 9,
-      shows: "every",
+      shows: "home",
       title: "Recovery drill // due",
       line: lineOf("drill", "Time for the recovery drill."),
       action: { label: "Run drill", onClick: () => setKit(true) },

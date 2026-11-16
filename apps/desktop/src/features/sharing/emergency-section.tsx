@@ -25,7 +25,7 @@ import { useNeedsYouSource, type NeedsYouEntry } from "@/app/needs-you"
 import { usePlaces } from "@/app/places"
 import { describeError } from "@/core/client"
 import type { VaultView } from "@/core/types"
-import { count, rowDate } from "@/lib/format"
+import { count, countName, rowDate } from "@/lib/format"
 
 import {
   STATE_WORDS,
@@ -107,7 +107,7 @@ export function EmergencyTab({ grants, contacts, vaults, online, offline = !onli
           Add emergency contact
         </Button>
       </div>
-      {grants.length === 0 && <EmptyState size="sm" overline="Emergency // 00" title="No emergency contacts." body="Name someone whose fingerprint you compared." />}
+      {grants.length === 0 && <EmptyState size="sm" overline={`Emergency // ${count(0)}`} title="No emergency contacts." body="Name someone whose fingerprint you compared." />}
       {mine.length > 0 && (
         <section aria-label="Your emergency contacts" className="flex flex-col">
           <SectionHeader title="Your emergency contacts" count={mine.length} />
@@ -240,7 +240,7 @@ function GrantDetail({ grant, vaults, online, reason, onGrants, onChanged, onNot
           {daysWords(grant.wait_days)}
         </FieldRow>
         <FieldRow size={size} label="Vaults">
-          {names.length === grant.vaults.length && names.length > 0 ? names.join(", ") : `${count(grant.vaults.length)} ${grant.vaults.length === 1 ? "vault" : "vaults"}`}
+          {names.length === grant.vaults.length && names.length > 0 ? names.join(", ") : countName(grant.vaults.length, "vault")}
         </FieldRow>
         {grant.release_at && (
           <FieldRow size={size} label="Opens">

@@ -77,6 +77,13 @@ export interface Client {
    */
   copyCode(itemId: string, fieldId: string, clearAfterSecs?: number, which?: "code" | "next", gate?: GateInput): Promise<Copied>
   /**
+   * Copies the open device link's code (Add a device, Lockdown 1) on the
+   * same clipboard path and timer as a secret. The core hands over the code
+   * it made; nothing the webview holds is written. Refused unless a link is
+   * waiting for a device.
+   */
+  copyLinkCode(clearAfterSecs?: number): Promise<Copied>
+  /**
    * Whether the clipboard still holds the shell's copy number `copy` (a
    * `Copied.copy`). It is compared with the shell's own record only, so
    * the answer is never about text the shell did not write.
@@ -290,6 +297,7 @@ export const tauriClient: Client = {
   reveal: (id, fieldId, gate) => callBytes("reveal", { id, fieldId, gate }),
   copySecret: (id, fieldId, clearAfterSecs, gate) => call("copy_secret", { id, fieldId, clearAfterSecs, gate }),
   copyCode: (itemId, fieldId, clearAfterSecs, which, gate) => call("copy_code", { itemId, fieldId, clearAfterSecs, which, gate }),
+  copyLinkCode: (clearAfterSecs) => call("copy_link_code", { clearAfterSecs }),
   clipboardHolds: (copy) => call("clipboard_holds", { copy }),
   clipboardClear: (copy) => call("clipboard_clear", { copy }),
   addLogin: (input) => call("add_login", input),

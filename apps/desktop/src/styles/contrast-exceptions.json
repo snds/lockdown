@@ -1,0 +1,206 @@
+{
+  "$description": "Contrast exceptions for Lockdown's theme (src/styles/lockdown-theme.css), measured by unicron 1.1's `unicron-contrast` (`pnpm contrast`, CI's desktop job). Each is a pair under its floor with Lockdown's Figma values, with why. The list must match the misses exactly: one that starts passing fails the run, so it cannot go stale. Started from unicron's playground copy (apps/playground/src/app-themes/lockdown.exceptions.json); the misses every theme shares (the critical and needs-you colours) are the core's own.",
+  "app": "lockdown",
+  "exceptions": [
+    {
+      "id": "body-soft",
+      "modes": [
+        "stone"
+      ],
+      "reason": "Figma value, solved to the ground with no room for this surface. Flagged for Sean."
+    },
+    {
+      "id": "label-raised",
+      "modes": [
+        "graphite"
+      ],
+      "reason": "Figma value, solved to the ground with no room for this surface. Flagged for Sean."
+    },
+    {
+      "id": "label-soft",
+      "modes": "all",
+      "reason": "Figma value, solved to the ground with no room for this surface. Flagged for Sean."
+    },
+    {
+      "id": "primary-text-soft",
+      "modes": "all",
+      "reason": "Figma value, solved to the ground with no room for this surface. Flagged for Sean."
+    },
+    {
+      "id": "primary-display-raised",
+      "modes": [
+        "graphite"
+      ],
+      "reason": "Figma value, solved to the ground with no room for this surface. Flagged for Sean."
+    },
+    {
+      "id": "live-raised",
+      "modes": [
+        "graphite"
+      ],
+      "reason": "Figma value, solved to the ground with no room for this surface. Flagged for Sean."
+    },
+    {
+      "id": "live-soft",
+      "modes": [
+        "graphite"
+      ],
+      "reason": "Figma value, solved to the ground with no room for this surface. Flagged for Sean."
+    },
+    {
+      "id": "label-ground-hover",
+      "modes": [
+        "graphite"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "body-ground-pressed",
+      "modes": [
+        "stone"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "label-ground-pressed",
+      "modes": [
+        "graphite"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "label-raised-hover",
+      "modes": [
+        "graphite"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "label-raised-pressed",
+      "modes": [
+        "graphite"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "body-soft-hover",
+      "modes": [
+        "stone"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "secondary-soft-hover",
+      "modes": [
+        "stone"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "label-soft-hover",
+      "modes": "all",
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "body-accent",
+      "modes": [
+        "stone"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "label-accent",
+      "modes": [
+        "graphite"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "controls:btn-ink-press-page",
+      "modes": [
+        "stone"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "controls:float-glyph-hover",
+      "modes": [
+        "stone"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "data-b:live-ground-hover",
+      "modes": [
+        "graphite"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "data-b:live-raised-hover",
+      "modes": [
+        "graphite"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "data-b:primary-display-ground-hover",
+      "modes": [
+        "graphite"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "data-b:live-ground-pressed",
+      "modes": [
+        "graphite"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "data-b:live-raised-pressed",
+      "modes": [
+        "graphite"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "data-b:primary-display-ground-pressed",
+      "modes": [
+        "graphite"
+      ],
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "data-b:secondary-soft-pressed",
+      "modes": "all",
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "data-b:label-soft-pressed",
+      "modes": "all",
+      "reason": "A contract state (a hover or pressed wash of the ink, 4% and 6% since 1.1; the 8% accent fill; a solid at 85%) over a Figma value with no room for it. Flagged for Sean (Unicron 16 and 35)."
+    },
+    {
+      "id": "gap:body-ground/secondary-ground",
+      "modes": [
+        "stone"
+      ],
+      "reason": "Body and secondary text on stone sit under Lc 10 apart. Unicron 21: Figma lightens stone text/secondary by about 0.5 Lc. Flagged for Sean."
+    },
+    {
+      "id": "gap:body-raised/secondary-raised",
+      "modes": [
+        "stone"
+      ],
+      "reason": "Body and secondary text on stone sit under Lc 10 apart. Unicron 21: Figma lightens stone text/secondary by about 0.5 Lc. Flagged for Sean."
+    },
+    {
+      "id": "gap:body-soft/secondary-soft",
+      "modes": [
+        "stone"
+      ],
+      "reason": "Body and secondary text on stone sit under Lc 10 apart. Unicron 21: Figma lightens stone text/secondary by about 0.5 Lc. Flagged for Sean."
+    }
+  ]
+}

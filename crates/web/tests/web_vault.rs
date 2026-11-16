@@ -167,6 +167,7 @@ fn two_tabs_sign_in_with_the_secret_key_and_share_one_vault_with_the_desktop() {
         "web_sign_in",
         json!({ "server": url, "login": LOGIN, "password": "not the password", "secretKey": secret_key }),
     );
+    // Signing in, the login name may be the wrong part: the words say both.
     assert!(wrong.message.contains("didn't match"), "{}", wrong.message);
     let malformed = err(
         &mut second,
@@ -257,7 +258,10 @@ fn lock_wipes_the_device_key_and_unlock_is_a_fresh_sign_in() {
         "web_unlock",
         json!({ "password": "not it at all" }),
     );
-    assert!(wrong.message.contains("didn't match"), "{}", wrong.message);
+    // The lock screen's words, the same in every Lockdown (Lockdown 32): the
+    // login name is this tab's own, so only the password can be wrong.
+    assert_eq!(wrong.message, lockdown_web::host::WRONG_MASTER_PASSWORD);
+    assert_eq!(wrong.message, "That isn't the master password.");
     assert!(!key_file.exists(), "a failed unlock leaves no key behind");
 
     let status = ok(&mut web, "web_unlock", json!({ "password": PASSWORD }));

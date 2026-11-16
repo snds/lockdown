@@ -63,6 +63,9 @@ describe("the Status screen (brief T4, doc 82)", () => {
     expect(within(proofs).getByText("Never leaves this computer.")).toBeInTheDocument()
     expect(within(proofs).getByText("Made here. The server has never seen it.")).toBeInTheDocument()
     expect(within(proofs).getAllByText("Verified")).toHaveLength(4)
+    // Green is Lockdown, not "verified" (Lockdown 6, D701): every proof's badge is neutral, VERIFIED with a check glyph.
+    for (const badge of proofs.querySelectorAll('[data-slot="badge"]')) expect(badge).toHaveAttribute("data-tone", "neutral")
+    for (const word of within(proofs).getAllByText("Verified")) expect(word.closest('[data-slot="badge"]')?.querySelector("svg")).not.toBeNull()
     expect(within(proofs).getByText(/^Checked /)).toBeInTheDocument()
     // The persona is a fact of this device.
     expect(screen.getByRole("region", { name: "This device" })).toHaveTextContent("Personal (Personal)")
@@ -185,6 +188,8 @@ describe("the Status screen (brief T4, doc 82)", () => {
     await waitFor(() => expect(audit).toHaveBeenCalledTimes(1))
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     expect(onNotice).not.toHaveBeenCalled()
+    // The pass says so on its row, quietly (Lockdown 37).
+    expect(screen.getByRole("region", { name: "Locked, even from us" })).toHaveTextContent(/Checked Today \d{2}:\d{2}/)
     await user.click(screen.getByRole("button", { name: /Details/ }))
     expect(screen.getByRole("list", { name: "Last check" })).toHaveTextContent("3 entries of this account verified")
 

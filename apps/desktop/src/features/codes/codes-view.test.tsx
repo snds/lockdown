@@ -39,7 +39,7 @@ describe("the Codes view on unicron's CodeDisplay", () => {
       </ClientProvider>,
     )
     expect(await screen.findByText("No codes yet.")).toBeInTheDocument()
-    expect(screen.getAllByText("Codes // 00").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Codes // 000").length).toBeGreaterThan(0)
     expect(screen.getByText("Add one from the set-up link a site gives you.")).toBeInTheDocument()
     const adds = screen.getAllByRole("button", { name: "Add code" })
     await userEvent.setup().click(adds[adds.length - 1]!)
@@ -48,13 +48,32 @@ describe("the Codes view on unicron's CodeDisplay", () => {
     expect(within(dialog).queryByText(/scan|camera/i)).not.toBeInTheDocument()
   })
 
+  it("on a phone the head keeps SIGN IN TV alone: a code is added from the create menu (Lockdown 2)", async () => {
+    const width = window.innerWidth
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 })
+    window.dispatchEvent(new Event("resize"))
+    try {
+      render(
+        <ClientProvider value={fakeClient({ codes: () => Promise.resolve([code({}), code({ item_id: "i2", title: "Mail", issuer: "Mail" })]) })}>
+          <CodesView rows={[]} onChanged={() => {}} />
+        </ClientProvider>,
+      )
+      expect(await screen.findByRole("button", { name: "Sign in TV" })).toBeInTheDocument()
+      await waitFor(() => expect(document.querySelectorAll('[data-slot="code-display"]').length).toBeGreaterThan(0))
+      expect(screen.queryByRole("button", { name: "Add code" })).toBeNull()
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: width })
+      window.dispatchEvent(new Event("resize"))
+    }
+  })
+
   it("the page head counts the codes through lib/format, with ADD CODE and SIGN IN TV", async () => {
     render(
       <ClientProvider value={fakeClient({ codes: () => Promise.resolve([code({}), code({ item_id: "i2", title: "Mail", issuer: "Mail" })]) })}>
         <CodesView rows={[]} onChanged={() => {}} />
       </ClientProvider>,
     )
-    expect(await screen.findByText("Codes // 02")).toBeInTheDocument()
+    expect(await screen.findByText("Codes // 002")).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "Codes" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Add code" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Sign in TV" })).toBeInTheDocument()
@@ -90,7 +109,7 @@ describe("the Codes view on unicron's CodeDisplay", () => {
     await user.clear(search)
     await user.paste("nothing here")
     expect(await screen.findByText("No code for nothing here.")).toBeInTheDocument()
-    expect(screen.getByText("Search // 00")).toBeInTheDocument()
+    expect(screen.getByText("Search // 000")).toBeInTheDocument()
   })
 
   it("under ten codes there is no search field", async () => {

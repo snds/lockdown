@@ -11,7 +11,7 @@ import type { ShownPage } from "@/features/status/once-page"
 
 import { ClosedFrame, ClosedHeading, lockedLine } from "./closed-frame"
 import { FirstRun } from "./first-run"
-import { useFirstRunClient, type QuickUnlock } from "./first-run-client"
+import { useFirstRunClient } from "./first-run-client"
 import { ForgotPassword } from "./forgot-password"
 import { decodePage, useCapsLock } from "./master-password"
 import { Migration } from "./migration"
@@ -165,12 +165,8 @@ function PasswordUnlock({
   const [error, setError] = useState<string | null>(null)
   const [wrong, setWrong] = useState(0)
   const [forgot, setForgot] = useState(false)
-  const [quick, setQuick] = useState<QuickUnlock | null>(null)
   const [idleSecs, setIdleSecs] = useState<number | null>(null)
   const [caps, onKey] = useCapsLock()
-  useEffect(() => {
-    frc?.quickUnlock().then(setQuick, () => setQuick(null))
-  }, [frc])
   // The idle timer that fired, when the core reports it ("LOCKED // IDLE 05:00"); no running time is made up.
   useEffect(() => {
     if (reason !== "idle") return
@@ -219,10 +215,8 @@ function PasswordUnlock({
       setBusy(false)
     }
   }
-  // Touch ID or Windows Hello: offered only where this build has it. No command opens the vault with it yet
-  // (it waits for the signed app, doc 39 R4), so it is never the primary: it shows disabled, with the core's reason.
-  const quickName = quick?.kind === "windows_hello" ? "Unlock with Windows Hello" : "Unlock with Touch ID"
-  const quickShown = quick !== null && quick.kind !== "none" && quick.available
+  // No Touch ID or Windows Hello button until a command opens the vault with it (it waits for the signed app,
+  // doc 39 R4): a disabled button for an unbuilt feature only adds noise (Lockdown 32, amending D842).
   const sentence = triesLocked ? LOCKED_WORDS : `Your vault is encrypted on this ${isMac() ? "Mac" : "PC"}. Your master password opens it.`
   return (
     <ClosedFrame
@@ -250,18 +244,11 @@ function PasswordUnlock({
           />
           {caps ? <Banner tone="info" size="compact" title="Caps Lock is on." /> : null}
         </div>
-        {(!phone || quickShown) && (
+        {!phone && (
           <div className="flex flex-wrap items-start gap-4">
-            {!phone && (
-              <Button type="submit" loading={busy}>
-                Unlock
-              </Button>
-            )}
-            {quickShown && (
-              <Button type="button" variant="secondary" disabled disabledReason={quick.why ?? "Use your master password on this computer for now."}>
-                {quickName}
-              </Button>
-            )}
+            <Button type="submit" loading={busy}>
+              Unlock
+            </Button>
           </div>
         )}
         {/* A text button hangs its word on the column's edge, as the field's label does. */}

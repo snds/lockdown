@@ -292,9 +292,20 @@ export function ExportDialog({ open, onClose, onNotice }: ExportDialogProps) {
               setFieldError(null)
             }}
           >
-            {choices.map((c) => (
-              <RadioRow key={c.id} value={c.id} label={c.label} description={c.detail} disabled={busy} />
-            ))}
+            {/* The locked kinds first; the unprotected ones fold under More kinds, open when one of them is
+                picked (Lockdown 38): the safe export is the easy one. */}
+            {choices
+              .filter((c) => c.sealed)
+              .map((c) => (
+                <RadioRow key={c.id} value={c.id} label={c.label} description={c.detail} disabled={busy} />
+              ))}
+            <SectionHeader level={3} title="More kinds" summary="Not protected by a password" collapsible defaultOpen={!choice.sealed}>
+              {choices
+                .filter((c) => !c.sealed)
+                .map((c) => (
+                  <RadioRow key={c.id} value={c.id} label={c.label} description={c.detail} disabled={busy} />
+                ))}
+            </SectionHeader>
           </RadioGroup>
         </div>
 

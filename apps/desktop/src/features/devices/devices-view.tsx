@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 
 import { Badge, Banner, Button, ConfirmDialog, FieldRow, FieldRowAction, SectionHeader, Spinner, useViewport } from "@unicron/ui"
 
@@ -6,7 +6,8 @@ import { useGate } from "@/app/gate"
 import { usePlaces } from "@/app/places"
 import { describeError, useClient } from "@/core/client"
 import type { DeviceInfo, Status } from "@/core/types"
-import { fullDate, rowDate } from "@/lib/format"
+import { fullDate } from "@/lib/format"
+import { ClockTime } from "@/components/clock-time"
 import { isCancelled } from "@/features/approvals/requests"
 import { AddDevice } from "@/features/depth/add-device"
 import { SecurityKeysSection } from "@/features/depth/security-keys"
@@ -29,11 +30,15 @@ function ordered(devices: DeviceInfo[]): DeviceInfo[] {
   return [...devices].sort((a, b) => rank(a) - rank(b))
 }
 
-/** A device's value: "Now" for this one, its last use from its session, or the day it was added. */
-function deviceValue(d: DeviceInfo, sessions: SessionView[] | null | undefined): string {
+/**
+ * A device's value: "Now" for this one; "Last used Today 09:02" from its
+ * session, the same words as a session's row (Lockdown 25), with how long
+ * ago as the tip; or the day it was added when it has no session.
+ */
+function deviceValue(d: DeviceInfo, sessions: SessionView[] | null | undefined): ReactNode {
   if (d.this_device) return "Now"
   const last = d.revoked_at ? null : lastUse(d, sessions)
-  return last ? rowDate(last) : `Added ${fullDate(d.enrolled_at)}`
+  return last ? <ClockTime secs={last} prefix="Last used" /> : `Added ${fullDate(d.enrolled_at)}`
 }
 
 /**

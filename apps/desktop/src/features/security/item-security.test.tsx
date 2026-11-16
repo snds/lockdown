@@ -97,7 +97,7 @@ describe("an item's own findings in its notice slot (brief I8)", () => {
     expect(screen.getAllByRole("alert")).toHaveLength(1)
     expect(screen.queryByRole("status")).toBeNull()
     const user = userEvent.setup()
-    await user.click(screen.getByRole("button", { name: "01 more in Health" }))
+    await user.click(screen.getByRole("button", { name: "1 more in Health" }))
     expect(go).toHaveBeenCalledWith("health")
     // WHAT TO DO opens the finding's playbook, where its fix is.
     await user.click(within(alert).getByRole("button", { name: "What to do" }))
@@ -112,7 +112,7 @@ describe("an item's own findings in its notice slot (brief I8)", () => {
       </ClientProvider>,
     )
     expect(await screen.findByRole("alert")).toHaveTextContent("Password found in a breach")
-    expect(screen.getByRole("button", { name: "01 more in Health" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "1 more in Health" })).toBeInTheDocument()
 
     rerender(
       <ClientProvider value={base({ securityReport: () => Promise.resolve(report([finding({ id: "weak:i3:pw", item_id: "i3" })])) })}>
@@ -130,7 +130,7 @@ describe("an item's own findings in its notice slot (brief I8)", () => {
     )
     expect(await screen.findByText("Archived. It still syncs and exports.")).toBeInTheDocument()
     expect(screen.queryByText("Easy-to-guess password")).toBeNull()
-    expect(screen.getByRole("button", { name: "01 more in Health" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "1 more in Health" })).toBeInTheDocument()
 
     // A look-alike outranks the state and an urgent finding, whatever order the report lists them in.
     rerender(
@@ -140,7 +140,7 @@ describe("an item's own findings in its notice slot (brief I8)", () => {
     )
     expect(await screen.findByRole("alert")).toHaveTextContent("Website looks like another site")
     expect(screen.queryByText("Archived. It still syncs and exports.")).toBeNull()
-    expect(screen.getByRole("button", { name: "02 more in Health" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "2 more in Health" })).toBeInTheDocument()
   })
 
   it("shows nothing for an item with no findings, or when the report doesn't load", async () => {

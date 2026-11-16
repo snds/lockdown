@@ -104,7 +104,8 @@ export function initialRows(template: TemplateView, item: ItemDetail | null): Ed
         original: secret ? "" : (f?.value ?? ""),
         text: secret ? "" : (f?.value ?? ""),
         flag: f?.value === "true",
-        secret: f ? "keep" : "type",
+        // A new login's password is made by the core on save, masked, unless the person types one (Lockdown 29).
+        secret: f ? "keep" : !item && template.kind === "login" && !template.variant && t.control === "secret" && t.generator ? "generate" : "type",
         // A field of the person's own template (D232) names its kind when it is added to an item.
         customKind: t.field_id.startsWith("tpl.") ? kindOfControl(t.control) : null,
         ...(t.control === "url" ? { matchRule: f?.match_rule ?? "exact_host", originalRule: f?.match_rule ?? "exact_host" } : {}),

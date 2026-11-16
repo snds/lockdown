@@ -144,7 +144,7 @@ describe("the one current row (brief 3.2)", () => {
   it("puts each place under one of the three sections, or none", () => {
     expect(SECTIONS_BAR.map((s) => [s.id, s.label, s.icon])).toEqual([
       ["items", "Items", "password"],
-      ["codes", "Codes", "time"],
+      ["codes", "Codes", "timer"],
       ["health", "Health", "checkmark--outline"],
     ])
     expect(sectionOf(at("all"))).toBe("items")

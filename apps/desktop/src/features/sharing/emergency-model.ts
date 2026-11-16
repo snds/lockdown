@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react"
 
-import { count, fullDate } from "@/lib/format"
+import { countName, fullDate } from "@/lib/format"
 
 import type { EmergencyState, EmergencyView } from "./sharing-client"
 
@@ -24,11 +24,11 @@ export const STATE_WORDS: Record<EmergencyState, string> = {
 /** `7 days`, `1 day`. */
 export const daysWords = (n: number) => `${n} ${n === 1 ? "day" : "days"}`
 
-/** A row's mono line: `wait 7 days // 02 vaults`. */
+/** A row's mono line: `wait 7 days // 2 vaults` (a count with its noun is words: a plain number). */
 export function grantLine(g: EmergencyView): string {
   // Someone who named you: the vaults are theirs to pick, and none show until they are sealed to you.
   if (g.vaults.length === 0) return `wait ${daysWords(g.wait_days)}`
-  return `wait ${daysWords(g.wait_days)} // ${count(g.vaults.length)} ${g.vaults.length === 1 ? "vault" : "vaults"}`
+  return `wait ${daysWords(g.wait_days)} // ${countName(g.vaults.length, "vault")}`
 }
 
 /** `NOV 20`, as a needs-you title writes a date ahead (brief X3 row 4). */

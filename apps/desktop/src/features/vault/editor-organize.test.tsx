@@ -68,7 +68,7 @@ describe("the editor files, tags and keeps several websites", () => {
     await user.type(screen.getAllByLabelText("Website")[1]!, "b.example")
     await user.selectOptions(screen.getAllByLabelText("Where website is offered")[0]!, "base_domain")
     await user.click(screen.getByRole("button", { name: "Save login" }))
-    await waitFor(() => expect(onSaved).toHaveBeenCalledWith("l1", false))
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith("l1", true)) // a new login's password is made on save (Lockdown 29)
     const [vault, input] = addItemIn.mock.calls[0]!
     expect(vault).toBe("v1")
     expect(input.fields).toEqual(
@@ -88,7 +88,7 @@ describe("the editor files, tags and keeps several websites", () => {
     await user.selectOptions(screen.getByLabelText("Folder"), "f-clients")
     await user.type(screen.getByLabelText("Tags"), "shop{Enter}")
     await user.click(screen.getByRole("button", { name: "Save login" }))
-    await waitFor(() => expect(onSaved).toHaveBeenCalledWith("l1", false))
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith("l1", true)) // a new login's password is made on save (Lockdown 29)
     const input = addItemIn.mock.calls[0]![1]
     expect(input.fields).toEqual(
       expect.arrayContaining([

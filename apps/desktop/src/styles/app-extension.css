@@ -1,9 +1,11 @@
 /*
  * Lockdown's app-extension layer, over the shared core (@unicron/tokens 1.0).
  *
- * The app's theme is not set here. It is set once, in each page's HTML:
- * `<html data-theme="lockdown">`, and the `dark` class picks the ground
- * (graphite; no class is stone). Every core role follows both.
+ * The app's theme, its 28 slots, is declared in lockdown-theme.css and
+ * imported first (Unicron 1.1 ships no app's theme). It is switched on once,
+ * in each page's HTML: `<html data-theme="lockdown">`, and the `dark` class
+ * picks the ground (graphite; no class is stone). Every core role follows
+ * both.
  *
  * Tier 2 app roles only, and aliases only: each role below points at a
  * core role (--*), never at a raw value and never at the old `--g-neutral-*`
@@ -27,6 +29,8 @@
  * so that no class silently stops drawing, each marked "legacy, no new use"
  * below; the screens that still name them drop them as they are rebuilt.
  */
+
+@import "./lockdown-theme.css";
 
 /* ── Tier 2 · App roles (the same on both grounds) ──────────────────────── */
 :root,

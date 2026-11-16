@@ -16,7 +16,6 @@ import {
   useAppFrame,
 } from "@unicron/ui"
 import { CodeDisplay, CodeDisplayList, CodeDisplayMenuItem } from "@unicron/ui/security/code-display"
-import { LargeTypeView } from "@unicron/ui/security/large-type-view"
 import { SecretField } from "@unicron/ui/security/secret-field"
 
 import { useGate } from "@/app/gate"
@@ -28,9 +27,8 @@ import { describeError, useClient } from "@/core/client"
 import type { CodeView, ItemSummary } from "@/core/types"
 import { count } from "@/lib/format"
 import { ClockSkew } from "@/features/bridges/clock"
-import { useCaptureProtect } from "@/features/hygiene/hygiene-client"
 import { ScanDialog } from "@/features/scan/scan-dialog"
-import { LARGE_TYPE_LIFETIME_S } from "@/features/vault/large-type"
+import { CodeLargeType } from "@/features/vault/large-type"
 
 import { codeKey, useCodes } from "./use-codes"
 import { useCodeHost } from "./use-code-host"
@@ -56,7 +54,9 @@ const LOADING = 3
  * Codes as a page (brief C1; Mobile / 08, Desktop / 06): every code item
  * and every code inside a Login, on unicron's CodeDisplay, rows on a phone
  * and tiles from the medium width up. The page head says how many, with
- * ADD CODE and SIGN IN TV; the clock notice sits under it. Nothing here
+ * ADD CODE and SIGN IN TV (a phone's head has SIGN IN TV only: it adds a
+ * code from the create button's "One-time code", Lockdown 2); the clock
+ * notice sits under it. Nothing here
  * holds a seed: the core hands over values and timing only (D102).
  */
 export function CodesView({ rows, onChanged, onOpenItem }: CodesViewProps) {
@@ -80,11 +80,10 @@ export function CodesView({ rows, onChanged, onOpenItem }: CodesViewProps) {
   const layout = frame.phone ? "row" : "tile"
   const rail = frame.layout === "rail"
   const add = () => setAdding(true)
+  // A phone adds a code from the create button's "One-time code" (Lockdown 2, C1 draws only the create
+  // button): its head keeps SIGN IN TV alone.
   const actions = frame.phone ? (
-    <>
-      <IconButton label="Sign in TV" icon="screen" variant="ghost" onClick={() => setScanning(true)} />
-      <IconButton label="Add code" icon="add" variant="ghost" onClick={add} />
-    </>
+    <IconButton label="Sign in TV" icon="screen" variant="ghost" onClick={() => setScanning(true)} />
   ) : (
     <>
       {searchable && (
@@ -114,7 +113,7 @@ export function CodesView({ rows, onChanged, onOpenItem }: CodesViewProps) {
       {rail && <div className="flex gap-2">{actions}</div>}
       <ClockSkew />
       {error && (
-        <EmptyState tone="critical" overline="Codes // 00" title="Codes didn't load." body={error} actionLabel="Try again" onAction={reload} />
+        <EmptyState tone="critical" overline={`Codes // ${count(0)}`} title="Codes didn't load." body={error} actionLabel="Try again" onAction={reload} />
       )}
       {!codes && !error && (
         <div className={frame.phone ? "-mx-4" : undefined}>
@@ -126,9 +125,9 @@ export function CodesView({ rows, onChanged, onOpenItem }: CodesViewProps) {
         </div>
       )}
       {codes && total === 0 && (
-        <EmptyState overline="Codes // 00" title="No codes yet." body="Add one from the set-up link a site gives you." actionLabel="Add code" onAction={add} />
+        <EmptyState overline={`Codes // ${count(0)}`} title="No codes yet." body="Add one from the set-up link a site gives you." actionLabel="Add code" onAction={add} />
       )}
-      {codes && total > 0 && shown.length === 0 && <EmptyState overline="Search // 00" title={`No code for ${q}.`} />}
+      {codes && total > 0 && shown.length === 0 && <EmptyState overline={`Search // ${count(0)}`} title={`No code for ${q}.`} />}
       {/* unicron's CodeDisplayList puts its live region beside the codes, so the list is
           Lockdown's own, inside it, with one item per code (review R7). */}
       {shown.length > 0 && (
@@ -171,11 +170,7 @@ function CodeOnPage({ code, now, expiresAt, layout, onOpenItem }: { code: CodeVi
   const host = useCodeHost(code, now, expiresAt)
   const { asking } = useGate()
   const [big, setBig] = useState(false)
-  useCaptureProtect(big)
   const named = [code.issuer, code.account].filter(Boolean).join(" · ") || code.title
-  const shown = host.shown
-  // The code is on the screen already: large type draws the same characters, bigger.
-  const getSecret = useMemo(() => () => Promise.resolve(new TextEncoder().encode(shown)), [shown])
   return (
     <>
       <CodeDisplay
@@ -210,7 +205,8 @@ function CodeOnPage({ code, now, expiresAt, layout, onOpenItem }: { code: CodeVi
           </>
         }
       />
-      <LargeTypeView open={big} onOpenChange={setBig} getSecret={getSecret} title={`Code · ${named}`} groupSize={code.digits === 8 ? 4 : 3} lifetime={LARGE_TYPE_LIFETIME_S} />
+      {/* The code is on the screen already: large type draws it bigger and follows it as it turns over (Lockdown 28). */}
+      <CodeLargeType open={big} onOpenChange={setBig} current={host.shown} named={named} now={now} expiresAt={expiresAt} groupSize={code.digits === 8 ? 4 : 3} />
     </>
   )
 }
@@ -219,9 +215,12 @@ function CodeOnPage({ code, now, expiresAt, layout, onOpenItem }: { code: CodeVi
  * Add a code (brief C1): a Form. The set-up link in a SecretField (it holds
  * the code's secret, so it stays masked), where to keep it, and a title for
  * its own item. A link the core refuses shows the core's sentence. Adding by
- * camera is not built (review R5, W11): the words say "paste".
+ * camera is not built (review R5, W11): the words say "paste". Opened from
+ * ADD CODE on a desktop's Codes head and from the create menu's "One-time
+ * code" at every width (Lockdown 2), so that row lands on the paste form,
+ * never the empty editor.
  */
-function AddCodeDialog({ open, logins, onClose, onAdded }: { open: boolean; logins: ItemSummary[]; onClose: () => void; onAdded: () => void }) {
+export function AddCodeDialog({ open, logins, onClose, onAdded }: { open: boolean; logins: ItemSummary[]; onClose: () => void; onAdded: () => void }) {
   const client = useClient()
   const phone = useAppFrame().phone
   const [busy, setBusy] = useState(false)

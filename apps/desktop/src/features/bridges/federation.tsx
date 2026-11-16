@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Banner, Button, EmptyState, FieldRow, FieldRowAction, ListRow, NativeSelect, NativeSelectOption, SectionHeader, Skeleton, useAppFrame } from "@unicron/ui"
 
 import { describeError } from "@/core/client"
-import { count } from "@/lib/format"
+import { count, countName } from "@/lib/format"
 
 import { useBridges, type BridgesClient, type FederationMap, type MapLogin, type PendingView, type ProviderView } from "./bridges-client"
 
@@ -79,7 +79,7 @@ export function AccountsList({ map, failed, busy, chosen, onChoose, onRecord, on
   if (map.providers.length === 0 && map.pending.length === 0)
     return (
       <EmptyState
-        overline="Accounts // 00"
+        overline={`Accounts // ${count(0)}`}
         title="No accounts yet."
         body="When you sign in to a site with Google, Apple or Microsoft, the browser extension lists it here. You can also set Signed in with on a login."
       />
@@ -108,7 +108,7 @@ export function AccountsList({ map, failed, busy, chosen, onChoose, onRecord, on
                 metaStyle="plain"
                 selected={chosen === p.id}
                 title={p.name}
-                meta={`${count(p.sites.length)} ${p.sites.length === 1 ? "site" : "sites"}`}
+                meta={countName(p.sites.length, "site")}
                 status={warningWord(p)}
                 onClick={() => onChoose(p.id)}
               />

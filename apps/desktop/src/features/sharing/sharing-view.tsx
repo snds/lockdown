@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { Banner, Button, EmptyState, Skeleton, Tabs, TabsList, TabsTrigger, useAppFrame } from "@unicron/ui"
 
@@ -99,6 +99,12 @@ export function SharingView({ section, onSection, vault, rows, onOpenItem, onCha
   // Read again after every sync, which a pull and "Check again" run (brief S1: a pull reads the overview again).
   const synced = rows.length === 0 ? null : rows
   useEffect(load, [load, synced])
+  // On a phone the four tabs with their counts are wider than the screen: the row scrolls, and the
+  // chosen tab is brought fully into view, so a tab cut at the edge is never the one you are on.
+  const tabRow = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    tabRow.current?.querySelector<HTMLElement>('[data-slot="tabs-trigger"][aria-selected="true"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" })
+  }, [tab])
 
   const setGrants = useCallback((emergency: SharingOverview["emergency"]) => setOverview((o) => (o ? { ...o, emergency } : o)), [])
 
@@ -151,18 +157,14 @@ export function SharingView({ section, onSection, vault, rows, onOpenItem, onCha
       {!pushed && <ScreenHead overline={overview ? overlineOf(overview, sharedVaults) : "Sharing"} title="Sharing" />}
       {pushed && !frame.phone && <NeedsYouSlot />}
       {!pushed && (
-        <div className="no-scrollbar -mt-2 overflow-x-auto">
+        <div ref={tabRow} className="no-scrollbar -mt-2 overflow-x-auto">
           <Tabs value={tab} onValueChange={(v) => pick(v as SharingSection)}>
             <TabsList variant="line" aria-label="Sharing">
               {SECTIONS.map((s) => (
-                <TabsTrigger key={s} value={s}>
+                // The count is in the tab's name too ("Requests, 2"), so a screen reader hears what is
+                // seen (Lockdown 30, WCAG 1.3.1): unicron 1.1's mark, drawn after the label.
+                <TabsTrigger key={s} value={s} mark={counts[s] ?? undefined}>
                   {SECTION_LABELS[s]}
-                  {/* The count is seen, not part of the tab's name: "People", as the places name it. */}
-                  {counts[s] !== null && (
-                    <span aria-hidden="true" className="text-text-secondary">
-                      {count(counts[s])}
-                    </span>
-                  )}
                 </TabsTrigger>
               ))}
             </TabsList>

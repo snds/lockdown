@@ -76,7 +76,7 @@ describe("Accounts you sign in with", () => {
     const onOpenItem = vi.fn()
     mount(<Accounts onOpenItem={onOpenItem} />, bridges)
     const accounts = await screen.findByRole("list", { name: "Accounts" })
-    expect(within(accounts).getByText("01 site")).toBeInTheDocument()
+    expect(within(accounts).getByText("1 site")).toBeInTheDocument()
     expect(within(accounts).getByText("No second step")).toBeInTheDocument()
     const user = userEvent.setup()
     await user.click(within(accounts).getByRole("button", { name: "Google" }))

@@ -3,7 +3,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { Badge, Banner, Button, ConfirmDialog, FieldRow, FieldRowAction, SectionHeader, Spinner, useViewport } from "@unicron/ui"
 
 import { describeError } from "@/core/client"
-import { fullDate, rowDate, shortId } from "@/lib/format"
+import { fullDate, shortId } from "@/lib/format"
+import { ClockTime } from "@/components/clock-time"
 
 import { clientWords } from "./client-words"
 import { useLiveClient, type SessionView } from "./live-client"
@@ -149,7 +150,7 @@ function Sessions({ list, onNotice, end: live }: { list: SessionList; onNotice: 
                 )
               }
             >
-              {`last used ${rowDate(s.last_seen)}`}
+              <ClockTime secs={s.last_seen} prefix="Last used" />
             </FieldRow>
           </div>
         ))}

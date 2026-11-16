@@ -24,3 +24,13 @@ test("the frame links unicron's roles before its own sheet, and the build ships 
   expect(sheet).toContain("@media (prefers-color-scheme: dark)");
   expect(sheet).not.toContain(".dark");
 });
+
+test("the popup's copy of Lockdown's theme is the desktop's, value for value", async () => {
+  // Unicron 1.1 ships no app's theme: Lockdown declares its 28 slots itself.
+  // The extension builds alone, so it keeps a copy; the two may never drift.
+  const desktop = await readFile(new URL("../../apps/desktop/src/styles/lockdown-theme.css", import.meta.url), "utf8");
+  const popup = await readFile(new URL("../src/popup/lockdown-theme.css", import.meta.url), "utf8");
+  expect(popup).toBe(desktop);
+  const slots = popup.match(/--g-theme-(graphite|stone)-[a-z-]+:\s*#[0-9A-F]{6};/g) ?? [];
+  expect(slots).toHaveLength(28);
+});

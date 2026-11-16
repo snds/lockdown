@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 
 import {
   AdaptiveMenu,
@@ -23,7 +23,6 @@ import {
 } from "@unicron/ui"
 import { CodeDisplay } from "@unicron/ui/security/code-display"
 import { CrownJewelMark } from "@unicron/ui/security/crown-jewel"
-import { LargeTypeView } from "@unicron/ui/security/large-type-view"
 import { RiskTierBadge } from "@unicron/ui/security/risk-tier-badge"
 import { SecretFieldRemoteButton, useSecretFieldRemote } from "@unicron/ui/security/secret-field"
 
@@ -32,7 +31,7 @@ import { useGate } from "@/app/gate"
 import { WaitingOnYou, useNeedsYouSource } from "@/app/needs-you"
 import { deletedWords, notify } from "@/app/notify"
 import { useTemplates } from "@/app/templates"
-import { useDetailTopBar } from "@/components/master-detail"
+import { WaitingInDetail, useDetailTopBar } from "@/components/master-detail"
 import { describeError, useClient } from "@/core/client"
 import type { CodeView, FieldView, ItemDetail, ItemSummary, TemplateView } from "@/core/types"
 import { codeKey, useCodes } from "@/features/codes/use-codes"
@@ -42,7 +41,6 @@ import { FillFixPanel } from "@/features/bridges/fill-fix"
 import { TIER_WORDS } from "@/features/depth/depth-client"
 import { EmergencyAccess, ItemProtection, useExposure } from "@/features/depth/item-protection"
 import { ExportOptIn } from "@/features/export/export-opt-in"
-import { useCaptureProtect } from "@/features/hygiene/hygiene-client"
 import { FilesPanel } from "@/features/organization/files-panel"
 import { HistoryView } from "@/features/organization/history-view"
 import { MarkdownView } from "@/features/organization/markdown-view"
@@ -60,7 +58,7 @@ import { ItemCodeDisplay } from "./code-display"
 import { ItemCrownJewel } from "./crown-jewel"
 import { CODE_BLOCK_FIELDS, DEFAULT_MATCH_RULE, bottomCopyOf, bottomRowOf, cardFaceOf, filled, hostOf, overlineOf, sectionsOf } from "./detail-model"
 import { ItemField, type RowSize, type SecretFormat } from "./item-field"
-import { LARGE_TYPE_LIFETIME_S, ShowLargeType } from "./large-type"
+import { CodeLargeType } from "./large-type"
 import { LinkedField } from "./linked-field"
 import { conflictPair } from "./list-model"
 import { useQuickCopy } from "./quick-copy"
@@ -140,6 +138,7 @@ export function DetailPane(props: DetailPaneProps) {
   if (error) {
     return (
       <AppFrameInset>
+        <WaitingInDetail />
         <div role="alert">
           <EmptyState
             tone="critical"
@@ -163,6 +162,7 @@ export function DetailPane(props: DetailPaneProps) {
   if (!item) {
     return (
       <AppFrameInset>
+        <WaitingInDetail />
         <div aria-busy="true" aria-label="Opening the item" role="status" className="flex flex-col pt-2">
           {[0, 1, 2, 3, 4].map((n) => (
             <Skeleton key={n} variant="row" />
@@ -488,8 +488,10 @@ function ItemOpen({ id, rows, item, setItem, onEdit, onTrashed, onChanged, onNot
         </header>
 
         {/* One notice (brief I8): what changes what the person should do, before the fields. At most one Banner; a
-            conflict is the needs-you block at the top of the detail (row 5), or a WAITING ON YOU row when more waits. */}
+            conflict is the needs-you block under the item's title (row 5), or a WAITING ON YOU row when more waits.
+            Whatever waits on the person shows here, under the title, as Figma draws it (Lockdown 8). */}
         <div className="flex flex-col gap-4 empty:hidden">
+          <WaitingInDetail />
           {trashed && (
             <Banner
               tone="info"
@@ -831,10 +833,7 @@ function drawUse(item: ItemDetail, template: TemplateView | null, field: FieldRe
 function CodeOnItem({ view, now, expiresAt, itemTitle, showAction }: { view: CodeView; now: number; expiresAt: number | null; itemTitle: string; showAction: boolean }) {
   const [big, setBig] = useState(false)
   const { asking } = useGate()
-  useCaptureProtect(big)
   const named = [view.issuer, view.account].filter(Boolean).join(" · ") || itemTitle
-  const current = view.current
-  const getSecret = useCallback(() => Promise.resolve(new TextEncoder().encode(current)), [current])
   return (
     <div className="flex flex-col">
       <ItemCodeDisplay
@@ -849,10 +848,14 @@ function CodeOnItem({ view, now, expiresAt, itemTitle, showAction }: { view: Cod
           </AdaptiveMenuItem>
         }
       />
-      <LargeTypeView open={big} onOpenChange={setBig} getSecret={getSecret} title={`Code · ${named}`} groupSize={3} lifetime={LARGE_TYPE_LIFETIME_S} />
+      {/* Large type follows the live code with its countdown (Lockdown 28). */}
+      <CodeLargeType open={big} onOpenChange={setBig} current={view.current} named={named} now={now} expiresAt={expiresAt} />
       {showAction && (
         <div>
-          <ShowLargeType title={`Code · ${named}`} getSecret={getSecret} />
+          <Button variant="ghost" size="sm" disabled={asking} onClick={() => setBig(true)}>
+            <Icon name="text--scale" data-icon="inline-start" />
+            Show large type
+          </Button>
         </div>
       )}
     </div>

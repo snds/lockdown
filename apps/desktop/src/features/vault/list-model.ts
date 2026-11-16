@@ -70,7 +70,7 @@ const KIND_ORDER = Object.keys(KIND_LABELS)
 export const KIND_ICONS: Record<string, IconName> = {
   login: "password",
   passkey: "locked",
-  code: "time",
+  code: "timer",
   "wi-fi": "wifi",
   "ssh-key": "terminal",
   "api-credential": "api",

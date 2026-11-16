@@ -2,13 +2,19 @@ import { act, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { fakeDepth } from "@/test/fake-depth"
+import { fakeClient } from "@/test/fake-client"
+import { ClientProvider, type Client } from "@/core/client"
 import { ARMED_MS } from "@/features/approvals/requests"
 
 import { ADD_DEVICE_SENTENCE, AddDevice } from "./add-device"
 import { DepthClientProvider, type DepthClient, type LinkView } from "./depth-client"
 
-function mount(depth: DepthClient, ui: ReactNode) {
-  return render(<DepthClientProvider value={depth}>{ui}</DepthClientProvider>)
+function mount(depth: DepthClient, ui: ReactNode, client: Client = fakeClient({})) {
+  return render(
+    <ClientProvider value={client}>
+      <DepthClientProvider value={depth}>{ui}</DepthClientProvider>
+    </ClientProvider>,
+  )
 }
 
 const SLOW = { timeout: 4000 }
@@ -95,9 +101,10 @@ describe("adding a device (brief T2, A1)", () => {
     await waitFor(() => expect(linkDecline).toHaveBeenCalled())
   })
 
-  it("closing the offer declines the link, and offers no copy past the shell's clipboard", async () => {
+  it("copies the code through the core's clipboard path only, and closing the offer declines the link", async () => {
     const linkDecline = vi.fn(() => Promise.resolve())
     const writeText = vi.fn(() => Promise.resolve())
+    const copyLinkCode = vi.fn(() => Promise.resolve({ clears_in_secs: 30, copy: 7 }))
     mount(
       fakeDepth({
         linkOffer: () => Promise.resolve(waiting()),
@@ -105,6 +112,7 @@ describe("adding a device (brief T2, A1)", () => {
         linkDecline,
       }),
       <AddDevice onNotice={() => {}} onChanged={() => {}} />,
+      fakeClient({ copyLinkCode }),
     )
     const user = userEvent.setup()
     // After user-event's setup, which puts its own clipboard in place.
@@ -114,12 +122,29 @@ describe("adding a device (brief T2, A1)", () => {
     })
     await user.click(screen.getByRole("button", { name: "Add device" }))
     const offer = await screen.findByRole("dialog", { name: "Add a device" })
-    // The code is shown to type on the other device; nothing here writes it to the system clipboard (D316).
     expect(within(offer).getByLabelText("Device code")).toHaveTextContent("7KQ2M-9XH4P")
-    expect(within(offer).queryByRole("button", { name: /copy/i })).toBeNull()
+    // COPY (Lockdown 1): the core copies its own code with the clear timer and the history marks (D316);
+    // the webview sends no text, and never writes the system clipboard itself.
+    await user.click(within(offer).getByRole("button", { name: "Copy" }))
+    await waitFor(() => expect(copyLinkCode).toHaveBeenCalledWith(30))
+    expect(copyLinkCode.mock.calls[0]).toHaveLength(1)
+    expect(await within(offer).findByText("Copied. The clipboard clears in 30 seconds.")).toBeInTheDocument()
     expect(writeText).not.toHaveBeenCalled()
     await user.click(within(offer).getByRole("button", { name: "Cancel" }))
     await waitFor(() => expect(linkDecline).toHaveBeenCalled())
+  })
+
+  it("says why a copy was refused", async () => {
+    mount(
+      fakeDepth({ linkOffer: () => Promise.resolve(waiting()), linkPoll: () => Promise.resolve(waiting()) }),
+      <AddDevice onNotice={() => {}} onChanged={() => {}} />,
+      fakeClient({ copyLinkCode: () => Promise.reject({ code: "refused", message: "no device is being added" }) }),
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Add device" }))
+    const offer = await screen.findByRole("dialog", { name: "Add a device" })
+    await user.click(within(offer).getByRole("button", { name: "Copy" }))
+    expect(await within(offer).findByText("no device is being added")).toBeInTheDocument()
   })
 
   it("shows the core's refusal in words", async () => {

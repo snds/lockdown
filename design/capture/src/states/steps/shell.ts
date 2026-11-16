@@ -39,7 +39,7 @@ function shell(): Shell {
 }
 
 /** A step for each shell, picked when it runs. */
-const by = (paths: Record<Shell, Step[]>): Step => ({ run: () => runSteps(paths[shell()]) })
+export const by = (paths: Record<Shell, Step[]>): Step => ({ run: () => runSteps(paths[shell()]) })
 
 /** Steps for the whole desktop shell only (the sidebar beside list and detail); nothing at a rail or on a phone. */
 export const onDesktop = (steps: Step[]): Step => by({ sidebar: steps, rail: [], phone: [] })
@@ -171,7 +171,8 @@ const healthList = (label: string): Step[] => [section("Health"), { click: start
 /** A Sharing tab. */
 const sharing = (tab?: string): Step[] => [
   by({ sidebar: [{ click: starts("Sharing"), within: SIDEBAR }], rail: [...switcher, { click: starts("Sharing"), within: LAYER }], phone: [...switcher, { click: starts("Sharing"), within: LAYER }] }),
-  ...(tab ? [{ click: tab, role: "tab" } as Step] : []),
+  // A tab's name carries its count ("Links, 2", Lockdown 30): matched by its start.
+  ...(tab ? [{ click: starts(tab), role: "tab" } as Step] : []),
 ]
 
 /**

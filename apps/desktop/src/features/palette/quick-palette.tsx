@@ -24,7 +24,6 @@ import { CrownJewelMark } from "@unicron/ui/security/crown-jewel"
 
 import { useGate } from "@/app/gate"
 import type { Surface } from "@/app/places"
-import { useSettings } from "@/app/settings"
 import { useTemplates } from "@/app/templates"
 import { decodeAndWipe } from "@/core/secret-bytes"
 import { describeError, isAppError, useClient } from "@/core/client"
@@ -133,7 +132,6 @@ function PaletteBody({ onOpenChange, rows, onOpen, onNotice, inline = false, onG
   const client = useClient()
   const quick = useQuickClient()
   const gate = useGate()
-  const { settings } = useSettings()
   const { forKind } = useTemplates()
   const { vaults } = useVaults()
   const quickCopy = useQuickCopy(onNotice)
@@ -148,7 +146,6 @@ function PaletteBody({ onOpenChange, rows, onOpen, onNotice, inline = false, onG
   const [shown, setShown] = useState<{ id: string; field: string; title: string; code: string } | null>(null)
   const latest = useRef(0)
   const input = useRef<HTMLInputElement>(null)
-  const lastCopy = useRef<number | null>(null)
   useCaptureProtect(shown !== null)
 
   // Where GO TO goes: the app's own `go`. The quick-access window has no way into the main
@@ -248,18 +245,6 @@ function PaletteBody({ onOpenChange, rows, onOpen, onNotice, inline = false, onG
       onNotice(isAppError(e) && e.message.startsWith("Cancelled") ? "Nothing was shown" : describeError(e))
     }
   }
-  // The shown code's own copy: by id, on the Rust clipboard path, with the clear at the countdown's end (as ItemCodeDisplay).
-  const copyShown = async () => {
-    if (!shown) return
-    const { copy: n } = await gate.run((g) => client.copyCode(shown.id, shown.field, settings.clipboard_clear_secs, "code", g))
-    lastCopy.current = n
-    return { hash: String(n) }
-  }
-  const clearShown = (ref?: { hash?: string }) => {
-    const n = ref?.hash !== undefined ? Number(ref.hash) : lastCopy.current
-    if (n === null || !Number.isSafeInteger(n)) return Promise.resolve(false)
-    return client.clipboardClear(n).catch(() => false)
-  }
   const fill = async (row: QuickHit) => {
     try {
       const started = await quick.quickFill(row.id)
@@ -324,6 +309,23 @@ function PaletteBody({ onOpenChange, rows, onOpen, onNotice, inline = false, onG
                   }
                   meta={line ? <Highlight text={line} query={q} /> : undefined}
                   badge={r.exact ? undefined : <Badge>Close match</Badge>}
+                  detail={
+                    shown?.id === r.id ? (
+                      // The code valid now, for thirty seconds (brief X4), inside its own row so it can't be read
+                      // as another item's (Lockdown 19, as the popup's D957). Display only: the row's COPY CODE
+                      // (⌘↵) is its one copy, on the core's clipboard path with the clear timer.
+                      <span aria-live="polite">
+                        <CodeDisplay
+                          layout="compact"
+                          copy={false}
+                          code={shown.code}
+                          digits={shown.code.length === 5 || shown.code.length === 6 || shown.code.length === 8 ? shown.code.length : undefined}
+                          variant={shown.code.length === 5 ? "steam" : "totp"}
+                          issuer={shown.title}
+                        />
+                      </span>
+                    ) : undefined
+                  }
                   action={r.copy ? <CommandItemAction label={`Copy ${r.copy.label}`} icon="copy" onAction={() => copy(r)} /> : undefined}
                 />
               )
@@ -357,21 +359,6 @@ function PaletteBody({ onOpenChange, rows, onOpen, onNotice, inline = false, onG
           </CommandGroup>
         )}
       </CommandList>
-      {shown && (
-        // The code valid now, for thirty seconds (brief X4): outside the list, so its copy is a real button.
-        <div aria-live="polite">
-          <CodeDisplay
-            layout="compact"
-            code={shown.code}
-            digits={shown.code.length === 5 || shown.code.length === 6 || shown.code.length === 8 ? shown.code.length : undefined}
-            variant={shown.code.length === 5 ? "steam" : "totp"}
-            issuer={shown.title}
-            clipboardTimer={settings.clipboard_clear_secs}
-            onCopy={copyShown}
-            onClipboardClear={clearShown}
-          />
-        </div>
-      )}
       {(activeRow || activePlace || active === SEARCH_ROW) && (
         // The keys for the highlighted row, in words (brief X4); the two that are not on the row are also buttons.
         <div className="rule-t flex flex-wrap items-center gap-x-4 gap-y-1 px-2.5 pt-2" role="group" aria-label={activeRow ? `Keys for ${activeRow.title || "this item"}` : "Keys"}>

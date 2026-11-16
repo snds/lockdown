@@ -158,6 +158,23 @@ pub fn related_origins(request: JsValue) -> Result<JsValue, JsError> {
     to_js(&related_origins_wire(&req).map_err(wire_err)?)
 }
 
+/// The registrable domain (eTLD+1, by the Public Suffix List) of an
+/// address, such as `example.co.uk` for `https://www.example.co.uk/x`;
+/// `None` for an IP address, a bare suffix, a single label or an address
+/// that doesn't parse. What the in-page frames keep whole when they cut a
+/// long host (Lockdown 26): only the subdomains give way.
+pub fn registrable_domain_of(url: &str) -> Option<String> {
+    lockdown_matcher::Origin::parse(url)
+        .ok()?
+        .registrable_domain()
+}
+
+/// `registrable_domain(url)` → the registrable domain, or `undefined`.
+#[wasm_bindgen]
+pub fn registrable_domain(url: &str) -> Option<String> {
+    registrable_domain_of(url)
+}
+
 /// What `code` returns: the digits to fill and how long they stay valid.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct CodeResponse {
@@ -306,6 +323,22 @@ mod tests {
             matcher_data_status_wire().newest_loaded,
             before.version + 10
         );
+    }
+
+    #[test]
+    fn the_registrable_domain_is_kept_whole_by_the_public_suffix_list() {
+        let d = |u: &str| registrable_domain_of(u);
+        assert_eq!(
+            d("https://www.example.co.uk/x"),
+            Some("example.co.uk".into())
+        );
+        assert_eq!(
+            d("https://login.secure.bluefin-bank.example"),
+            Some("bluefin-bank.example".into())
+        );
+        assert_eq!(d("https://accounts.google.com"), Some("google.com".into()));
+        assert_eq!(d("https://127.0.0.1:8080"), None);
+        assert_eq!(d("not an address"), None);
     }
 
     #[test]

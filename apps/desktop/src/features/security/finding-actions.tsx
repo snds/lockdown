@@ -120,7 +120,7 @@ export function SkipMenu({ finding: f, onDismiss, busy, trigger }: SkipMenuProps
     >
       {f.alert === null &&
         SNOOZES.map((s) => (
-          <AdaptiveMenuItem key={s.days} icon="time" onSelect={() => onDismiss(f, snoozeUntil(s.days, Math.floor(Date.now() / 1000)))}>
+          <AdaptiveMenuItem key={s.days} icon="snooze" onSelect={() => onDismiss(f, snoozeUntil(s.days, Math.floor(Date.now() / 1000)))}>
             {s.label}
           </AdaptiveMenuItem>
         ))}

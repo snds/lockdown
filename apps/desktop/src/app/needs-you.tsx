@@ -35,8 +35,14 @@ import { notify } from "./notify"
 /** The row of the X3 table: 1 waits most. */
 export type NeedsYouPriority = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
-/** Where an entry shows: on every screen, with one item open, or on Sharing. */
-export type NeedsYouShows = "every" | "sharing" | { item: string }
+/**
+ * Where an entry shows: on every screen, with one item open, on Sharing, or
+ * on the home screen (All items) only. The cross-app rule (Synapse 4,
+ * settled across apps): what is time-limited or blocking shows on every
+ * screen; what can wait (the reminders, rows 7 to 9) shows as a needs-you
+ * count on Settings everywhere, and as the block on the home screen.
+ */
+export type NeedsYouShows = "every" | "sharing" | "home" | { item: string }
 
 export interface NeedsYouAction {
   label: string
@@ -67,6 +73,8 @@ export interface NeedsYouEntry {
 /** Where the person is: what an entry's `shows` is matched against. */
 export interface NeedsYouPlace {
   sharing: boolean
+  /** The home screen: All items, with nothing narrowing it. Left out, no screen is home. */
+  home?: boolean
   /** The item open in the detail, if any. */
   item: string | null
 }
@@ -107,6 +115,7 @@ export function announceOf(e: NeedsYouEntry, now: number): string {
 export function matches(e: NeedsYouEntry, place: NeedsYouPlace): boolean {
   if (e.shows === "every") return true
   if (e.shows === "sharing") return place.sharing
+  if (e.shows === "home") return place.home === true
   return place.item === e.shows.item
 }
 
@@ -126,6 +135,8 @@ interface NeedsYouValue {
   top: NeedsYouEntry | null
   more: number
   waiting: NeedsYouEntry[]
+  /** How many entries that can wait (`shows: "home"`) wait, wherever the person is: the nav's count. */
+  later: number
   now: number
 }
 
@@ -226,7 +237,8 @@ export function WaitingHost({ place, children }: { place: NeedsYouPlace; childre
   }, [all, now])
 
   const { top, more, waiting } = useMemo(() => pick(all, place, now), [all, place, now])
-  const value = useMemo<NeedsYouValue>(() => ({ register, press, top, more, waiting, now }), [register, press, top, more, waiting, now])
+  const later = useMemo(() => all.filter((e) => e.shows === "home").length, [all])
+  const value = useMemo<NeedsYouValue>(() => ({ register, press, top, more, waiting, later, now }), [register, press, top, more, waiting, later, now])
   return (
     <NeedsYouContext.Provider value={value}>
       {children}
@@ -270,6 +282,16 @@ export function useNeedsYouTop(): { top: NeedsYouEntry | null; more: number; now
     [top, press],
   )
   return { top: live, more: ctx?.more ?? 0, now: ctx?.now ?? 0 }
+}
+
+/**
+ * How many things that can wait wait now (the reminders), wherever the
+ * person is: drawn as a count in the needs-you tone on the way into
+ * Settings, where they are answered (the cross-app rule; their block shows
+ * on the home screen only).
+ */
+export function useNeedsYouLater(): number {
+  return useContext(NeedsYouContext)?.later ?? 0
 }
 
 /**

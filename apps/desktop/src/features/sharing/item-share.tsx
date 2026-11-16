@@ -28,6 +28,7 @@ import { usePlaces } from "@/app/places"
 import { describeError } from "@/core/client"
 import { decodeAndWipe } from "@/core/secret-bytes"
 import type { Access, ItemDetail } from "@/core/types"
+import { count } from "@/lib/format"
 
 import { LinkFields, LinkLayer, linkOptions } from "./link-once"
 import { ShareLayer } from "./share-layer"
@@ -189,7 +190,7 @@ function SharePerson({ open, item, title, onClose, onNotice }: { open: boolean; 
       {nobody ? (
         <EmptyState
           size="sm"
-          overline="People // 00"
+          overline={`People // ${count(0)}`}
           title="Look someone up first."
           body="Only people whose keys checked out can get an item."
           actionLabel="Open people"

@@ -910,6 +910,7 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         crate::security_depth::commands::second_factor_wait,
         crate::security_depth::commands::link_offer,
         crate::security_depth::commands::link_poll,
+        crate::security_depth::commands::copy_link_code,
         crate::security_depth::commands::link_approve,
         crate::security_depth::commands::link_decline,
         crate::security_depth::commands::secret_key_status,

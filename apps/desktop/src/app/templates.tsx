@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { describeError, useClient } from "@/core/client"
 import type { FieldTemplateView, TemplateView, Templates, UserTemplateView } from "@/core/types"
 
-import { userTemplateView } from "./template-model"
+import { displayTemplate, userTemplateView } from "./template-model"
 
 interface TemplatesValue {
   /** `null` while loading. */
@@ -53,7 +53,7 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
     let live = true
     client
       .templates()
-      .then((t) => live && setTemplates(t))
+      .then((t) => live && setTemplates({ ...t, kinds: t.kinds.map(displayTemplate) }))
       .catch((e) => live && setError(describeError(e)))
     return () => {
       live = false

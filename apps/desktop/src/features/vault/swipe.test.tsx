@@ -294,6 +294,31 @@ describe("phone row swipes (States / 01, rules.md 7.3)", () => {
     }
   })
 
+  it("swipes on a touch tablet at the medium width, and not with a mouse there (Lockdown 18)", async () => {
+    const matchMedia = window.matchMedia
+    const pointer = (coarse: boolean) =>
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        writable: true,
+        value: (query: string) => ({ matches: coarse && query.includes("coarse"), media: query, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false }),
+      })
+    try {
+      setWindow(820, 1180)
+      pointer(true)
+      mount({}, [row("Kestrel")])
+      expect(await swipeRowOf("Kestrel")).toBeInTheDocument()
+    } finally {
+      Object.defineProperty(window, "matchMedia", { configurable: true, writable: true, value: matchMedia })
+    }
+  })
+
+  it("does not swipe at the medium width with a mouse", async () => {
+    setWindow(820, 1180)
+    mount({}, [row("Kestrel")])
+    const button = await screen.findByRole("button", { name: /^Kestrel\b/ })
+    expect(button.closest('[data-slot="swipe-row"]')).toBeNull()
+  })
+
   it("does not swipe beside the sidebar: the rows keep their ⋯ menu only", async () => {
     setWindow(1440, 900)
     mount({}, [row("Kestrel")])

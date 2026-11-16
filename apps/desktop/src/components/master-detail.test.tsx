@@ -4,7 +4,9 @@ import type { ReactNode } from "react"
 
 import { AppFrame, AppFrameMain, useAppFrame, type AppFrameLayout } from "@unicron/ui"
 
-import { Embedded, MasterDetail, PaneHeader } from "./master-detail"
+import { WaitingHost, useNeedsYouSource } from "@/app/needs-you"
+
+import { WaitingInDetail, Embedded, MasterDetail, PaneHeader } from "./master-detail"
 
 /** The shell's part: the way back the frame hands it while a detail is pushed. */
 function Back() {
@@ -77,5 +79,56 @@ describe("a screen inside another's frame", () => {
     )
     expect(screen.queryByRole("heading")).toBeNull()
     expect(screen.getByRole("button", { name: "Add device" })).toBeInTheDocument()
+  })
+})
+
+describe("what waits on the person, in an open item (Lockdown 8)", () => {
+  const request = { id: "sign-in", priority: 1 as const, title: "Sign-in request", line: "mail.example wants to sign in.", action: { label: "Review", onClick: () => {} }, shows: "every" as const, expiresAt: Date.now() + 120_000 }
+  function Source() {
+    useNeedsYouSource(request)
+    return null
+  }
+
+  it("sits under the item's title, once, not above it", () => {
+    render(
+      <AppFrame layout="expanded">
+        <AppFrameMain>
+          <WaitingHost place={{ sharing: false, item: null }}>
+            <Source />
+            <MasterDetail
+              header={<PaneHeader title="All items" />}
+              title="All items"
+              list={<p>rows</p>}
+              detail={
+                <article>
+                  <h2>Northwind Mail</h2>
+                  <WaitingInDetail />
+                </article>
+              }
+              onBack={() => {}}
+              emptyLabel="Pick an item."
+            />
+          </WaitingHost>
+        </AppFrameMain>
+      </AppFrame>,
+    )
+    const blocks = document.querySelectorAll('[data-slot="needs-you"]')
+    expect(blocks).toHaveLength(1)
+    const title = screen.getByRole("heading", { level: 2, name: "Northwind Mail" })
+    expect(title.compareDocumentPosition(blocks[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("with nothing open, it tops the column as before", () => {
+    render(
+      <AppFrame layout="expanded">
+        <AppFrameMain>
+          <WaitingHost place={{ sharing: false, item: null }}>
+            <Source />
+            <MasterDetail header={<PaneHeader title="All items" />} title="All items" list={<p>rows</p>} detail={null} onBack={() => {}} emptyLabel="Pick an item." />
+          </WaitingHost>
+        </AppFrameMain>
+      </AppFrame>,
+    )
+    expect(document.querySelectorAll('[data-slot="needs-you"]')).toHaveLength(1)
   })
 })

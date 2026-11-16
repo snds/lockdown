@@ -4,8 +4,8 @@ import { count, countName, countdown, fullDate, rowDate } from "./format"
 const at = (y: number, m: number, d: number, h = 0, min = 0) => new Date(y, m - 1, d, h, min).getTime() / 1000
 
 describe("counts (cross-app decisions §13)", () => {
-  it("writes two digits, three from 100, a comma from 1,000", () => {
-    expect([0, 4, 61, 99, 100, 248, 999, 1000, 1204, 12045].map((n) => count(n))).toEqual(["00", "04", "61", "99", "100", "248", "999", "1,000", "1,204", "12,045"])
+  it("writes three digits, a comma from 1,000 (the cross-app settlement, Unicron 13)", () => {
+    expect([0, 4, 61, 99, 100, 248, 999, 1000, 1204, 12045].map((n) => count(n))).toEqual(["000", "004", "061", "099", "100", "248", "999", "1,000", "1,204", "12,045"])
   })
 
   it("stops at 99+ on a mark", () => {

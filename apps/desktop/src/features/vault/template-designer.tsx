@@ -19,7 +19,7 @@ import {
 import { useTemplates } from "@/app/templates"
 import { describeError, useClient } from "@/core/client"
 import type { UserTemplateView } from "@/core/types"
-import { count } from "@/lib/format"
+import { count, countName } from "@/lib/format"
 
 import { draftToFields, type DraftField } from "./depth-model"
 
@@ -35,7 +35,7 @@ interface TemplateDesignerProps {
 }
 
 /** How many fields, in the row's caps: `03 FIELDS`. */
-const fieldsWord = (n: number) => `${count(n)} ${n === 1 ? "field" : "fields"}`
+const fieldsWord = (n: number) => countName(n, "field")
 
 /**
  * A kind of item of the person's own (D232; brief E4): a name, what it's
@@ -214,7 +214,7 @@ export function TemplatesManager({ open, onOpenChange, onNotice }: TemplatesMana
           <TemplateDesigner key={editing === "new" ? "new" : editing.id} template={editing === "new" ? null : editing} onDone={done} onCancel={() => setEditing(null)} onBusy={setBusy} />
         ) : list === 0 ? (
           <EmptyState
-            overline="Your templates // 00"
+            overline={`Your templates // ${count(0)}`}
             title="No templates yet."
             body="A template is a form of your own: a gym locker, a pet's microchip, a club's door codes."
             actionLabel="New template"

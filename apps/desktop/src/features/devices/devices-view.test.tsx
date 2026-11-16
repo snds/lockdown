@@ -122,7 +122,9 @@ describe("the Devices section (brief T2)", () => {
     expect(within(rows[0]!).getByText("macOS")).toBeInTheDocument()
     expect(within(rows[0]!).queryByRole("button", { name: "Revoke" })).toBeNull()
     // Its last use comes from its session, not from the day it was added.
-    await waitFor(() => expect(rows[2]).toHaveTextContent(/Today \d{2}:\d{2}|Yesterday \d{2}:\d{2}/))
+    // The same words as a session row (Lockdown 25), with how long ago as the tip.
+    await waitFor(() => expect(rows[2]).toHaveTextContent(/Last used (Today|Yesterday) \d{2}:\d{2}/))
+    expect(within(rows[2]!).getByText(/^Last used /)).toHaveAttribute("aria-description", "2 minutes ago")
     expect(within(rows[2]!).getByText("iOS")).toBeInTheDocument()
     // No live session: the day it was added.
     expect(rows[1]).toHaveTextContent("Added 2026.03.11")

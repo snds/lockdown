@@ -67,7 +67,8 @@ async function settings(page: Page) {
   if (s !== "phone") return sideRow(page, starts("Settings")).click()
   // The profile button, on a section's first screen; from a Settings section, Back to the list.
   if (await sections(page).isVisible()) return
-  const profile = page.getByRole("button", { name: "Settings", exact: true })
+  // Its name carries what waits there, as a count ("Settings, 1 waiting on you": the reminders, D1042).
+  const profile = page.getByRole("button", { name: /^Settings(, .+)?$/ })
   if (!(await profile.isVisible())) await page.getByRole("button", { name: "Back" }).click()
   if (await profile.isVisible()) await profile.click()
 }

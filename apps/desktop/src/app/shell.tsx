@@ -29,6 +29,8 @@ import { isMac } from "@/features/palette/palette-model"
 import { ItemEditor, type EditorTarget } from "@/features/vault/item-editor"
 import { VIEW_LABELS, countTypes, countViews, type ListView } from "@/features/vault/list-model"
 import { NewItemMenu } from "@/features/vault/new-item-menu"
+import { AddCodeDialog } from "@/features/codes/codes-view"
+import { codesChanged } from "@/features/codes/use-codes"
 import { count as countWords, countName } from "@/lib/format"
 
 import { BannerSlot, useBannerShows, type BannerPlace } from "./banners"
@@ -37,7 +39,7 @@ import { CrumbProvider, useCrumbExtra } from "./crumbs"
 import { PushedBottomRow, PushedChromeProvider } from "./detail-bottom-row"
 import { useAppKeys } from "./keys"
 import { KeysDialog } from "./keys-dialog"
-import { NeedsYouStrip, useNeedsYouTop } from "./needs-you"
+import { NeedsYouStrip, useNeedsYouLater, useNeedsYouTop } from "./needs-you"
 import { PageHeadProvider, type PageHeadFromShell } from "./page-head"
 import {
   ASIDE_VIEWS,
@@ -96,9 +98,13 @@ interface AppShellProps {
 interface ShellValue {
   /** Opens the editor: a new item from a template, or an item to change. */
   edit: (target: EditorTarget) => void
+  /** Opens Add a code, the paste form: where every "One-time code" in a create menu lands (Lockdown 2). */
+  addCode: () => void
+  /** Leaves Search for the place the person was before it: Items, Codes, Settings or any other (Lockdown 19). */
+  leaveSearch: () => void
 }
 
-const ShellContext = createContext<ShellValue>({ edit: () => {} })
+const ShellContext = createContext<ShellValue>({ edit: () => {}, addCode: () => {}, leaveSearch: () => {} })
 
 /** The shell's editor, from any screen: `useShell().edit({ kind: "login", item: null, website })`. */
 export function useShell(): ShellValue {
@@ -152,6 +158,10 @@ export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, t
   const [collapsed, setCollapsed] = useDeviceFlag(SIDEBAR_KEY, false)
   const { vaults } = useVaults()
   const needsYou = useNeedsYouTop().top !== null
+  // What can wait (the reminders) is a count in the needs-you tone on the way into Settings, everywhere;
+  // its block shows on the home screen only (the cross-app rule). It outranks the update's quiet square.
+  const later = useNeedsYouLater()
+  const settingsMarkShown: NavMarkProp | undefined = later > 0 ? { count: later, tone: "needs-you", label: `${later} waiting on you` } : settingsMark
 
   const go = useCallback(
     (id: string) => {
@@ -161,7 +171,7 @@ export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, t
     [onNavigate],
   )
   const places = useMemo<PlacesValue>(() => ({ nav, surface, go, navigate: onNavigate }), [nav, surface, go, onNavigate])
-  const shell = useMemo<ShellValue>(() => ({ edit: setEditor }), [])
+
 
   // The section the person was last in: where Back goes from Search, Sharing and Settings on a phone.
   const section = sectionOf(nav)
@@ -170,14 +180,23 @@ export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, t
     if (section) lastSection.current = nav
   }, [section, nav])
   const leave = useCallback(() => onNavigate(lastSection.current), [onNavigate])
+  // The place before Search, whatever it was (Codes, Settings, a list): where Escape in Search goes back to.
+  const beforeSearch = useRef<Nav>({ area: "vault", view: "all" })
+  useEffect(() => {
+    if (nav.area !== "search") beforeSearch.current = nav
+  }, [nav])
+  const leaveSearch = useCallback(() => onNavigate(beforeSearch.current), [onNavigate])
 
   // `/` Search, ⌘, (Ctrl+,) Settings and `?` the keys list, from anywhere but a field or an open layer (brief X6).
   const [keysOpen, setKeysOpen] = useState(false)
   useAppKeys({ search: () => go("search"), settings: () => go("settings"), keys: () => setKeysOpen(true) })
 
+  // "One-time code" opens the paste form, not the empty editor (Lockdown 2): the one way in on a phone.
+  const [addingCode, setAddingCode] = useState(false)
+  const shell = useMemo<ShellValue>(() => ({ edit: setEditor, addCode: () => setAddingCode(true), leaveSearch }), [leaveSearch])
   // A new item is filed where the list is looking (the scope when New item was pressed).
   const create = (kind: string) =>
-    setEditor({
+    kind === "code" ? setAddingCode(true) : setEditor({
       kind,
       item: null,
       vaultId: nav.scope?.vault ?? vaults.find((v) => v.folders.some((f) => f.id === nav.scope?.folder))?.id,
@@ -203,9 +222,9 @@ export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, t
           <PushedChromeProvider>
           <ShellRefreshProvider value={refresh}>
           <AppFrame layout={layout}>
-            <Sidebar collapsed={collapsed} onCollapsedChange={setCollapsed} rows={rows} toFix={toFix} sharingMark={sharingMark} settingsMark={settingsMark} onLock={onLock} onCreate={() => setCreating(true)} />
+            <Sidebar collapsed={collapsed} onCollapsedChange={setCollapsed} rows={rows} toFix={toFix} sharingMark={sharingMark} settingsMark={settingsMarkShown} onLock={onLock} onCreate={() => setCreating(true)} />
             <StatusLine surface={surface}>{status ?? <StatusLineItems />}</StatusLine>
-            <TopRow onLeave={leave} onLock={onLock} settingsMark={settingsMark} />
+            <TopRow onLeave={leave} onLock={onLock} settingsMark={settingsMarkShown} />
             <AppFrameMain>
               <VaultListHead collapsed={collapsed} rows={rows} sharingMark={sharingMark} onCheckAgain={refresh === onSync ? onSync : undefined}>
                 {children}
@@ -223,6 +242,17 @@ export function AppShell({ surface = "desktop", nav, onNavigate, rows, onLock, t
           </ShellRefreshProvider>
           </PushedChromeProvider>
           <KeysDialog open={keysOpen} onOpenChange={setKeysOpen} />
+          <AddCodeDialog
+            open={addingCode}
+            logins={(rows ?? []).filter((r) => r.kind === "login" && r.state === "live")}
+            onClose={() => setAddingCode(false)}
+            onAdded={() => {
+              setAddingCode(false)
+              onRefresh?.()
+              codesChanged()
+              go("codes")
+            }}
+          />
           <ItemEditor
             target={editor}
             onClose={() => setEditor(null)}

@@ -171,7 +171,7 @@ describe("what a row shows (brief V1)", () => {
     expect(screen.getByRole("button", { name: "Everyday card" })).toHaveAccessibleDescription("Personal")
     expect(screen.getByRole("button", { name: "Family card" })).toHaveAccessibleDescription("Family")
     // A kind's list has its Section Header with the count and SORT; no search field.
-    expect(screen.getByRole("heading", { level: 2, name: /Cards\s*02/ })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { level: 2, name: /Cards\s*002/ })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Sort" })).toBeInTheDocument()
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument()
   })
@@ -212,12 +212,12 @@ describe("a list that could not load (cross-app decisions §9)", () => {
 describe("the empty states (brief 5.2)", () => {
   it.each<[ListView, string, string, string | null]>([
     // Beside the sidebar, its NEW ITEM is the way in; the Empty State repeats it only where the sidebar's groups don't show.
-    ["all", "Items // 00", "Nothing saved yet.", null],
-    ["favourites", "Favorites // 00", "No favorites yet.", null],
-    ["passkeys", "Passkeys // 00", "No passkeys yet.", null],
-    ["archived", "Archived // 00", "Nothing archived.", null],
-    ["card", "Cards // 00", "No cards yet.", "New card"],
-    ["contacts", "Contacts // 00", "No contacts yet.", null],
+    ["all", "Items // 000", "Nothing saved yet.", null],
+    ["favourites", "Favorites // 000", "No favorites yet.", null],
+    ["passkeys", "Passkeys // 000", "No passkeys yet.", null],
+    ["archived", "Archived // 000", "Nothing archived.", null],
+    ["card", "Cards // 000", "No cards yet.", "New card"],
+    ["contacts", "Contacts // 000", "No contacts yet.", null],
   ])("%s says %s, %s", async (view, overline, title, action) => {
     mount({ view, rows: [] })
     expect(screen.getByText(overline)).toBeInTheDocument()
@@ -245,11 +245,11 @@ describe("the empty states (brief 5.2)", () => {
 
   it("says a scope has nothing filed, and a kind inside a scope names both", () => {
     const { unmount } = mount({ view: "all", rows: [row("a", "login", "Alpha", { vault_id: "v1" })], scope: { vault: "v2" } })
-    expect(screen.getByText("Family // 00")).toBeInTheDocument()
+    expect(screen.getByText("Family // 000")).toBeInTheDocument()
     expect(screen.getByText("Nothing is filed here yet.")).toBeInTheDocument()
     unmount()
     mount({ view: "card", rows: [row("a", "login", "Alpha", { vault_id: "v2" })], scope: { vault: "v2" } })
-    expect(screen.getByText("Family // Cards // 00")).toBeInTheDocument()
+    expect(screen.getByText("Family // Cards // 000")).toBeInTheDocument()
     expect(screen.getByText("No cards in Family.")).toBeInTheDocument()
   })
 

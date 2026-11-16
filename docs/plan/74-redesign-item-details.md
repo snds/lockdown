@@ -90,5 +90,5 @@ A dialog, form 640 (a full-height sheet on a phone). Overline `History // {title
 - **D824.** The CROWN JEWEL row's CHANGE asks the ⋯ menu's question with today's words; one question, two ways in. Flag for Sean.
 - **D825.** Files are FileChips: the chip saves, the × removes after a Question in the destructive tone; the web vault draws no Files. Answers I5. Flag for Sean.
 - **D826.** History is a form-size dialog; SHOW draws an older version with its hidden values as fill-only SecretFields that never fetch; RESTORE asks in the default tone. Answers I6. Flag for Sean.
-- **D827.** The web vault keeps the crown jewel's export switch, still, with "Exports and backups are made in the desktop app." (the brief says not drawn; the web e2e reads it). Question for Sean: draw it or not.
+- **D827.** The web vault keeps the crown jewel's export switch, still, with "Exports and backups are made in the desktop app." (the brief says not drawn; the web e2e reads it). Question for Sean: draw it or not. **Amended by D1022 (Lockdown 22, decided 2026-11-16):** not drawn. The web vault shows no export switch; the e2e checks it is absent.
 - **D828.** The tier picker marks the core's default as "(usual)" in its RadioRows. Flag for Sean.

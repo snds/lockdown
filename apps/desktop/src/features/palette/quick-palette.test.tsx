@@ -240,9 +240,19 @@ describe("the quick-access palette (D111)", () => {
     await user.type(await screen.findByPlaceholderText(/Search your items/), "bank")
     await waitFor(() => expect(itemOptions()).toHaveLength(1))
     await user.keyboard("{Alt>}{Enter}{/Alt}")
-    // A compact CodeDisplay (brief X4), its digits in groups, with its own copy.
-    const code = await screen.findByRole("button", { name: "Copy code" })
-    expect(code.closest('[data-slot="code-display"]')?.querySelector('[data-slot="code-display-code"]')?.textContent?.replace(/\s/g, "")).toBe("482913")
+    // A compact CodeDisplay (brief X4), its digits in groups, inside the bank's own row (Lockdown 19):
+    // never under the list, where it could be read as another item's code.
+    const display = await waitFor(() => {
+      const d = document.querySelector('[data-slot="code-display"]')
+      if (!d) throw new Error("no code shown")
+      return d
+    })
+    expect(display.querySelector('[data-slot="code-display-code"]')?.textContent?.replace(/\s/g, "")).toBe("482913")
+    expect(document.querySelectorAll('[data-slot="code-display"]')).toHaveLength(1)
+    const [row] = itemOptions()
+    expect(row).toContainElement(display as HTMLElement)
+    // Display only: the row's own Copy code is the one copy (as the popup, Lockdown 27).
+    expect(within(display as HTMLElement).queryByRole("button")).toBeNull()
     expect(quickCode).toHaveBeenCalledWith("c1", "code.0", {})
     expect(protect).toHaveBeenCalledWith(true)
     // The action bar offers it by pointer too; a login has no code to show.

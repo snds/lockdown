@@ -40,6 +40,17 @@ export const LINK = {
   locked: () => ready({ locked: true }),
 }
 
+/**
+ * The host's registrable domain, as the background works it out with the
+ * Public Suffix List (Lockdown 26). Every fixture site is an invented
+ * `.example` name, which the list treats as a one-label suffix, so it is the
+ * last two labels here, as the real matcher answers for them.
+ */
+const withSite = <T extends { host: string }>(d: T): T & { site?: string } => {
+  const labels = d.host.split(".")
+  return labels.length >= 2 ? { ...d, site: labels.slice(-2).join(".") } : d
+}
+
 const host = (url: string) => {
   try {
     return new URL(url).host
@@ -142,12 +153,12 @@ export function background(s: ExtScenario): (msg: Record<string, unknown>) => un
       case "alias_fill":
         return { address: "quiet.otter.7741@relay.rivera.example", filled: true }
       case "menu_data":
-        return s.menu ?? { error: "This menu isn't open any more." }
+        return s.menu ? withSite(s.menu) : { error: "This menu isn't open any more." }
       case "prompt_data":
         return { offer: s.prompt ?? null }
       case "pk_sheet":
       case "pk_sheet_retry":
-        return s.sheet ?? { error: "This request isn't open any more." }
+        return s.sheet ? withSite(s.sheet) : { error: "This request isn't open any more." }
       case "menu_pick":
         return { confirm: "Fill the card ending 1111 into this page?" }
       case "pk_sheet_pick":

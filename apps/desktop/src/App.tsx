@@ -3,6 +3,7 @@ import { ThemeProvider } from "next-themes"
 
 import { Toaster, TooltipProvider, toast } from "@unicron/ui"
 
+import { useUpdateWaiting } from "@/features/updates/update-waiting"
 import { MessageBoardProvider, criticalBanner, firstCritical, useNews, type CriticalSources } from "@/app/banners"
 import { GateProvider, useGate } from "@/app/gate"
 import { useIdleCountdown, useLockWatch } from "@/app/lock-watch"
@@ -241,7 +242,7 @@ function Root() {
   const vaultsValue = useMemo(() => ({ vaults, reload: () => void reload() }), [vaults, reload])
   // Where the person is, for what waits on one item or on Sharing only (brief X3).
   const itemOpen = nav.area === "vault" || nav.area === "search" ? selected : null
-  const needsYouPlace = useMemo<NeedsYouPlace>(() => ({ sharing: nav.area === "sharing", item: itemOpen }), [nav.area, itemOpen])
+  const needsYouPlace = useMemo<NeedsYouPlace>(() => ({ sharing: nav.area === "sharing", home: nav.area === "vault" && nav.view === "all" && !nav.scope, item: itemOpen }), [nav.area, nav.view, nav.scope, itemOpen])
 
   // News that can wait (brief X2 table 5): one dismissable info Banner on All items, not a toast (D753).
   const { add: addNews, clear: clearNews } = news
@@ -261,6 +262,8 @@ function Root() {
     [addNews, openItem],
   )
   usePasskeyUpgrades(status !== null, upgraded)
+  // A ready update that has waited a week: the second exception to quiet updates (Lockdown 7).
+  useUpdateWaiting(status !== null, addNews)
   // The person's own templates live in the vault: load them once it is open (D232).
   const { refreshUserTemplates } = useTemplates()
   const open = status !== null

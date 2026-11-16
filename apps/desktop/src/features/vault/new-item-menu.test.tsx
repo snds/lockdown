@@ -6,6 +6,7 @@ import { TemplatesProvider } from "@/app/templates"
 import { ClientProvider } from "@/core/client"
 import type { ItemSummary, UserTemplateView } from "@/core/types"
 import { fakeClient } from "@/test/fake-client"
+import { displayTemplate } from "@/app/template-model"
 import { TEMPLATES } from "@/test/templates-fixture"
 
 import { NewItemMenu } from "./new-item-menu"
@@ -45,7 +46,7 @@ it("opens with five kinds first, then the four groups, and picks one by its temp
   renderMenu(onPick)
   await userEvent.click(screen.getByRole("button", { name: "New item" }))
   // The fixture's kinds: no One-time code template here, so four come first; a group with nothing left is not drawn.
-  expect((await topRows()).slice(0, 7)).toEqual(["Login", "Payment card", "Note", "Wi-Fi network", "Sign-ins and money", "Identities and documents", "Other"])
+  expect((await topRows()).slice(0, 7)).toEqual(["Login", "Card", "Secure note", "Wi-Fi network", "Sign-ins and money", "Identities and documents", "Other"])
   // A passkey is made by a site, never by hand: not first, and in no group.
   expect(screen.queryByRole("menuitem", { name: /Passkey/ })).toBeNull()
   await userEvent.click(screen.getByRole("menuitem", { name: /^Login/ }))
@@ -59,13 +60,13 @@ it("counts each kind's items in two digits, said as the plain number", async () 
   expect(login).toHaveTextContent("02")
   expect(login).toHaveAccessibleName(/Login, 2$/)
   expect(screen.getByRole("menuitem", { name: /^Wi-Fi network/ })).toHaveTextContent("01")
-  expect(screen.getByRole("menuitem", { name: /^Note/ })).not.toHaveTextContent(/\d/)
+  expect(screen.getByRole("menuitem", { name: /^Secure note/ })).not.toHaveTextContent(/\d/)
 })
 
 it("puts a kind first in its own view, and takes it out of its group", async () => {
   renderMenu(vi.fn(), { nav: { area: "vault", view: "crypto-wallet" } })
   await userEvent.click(screen.getByRole("button", { name: "New item" }))
-  expect((await topRows()).slice(0, 5)).toEqual(["Crypto wallet", "Login", "Payment card", "Note", "Wi-Fi network"])
+  expect((await topRows()).slice(0, 5)).toEqual(["Crypto wallet", "Login", "Card", "Secure note", "Wi-Fi network"])
   // Its group had only it: no group is left to draw.
   expect(screen.queryByRole("menuitem", { name: "Sign-ins and money" })).toBeNull()
 })
@@ -80,7 +81,7 @@ it("lists a kind's variants in its group and the person's own templates (D231, D
   await userEvent.click(within(ids).getByRole("menuitem", { name: /^Passport/ }))
   expect(onPick).toHaveBeenLastCalledWith("identity/passport")
   await userEvent.click(screen.getByRole("button", { name: "New item" }))
-  const mine = await screen.findByRole("group", { name: "Your templates 01" })
+  const mine = await screen.findByRole("group", { name: "Your templates 001" })
   await userEvent.click(within(mine).getByRole("menuitem", { name: /Gym locker/ }))
   expect(onPick).toHaveBeenLastCalledWith(`user:${GYM.id}`)
   // "Your templates" at the foot opens the manager with the template listed.
@@ -105,7 +106,7 @@ it("every creatable template is in the menu once, variants included; no Passkey"
     const rows = within(await screen.findByRole("group", { name: group })).getAllByRole("menuitem")
     names.push(...rows.map((r) => r.textContent?.trim() ?? ""))
   }
-  const creatable = TEMPLATES.kinds.filter((t) => t.creatable).map((t) => t.name)
+  const creatable = TEMPLATES.kinds.filter((t) => t.creatable).map((t) => displayTemplate(t).name)
   expect([...names].sort()).toEqual([...creatable].sort())
   expect(names).not.toContain("Passkey")
 })

@@ -195,6 +195,8 @@ test("an excluded credential is refused after the person sees it: InvalidStateEr
   await page.click("#register");
   const sheet = await lockdownFrame(page, "passkey");
   await expect(sheet.getByRole("alert")).toContainText("already holds a passkey for this account");
+  // A fact, not a refusal: no "Stop:" in front of it (Lockdown 26), which stays for refusals and covers.
+  await expect(sheet.getByRole("alert")).not.toContainText("Stop:");
   await sheet.getByRole("button", { name: "OK", exact: true }).click();
   await expect(page.locator("#status")).toHaveText("error: InvalidStateError", { timeout: 10_000 });
   await page.close();
@@ -237,7 +239,7 @@ test("Signals hide the passkey without deleting it, and rename it; Undo brings i
   await page.close();
 });
 
-test("'Use another device or security key' hands the request to the browser's own authenticator", async () => {
+test("'Other device or key' (Lockdown 9) hands the request to the browser's own authenticator", async () => {
   const page = await ctx.newPage();
   const cdp: CDPSession = await ctx.newCDPSession(page);
   await cdp.send("WebAuthn.enable");
@@ -249,7 +251,7 @@ test("'Use another device or security key' hands the request to the browser's ow
   await page.reload();
   await page.click("#register");
   const sheet = await lockdownFrame(page, "passkey");
-  await sheet.getByRole("button", { name: "Use another device or security key" }).click();
+  await sheet.getByRole("button", { name: "Other device or key" }).click();
   await expect(page.locator("#status")).toHaveText(/registered|error/, { timeout: 15_000 });
   const made = await last(page);
   expect(made.error, String(made.message)).toBeUndefined();

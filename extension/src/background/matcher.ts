@@ -5,7 +5,7 @@
 // fill both sides do not agree on never happens, and a refused one never
 // even reaches the app.
 
-import init, { decide, fill_check, matcher_data_status, set_matcher_data_floor } from "../../pkg/lockdown_wasm.js"
+import init, { decide, fill_check, matcher_data_status, registrable_domain, set_matcher_data_floor } from "../../pkg/lockdown_wasm.js"
 
 import type { Decision, FillWhat } from "../shared/protocol"
 
@@ -69,4 +69,14 @@ export async function check(req: {
 
 export function isMatch(d: Decision): boolean {
   return d === "exact" || d === "base_domain" || d === "equivalent"
+}
+
+/** The registrable domain (eTLD+1) of an address by the Public Suffix List, for the frames' host line (Lockdown 26). */
+export async function siteOf(url: string): Promise<string | undefined> {
+  await load()
+  try {
+    return registrable_domain(url) ?? undefined
+  } catch {
+    return undefined
+  }
 }

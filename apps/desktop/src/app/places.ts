@@ -97,7 +97,7 @@ const VIEW_ICONS: Partial<Record<ListView, IconName>> = {
   favourites: "star",
   login: "password",
   passkeys: "locked",
-  codes: "time",
+  codes: "timer",
   card: "wallet",
   note: "document",
   "wi-fi": "wifi",
@@ -141,7 +141,7 @@ const SECTIONS: ReadonlyArray<[SettingsSection, string, IconName, SettingsGroup,
   ["import-export", "Import and export", "document--import", "vault", "Bring items in, or take all of them out.", DESKTOP],
   ["backups", "Backups", "data-backup", "vault", "Encrypted copies of your vault, made on a schedule.", DESKTOP],
   ["aliases", "Email aliases", "email", "vault", "The service that makes an address for each login.", DESKTOP],
-  ["codes", "Codes", "time", "vault", "The clock one-time codes are worked out from.", DESKTOP],
+  ["codes", "Codes", "timer", "vault", "The clock one-time codes are worked out from.", DESKTOP],
   ["security-checks", "Security checks", "security", "vault", "What Health checks, and with whom.", DESKTOP],
   ["about", "About", "information", "lockdown", "The version that runs, and its updates.", DESKTOP],
 ]
@@ -279,7 +279,7 @@ export function sectionOf(nav: Nav): Section | null {
 /** The three sections, as the tab bar and the rail draw them (Mobile / 01). */
 export const SECTIONS_BAR: ReadonlyArray<{ id: Section; label: string; icon: IconName; place: string }> = [
   { id: "items", label: "Items", icon: "password", place: "all" },
-  { id: "codes", label: "Codes", icon: "time", place: "codes" },
+  { id: "codes", label: "Codes", icon: "timer", place: "codes" },
   { id: "health", label: "Health", icon: "checkmark--outline", place: "health" },
 ]
 

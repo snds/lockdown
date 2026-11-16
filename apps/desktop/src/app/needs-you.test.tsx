@@ -54,6 +54,22 @@ afterEach(() => {
   })
 })
 
+describe("what can wait shows on the home screen only (the cross-app rule)", () => {
+  it("a reminder is a block on All items and nowhere else; a request is a block everywhere", () => {
+    const kit = entry({ id: "kit", priority: 7, shows: "home" })
+    const request = entry({ id: "sign-in", priority: 1, expiresAt: Date.now() + 100_000 })
+    expect(pick([kit], { sharing: false, home: true, item: null }, 0).top?.id).toBe("kit")
+    expect(pick([kit], { sharing: false, home: false, item: null }, 0).top).toBeNull()
+    expect(pick([kit], { sharing: true, item: null }, 0).top).toBeNull()
+    expect(pick([kit, request], { sharing: false, home: false, item: null }, 0).top?.id).toBe("sign-in")
+  })
+
+  it("off the home screen, no yellow block for a reminder", () => {
+    render(<Harness entries={[entry({ id: "kit", priority: 7, shows: "home" })]} place={{ sharing: false, home: false, item: null }} />)
+    expect(yellow()).toHaveLength(0)
+  })
+})
+
 describe("the priority table (brief X3)", () => {
   it("shows the first true entry and counts the rest", () => {
     const seven = entry({ id: "kit", priority: 7 })
@@ -108,7 +124,7 @@ describe("the desktop block", () => {
     render(<Harness place={{ sharing: false, item: "i1" }} entries={[entry({ id: "c", priority: 5, title: "Conflict // 2 copies", shows: { item: "i1" } }), entry({ id: "one", priority: 1, title: "Sign-in request" })]} />)
     expect(yellow()).toHaveLength(1)
     const waiting = screen.getByRole("region", { name: "Waiting on you" })
-    expect(within(waiting).getByRole("heading")).toHaveTextContent(/Waiting on you\s*01/i)
+    expect(within(waiting).getByRole("heading")).toHaveTextContent(/Waiting on you\s*001/i)
     expect(within(waiting).getByRole("listitem")).toHaveTextContent("Conflict // 2 copies")
     expect(waiting.querySelector('[data-variant="needs-you"]')).toBeNull()
   })

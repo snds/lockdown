@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState } from "react"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@unicron/ui"
 
@@ -11,8 +11,8 @@ import { SettingsProvider } from "@/app/settings"
 import { AppShell } from "@/app/shell"
 import { StatusProvider, type LiveStatus } from "@/app/status"
 import { TemplatesProvider } from "@/app/templates"
-import { ClientProvider } from "@/core/client"
-import type { ItemSummary, VaultView as VaultInfo } from "@/core/types"
+import { ClientProvider, type Client } from "@/core/client"
+import type { CodeView, ItemSummary, VaultView as VaultInfo } from "@/core/types"
 import { VaultsProvider } from "@/features/organization/vaults-context"
 import { SharingClientProvider } from "@/features/sharing/sharing-client"
 import { fakeClient } from "@/test/fake-client"
@@ -90,9 +90,9 @@ function Harness({ rows, start }: { rows: ItemSummary[]; start: Nav }) {
   )
 }
 
-function mount({ rows = ROWS, vaults = TWO, start = { area: "search", view: "all" } as Nav } = {}) {
+function mount({ rows = ROWS, vaults = TWO, start = { area: "search", view: "all" } as Nav, client = {} as Partial<Client> } = {}) {
   render(
-    <ClientProvider value={fakeClient({ templates: () => Promise.resolve(TEMPLATES), userTemplates: () => Promise.resolve([]), securityReport: () => Promise.reject({ code: "refused", message: "no report here" }) })}>
+    <ClientProvider value={fakeClient({ templates: () => Promise.resolve(TEMPLATES), userTemplates: () => Promise.resolve([]), securityReport: () => Promise.reject({ code: "refused", message: "no report here" }), ...client })}>
       <TooltipProvider>
         <SettingsProvider>
           <TemplatesProvider>
@@ -203,8 +203,8 @@ describe("Search (brief X4)", () => {
     const seed = itemRows(family)[0]!
     expect(Array.from(seed.querySelectorAll("mark")).map((m) => m.textContent)).toEqual(["Git"])
     expect(seed.querySelector('[data-slot="list-row-meta"]')).toBeNull()
-    // The status line: 04 RESULTS (the line sets the capitals).
-    expect(await screen.findByText(/^04 results$/i)).toBeInTheDocument()
+    // The status line: 4 RESULTS, a plain number in words (the line sets the capitals).
+    expect(await screen.findByText(/^4 results$/i)).toBeInTheDocument()
   })
 
   it("draws no vault headers with one vault", async () => {
@@ -215,12 +215,12 @@ describe("Search (brief X4)", () => {
     expect(screen.queryByRole("heading", { name: /^Personal/ })).not.toBeInTheDocument()
   })
 
-  it("says SEARCH // 00 when nothing matches, and NEW LOGIN starts a login with the words as its website", async () => {
+  it("says SEARCH // 000 when nothing matches, and NEW LOGIN starts a login with the words as its website", async () => {
     mount()
     const user = userEvent.setup()
     await user.type(await screen.findByRole("searchbox", { name: "Search Personal and Family" }), "netflix")
     expect(await screen.findByText("No item for netflix.")).toBeInTheDocument()
-    expect(screen.getByText(/^Search \/\/ 00$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Search \/\/ 000$/i)).toBeInTheDocument()
     expect(screen.getByText(/^Nothing in Personal or Family matches\./)).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "New login" }))
     const editor = await screen.findByRole("dialog")
@@ -239,6 +239,27 @@ describe("Search (brief X4)", () => {
     expect(where()).toBe("search")
     await user.keyboard("{Escape}")
     await waitFor(() => expect(where()).toBe("vault:v2"))
+  })
+
+  it("Escape from Search opened on Codes goes back to Codes (Lockdown 19)", async () => {
+    mount({ start: { area: "codes", view: "all" } })
+    const user = userEvent.setup()
+    await screen.findByText("elsewhere")
+    await user.keyboard("/")
+    await waitFor(() => expect(where()).toBe("search"))
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(where()).toBe("codes"))
+  })
+
+  it("shows no one-time codes in its rows; a code is shown only on request, in Quick access's own row (Lockdown 19)", async () => {
+    const codes = vi.fn(() => Promise.resolve([] as CodeView[]))
+    const rows = ROWS.map((r) => (r.id === "GitHub" ? { ...r, codes: 1 } : r))
+    mount({ rows, client: { codes } })
+    const user = userEvent.setup()
+    await user.type(field(), "git")
+    await waitFor(() => expect(itemRows().some((li) => titleOf(li) === "GitHub")).toBe(true))
+    expect(document.querySelector('[data-slot="code-display"]')).toBeNull()
+    expect(codes).not.toHaveBeenCalled()
   })
 
   it("opened from a vault, offers EVERYWHERE and that vault; the vault narrows it, and the crumb says so", async () => {
