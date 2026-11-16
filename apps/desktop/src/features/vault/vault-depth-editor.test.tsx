@@ -94,7 +94,7 @@ describe("vault depth in the editor (docs/plan/21-vault-depth.md)", () => {
     const user = userEvent.setup()
     await screen.findByRole("heading", { name: "New login" })
     await user.type(screen.getByLabelText("Website"), "https://example.com")
-    await user.click(screen.getByRole("button", { name: "Generate password" }))
+    // A new login makes its password on save by default (Lockdown 29): no Generate press needed.
     // Made when you save, with the core's words and its strength; never a value.
     expect(screen.getByText("Made when you save")).toBeInTheDocument()
     expect(await screen.findByText(/20 characters \/\/ STRONG/)).toBeInTheDocument()

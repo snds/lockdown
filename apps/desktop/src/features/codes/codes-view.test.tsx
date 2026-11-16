@@ -54,7 +54,7 @@ describe("the Codes view on unicron's CodeDisplay", () => {
         <CodesView rows={[]} onChanged={() => {}} />
       </ClientProvider>,
     )
-    expect(await screen.findByText("Codes // 02")).toBeInTheDocument()
+    expect(await screen.findByText("Codes // 002")).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "Codes" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Add code" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Sign in TV" })).toBeInTheDocument()

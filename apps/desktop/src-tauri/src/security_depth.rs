@@ -262,6 +262,21 @@ pub mod commands {
         blocking(&app, |a| a.link_poll()).await
     }
 
+    /// Copies the open link's code (Lockdown 1) on the path every secret's
+    /// copy takes: written with the clipboard-history marks, cleared after
+    /// the settings' timer while the clipboard still holds it. The text
+    /// comes from the core's own link, never from the webview.
+    #[tauri::command]
+    pub async fn copy_link_code(
+        app: State<'_, App>,
+        guard: State<'_, crate::clipboard::ClipboardGuard>,
+        handle: AppHandle,
+        clear_after_secs: Option<u64>,
+    ) -> AppResult<crate::commands::Copied> {
+        let code = blocking(&app, |a| a.link_code_to_use()).await?;
+        crate::commands::copy_with_timer(&guard, &handle, code, clear_after_secs)
+    }
+
     #[tauri::command]
     pub async fn link_approve(
         app: State<'_, App>,

@@ -157,7 +157,7 @@ describe("Health", () => {
     const rows = [row("c1", { title: "Bank (conflict copy from Sam's phone)", conflict_copy: true, views: ["attention"] }), row("x")]
     mount(base({ securityReport: () => Promise.resolve(r), securityCheck }), rows)
     // 1 urgent + 1 important + 1 row in Needs attention.
-    expect(await screen.findByText("03")).toBeInTheDocument()
+    expect(await screen.findByText("003")).toBeInTheDocument()
     expect(toFixCount(r, rows)).toBe(3)
     expect(screen.getByText("TO FIX")).toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(/\/100|score/i)

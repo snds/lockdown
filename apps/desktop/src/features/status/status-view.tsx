@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react"
 
-import { Badge, Banner, Button, FieldRow, FieldRowAction, FieldRowValue, MetaItem, MetaList, SectionHeader } from "@unicron/ui"
+import { Badge, Banner, Button, FieldRow, FieldRowAction, FieldRowValue, Icon, MetaItem, MetaList, SectionHeader } from "@unicron/ui"
 
 import { BannerSlot, useBanner } from "@/app/banners"
 import { usePlaces } from "@/app/places"
@@ -44,8 +44,10 @@ export function logValue(view: TransparencyView | null): string {
  *   (SIGN IN, the shell's Banner), was revoked (no sign-in), or the split
  *   view in D328's whole sentence.
  * - LOCKED, EVEN FROM US: one Field Row per proof with a VERIFIED or NOT
- *   YET Badge, and CHECK NOW (secondary) in its header. A pass updates the
- *   rows without a message (its lines are under Details); a failure is a
+ *   YET Badge (both neutral, a check glyph beside VERIFIED: Lockdown 6), and
+ *   CHECK NOW (secondary) in its header. A pass updates the rows without a
+ *   message, and Vault history's line reads "Checked Today 09:02"
+ *   (Lockdown 37; its lines are under Details); a failure is a
  *   critical Banner under the header in the core's words.
  * - ACCOUNT AND SYNC: the host, the login, the last sync and the session,
  *   SYNC NOW as a text action. No account: one sentence, REGISTER and SIGN
@@ -72,7 +74,7 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
   /** The core's words when the last sync stopped at the server's log; cleared by a sync that passed. */
   const [syncRefusal, setSyncRefusal] = useState<string | null>(null)
   /** What the last CHECK NOW said: a pass's lines go under Details, a failure's words in a Banner. */
-  const [audit, setAudit] = useState<{ ok: boolean; lines: string[] } | null>(null)
+  const [audit, setAudit] = useState<{ ok: boolean; lines: string[]; at: number } | null>(null)
   const showOnce = (page: OncePageData) => setOnce({ title: "Your recovery kit", lines: page.lines, text: page.page.length ? decodeAndWipe(page.page) : null })
 
   const run = async (name: string, action: () => Promise<string[] | void>) => {
@@ -109,9 +111,9 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
   const checkNow = () =>
     run("audit", async () => {
       try {
-        setAudit({ ok: true, lines: await client.audit() })
+        setAudit({ ok: true, lines: await client.audit(), at: Date.now() / 1000 })
       } catch (e) {
-        setAudit({ ok: false, lines: [describeError(e)] })
+        setAudit({ ok: false, lines: [describeError(e)], at: Date.now() / 1000 })
       }
     })
 
@@ -185,7 +187,8 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
           value={account !== null || local ? "Never leaves this computer." : "No account yet, so it is nowhere else."}
         />
         <Proof label="Secret Key" ok={kit} value={!kit ? "No recovery kit yet." : local ? "Made on this computer." : "Made here. The server has never seen it."} />
-        <Proof label="Vault history" ok value="Signed by your devices" />
+        {/* A passing CHECK NOW says so on its row, quietly: no toast (Lockdown 37). Its lines stay under Details. */}
+        <Proof label="Vault history" ok value={audit?.ok ? checkedWords(audit.at) : "Signed by your devices"} />
         {account && <Proof label="Public log" ok={!!view?.checked_at} value={logValue(view)} />}
         {account && mirrors.length > 0 && !split && (
           <Proof label="Log mirrors" ok={agree === mirrors.length} value={agree === mirrors.length ? "Other servers agree" : `${count(agree)} of ${count(mirrors.length)} agree`} />
@@ -290,11 +293,28 @@ export function StatusView({ status, onStatus, onNotice }: StatusViewProps) {
   )
 }
 
-/** One proof: what it is, its fact in a sentence, and VERIFIED or NOT YET (the word carries it). */
+/** The Vault history row's line after a passing CHECK NOW: "Checked Today 09:02" (Lockdown 37). */
+export function checkedWords(secs: number, nowSecs?: number): string {
+  return `Checked ${rowDate(secs, nowSecs)}`
+}
+
+/**
+ * One proof: what it is, its fact in a sentence, and VERIFIED or NOT YET.
+ * Both badges are neutral (Lockdown 6): green is Lockdown's own colour, not
+ * "verified" (D701), so the word and a check glyph beside VERIFIED carry it.
+ */
 function Proof({ label, ok, value }: { label: string; ok: boolean; value: string }) {
   const size = useRowSize()
+  const badge = ok ? (
+    <Badge tone="neutral">
+      <Icon name="checkmark" aria-hidden="true" />
+      Verified
+    </Badge>
+  ) : (
+    <Badge tone="neutral">Not yet</Badge>
+  )
   return (
-    <FieldRow size={size} label={label} badge={<Badge tone={ok ? "success" : "neutral"}>{ok ? "Verified" : "Not yet"}</Badge>}>
+    <FieldRow size={size} label={label} badge={badge}>
       <FieldRowValue truncate="wrap">{value}</FieldRowValue>
     </FieldRow>
   )

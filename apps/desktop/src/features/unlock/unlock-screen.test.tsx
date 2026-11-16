@@ -126,11 +126,13 @@ describe("the unlock screen (doc 39 §1.10)", () => {
     await user.type(screen.getByLabelText("Your name"), "Sean")
     await user.type(screen.getByLabelText("Master password"), PASSWORD)
     await user.type(screen.getByLabelText("Type it again"), PASSWORD)
-    await user.click(screen.getByRole("button", { name: "Lock my vault" }))
+    // M1 leads on to the kit: its yes is Continue; the step that locks, M2, says Lock my vault (Lockdown 33).
+    expect(screen.queryByRole("button", { name: "Lock my vault" })).toBeNull()
+    await user.click(screen.getByRole("button", { name: "Continue" }))
     expect(await screen.findByRole("heading", { level: 1, name: "Type your recovery kit" })).toBeInTheDocument()
     await user.type(screen.getByLabelText("Secret Key"), "A3-K7QF2M")
     await user.type(screen.getByLabelText("Recovery code"), "RC4F-9K2M")
-    await user.click(screen.getByRole("button", { name: "Continue" }))
+    await user.click(screen.getByRole("button", { name: "Lock my vault" }))
     await waitFor(() => expect(onOpened).toHaveBeenCalled())
     expect(setMasterPassword).toHaveBeenCalledWith({ name: "Sean", password: PASSWORD, secretKey: "A3-K7QF2M", recoveryCode: "RC4F-9K2M" })
   })
@@ -208,20 +210,12 @@ describe("the unlock screen (doc 39 §1.10)", () => {
     expect(document.querySelector('[data-slot="banner"]')).not.toBeNull()
   })
 
-  it("offers Touch ID only where this build has quick unlock, and then never as the primary", async () => {
-    // Not offered on this build (the fake's default: it needs the signed app): no biometric button at all.
-    mount(fakeFirstRun())
+  it("shows no Touch ID or Windows Hello button until quick unlock is built, even where the computer has it (Lockdown 32)", async () => {
+    mount(fakeFirstRun({ quickUnlock: () => Promise.resolve({ kind: "windows_hello", available: true, why: "Windows Hello unlock needs the signed Lockdown app." }) }))
     await screen.findByLabelText("Master password")
     await waitFor(() => expect(screen.queryByRole("button", { name: /Touch ID|Windows Hello/ })).toBeNull())
-  })
-
-  it("shows quick unlock that isn't ready as disabled, with the core's reason as a visible line", async () => {
-    mount(fakeFirstRun({ quickUnlock: () => Promise.resolve({ kind: "windows_hello", available: true, why: "Windows Hello unlock needs the signed Lockdown app." }) }))
-    const hello = await screen.findByRole("button", { name: "Unlock with Windows Hello" })
-    expect(hello).toHaveAttribute("aria-disabled", "true")
-    expect(hello).toHaveAccessibleDescription("Windows Hello unlock needs the signed Lockdown app.")
-    expect(screen.getByText("Windows Hello unlock needs the signed Lockdown app.")).toBeVisible()
-    // Unlock stays the working primary.
+    expect(screen.queryByText("Windows Hello unlock needs the signed Lockdown app.")).toBeNull()
+    // Unlock is the one primary.
     expect(screen.getByRole("button", { name: "Unlock" })).toHaveAttribute("data-variant", "default")
   })
 

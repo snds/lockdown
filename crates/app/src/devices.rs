@@ -110,6 +110,14 @@ impl App {
         self.call(|core| core.session()?.link_poll().map_err(AppError::refused))
     }
 
+    /// The open link's code as text to copy (Lockdown 1): the desktop shell
+    /// writes it on the clipboard path every secret takes (the clear timer
+    /// and the clipboard-history marks), and the web vault's page on its
+    /// own. Refused unless a link is waiting for a device.
+    pub fn link_code_to_use(&self) -> AppResult<crate::Revealed> {
+        self.with_session(|s| s.link_code().map(|c| crate::Revealed::from_text(&c)))
+    }
+
     /// Enrols the new device, after the `Approve` gate: the person compared
     /// the digits; the platform check (or the password) confirms it is them.
     pub fn link_approve(&self, gate: GateInput) -> AppResult<Vec<String>> {

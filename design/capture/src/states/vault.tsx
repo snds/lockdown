@@ -385,7 +385,7 @@ export const VAULT_STATES: StateDef[] = [
     screen: "Vaults and tags trees",
     state: "Keep deleted items for…",
     brief_row: "Vaults and tags trees",
-    notes: "The vault menu's Keep deleted items for…: its six choices replace the rows, the vault's own time checked.",
+    notes: "The vault menu's Keep deleted items for…: its six choices open as a menu of their own (Lockdown 20), the vault's own time checked; picking one saves it.",
     steps: [...open, ...openSwitcher(), ...orgMenu("Work"), orgMenuRow("Keep deleted items for…"), { see: '[role="menuitemradio"], [data-adaptive="menu"] [role="radio"]' }, { pause: 250 }],
   }),
   d({

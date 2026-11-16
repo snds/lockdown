@@ -25,8 +25,8 @@ interface ExportOptInProps {
  * while Settings, Backups, "Include crown jewels" is on (D138 as decided,
  * doc 48); off, this switch decides for them too.
  *
- * The web vault makes no exports: there the row says where it is changed,
- * and the switch stays still (W1; the web e2e reads its words).
+ * The web vault makes no exports, so there it draws nothing (Lockdown 22,
+ * amending D827): a switch the web can never act on is noise.
  */
 export function ExportOptIn({ item, onChanged }: ExportOptInProps) {
   const client = useClient()
@@ -35,6 +35,8 @@ export function ExportOptIn({ item, onChanged }: ExportOptInProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const on = item.export_opt_in === true
+
+  if (surface === "web") return null
 
   const change = async (next: boolean) => {
     setBusy(true)
@@ -59,8 +61,7 @@ export function ExportOptIn({ item, onChanged }: ExportOptInProps) {
             : "Crown jewels stay out of plain exports unless you include them here, one by one. Locked backups carry them unless you turn that off in Settings, Backups."
         }
         checked={on}
-        disabled={busy || surface === "web"}
-        disabledReason={surface === "web" ? "Exports and backups are made in the desktop app." : undefined}
+        disabled={busy}
         onCheckedChange={(v) => void change(v)}
       />
       {error && (

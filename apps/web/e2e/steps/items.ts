@@ -23,11 +23,9 @@ export async function itemAction(page: Page, name: "Edit") {
   await page.getByRole("button", { name, exact: true }).click()
 }
 
-/** A named section of the open item (its template's name, "Exports and backups"). */
+/** A named section of the open item (its template's name, "Passport"). */
 export const section = (page: Page, name: string): Locator => page.getByRole("region", { name })
 
-/** A crown jewel's opt-in, inside its section. */
-export const exportSwitch = (section: Locator): Locator => section.getByRole("switch", { name: "Include in exports and backups" })
 
 /** Text that must not be on the page (a secret's plain value). */
 export const plainText = (page: Page, text: string): Locator => page.getByText(text)

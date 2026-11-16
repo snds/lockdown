@@ -202,7 +202,7 @@ export const SCREENS_STATES: StateDef[] = [
     screen: "Migration",
     state: "Lock your vault",
     brief_row: "Unlock",
-    notes: "Brief F4: an install from before the master password gets one before the list draws (Q2: no Not now). The focus frame with no folio, name, master password with its strength rule, again, Lock my vault.",
+    notes: "Brief F4: an install from before the master password gets one before the list draws (Q2: no Not now). The focus frame with no folio, name, master password with its strength rule, again; Continue when the kit step follows, Lock my vault when this step locks (Lockdown 33).",
     built: { area: "existing-install", screen: "master-password", kind: "undrawn" },
     setup: (w) => {
       w.device = { identity: true, deviceKey: true, masterPassword: false }
@@ -227,7 +227,7 @@ export const SCREENS_STATES: StateDef[] = [
     screen: "Migration",
     state: "That install has a kit",
     brief_row: "Unlock",
-    notes: "Brief F4: an install that already has a kit types it (M2): Secret Key and recovery code as SecretFields, Continue, Back, and I don't have it, whose question's yes is New kit.",
+    notes: "Brief F4: an install that already has a kit types it (M2): Secret Key and recovery code as SecretFields, Lock my vault (the step that locks names it, Lockdown 33), Back, and I don't have it, whose question's yes is New kit.",
     built: { area: "existing-install", screen: "kit", kind: "undrawn" },
     setup: (w) => {
       w.device = { identity: true, deviceKey: true, masterPassword: false }
@@ -238,7 +238,7 @@ export const SCREENS_STATES: StateDef[] = [
       { fill: "Your name", value: "Sam Rivera" },
       { fill: "Master password", value: MASTER_PASSWORD },
       { fill: "Type it again", value: MASTER_PASSWORD },
-      { click: "Lock my vault", role: "button" },
+      { click: "Continue", role: "button" },
       { wait: "Type your recovery kit", role: "heading" },
     ],
   }),
@@ -258,7 +258,7 @@ export const SCREENS_STATES: StateDef[] = [
     screen: "Status",
     state: "Proofs",
     brief_row: "Status",
-    notes: "Brief T4 (doc 82): LOCKED, EVEN FROM US with one Field Row per proof and its VERIFIED Badge, CHECK NOW secondary in the header; ACCOUNT AND SYNC (server, login, last sync, session) with SYNC NOW as text; THIS DEVICE with the persona as a fact; DETAILS shut. No filled button.",
+    notes: "Brief T4 (doc 82): LOCKED, EVEN FROM US with one Field Row per proof and its VERIFIED Badge (neutral, a check glyph beside the word: Lockdown 6), CHECK NOW secondary in the header; ACCOUNT AND SYNC (server, login, last sync, session) with SYNC NOW as text; THIS DEVICE with the persona as a fact; DETAILS shut. No filled button.",
     built: { area: "settings-status", screen: "proofs", kind: "undrawn" },
     setup: onMac,
     steps: [...open, ...go("status"), inPage(/Locked, even from us/), { pause: 300 }],
@@ -268,7 +268,8 @@ export const SCREENS_STATES: StateDef[] = [
     screen: "Status",
     state: "Check now: passed",
     brief_row: "Status",
-    notes: "CHECK NOW passed: the rows stay as they are, with no message; the check's lines are under DETAILS, opened here.",
+    notes: "CHECK NOW passed: no message; Vault history's line reads \"Checked Today 09:02\" (Lockdown 37); the check's lines are under DETAILS, opened here.",
+    built: { area: "settings-status", screen: "checked", kind: "undrawn" },
     steps: [...open, ...go("status"), { click: /^Check now/ }, { pause: 400 }, { click: /^Details/ }, { wait: /signed by one of your devices/ }],
   }),
   d({
@@ -721,7 +722,7 @@ export const SCREENS_STATES: StateDef[] = [
     brief_row: "Import / export",
     notes: "A CSV chosen: NOT IN THIS KIND OF FILE, the warning Banner and the Checkbox; CHOOSE WHERE TO SAVE… waits with its reason.",
     setup: onMac,
-    steps: [...settingsAt("settings-import-export"), { click: /^Export…/ }, DIALOG, { click: /A spreadsheet of your logins/, role: "radio" }, { wait: /no column in a CSV/ }, { run: () => document.querySelector(`label[for="export-plain-ok"]`)?.scrollIntoView({ block: "center" }) }, { pause: 300 }],
+    steps: [...settingsAt("settings-import-export"), { click: /^Export…/ }, DIALOG, { click: /^More kinds/ }, { click: /A spreadsheet of your logins/, role: "radio" }, { wait: /no column in a CSV/ }, { run: () => document.querySelector(`label[for="export-plain-ok"]`)?.scrollIntoView({ block: "center" }) }, { pause: 300 }],
   }),
   d({
     id: "desktop-settings-backup-restore",

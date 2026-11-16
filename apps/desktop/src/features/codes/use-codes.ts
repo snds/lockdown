@@ -17,6 +17,14 @@ export const codeKey = (c: Pick<CodeView, "item_id" | "field_id">) => `${c.item_
 
 const unixNow = () => Math.floor(Date.now() / 1000)
 
+/** The event a code added outside the Codes page sends, so a page showing codes asks the core again. */
+const CODES_CHANGED = "lockdown:codes-changed"
+
+/** Says a code was added or changed (the create menu's "One-time code", Lockdown 2). */
+export function codesChanged(): void {
+  window.dispatchEvent(new Event(CODES_CHANGED))
+}
+
 /**
  * The codes as the core computes them, with a local clock: the core is
  * asked once, each code's end is pinned to this clock from the seconds it
@@ -51,6 +59,12 @@ export function useCodes(enabled: boolean, filter?: (code: CodeView) => boolean)
 
   useEffect(() => {
     if (enabled) reload()
+  }, [enabled, reload])
+
+  useEffect(() => {
+    if (!enabled) return
+    window.addEventListener(CODES_CHANGED, reload)
+    return () => window.removeEventListener(CODES_CHANGED, reload)
   }, [enabled, reload])
 
   // The clock: one tick a second over a ref, so the interval never reads

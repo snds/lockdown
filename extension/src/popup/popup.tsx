@@ -27,6 +27,7 @@ import {
   CodeDisplay,
   DigitGroups,
   DropdownMenuItem,
+  formatNavCount,
   Icon,
   ListRow,
   NativeSelect,
@@ -49,8 +50,8 @@ function send<T>(msg: Record<string, unknown>): Promise<T> {
 
 type Say = (text: string) => void
 
-/** A count as cross-app §13 writes it: two digits, three from 100, a comma from 1,000. */
-const count = (n: number) => (n < 100 ? String(n).padStart(2, "0") : n.toLocaleString("en-US"))
+/** A count as the cross-app settlement writes it (Unicron 13): three digits (`012`), a comma from 1,000; unicron's own formatter. */
+const count = (n: number) => formatNavCount(n)
 
 /** How long a code shown here stays on screen. */
 const SHOWN_CODE_MS = 30_000
@@ -67,6 +68,17 @@ function hostOf(site: Site | null): string {
   } catch {
     return ""
   }
+}
+
+
+/**
+ * A row's mono line: the person's own words (a username, a site) as written,
+ * never in the overline's capitals, at 13 px, in Unicron 1.1's mono row role
+ * (Lockdown 4; it replaces popup.css's stand-in).
+ */
+function monoRow(text: ReactNode): ReactNode {
+  if (text === null || text === undefined || text === "") return undefined
+  return <span className="type-mono-row">{text}</span>
 }
 
 export function Popup() {
@@ -335,7 +347,7 @@ function SiteSection({ site, say, onFix, fixButton }: { site: Site; say: Say; on
                   size="compact"
                   metaStyle="plain"
                   title={title}
-                  meta={c.crown_jewel ? "Protected" : c.username}
+                  meta={monoRow(c.crown_jewel ? "Protected" : c.username)}
                   marks={c.asked ? <Badge>From quick access</Badge> : undefined}
                   action={
                     stop ? undefined : (
@@ -459,7 +471,7 @@ function FixView({ tabId, onBack, say }: { tabId?: number; onBack: () => void; s
                   size="compact"
                   metaStyle="plain"
                   title={<label htmlFor={`fix-role-${i}`}>{fieldName(f)}</label>}
-                  meta={`${f.type} // now ${ROLES.find(([v]) => v === (f.role ?? ""))?.[1].toLowerCase() ?? "an ordinary field"}`}
+                  meta={monoRow(`${f.type} // now ${ROLES.find(([v]) => v === (f.role ?? ""))?.[1].toLowerCase() ?? "an ordinary field"}`)}
                   // The Select sits under the words, not at the row's end: at
                   // 336 px a trailing one leaves the field's name three lines
                   // and its mono line cut (doc 87 §2).
@@ -519,7 +531,7 @@ function Aliases({ site, say }: { site: Site; say: Say }) {
             size="compact"
             metaStyle="plain"
             title={svc.name}
-            meta={svc.domain ? `On ${svc.domain}` : "A new address that forwards to you"}
+            meta={monoRow(svc.domain ? `On ${svc.domain}` : "A new address that forwards to you")}
             action={
               <Button variant="secondary" size="sm" aria-label={`New alias from ${svc.name}`} loading={busy === svc.item_id} onClick={() => void make(svc)}>
                 New alias
@@ -627,24 +639,14 @@ function Search({ lookalike, say }: { lookalike: string[]; say: Say }) {
               size="compact"
               metaStyle="plain"
               title={title}
-              meta={resultLine(item)}
+              meta={monoRow(resultLine(item))}
               marks={item.exact === false ? <Badge>Close match</Badge> : undefined}
               detail={
                 showing ? (
-                  // The code shown in place for its 30 seconds. The row's own
-                  // action copies it through the app, which reads the
-                  // clipboard's seconds; the code's own copy goes the same way
-                  // and leaves the countdown to the status line (doc 87 §3).
-                  <CodeDisplay
-                    layout="compact"
-                    code={shown.code}
-                    period={30}
-                    expiresAt={shown.expires}
-                    onCopy={async () => {
-                      await copy(item)
-                      throw new Error("the status line reports this copy")
-                    }}
-                  />
+                  // The code shown in place for its 30 seconds, display only (Lockdown 27): the row's
+                  // COPY CODE is its one copy, through the app's clipboard path, which reads the
+                  // clipboard's seconds (doc 87 §3). Two copy controls for one secret confuse.
+                  <CodeDisplay layout="compact" copy={false} code={shown.code} period={30} expiresAt={shown.expires} />
                 ) : undefined
               }
               action={action}

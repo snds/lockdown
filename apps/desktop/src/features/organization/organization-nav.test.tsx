@@ -279,12 +279,15 @@ describe.each(WIDTHS)("the vault, folder and tag menus at %s px", (_name, width,
     await openMenu(user, rows, "Personal options")
     const leads = () => (screen.queryByRole("menu") ? screen.getByRole("menuitem", { name: "Keep deleted items for…" }) : screen.getByRole("button", { name: "Keep deleted items for…" }))
     await press(user, leads)
-    // The choices replace the rows, the vault's own time checked.
+    // The choices open as a menu of their own (Lockdown 20), not a second page of the first: the vault's own time checked.
     await waitFor(() => expect(openMenuRows()).toEqual(["7 days", "14 days", "30 days", "60 days", "90 days", "A year"]))
+    expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull()
     const choice = (name: string) => screen.getByRole(screen.queryByRole("menu") ? "menuitemradio" : "radio", { name })
     expect(choice("30 days")).toHaveAttribute("aria-checked", "true")
     await press(user, () => choice("60 days"))
+    // Saved on pick, and the menu goes away.
     await waitFor(() => expect(setTrashDays).toHaveBeenCalledWith("v1", 60))
+    await waitFor(() => expect(screen.queryByRole("menuitemradio", { name: "60 days" })).toBeNull())
   }, 60_000)
 
   it("asks before it removes a folder, and Cancel removes nothing", async () => {
@@ -314,6 +317,8 @@ describe("the name prompts", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Rename" }))
     const field = await screen.findByRole("textbox", { name: "Name" })
     expect(field).toHaveValue("Personal")
+    // One field: the question size, 480 on a desktop (Lockdown 20).
+    expect(field.closest('[data-slot="dialog-content"]')).toHaveAttribute("data-size", "question")
     await user.clear(field)
     await user.type(field, "Family{Enter}")
     // The error is the field's own, under it; the prompt stays.

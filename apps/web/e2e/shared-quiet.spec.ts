@@ -52,7 +52,7 @@ test.afterAll(() => {
 
 /** Adds a note in the open view: a change made here, so the tab syncs at once. */
 async function addNote(page: Page, title: string) {
-  await newItem(page, /Note$/, true)
+  await newItem(page, /Secure note$/, true)
   const dialog = editor(page)
   await field(dialog, "Title").fill(title)
   await add(dialog)

@@ -155,14 +155,10 @@ export function SharingView({ section, onSection, vault, rows, onOpenItem, onCha
           <Tabs value={tab} onValueChange={(v) => pick(v as SharingSection)}>
             <TabsList variant="line" aria-label="Sharing">
               {SECTIONS.map((s) => (
-                <TabsTrigger key={s} value={s}>
+                // The count is in the tab's name too ("Requests, 2"), so a screen reader hears what is
+                // seen (Lockdown 30, WCAG 1.3.1): unicron 1.1's mark, drawn after the label.
+                <TabsTrigger key={s} value={s} mark={counts[s] ?? undefined}>
                   {SECTION_LABELS[s]}
-                  {/* The count is seen, not part of the tab's name: "People", as the places name it. */}
-                  {counts[s] !== null && (
-                    <span aria-hidden="true" className="text-text-secondary">
-                      {count(counts[s])}
-                    </span>
-                  )}
                 </TabsTrigger>
               ))}
             </TabsList>

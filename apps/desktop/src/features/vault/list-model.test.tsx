@@ -119,7 +119,7 @@ describe("letter groups and the sort and group menu (brief V1, D780)", () => {
     ])
     expect(groups.find((g) => g.label === "S")!.rows.map((r) => r.title)).toEqual(["spotify", "Steam", "Stripe"])
     // A header's count is written as every count is (decisions §13): `S // 03`.
-    expect(count(groups.find((g) => g.label === "S")!.rows.length)).toBe("03")
+    expect(count(groups.find((g) => g.label === "S")!.rows.length)).toBe("003")
     expect(letterOf("  émile")).toBe("E")
     expect(letterOf("")).toBe("#")
   })

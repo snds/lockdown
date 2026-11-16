@@ -1,3 +1,5 @@
+import { formatNavCount } from "@unicron/ui"
+
 /** Seconds since the Unix epoch, as a short local date and time. */
 export function whenLocal(secs: number | null | undefined): string {
   if (!secs) return "never"
@@ -15,15 +17,14 @@ export function shortId(id: string): string {
 }
 
 /**
- * A count as every list, mark and overline writes one (cross-app decisions
- * §13): two digits (`04`), three from 100 (`248`), a comma from 1,000
- * (`1,204`). `cap` stops at `99+`, for a mark at an icon's corner.
+ * A count in an overline, a chip, a badge or a mark, as every list writes
+ * one (the cross-app settlement, Unicron 13): three digits (`012`), a comma
+ * from 1,000 (`1,204`), through unicron 1.1's own formatter so the app and
+ * its parts never disagree. `cap` is a mark at an icon's corner: two digits,
+ * stopping at `99+`. A count inside a sentence is a plain number (`countName`).
  */
 export function count(n: number, { cap = false }: { cap?: boolean } = {}): string {
-  const whole = Math.max(0, Math.floor(n))
-  if (cap && whole > 99) return "99+"
-  if (whole < 100) return String(whole).padStart(2, "0")
-  return whole.toLocaleString("en-US")
+  return formatNavCount(Math.max(0, Math.floor(n)), { cap })
 }
 
 /** What a count is called aloud: the plain number and its noun ("1 item", "61 items", "3 to fix"). */
@@ -65,4 +66,18 @@ export function rowDate(secs: number, nowSecs: number = Date.now() / 1000): stri
 export function fullDate(secs: number): string {
   const d = new Date(secs * 1000)
   return `${d.getFullYear()}.${two(d.getMonth() + 1)}.${two(d.getDate())}`
+}
+
+/**
+ * How long ago, in words, for the tooltip beside a row's clock time (the
+ * cross-app rule: rows say the clock time; the relative age is the tip):
+ * `just now`, `5 minutes ago`, `3 hours ago`, `2 days ago`.
+ */
+export function ageWords(secs: number, nowSecs: number = Date.now() / 1000): string {
+  const s = Math.max(0, nowSecs - secs)
+  const say = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"} ago`
+  if (s < 60) return "just now"
+  if (s < 3600) return say(Math.floor(s / 60), "minute")
+  if (s < 86_400) return say(Math.floor(s / 3600), "hour")
+  return say(Math.floor(s / 86_400), "day")
 }

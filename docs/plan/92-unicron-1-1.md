@@ -1,6 +1,6 @@
 # 92: unicron 1.1: Lockdown's own theme layer, the 1.1 pre-release, the contrast check
 
-_Slice of the 2026-11 decided changes, on `claude/keen-ritchie-q2hgb2`, built 2026-11-16. Builds on doc 62 (unicron 1.0) and on the decisions Sean delegated on 2026-11-16 (workspace `07-projects/29-unicron/impl-2026-11/rebuild-questions-decided.md`). Decisions D1000 to D1003; the decided Lockdown items are doc 93._
+_Slice of the 2026-11 decided changes, on `claude/keen-ritchie-q2hgb2`, built 2026-11-16. Builds on doc 62 (unicron 1.0) and on the decisions Sean delegated on 2026-11-16 (workspace `07-projects/29-unicron/impl-2026-11/rebuild-questions-decided.md`). Decisions D1000 and D1043 to D1045 (D1001 to D1042 are doc 93's)._
 
 ## For future agent
 
@@ -26,7 +26,7 @@ The extension builds and is reviewed on its own (its source archive carries `ext
 
 **Nothing looks different.** The layer was added under 1.0 first, where it repeats the core's own block, and every state of the review harness was taken before and after: 1,376 pictures (every state at 1440x900 and 390x844, stone and graphite, the popup and frames at their natural size). 1,357 were identical to the pixel. Of the 19 that differed, 16 differ by 1 to 23 pixels of anti-aliasing (a known noise source, doc 62's handover), and 3 (`desktop-item-insurance`, `desktop-item-file-remove`) were taken again and matched (0 and 1 pixel). The frames' sheet `static/tokens.css` changed only in its header comment.
 
-## 2. The packages (D1001)
+## 2. The packages (D1043)
 
 unicron 1.1 is not released until Sean merges its pull request and the Version Packages pull request publishes it. Until then the two packages are the integrator's pre-release tarballs, checked in where 1.0's were (doc 62 §1):
 
@@ -55,7 +55,7 @@ The 1.0.0-pre.2 tarballs are gone. All four pnpm roots (`apps/desktop`, `apps/we
 | Counts read three digits | through unicron's parts at once; Lockdown's own `count()` follows in doc 93 (the cross-app settlement) |
 | Shared build watch | **not adopted here:** the web vault keeps its own `core/build-watch*`, whose rule is stricter (reload only when nobody is signed in). The swap is optional in the guide ("when you are ready"); left for a later slice |
 
-## 3. The contrast check (D1002)
+## 3. The contrast check (D1044)
 
 `pnpm contrast` in `apps/desktop` runs unicron's `unicron-contrast` over `src/styles/lockdown-theme.css` with `src/styles/contrast-exceptions.json`, and CI's desktop job runs it after Lint. It measures 826 gated pairs on both grounds; 50 named exceptions are reported (Figma values with no room, flagged for Sean in unicron's hand-off: Unicron 16, 21 and 35), and 116 measures are reported only. The exceptions file started from unicron's playground copy for Lockdown; the tool fails on any listed pair that starts passing, so the list stays true.
 
@@ -64,6 +64,6 @@ The 1.0.0-pre.2 tarballs are gone. All four pnpm roots (`apps/desktop`, `apps/we
 | ID | Decision | Status |
 |---|---|---|
 | D1000 | **Lockdown declares its own theme**, the 28 slots 1.0 shipped, in `apps/desktop/src/styles/lockdown-theme.css`, with an identical copy in the extension kept equal by a test. Plain version: the app looks exactly as it did, now that the shared kit holds no app's colours. | Built (Sean's ruling on Unicron 1) |
-| D1001 | **Vendored 1.1.0-pre.1 tarballs** replace 1.0.0-pre.2 in all four roots, with the swap line kept. Plain version: Lockdown runs on the 1.1 pre-release until 1.1 is published. | Built |
-| D1002 | **The theme's contrast is a CI gate** (`pnpm contrast`). Plain version: a colour change that makes text too faint fails the build. | Built |
-| D1003 | **The web vault keeps its own build watch** for now (1.1's shared one is optional). Plain version: no change to when the web vault reloads itself. | Proposed |
+| D1043 | **Vendored 1.1.0-pre.1 tarballs** replace 1.0.0-pre.2 in all four roots, with the swap line kept. Plain version: Lockdown runs on the 1.1 pre-release until 1.1 is published. | Built |
+| D1044 | **The theme's contrast is a CI gate** (`pnpm contrast`). Plain version: a colour change that makes text too faint fails the build. | Built |
+| D1045 | **The web vault keeps its own build watch** for now (1.1's shared one is optional). Plain version: no change to when the web vault reloads itself. | Proposed |

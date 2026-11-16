@@ -5,7 +5,9 @@ import { ApprovalSheet } from "@unicron/ui/security/approval-sheet"
 import { QrCode } from "@unicron/ui/security/qr-code"
 
 import { useGate } from "@/app/gate"
-import { describeError } from "@/core/client"
+import { useSettings } from "@/app/settings"
+import { describeError, useClient } from "@/core/client"
+import { copiedWords } from "@/features/sharing/link-once"
 import { countdown } from "@/lib/format"
 import { RAN_OUT_WORDS, isCancelled } from "@/features/approvals/requests"
 
@@ -37,7 +39,8 @@ function useSecondsLeft(expiresAt: number | null): number {
 /**
  * Add a device (docs/plan/22-security-depth.md §2; brief T2 and A1, doc 85).
  * ADD DEVICE opens a link: a review dialog (a sheet on a phone) with the
- * QR code and the code to type, a COPY, and a segmented rule for the ten
+ * QR code and the code to type, a COPY (through the core's clipboard
+ * path, Lockdown 1), and a segmented rule for the ten
  * minutes it works. When the new device joins, the dialog becomes the
  * compare review on unicron's ApprovalSheet: NEW DEVICE // MM:SS LEFT,
  * "Add {name}?", the six digits both screens show, THEY MATCH through the
@@ -47,7 +50,10 @@ function useSecondsLeft(expiresAt: number | null): number {
  */
 export function AddDevice({ onNotice, onChanged }: AddDeviceProps) {
   const depth = useDepthClient()
+  const client = useClient()
+  const { settings } = useSettings()
   const gate = useGate()
+  const [copied, setCopied] = useState<number | null>(null)
   const [link, setLink] = useState<LinkView | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -93,7 +99,20 @@ export function AddDevice({ onNotice, onChanged }: AddDeviceProps) {
     }
   }
 
+  // COPY (Lockdown 1): the core copies the code it made, on the clipboard path every secret takes
+  // (cleared on the settings' timer, kept out of clipboard history; D316). Nothing the webview holds is written.
+  const copy = async () => {
+    setError(null)
+    try {
+      const c = await client.copyLinkCode(settings.clipboard_clear_secs)
+      setCopied(c.clears_in_secs)
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }
+
   const close = () => {
+    setCopied(null)
     stop()
     if (link && link.state !== "approved") void depth.linkDecline().catch(() => undefined)
     setLink(null)
@@ -142,11 +161,17 @@ export function AddDevice({ onNotice, onChanged }: AddDeviceProps) {
         {link && !closed && (
           <div className="flex flex-col items-center gap-4">
             <QrCode modules={link.qr_rows ?? []} label="QR code to add a device" />
-            {/* No COPY here: every copy goes through the shell's clipboard, which clears it and keeps it out of
-                clipboard history (D316), and the core has no such copy for a plain string yet (a gap for Sean). */}
             <p aria-label="Device code" className="type-code-display text-text-body tabular-nums">
               {link.code}
             </p>
+            <Button variant="ghost" onClick={() => void copy()}>
+              Copy
+            </Button>
+            {copied !== null && (
+              <p aria-live="polite" className="type-caption text-text-secondary">
+                {copiedWords(copied)}
+              </p>
+            )}
             <div className="w-full">
               <Progress
                 variant="segmented"

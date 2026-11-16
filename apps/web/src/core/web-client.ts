@@ -85,6 +85,7 @@ export function webClient(link: Link, clipboard: WebClipboard): Client {
       clipboard.copy(await bytes("reveal_to_use", { id, fieldId, ...g(gate) }), clearAfterSecs),
     copyCode: async (itemId, fieldId, clearAfterSecs, which, gate) =>
       clipboard.copy(await bytes("code_now", { itemId, fieldId, which, ...g(gate) }), clearAfterSecs),
+    copyLinkCode: async (clearAfterSecs) => clipboard.copy(await bytes("link_code_to_use"), clearAfterSecs),
     clipboardHolds: (copy) => Promise.resolve(clipboard.holds(copy)),
     clipboardClear: (copy) => clipboard.clear(copy),
     addLogin: (input) =>

@@ -75,3 +75,22 @@ export function userTemplateView(t: UserTemplateView): TemplateView {
   }
 }
 
+
+/**
+ * The names people see for the core's templates, where the frames and
+ * Bitwarden say them shorter (Lockdown 10): "Card", not "Payment card";
+ * "Secure note", not "Note". Only the words change: the core's template ids
+ * and names in crates/vault/src/template.rs stay as they are, so stored
+ * items and the core's checks are untouched.
+ */
+export const TEMPLATE_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+  card: "Card",
+  note: "Secure note",
+}
+
+/** A core template with the name people see (`TEMPLATE_DISPLAY_NAMES`), by its id or its kind. */
+export function displayTemplate<T extends { kind: string; id?: string | null; variant?: string; name: string }>(t: T): T {
+  if (t.variant) return t
+  const name = TEMPLATE_DISPLAY_NAMES[t.id ?? t.kind]
+  return name ? { ...t, name } : t
+}

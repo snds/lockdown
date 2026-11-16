@@ -60,14 +60,31 @@ function close() {
   void send({ t: mode === "passkey" ? "pk_sheet_cancel" : "menu_close" })
 }
 
-/** The host in two parts, so it is cut in the middle (ui.css): the start
- *  gives way and the end, where a look-alike differs least, stays. */
+/** The registrable domain of the host the frame was opened for, from the background (Public Suffix List). */
+let knownSite: { host: string; site: string } | null = null
+
+/** What of `host` stays whole: its registrable domain, as the background worked it out. */
+export function keptPart(host: string, site: string | undefined): string {
+  // A port stays with the domain it follows.
+  const colon = host.lastIndexOf(":")
+  const name = colon > 0 && !host.includes("]") ? host.slice(0, colon) : host
+  const port = host.slice(name.length)
+  if (site && (name === site || name.endsWith(`.${site}`))) return site + port
+  // No list answer (an IP address, a single label): nothing is cut.
+  return host
+}
+
+/** The host in two parts (ui.css): the subdomains give way from the left and
+ *  the registrable domain always stays whole (Lockdown 26). A look-alike
+ *  differs in the domain, so a cut never splits it, as browsers keep it. */
 function hostLine(host: string): HTMLElement {
   const line = el("span", "host")
   if (!host) return line
   line.title = host
-  const keep = Math.min(host.length, 12)
-  line.append(el("span", "host-start", host.slice(0, host.length - keep)), el("span", "host-end", host.slice(host.length - keep)))
+  const keep = keptPart(host, knownSite?.host === host ? knownSite.site : undefined)
+  const start = el("span", "host-start")
+  start.append(el("span", undefined, host.slice(0, host.length - keep.length)))
+  line.append(start, el("span", "host-end", keep))
   return line
 }
 
@@ -100,22 +117,42 @@ function header(host: string): HTMLElement {
   return h
 }
 
-/** A stop's words, led by "Stop:" (brief B2), as the look-alike stop already is. */
-function stopWords(p: HTMLElement, text: string) {
+/**
+ * A stop's words. A refusal or a cover is led by "Stop:" (brief B2), as the
+ * look-alike stop already is; a plain fact that something didn't happen is
+ * not (Lockdown 26): "Stop:" on a fact dulls the real stops.
+ */
+function stopWords(p: HTMLElement, text: string, lead = true) {
   const rest = text.replace(/^Stop:\s*/, "")
+  if (!lead) {
+    p.textContent = rest
+    return
+  }
   p.append(el("strong", "stop-word", "Stop:"), document.createTextNode(` ${rest}`))
 }
 
-function message(host: string, text: string, tone: "plain" | "stop" = "plain") {
+/**
+ * A message in the frame. `stop`: a refusal or a cover, led by "Stop:".
+ * `fact`: something didn't happen (an error, a request that closed), drawn
+ * as a stop is, without the word.
+ */
+function message(host: string, text: string, tone: "plain" | "stop" | "fact" = "plain") {
   root.replaceChildren(header(host))
-  const p = el("p", tone === "stop" ? "msg stop" : "msg", tone === "stop" ? undefined : text)
-  if (tone === "stop") stopWords(p, text)
-  p.setAttribute("role", tone === "stop" ? "alert" : "status")
+  const hard = tone !== "plain"
+  const p = el("p", hard ? "msg stop" : "msg", hard ? undefined : text)
+  if (hard) stopWords(p, text, tone === "stop")
+  p.setAttribute("role", hard ? "alert" : "status")
   root.append(p)
   // Sized to its words within the two heights (design review R3): a stop
   // always takes the larger one and wraps inside it, so its sentence is
   // never cut; a plain message takes it only when its words need it.
-  size(tone === "stop" || root.scrollHeight > heightFor(false))
+  size(hard || root.scrollHeight > heightFor(false))
+}
+
+/** The app's refusal, led by "Stop:"; with none, what went wrong as a fact. */
+function refusedOr(host: string, refuse: string | undefined, fact: string) {
+  if (refuse) message(host, refuse, "stop")
+  else message(host, fact, "fact")
 }
 
 function deliberate(e: MouseEvent | KeyboardEvent): boolean {
@@ -191,7 +228,7 @@ async function pick(data: MenuData, itemId: string, what: PickWhat, field: strin
     go.focus()
     return
   }
-  message(data.host, answer?.refuse ?? answer?.error ?? "Lockdown didn't fill.", "stop")
+  refusedOr(data.host, answer?.refuse, answer?.error ?? "Lockdown didn't fill.")
 }
 
 /** A strong password for a new-password field, made in the app on this
@@ -203,7 +240,7 @@ async function suggestPick(data: MenuData) {
   }
   const answer = await send<PickAnswer & { error?: string }>({ t: "menu_suggest", frame_visible: visible })
   if (answer?.done) return
-  message(data.host, answer?.refuse ?? answer?.error ?? "Lockdown didn't fill.", "stop")
+  refusedOr(data.host, answer?.refuse, answer?.error ?? "Lockdown didn't fill.")
 }
 
 function row(title: string, sub: string, onPick: (e: MouseEvent) => void, badge?: string): HTMLElement {
@@ -238,6 +275,7 @@ function choices(label: string, rows: HTMLElement[], after: HTMLElement[] = []):
 }
 
 function renderMenu(data: MenuData) {
+  knownSite = data.site ? { host: data.host, site: data.site } : null
   if (data.link.link !== "ready") return message(data.host, data.link.message || "Lockdown isn't reachable.")
   if (!data.link.paired) return renderPairOffer(data)
   if (data.link.locked) return message(data.host, "Lockdown is locked. Unlock it to fill.")
@@ -291,7 +329,7 @@ function renderMenu(data: MenuData) {
   root.replaceChildren(header(data.host))
   const after: HTMLElement[] = []
   if ((data.passkeys ?? []).length > 0) {
-    const other = el("button", "link", "Use another device or security key")
+    const other = el("button", "link", "Other device or key")
     other.addEventListener("click", (e) => {
       if (deliberate(e)) void send({ t: "menu_passkey_other" })
     })
@@ -328,8 +366,8 @@ function renderPairOffer(data: MenuData) {
 async function startPairing(data: MenuData) {
   if (visible === false) return message(data.host, "Something on this page covers Lockdown's menu, so Lockdown won't start pairing.", "stop")
   const state = await send<LinkState & { error?: string }>({ t: "menu_pair", frame_visible: visible })
-  if (!state || state.error) return message(data.host, state?.error ?? "Lockdown couldn't start pairing.", "stop")
-  if (!state.pairing) return message(data.host, state.message || "Lockdown couldn't start pairing.", "stop")
+  if (!state || state.error) return message(data.host, state?.error ?? "Lockdown couldn't start pairing.", "fact")
+  if (!state.pairing) return message(data.host, state.message || "Lockdown couldn't start pairing.", "fact")
   root.replaceChildren(header(data.host))
   const lead = el("p", "msg", "Check that Lockdown on this computer shows this code, then approve it there.")
   lead.setAttribute("role", "status")
@@ -348,7 +386,7 @@ async function waitForPairing(data: MenuData) {
     const s = await send<LinkState & { error?: string }>({ t: "menu_link" }).catch(() => null)
     if (!s || s.error) return message(data.host, s?.error ?? "This menu isn't open any more.")
     if (s.pairing && Date.now() - started < 130_000) continue
-    if (!s.paired) return message(data.host, s.message || "This browser isn't paired.", "stop")
+    if (!s.paired) return message(data.host, s.message || "This browser isn't paired.", "fact")
     const next = await send<MenuData & { error?: string }>({ t: "menu_data" })
     if (!next || next.error) return message(data.host, next?.error ?? "Lockdown isn't reachable.")
     shownAt = Date.now()
@@ -372,7 +410,7 @@ async function renderPrompt() {
     yes.dataset.busy = no.dataset.busy = "1"
     yes.disabled = no.disabled = true
     const r = await send<{ done?: boolean; error?: string }>({ t: "prompt_answer", save })
-    if (r?.error) message("", r.error, "stop")
+    if (r?.error) message("", r.error, "fact")
   }
   yes.addEventListener("click", answer(true))
   no.addEventListener("click", answer(false))
@@ -392,11 +430,11 @@ function busy(host: string, text: string) {
   size(false)
 }
 
-/** A stop with one way out. */
-function stop(host: string, text: string, label = "OK") {
+/** A stop with one way out; `lead` false for a fact (no "Stop:", Lockdown 26). */
+function stop(host: string, text: string, label = "OK", lead = true) {
   root.replaceChildren(header(host))
   const p = el("p", "msg stop")
-  stopWords(p, text)
+  stopWords(p, text, lead)
   p.setAttribute("role", "alert")
   const row = el("div", "actions")
   const ok = el("button", "secondary", label)
@@ -408,7 +446,7 @@ function stop(host: string, text: string, label = "OK") {
 }
 
 function anotherDevice(): HTMLButtonElement {
-  const b = el("button", "link", "Use another device or security key")
+  const b = el("button", "link", "Other device or key")
   b.addEventListener("click", (e) => {
     if (deliberate(e)) void send({ t: "pk_sheet_handoff" })
   })
@@ -439,7 +477,7 @@ async function sheetPick(d: SheetData, o: PasskeyOption, confirmed: boolean) {
     go.focus()
     return
   }
-  stop(d.host, a?.refuse ?? a?.error ?? "Lockdown didn't sign in.")
+  stop(d.host, a?.refuse ?? a?.error ?? "Lockdown didn't sign in.", "OK", Boolean(a?.refuse))
 }
 
 async function sheetCreate(d: SheetData) {
@@ -447,10 +485,11 @@ async function sheetCreate(d: SheetData) {
   busy(d.host, "Saving the passkey…")
   const a = await send<PickAnswer & { error?: string }>({ t: "pk_sheet_create", frame_visible: visible })
   if (a?.done) return
-  stop(d.host, a?.refuse ?? a?.error ?? "Lockdown didn't save the passkey.")
+  stop(d.host, a?.refuse ?? a?.error ?? "Lockdown didn't save the passkey.", "OK", Boolean(a?.refuse))
 }
 
 function renderSheet(d: SheetData) {
+  knownSite = d.site ? { host: d.host, site: d.site } : null
   root.replaceChildren(header(d.host))
   const site = d.rp_name || d.rp_id
   if (d.kind === "locked") {
@@ -471,8 +510,8 @@ function renderSheet(d: SheetData) {
   }
   if (d.kind === "create") {
     const plan = d.plan
-    if (!plan) return stop(d.host, "This request isn't open any more.")
-    if (plan.excluded) return stop(d.host, `Lockdown already holds a passkey for this account on ${plan.rp_id}.`, "OK")
+    if (!plan) return stop(d.host, "This request isn't open any more.", "OK", false)
+    if (plan.excluded) return stop(d.host, `Lockdown already holds a passkey for this account on ${plan.rp_id}.`, "OK", false)
     const p = el("p", "msg ask", `Save a passkey for ${site} in Lockdown?`)
     p.append(
       el(

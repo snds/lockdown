@@ -19,6 +19,8 @@ import { DetailPane } from "./detail-pane"
 import { ItemRow } from "./item-row"
 import { VIEW_LABELS, rowWords, rowsIn, searchRows, sortRows } from "./list-model"
 import { clearTyped, onSearchWith, openedFrom, typedWords } from "./search-words"
+import { ItemCodeDisplay } from "./code-display"
+import { codeKey, useCodes } from "@/features/codes/use-codes"
 
 interface SearchViewProps {
   rows: ItemSummary[] | null
@@ -107,7 +109,7 @@ const HERE = "here"
 export function SearchView({ rows, selected, onSelect, onChanged, onNotice }: SearchViewProps) {
   const { vaults } = useVaults()
   const { go, navigate } = usePlaces()
-  const { edit } = useShell()
+  const { edit, leaveSearch } = useShell()
   const frame = useAppFrame()
   const [query, setQuery] = useState(typedWords)
   // Opened by typing in All items' field: emptying the field goes back to the list, as a search in place would.
@@ -127,9 +129,12 @@ export function SearchView({ rows, selected, onSelect, onChanged, onNotice }: Se
       }),
     [],
   )
+  // Escape leaves for where the person was: the list it was typed in, the list it was opened from, or
+  // any other place, Codes and Settings among them (the shell's place before Search, Lockdown 19).
   const leave = () => {
-    if (from && !fromList) navigate(from)
-    else go("all")
+    if (fromList) go("all")
+    else if (from) navigate(from)
+    else leaveSearch()
   }
   const type = (words: string) => {
     setQuery(words)
@@ -145,6 +150,26 @@ export function SearchView({ rows, selected, onSelect, onChanged, onNotice }: Se
   const recent = useMemo(() => (q ? [] : recentlyUsed(base)), [base, q])
   const oneVault = vaults.length < 2 || Boolean(here && narrow?.nav.scope?.vault)
   const groups = useMemo(() => (oneVault ? [{ vault: null, rows: found }] : groupByVault(found, vaults)), [oneVault, found, vaults])
+  // A found item's one-time code shows inside its own row, under its words (Lockdown 19, as the popup's
+  // D957): a code under the list could be read as another item's.
+  const withCodes = useMemo(() => [...found, ...recent].filter((r) => r.codes > 0 && !r.crown_jewel).map((r) => r.id), [found, recent])
+  const codeIds = withCodes.join(" ")
+  const codes = useCodes(withCodes.length > 0, (c) => withCodes.includes(c.item_id))
+  const reloadCodes = codes.reload
+  useEffect(() => {
+    if (codeIds) reloadCodes()
+  }, [codeIds, reloadCodes])
+  const codeOf = (r: ItemSummary) => {
+    const mine = (codes.codes ?? []).filter((c) => c.item_id === r.id)
+    if (!mine.length) return undefined
+    return (
+      <div className="flex flex-col gap-1">
+        {mine.map((c) => (
+          <ItemCodeDisplay key={codeKey(c)} code={c} now={codes.now} expiresAt={codes.expiresAt[codeKey(c)] ?? null} layout="compact" />
+        ))}
+      </div>
+    )
+  }
 
   // SEARCH, or SEARCH // FAMILY while that chip is chosen; the status says how many.
   useCrumb(here && narrow ? [narrow.label] : null)
@@ -174,6 +199,7 @@ export function SearchView({ rows, selected, onSelect, onChanged, onNotice }: Se
           onSelect={onSelect}
           highlight={mark}
           words={rowWords(r, { view: "all", vaults, oneVault })}
+          detail={codeOf(r)}
           swipe={swipe}
           actions={
             rowMenuOffers(r) ? (

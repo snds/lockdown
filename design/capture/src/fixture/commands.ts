@@ -5,6 +5,7 @@
 // the screens behave as the app does for the length of a page load.
 
 import { MARKER as DEVTOOLS_MARKER } from "@/devtools/marker"
+import { isMac } from "@/features/palette/palette-model"
 import type {
   ApprovalRoute,
   CodeAdvanced,
@@ -66,6 +67,9 @@ function oncePage(lines: string[], page: string): Uint8Array {
   out.set(body, head.length + 1)
   return out
 }
+
+/** The system-wide shortcut as the core labels it on this computer (src-tauri/src/quick.rs `hotkey_label`). */
+const hotkeyLabel = () => (isMac() ? "⌘⇧Space" : "Ctrl+Shift+Space")
 
 export const KIT = `Lockdown recovery kit
 Made for: ${PERSON.login}
@@ -903,8 +907,10 @@ export function commands(world: World): Record<string, Handler> {
     },
     quick_hide: () => undefined,
     quick_open_main: () => undefined,
-    quick_hotkey_status: (): HotkeyStatus => ({ on: true, registered: true, label: "⌥ Space" }),
-    quick_hotkey_set: (a): HotkeyStatus => ({ on: Boolean(a.on), registered: Boolean(a.on), label: "⌥ Space" }),
+    // The core's label for this computer (src-tauri/src/quick.rs `hotkey_label`): ⌘⇧Space on a Mac,
+    // Ctrl+Shift+Space on Windows and Linux (Lockdown 12; never Alt+Space, Windows' window menu).
+    quick_hotkey_status: (): HotkeyStatus => ({ on: true, registered: true, label: hotkeyLabel() }),
+    quick_hotkey_set: (a): HotkeyStatus => ({ on: Boolean(a.on), registered: Boolean(a.on), label: hotkeyLabel() }),
     scan_frame: (): ScanOutcome => ({ found: false, kind: "none", decision: "unsupported", code_in_url: false, accounts: [] }),
     scan_text: (): ScanOutcome => ({
       found: true,

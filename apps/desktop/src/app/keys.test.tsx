@@ -16,7 +16,7 @@ import { fakeClient } from "@/test/fake-client"
 import { fakeQuick } from "@/test/fake-quick"
 import { TEMPLATES } from "@/test/templates-fixture"
 
-import { shortcuts, useRowMenuKeys, type RowMenuFrom } from "./keys"
+import { platformKeys, shortcuts, useRowMenuKeys, type RowMenuFrom } from "./keys"
 import { placeIdOf, usePlaces, type Nav } from "./places"
 import { AppShell } from "./shell"
 
@@ -155,6 +155,21 @@ describe("the keys at 1440 (brief X6)", () => {
   it("on a Mac it writes the Mac's keys", () => {
     const keys = shortcuts({ mac: true, quickWindow: { label: "⌥Space" } }).map((s) => s.keys)
     expect(keys).toEqual([["⌘K"], ["⌥Space"], ["⌘⇧L"], ["/"], ["⌘,"], ["⌘\\"], ["?"], ["↑ ↓", "↵"], ["⇧F10"], ["Esc"]])
+  })
+
+  it("never shows a Mac glyph off a Mac: the key's own words joined by + (Lockdown 12)", () => {
+    expect(platformKeys("⌘⇧Space", false)).toBe("Ctrl+Shift+Space")
+    expect(platformKeys("⌥ Space", false)).toBe("Alt+Space")
+    expect(platformKeys("Ctrl+Shift+Space", false)).toBe("Ctrl+Shift+Space")
+    expect(platformKeys("⌘⇧Space", true)).toBe("⌘⇧Space")
+    const keys = shortcuts({ mac: false, quickWindow: { label: "⌘⇧Space" } }).map((s) => s.keys)
+    expect(keys[1]).toEqual(["Ctrl+Shift+Space"])
+    expect(keys.flat().join(" ")).not.toMatch(/[⌘⇧⌥⌃↵]/)
+  })
+
+  it("the default on Windows and Linux is Ctrl+Shift+Space, never Alt+Space (the window menu)", () => {
+    expect(HOTKEY.label).toBe("Ctrl+Shift+Space")
+    expect(HOTKEY.label).not.toMatch(/Alt\+Space/)
   })
 
   it("says when the system-wide shortcut is off, and leaves it out where there is no quick-access window", async () => {

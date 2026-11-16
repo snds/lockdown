@@ -52,7 +52,10 @@ export function KeysDialog({ open, onOpenChange }: KeysDialogProps) {
               description={s.note}
               rule={s.id === "quick-access" ? "none" : "top"}
             >
-              <FieldRowValue truncate="wrap">{s.does}</FieldRowValue>
+              {/* What a key does is reading text, in the body role; only the key is code, in mono (Lockdown 12). */}
+              <FieldRowValue truncate="wrap">
+                <span className="type-body text-text-body">{s.does}</span>
+              </FieldRowValue>
             </FieldRow>
           </div>
         ))}

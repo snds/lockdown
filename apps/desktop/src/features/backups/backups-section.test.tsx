@@ -7,6 +7,7 @@ import type { BackupStatus, GateInput } from "@/core/types"
 import { fakeClient } from "@/test/fake-client"
 
 import { BackupsSection } from "./backups-section"
+import { ageWords } from "@/lib/format"
 import { crownLine, crownSwitchHelp, lastBackupLine, nextLine, statusLine, waitingLine } from "./backups-model"
 
 const off: BackupStatus = {
@@ -214,7 +215,7 @@ describe("Backups in Settings", () => {
     await waitFor(() => expect(screen.getByRole("switch", { name: "Include crown jewels" })).not.toBeChecked())
     expect(backupCrownJewels).toHaveBeenLastCalledWith(false, { confirmed: true })
     expect(screen.getByText(/2 crown jewels aren't in your backups/)).toBeInTheDocument()
-    expect(screen.getByText("Crown jewels stay out of locked backups unless you include them one by one.")).toBeInTheDocument()
+    expect(screen.getByText("Crown jewels stay out of locked backups unless you include them one by one. Backups you already have keep what they hold.")).toBeInTheDocument()
     expect(screen.queryByText(/Your next backup will be the first/)).not.toBeInTheDocument()
     // A toast without a full stop (cross-app §12), naming what changed: new backups.
     expect(onNotice).toHaveBeenLastCalledWith("Crown jewels stay out of new backups")
@@ -237,8 +238,12 @@ describe("Backups in Settings", () => {
     expect(crownLine({ ...on, include_crown_jewels: false, crown_jewels_left_out: 1 })).toMatch(/^1 crown jewel isn't in your backups/)
     expect(crownSwitchHelp(false)).toMatch(/one by one/)
     expect(lastBackupLine(off)).toBe("No backup yet")
-    expect(lastBackupLine({ ...on, last_success_at: 1_000_000 }, 1_000_000 + 3 * 3600 + 5)).toBe("Backed up 3 hours ago")
-    expect(lastBackupLine({ ...on, last_success_at: 1_000_000 }, 1_000_000 + 60)).toBe("Backed up 1 minute ago")
+    // Clock time, not an age (Lockdown 11): the age is the row's tip.
+    const at = new Date(2026, 10, 16, 9, 2).getTime() / 1000
+    expect(lastBackupLine({ ...on, last_success_at: at }, at + 3 * 3600 + 5)).toBe("Backed up Today 09:02")
+    expect(lastBackupLine({ ...on, last_success_at: at }, at + 86_400)).toBe("Backed up Yesterday 09:02")
+    expect(ageWords(at, at + 3 * 3600 + 5)).toBe("3 hours ago")
+    expect(ageWords(at, at + 60)).toBe("1 minute ago")
     expect(nextLine(off)).toBeNull()
     expect(nextLine({ ...on, next_due_at: 100 }, 200)).toBe("Due now, while Lockdown is unlocked.")
   })

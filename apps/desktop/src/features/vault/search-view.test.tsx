@@ -11,8 +11,8 @@ import { SettingsProvider } from "@/app/settings"
 import { AppShell } from "@/app/shell"
 import { StatusProvider, type LiveStatus } from "@/app/status"
 import { TemplatesProvider } from "@/app/templates"
-import { ClientProvider } from "@/core/client"
-import type { ItemSummary, VaultView as VaultInfo } from "@/core/types"
+import { ClientProvider, type Client } from "@/core/client"
+import type { CodeView, ItemSummary, VaultView as VaultInfo } from "@/core/types"
 import { VaultsProvider } from "@/features/organization/vaults-context"
 import { SharingClientProvider } from "@/features/sharing/sharing-client"
 import { fakeClient } from "@/test/fake-client"
@@ -90,9 +90,9 @@ function Harness({ rows, start }: { rows: ItemSummary[]; start: Nav }) {
   )
 }
 
-function mount({ rows = ROWS, vaults = TWO, start = { area: "search", view: "all" } as Nav } = {}) {
+function mount({ rows = ROWS, vaults = TWO, start = { area: "search", view: "all" } as Nav, client = {} as Partial<Client> } = {}) {
   render(
-    <ClientProvider value={fakeClient({ templates: () => Promise.resolve(TEMPLATES), userTemplates: () => Promise.resolve([]), securityReport: () => Promise.reject({ code: "refused", message: "no report here" }) })}>
+    <ClientProvider value={fakeClient({ templates: () => Promise.resolve(TEMPLATES), userTemplates: () => Promise.resolve([]), securityReport: () => Promise.reject({ code: "refused", message: "no report here" }), ...client })}>
       <TooltipProvider>
         <SettingsProvider>
           <TemplatesProvider>
@@ -204,7 +204,7 @@ describe("Search (brief X4)", () => {
     expect(Array.from(seed.querySelectorAll("mark")).map((m) => m.textContent)).toEqual(["Git"])
     expect(seed.querySelector('[data-slot="list-row-meta"]')).toBeNull()
     // The status line: 04 RESULTS (the line sets the capitals).
-    expect(await screen.findByText(/^04 results$/i)).toBeInTheDocument()
+    expect(await screen.findByText(/^004 results$/i)).toBeInTheDocument()
   })
 
   it("draws no vault headers with one vault", async () => {
@@ -220,7 +220,7 @@ describe("Search (brief X4)", () => {
     const user = userEvent.setup()
     await user.type(await screen.findByRole("searchbox", { name: "Search Personal and Family" }), "netflix")
     expect(await screen.findByText("No item for netflix.")).toBeInTheDocument()
-    expect(screen.getByText(/^Search \/\/ 00$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Search \/\/ 000$/i)).toBeInTheDocument()
     expect(screen.getByText(/^Nothing in Personal or Family matches\./)).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "New login" }))
     const editor = await screen.findByRole("dialog")
@@ -239,6 +239,32 @@ describe("Search (brief X4)", () => {
     expect(where()).toBe("search")
     await user.keyboard("{Escape}")
     await waitFor(() => expect(where()).toBe("vault:v2"))
+  })
+
+  it("Escape from Search opened on Codes goes back to Codes (Lockdown 19)", async () => {
+    mount({ start: { area: "codes", view: "all" } })
+    const user = userEvent.setup()
+    await screen.findByText("elsewhere")
+    await user.keyboard("/")
+    await waitFor(() => expect(where()).toBe("search"))
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(where()).toBe("codes"))
+  })
+
+  it("shows a found item's one-time code inside its own row, under its words (Lockdown 19)", async () => {
+    const code: CodeView = { item_id: "GitHub", field_id: "totp", title: "GitHub", issuer: "GitHub", account: "kestrel04", variant: "totp", digits: 6, period: 30, current: "492810", next: null, seconds_left: 20, counter: null, warnings: [] }
+    const rows = ROWS.map((r) => (r.id === "GitHub" ? { ...r, codes: 1 } : r))
+    mount({ rows, client: { codes: () => Promise.resolve([code]) } })
+    const user = userEvent.setup()
+    await user.type(field(), "git")
+    const github = await waitFor(() => {
+      const li = itemRows().find((li) => titleOf(li) === "GitHub")
+      if (!li) throw new Error("no GitHub row")
+      return li
+    })
+    await waitFor(() => expect(github.querySelector('[data-slot="code-display"]')).not.toBeNull())
+    // The code sits in GitHub's own row, nowhere else.
+    expect(document.querySelectorAll('[data-slot="code-display"]')).toHaveLength(1)
   })
 
   it("opened from a vault, offers EVERYWHERE and that vault; the vault narrows it, and the crumb says so", async () => {

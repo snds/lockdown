@@ -42,7 +42,7 @@ describe("a crown jewel's export opt-in (D121)", () => {
     expect(setExportOptIn).toHaveBeenLastCalledWith("w1", true, { confirmed: true })
   })
 
-  it("the web vault makes no exports: the row says where it is changed and the switch stays still (W1)", async () => {
+  it("the web vault makes no exports, so it draws no switch (Lockdown 22, amending D827)", () => {
     const setExportOptIn = vi.fn<Client["setExportOptIn"]>()
     render(
       <PlacesProvider value={{ nav: { area: "vault", view: "all" }, surface: "web", go: () => {}, navigate: () => {} }}>
@@ -53,10 +53,8 @@ describe("a crown jewel's export opt-in (D121)", () => {
         </ClientProvider>
       </PlacesProvider>,
     )
-    const toggle = screen.getByRole("switch", { name: "Include in exports and backups" })
-    expect(screen.getByText("Exports and backups are made in the desktop app.")).toBeInTheDocument()
-    await userEvent.setup().click(toggle)
-    expect(toggle).not.toBeChecked()
+    expect(screen.queryByRole("switch", { name: "Include in exports and backups" })).toBeNull()
+    expect(screen.queryByRole("region", { name: "Exports and backups" })).toBeNull()
     expect(setExportOptIn).not.toHaveBeenCalled()
   })
 })

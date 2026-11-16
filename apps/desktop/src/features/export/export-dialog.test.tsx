@@ -53,6 +53,8 @@ describe("the export dialog", () => {
     const kinds = screen.getAllByRole("radio")
     expect(kinds[0]).toHaveAccessibleName("A Lockdown backup, locked with a password (recommended)")
     expect(kinds[0]).toBeChecked()
+    // Locked kinds first; the unprotected ones wait under More kinds, shut (Lockdown 38).
+    expect(screen.queryByRole("radio", { name: /not protected/ })).toBeNull()
     const region = await screen.findByRole("region", { name: "What the file will hold" })
     await waitFor(() => expect(region).toHaveTextContent("This file will hold 12 items, 2 attached files."))
     expect(region).toHaveTextContent("1 crown jewel stays out: Cold wallet.")
@@ -80,6 +82,7 @@ describe("the export dialog", () => {
   it("an unprotected file needs the person's yes first", async () => {
     const { exportSave } = mount({})
     const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: /^More kinds/ }))
     await user.click(screen.getByRole("radio", { name: "A spreadsheet of your logins (not protected)" }))
     expect(await screen.findByText("3 items that aren't logins: a CSV holds logins only")).toBeInTheDocument()
     // The yes waits for the person's yes, with its reason under it, and stays in the tab order.
@@ -121,6 +124,7 @@ describe("crown jewels in a locked backup (doc 48)", () => {
     expect(region).not.toHaveTextContent("stays out")
     expect(exportPreview).toHaveBeenCalledWith("lockdown", null, true)
 
+    await user.click(screen.getByRole("button", { name: /^More kinds/ }))
     await user.click(screen.getByRole("radio", { name: "A readable Lockdown file (not protected)" }))
     await waitFor(() => expect(region).toHaveTextContent("1 crown jewel stays out: Cold wallet."))
     expect(exportPreview).toHaveBeenLastCalledWith("lockdown", null, false)

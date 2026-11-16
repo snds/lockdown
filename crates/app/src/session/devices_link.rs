@@ -193,6 +193,19 @@ impl Session {
         Ok(view)
     }
 
+    /// The open link's code, for a copy through the shell's clipboard
+    /// (Lockdown 1): only while the link still waits for a device, so a
+    /// code that can no longer be used is never put on the clipboard. The
+    /// webview never sends the text to copy; the core hands over the code
+    /// it made.
+    pub fn link_code(&self) -> Result<String, String> {
+        match self.link.as_ref() {
+            Some(link) if link.state == "waiting" => Ok(link.code.clone()),
+            Some(_) => Err("this link isn't waiting for a device any more; make a new one".into()),
+            None => Err("no device is being added".into()),
+        }
+    }
+
     /// Reads the relay: a new device's request is checked and answered with
     /// the reveal at once, and the digits come back for the person.
     pub fn link_poll(&mut self) -> Result<LinkView, String> {

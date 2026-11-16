@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react"
 import { Icon, isIconName } from "@unicron/ui"
 
-import { templateIcon } from "./template-model"
+import { displayTemplate, templateIcon } from "./template-model"
 
 /*
  * A template's icon arrives as data, and the core names Material Symbols
@@ -85,5 +85,15 @@ describe("a template's icon, from the core's name to one unicron draws", () => {
       expect(svg.querySelector("path, circle, rect"), name).not.toBeNull()
       unmount()
     }
+  })
+})
+
+describe("the names people see for the core's templates (Lockdown 10)", () => {
+  it("says Card and Secure note, keeping the core's ids, and leaves the rest and a variant alone", () => {
+    const t = (kind: string, name: string, variant = "") => ({ kind, id: variant ? `${kind}/${variant}` : kind, variant, name })
+    expect(displayTemplate(t("card", "Payment card"))).toEqual({ kind: "card", id: "card", variant: "", name: "Card" })
+    expect(displayTemplate(t("note", "Note")).name).toBe("Secure note")
+    expect(displayTemplate(t("login", "Login")).name).toBe("Login")
+    expect(displayTemplate(t("card", "Store card", "store")).name).toBe("Store card")
   })
 })

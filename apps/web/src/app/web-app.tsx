@@ -275,7 +275,7 @@ function WebRoot({ session, server, link, clipboard }: WebRootProps) {
   const vaultsValue = useMemo(() => ({ vaults, reload: sync }), [vaults, sync])
   // Where the person is, for what waits on one item or on Sharing only (brief X3). The web vault has no source yet.
   const itemOpen = nav.area === "vault" || nav.area === "search" ? selected : null
-  const needsYouPlace = useMemo<NeedsYouPlace>(() => ({ sharing: nav.area === "sharing", item: itemOpen }), [nav.area, itemOpen])
+  const needsYouPlace = useMemo<NeedsYouPlace>(() => ({ sharing: nav.area === "sharing", home: nav.area === "vault" && nav.view === "all" && !nav.scope, item: itemOpen }), [nav.area, nav.view, nav.scope, itemOpen])
   const openItem = useCallback((id: string) => {
     setNav({ area: "vault", view: "all" })
     setSelected(id)

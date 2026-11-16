@@ -96,13 +96,17 @@ button[data-arming]::after {
   font-size: var(--type-brand-wordmark-size); letter-spacing: var(--type-brand-wordmark-tracking);
   line-height: 1; text-transform: uppercase; color: var(--text-body);
 }
-/* The host in mono, cut in the middle: the start gives way, the end stays. */
+/* The host in mono: the subdomains give way from the left (an ellipsis at the
+   start) and the registrable domain stays whole (Lockdown 26). The start runs
+   right to left only so its ellipsis sits on the left; its text is an
+   isolated left-to-right run, so the labels keep their order. */
 .host {
   display: flex; flex: 1; min-width: 0; justify-content: flex-end; white-space: nowrap;
   font-family: var(--type-meta-family); font-weight: var(--type-meta-weight);
   font-size: var(--type-meta-size); letter-spacing: var(--type-meta-tracking); color: var(--text-label);
 }
-.host-start { overflow: hidden; text-overflow: ellipsis; }
+.host-start { overflow: hidden; text-overflow: ellipsis; direction: rtl; }
+.host-start > span { direction: ltr; unicode-bidi: isolate; }
 .host-end { flex: none; }
 .close { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; min-height: 24px; height: 24px; padding: 0; color: var(--text-label); }
 .close svg { width: 16px; height: 16px; }

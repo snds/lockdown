@@ -1,4 +1,5 @@
 import type { BackupStatus } from "@/core/types"
+import { rowDate } from "@/lib/format"
 
 export const INTERVALS: Array<[string, number]> = [
   ["Every hour", 1],
@@ -25,15 +26,14 @@ export function statusLine(s: BackupStatus): string {
 const two = (n: number) => String(n).padStart(2, "0")
 const clock = (d: Date) => `${two(d.getHours())}:${two(d.getMinutes())}`
 
-/** The LAST BACKUP row's words (brief T8): "Backed up 3 hours ago", or "No backup yet". */
+/**
+ * The LAST BACKUP row's words (brief T8; Lockdown 11, the cross-app clock
+ * rule): "Backed up Today 09:02", or "No backup yet". How long ago is the
+ * row's tip (`ClockTime`), never the row's words.
+ */
 export function lastBackupLine(s: BackupStatus, nowSecs: number = Date.now() / 1000): string {
   if (!s.last_success_at) return "No backup yet"
-  const secs = Math.max(0, nowSecs - s.last_success_at)
-  const say = (n: number, unit: string) => `Backed up ${n} ${unit}${n === 1 ? "" : "s"} ago`
-  if (secs < 60) return "Backed up just now"
-  if (secs < 3600) return say(Math.floor(secs / 60), "minute")
-  if (secs < 86_400) return say(Math.floor(secs / 3600), "hour")
-  return say(Math.floor(secs / 86_400), "day")
+  return `Backed up ${rowDate(s.last_success_at, nowSecs)}`
 }
 
 /** When the next is due, under the LAST BACKUP row; `null` when backups are off. */
@@ -69,7 +69,7 @@ export function includesCrownJewels(s: BackupStatus): boolean {
 export function crownSwitchHelp(on: boolean): string {
   return on
     ? "Recovery phrases, recovery codes and your other crown jewels go into every locked backup, protected by its password."
-    : "Crown jewels stay out of locked backups unless you include them one by one."
+    : "Crown jewels stay out of locked backups unless you include them one by one. Backups you already have keep what they hold."
 }
 
 /** Said once after the switch starts carrying them: the newest backup lacks them, the next one won't. `null` otherwise. */

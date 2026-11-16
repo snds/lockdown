@@ -6,7 +6,7 @@ import path from "node:path"
 import { expect, test, type BrowserContext, type Page } from "@playwright/test"
 
 import { openTvSignIn, pasteAddress, pickLogin, scannedCode, scannedHost, signInOffers, signInOn } from "./steps/codes.ts"
-import { LOGIN as LOGIN_ENTRY, editor, field, newItem } from "./steps/editor.ts"
+import { LOGIN as LOGIN_ENTRY, editor, newItem, typeOwnPassword } from "./steps/editor.ts"
 import { answerGate } from "./steps/gate.ts"
 import { alert, go, lock, vaultOpen } from "./steps/nav.ts"
 import { openPalette, paletteResults } from "./steps/search.ts"
@@ -170,7 +170,8 @@ test("what a typed password leaves in the page's memory after the tab hides and 
   }
 
   await newItem(page, LOGIN_ENTRY, true)
-  const typed = field(editor(page), "Password", true)
+  // A new login's password is made on save (Lockdown 29): type one instead.
+  const typed = await typeOwnPassword(editor(page))
   await typed.fill(TYPED)
   expect(await inHeap(), "while typed, the page holds it (D91)").toBe(true)
 

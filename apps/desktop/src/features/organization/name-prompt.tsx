@@ -91,6 +91,8 @@ export function NamePrompt({ ask, onClose }: { ask: NameAsk | null; onClose: () 
       overline={ask?.overline}
       title={ask?.title ?? ""}
       description={ask?.description}
+      // One field: the question size, 480 (Lockdown 20, cross-app §14). A phone keeps the whole screen, above.
+      size="question"
       // Typed words would be lost to a stray press outside; Cancel, Escape and the close button still close it.
       closeOnOutsideClick={false}
       footer={

@@ -19,7 +19,7 @@ import { DrillSection, PasswordReminderSetting, RemindersPrompt, SKIP_WORDS, due
 function mount(depth: DepthClient) {
   return render(
     <AppFrame layout="expanded">
-      <WaitingHost place={{ sharing: false, item: null }}>
+      <WaitingHost place={{ sharing: false, home: true, item: null }}>
         <DepthClientProvider value={depth}>
           <NeedsYouSlot />
           <RemindersPrompt onNotice={() => {}} onChanged={() => {}} />

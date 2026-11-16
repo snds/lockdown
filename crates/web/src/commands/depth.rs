@@ -76,6 +76,14 @@ pub(super) fn dispatch(web: &mut WebVault, cmd: &str, args: &Value) -> AppResult
         // --- approving another device from here (§2) -------------------------------
         "link_offer" => json(web.app().link_offer()?),
         "link_poll" => json(web.app().link_poll()?),
+        // The open link's code as bytes for the page's clipboard (Lockdown 1),
+        // as `reveal_to_use` hands a password: the page copies and clears it.
+        "link_code_to_use" => {
+            let code = web.app().link_code_to_use()?;
+            Ok(Reply::Bytes(zeroize::Zeroizing::new(
+                code.expose().to_vec(),
+            )))
+        }
         "link_approve" => json(web.app().link_approve(gate(args)?)?),
         "link_decline" => {
             web.app().link_decline()?;

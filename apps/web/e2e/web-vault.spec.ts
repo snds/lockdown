@@ -5,8 +5,8 @@ import path from "node:path"
 
 import { expect, test, type Page } from "@playwright/test"
 
-import { LOGIN as LOGIN_ENTRY, add, closeManager, editor, field, firstField, generateWithOptions, generatorMake, generatorStrength, makeTemplate, newItem, save, templateNamed } from "./steps/editor.ts"
-import { exportSwitch, guestCode, hideGuestCard, itemAction, openItem, plainText, row, rows, section, showGuestCard } from "./steps/items.ts"
+import { LOGIN as LOGIN_ENTRY, add, closeManager, editor, field, firstField, generateWithOptions, generatorMake, generatorStrength, makeTemplate, newItem, save, templateNamed, typeOwnPassword } from "./steps/editor.ts"
+import { guestCode, hideGuestCard, itemAction, openItem, plainText, row, rows, section, showGuestCard } from "./steps/items.ts"
 import { alert, go, lock, root, vaultOpen } from "./steps/nav.ts"
 import { search } from "./steps/search.ts"
 import { signOut, theme } from "./steps/settings.ts"
@@ -110,7 +110,7 @@ test("sign in as a new device, find, create, edit, find, lock, unlock and sign o
   const created = editor(page)
   await field(created, "Title").fill("Example mail")
   await field(created, "Username").fill("me@example.com")
-  await field(created, "Password", true).fill("a-long-unique-password-1")
+  await (await typeOwnPassword(created)).fill("a-long-unique-password-1")
   await firstField(created, "Website").fill("https://mail.example.com")
   await add(created)
   await expect(created).toBeHidden()
@@ -137,7 +137,7 @@ test("sign in as a new device, find, create, edit, find, lock, unlock and sign o
   await lock(page)
   await expect(unlockForm(page)).toBeVisible()
   await unlock(page, "not the password at all")
-  await expect(alert(page)).toContainText("didn't match")
+  await expect(alert(page)).toContainText("That isn't the master password.")
   await unlock(page, PASSWORD)
   await expect(row(page, /Example mail \(work\)/)).toBeVisible({ timeout: 60_000 })
 
@@ -302,11 +302,8 @@ test("a crown jewel's opt-in says plain exports leave it out and locked backups 
   await expect(dialog).toBeHidden()
   await openItem(page, /Cold wallet/)
 
-  // The shared item view's words: plain exports leave it out unless opted in; locked backups carry it.
-  const optIn = section(page, "Exports and backups")
-  await expect(exportSwitch(optIn)).not.toBeChecked()
-  await expect(optIn).toContainText("Crown jewels stay out of plain exports unless you include them here, one by one.")
-  await expect(optIn).toContainText("Locked backups carry them unless you turn that off in Settings, Backups.")
+  // The web vault makes no exports, so a crown jewel shows no export switch here (Lockdown 22, amending D827).
+  await expect(page.getByRole("switch", { name: "Include in exports and backups" })).toHaveCount(0)
   await expect(plainText(page, "abandon ability")).toHaveCount(0)
 
   expect([...origins]).toEqual([new URL(baseURL!).origin])

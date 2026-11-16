@@ -18,9 +18,11 @@ import { VIEW_LABELS } from "@/features/vault/list-model"
 import { fakeClient } from "@/test/fake-client"
 import { fakeSharing } from "@/test/fake-sharing"
 import { TEMPLATES } from "@/test/templates-fixture"
+import { displayTemplate } from "./template-model"
 
 import { useCrumb } from "./crumbs"
 import { ASIDE_VIEWS, MAIN_VIEWS, MORE_VIEWS, folderPlace, membersPlace, placeIdOf, settingsSections, sharingTabs, tagPlace, usePlaces, vaultPlace, type Nav, type Surface } from "./places"
+import { WaitingHost, addNeedsYou } from "./needs-you"
 import { AppShell } from "./shell"
 
 /*
@@ -312,7 +314,7 @@ describe.each(SIZES)("every place, by keyboard, at the %s width (%i px)", (width
     const [first, ...others] = sharingTabs("desktop")
     expect(await screen.findByRole("tab", { name: new RegExp(`^${first}$`, "i") })).toHaveAttribute("aria-selected", "true")
     for (const tab of [...others, first!]) {
-      await press(user, await screen.findByRole("tab", { name: new RegExp(`^${tab}$`, "i") }))
+      await press(user, await screen.findByRole("tab", { name: new RegExp(`^${tab}(, \\d+)?$`, "i") }))
       await waitFor(() => expect(where()).toBe(`sharing-${tab}`))
       expectCurrent(width === "expanded" ? /^Sharing/ : null)
     }
@@ -394,7 +396,7 @@ describe("the sidebar (brief 3.2)", () => {
     expect(nav.getByRole("button", { name: "New item" })).toBeInTheDocument()
     expect(nav.getByRole("button", { name: "Search" })).toHaveAttribute("aria-keyshortcuts", "/")
     // ITEMS // NN TYPES: the kinds that hold an item that is neither archived nor deleted.
-    expect(nav.getByRole("tree", { name: "Items // 18 types" })).toBeInTheDocument()
+    expect(nav.getByRole("tree", { name: "Items // 018 types" })).toBeInTheDocument()
     expect(nav.getByRole("tree", { name: /^Vaults, 2$/ })).toBeInTheDocument()
     expect(nav.getByRole("group", { name: "Tools" })).toBeInTheDocument()
     // A count is said as the number and its noun, and written in two digits.
@@ -496,7 +498,7 @@ describe("the phone's rows (brief 3.3)", () => {
     render(<Harness />)
     const head = screen.getByRole("button", { name: /Switch vault$/ })
     expect(head).toHaveAccessibleName("Items, Switch vault")
-    expect(screen.getByText(/^All vaults \/\/ 18 types$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^All vaults \/\/ 018 types$/i)).toBeInTheDocument()
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Items")
     // The arrow keys on the head step the scope: All vaults, then each vault.
     act(() => head.focus())
@@ -513,7 +515,7 @@ describe("the phone's rows (brief 3.3)", () => {
     render(<Harness />)
     const group = screen.getByRole("radiogroup", { name: "Show" })
     const chips = within(group).getAllByRole("radio")
-    expect(chips.map((c) => c.textContent?.replace(/\s+/g, " ").trim())).toEqual(["All 21", "Favorites", "Logins", "Passkeys", "Cards", "Notes"])
+    expect(chips.map((c) => c.textContent?.replace(/\s+/g, " ").trim())).toEqual(["All 021", "Favorites", "Logins", "Passkeys", "Cards", "Notes"])
     expect(chips[0]).toHaveAttribute("aria-checked", "true")
     expect(screen.getByRole("button", { name: "More kinds and lists" })).toHaveTextContent("More")
   })
@@ -530,7 +532,7 @@ describe("the phone's rows (brief 3.3)", () => {
     // Quick create is never gesture-only: Shift+F10 opens it (unicron 1.1: Shift+Enter is a new line in a field).
     await press(user, screen.getByRole("button", { name: "New item" }), "{Shift>}{F10}{/Shift}")
     const quick = await screen.findByRole("menu", { name: "Quick create" })
-    expect((await within(quick).findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(TEMPLATES.kinds.filter((t) => !t.variant && ["login", "card", "note", "code"].includes(t.kind)).sort((a, b) => ["login", "card", "note", "code"].indexOf(a.kind) - ["login", "card", "note", "code"].indexOf(b.kind)).map((t) => t.name))
+    expect((await within(quick).findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(TEMPLATES.kinds.filter((t) => !t.variant && ["login", "card", "note", "code"].includes(t.kind)).sort((a, b) => ["login", "card", "note", "code"].indexOf(a.kind) - ["login", "card", "note", "code"].indexOf(b.kind)).map((t) => displayTemplate(t).name))
   })
 
   it("puts Lock in Settings' top bar, and Back returns to the section the person came from", async () => {
@@ -577,5 +579,24 @@ describe("the phone's rows (brief 3.3)", () => {
     await user.click(screen.getByRole("tab", { name: "Items" }))
     expect(where()).toBe("all")
     expect(onRefresh).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("what can wait, on the way into Settings (the cross-app rule)", () => {
+  it("a reminder is a needs-you count on Settings, on every screen", () => {
+    setWindow(1440, 900)
+    render(
+      <WaitingHost place={{ sharing: false, item: null }}>
+        <Harness />
+      </WaitingHost>,
+    )
+    expect(within(sidebar()).getByRole("button", { name: /^Settings$/ })).toBeInTheDocument()
+    let remove = () => {}
+    act(() => {
+      remove = addNeedsYou({ id: "reminder:kit-test", priority: 7, title: "Recovery kit // not tested", line: "Test your recovery kit.", action: { label: "Test it", onClick: () => {} }, shows: "home" })
+    })
+    expect(within(sidebar()).getByRole("button", { name: "Settings, 1 waiting on you" })).toBeInTheDocument()
+    act(() => remove())
+    expect(within(sidebar()).getByRole("button", { name: /^Settings$/ })).toBeInTheDocument()
   })
 })

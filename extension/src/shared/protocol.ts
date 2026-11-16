@@ -101,6 +101,8 @@ export interface MenuData {
   kind: FillWhat
   link: LinkState
   host: string
+  /** The host's registrable domain (eTLD+1, by the Public Suffix List), kept whole when the host is cut (Lockdown 26). */
+  site?: string
   logins: LoginCandidate[]
   wallet: WalletEntry[]
   lookalike_of: string[]
@@ -152,6 +154,8 @@ export interface PasskeyPlan {
 export interface SheetData {
   kind: "get" | "create" | "locked"
   host: string
+  /** The host's registrable domain, kept whole when the host is cut (Lockdown 26). */
+  site?: string
   rp_id: string
   rp_name: string
   options: PasskeyOption[]

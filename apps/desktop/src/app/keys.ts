@@ -25,6 +25,30 @@ export interface QuickWindowKey {
   problem?: string
 }
 
+/** The words for each Mac modifier glyph, as Windows and Linux name the key. */
+const MAC_GLYPHS: Array<[RegExp, string]> = [
+  [/⌘/g, "Ctrl+"],
+  [/⇧/g, "Shift+"],
+  [/⌥/g, "Alt+"],
+  [/⌃/g, "Ctrl+"],
+]
+
+/**
+ * A key as this computer names it (Lockdown 12). On a Mac, the glyphs as
+ * the core writes them. Elsewhere never a Mac glyph: the key's own words
+ * joined by + (`Ctrl+Shift+Space`), as Windows and Linux write them.
+ */
+export function platformKeys(label: string, mac: boolean): string {
+  if (mac) return label
+  let out = label
+  for (const [glyph, word] of MAC_GLYPHS) out = out.replace(glyph, word)
+  return out
+    .replace(/\s*\+\s*/g, "+")
+    .replace(/\s+/g, "+")
+    .replace(/\+{2,}/g, "+")
+    .replace(/^\+|\+$/g, "")
+}
+
 /**
  * Every key, in the order the keys list shows them (brief X6). On a Mac the
  * keys are the symbols on its keyboard; elsewhere they are spelled out.
@@ -36,7 +60,7 @@ export function shortcuts({ mac, quickWindow }: { mac: boolean; quickWindow: Qui
   if (quickWindow)
     out.push({
       id: "quick-window",
-      keys: [quickWindow.label],
+      keys: [platformKeys(quickWindow.label, mac)],
       does: "The quick-access window, from any app",
       note: quickWindow.problem,
     })
