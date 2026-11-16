@@ -981,7 +981,7 @@ export function commands(world: World): Record<string, Handler> {
       return status(world)
     },
     web_unlock: (a) => {
-      if (str(a, "password").trim().toLowerCase() === "wrong") fail("refused", "The password didn't match.")
+      if (str(a, "password").trim().toLowerCase() === "wrong") fail("refused", "That isn't the master password.")
       world.web = { ...world.web, locked: false }
       world.lock = { ...world.lock, locked: false, reason: null }
       return status(world)
