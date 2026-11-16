@@ -815,6 +815,11 @@ jobs:
         env:
           REGISTRY_TOKEN: ${{ github.token }}
         run: |
+          # skopeo keeps its sign-in in its own auth file; the provenance step below
+          # (actions/attest, push-to-registry) reads Docker's. Point skopeo at Docker's file
+          # so one sign-in serves both, or the attestation push fails with "No credentials".
+          mkdir -p "$HOME/.docker"
+          export REGISTRY_AUTH_FILE="$HOME/.docker/config.json"
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/lockdown-server"
           archive="dist/lockdown-server-$VERSION-image.oci.tar"
           command -v skopeo > /dev/null || { sudo apt-get update && sudo apt-get install -y skopeo; }
