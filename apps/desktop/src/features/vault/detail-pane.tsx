@@ -31,7 +31,7 @@ import { useGate } from "@/app/gate"
 import { WaitingOnYou, useNeedsYouSource } from "@/app/needs-you"
 import { deletedWords, notify } from "@/app/notify"
 import { useTemplates } from "@/app/templates"
-import { DetailNeedsYou, useDetailTopBar } from "@/components/master-detail"
+import { WaitingInDetail, useDetailTopBar } from "@/components/master-detail"
 import { describeError, useClient } from "@/core/client"
 import type { CodeView, FieldView, ItemDetail, ItemSummary, TemplateView } from "@/core/types"
 import { codeKey, useCodes } from "@/features/codes/use-codes"
@@ -138,7 +138,7 @@ export function DetailPane(props: DetailPaneProps) {
   if (error) {
     return (
       <AppFrameInset>
-        <DetailNeedsYou />
+        <WaitingInDetail />
         <div role="alert">
           <EmptyState
             tone="critical"
@@ -162,7 +162,7 @@ export function DetailPane(props: DetailPaneProps) {
   if (!item) {
     return (
       <AppFrameInset>
-        <DetailNeedsYou />
+        <WaitingInDetail />
         <div aria-busy="true" aria-label="Opening the item" role="status" className="flex flex-col pt-2">
           {[0, 1, 2, 3, 4].map((n) => (
             <Skeleton key={n} variant="row" />
@@ -491,7 +491,7 @@ function ItemOpen({ id, rows, item, setItem, onEdit, onTrashed, onChanged, onNot
             conflict is the needs-you block under the item's title (row 5), or a WAITING ON YOU row when more waits.
             Whatever waits on the person shows here, under the title, as Figma draws it (Lockdown 8). */}
         <div className="flex flex-col gap-4 empty:hidden">
-          <DetailNeedsYou />
+          <WaitingInDetail />
           {trashed && (
             <Banner
               tone="info"

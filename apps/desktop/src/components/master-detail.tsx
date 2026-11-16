@@ -51,7 +51,7 @@ const DetailNeedsYouContext = createContext(false)
  * the item's title (Lockdown 8). Nothing outside a MasterDetail's detail, on
  * a phone (the strip says it there), or when nothing waits.
  */
-export function DetailNeedsYou() {
+export function WaitingInDetail() {
   const shows = useContext(DetailNeedsYouContext)
   if (!shows) return null
   return <NeedsYouSlot />

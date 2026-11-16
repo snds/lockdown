@@ -6,7 +6,7 @@ import { AppFrame, AppFrameMain, useAppFrame, type AppFrameLayout } from "@unicr
 
 import { WaitingHost, useNeedsYouSource } from "@/app/needs-you"
 
-import { DetailNeedsYou, Embedded, MasterDetail, PaneHeader } from "./master-detail"
+import { WaitingInDetail, Embedded, MasterDetail, PaneHeader } from "./master-detail"
 
 /** The shell's part: the way back the frame hands it while a detail is pushed. */
 function Back() {
@@ -102,7 +102,7 @@ describe("what waits on the person, in an open item (Lockdown 8)", () => {
               detail={
                 <article>
                   <h2>Northwind Mail</h2>
-                  <DetailNeedsYou />
+                  <WaitingInDetail />
                 </article>
               }
               onBack={() => {}}
