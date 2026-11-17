@@ -22,8 +22,8 @@
   "dependencies": {
     "@base-ui/react": "^1.9.0",
     "@tailwindcss/vite": "^4.3.3",
-    "@unicron/tokens": "file:../../vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz",
-    "@unicron/ui": "file:../../vendor/unicron/unicron-ui-1.1.0-pre.1.tgz",
+    "@unicron/tokens": "file:../../vendor/unicron/unicron-tokens-1.1.0.tgz",
+    "@unicron/ui": "file:../../vendor/unicron/unicron-ui-1.1.0.tgz",
     "next-themes": "^0.4.6",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

@@ -10,9 +10,9 @@ overrides:
   # dependency at the same tarball the app installs (unicron
   # docs/05-consuming.md §1).
   #
-  # unicron 1.1 is not released yet, so both packages are the pre-release
-  # tarballs vendored at the repo root, one copy for the four pnpm roots
+  # Both packages are the unicron 1.1.0 tarballs, packed from unicron's
+  # main at the release and vendored at the repo root, one copy for the four pnpm roots
   # (docs/plan/62-unicron-1-0.md §1, docs/plan/92-unicron-1-1.md §2). Swap to the @unicron/ui and
   # @unicron/tokens release URLs when Unicron 1.1 is released, and
   # delete vendor/unicron/.
-  "@unicron/tokens": file:../../vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz
+  "@unicron/tokens": file:../../vendor/unicron/unicron-tokens-1.1.0.tgz
