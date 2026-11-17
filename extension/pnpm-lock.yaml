@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@unicron/tokens': file:../vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz
+  '@unicron/tokens': file:../vendor/unicron/unicron-tokens-1.1.0.tgz
 
 importers:
 
@@ -15,8 +15,8 @@ importers:
         specifier: ^1.9.0
         version: 1.9.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@unicron/ui':
-        specifier: file:../vendor/unicron/unicron-ui-1.1.0-pre.1.tgz
-        version: file:../vendor/unicron/unicron-ui-1.1.0-pre.1.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: file:../vendor/unicron/unicron-ui-1.1.0.tgz
+        version: file:../vendor/unicron/unicron-ui-1.1.0.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -49,8 +49,8 @@ importers:
         specifier: ^19.3.0
         version: 19.3.0(@types/react@19.3.0)
       '@unicron/tokens':
-        specifier: file:../vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz
-        version: file:../vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz
+        specifier: file:../vendor/unicron/unicron-tokens-1.1.0.tgz
+        version: file:../vendor/unicron/unicron-tokens-1.1.0.tgz
       '@vitejs/plugin-react':
         specifier: ^6.1.2
         version: 6.1.2(vite@8.3.4(@types/node@22.19.0)(esbuild@0.28.2)(jiti@2.7.0))
@@ -692,14 +692,14 @@ packages:
   '@types/react@19.3.0':
     resolution: {integrity: sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==}
 
-  '@unicron/tokens@file:../vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz':
-    resolution: {integrity: sha512-m1hzWK2Juz7UVFupEun42/yG0E/ZWxnrTp9oDLSbGjEYs1llvPl3qTJ2Zx3u/hGejgJBI4Mo8VL28cK7yd76EA==, tarball: file:../vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz}
-    version: 1.1.0-pre.1
+  '@unicron/tokens@file:../vendor/unicron/unicron-tokens-1.1.0.tgz':
+    resolution: {integrity: sha512-OcLKKEfDtPe4JxjqulkOKbUorMYWK5X7mT+qmPt6os9OAS0YyME+91k99Ef/jA32phR0A0aWqiNfe6J/M8SGZg==, tarball: file:../vendor/unicron/unicron-tokens-1.1.0.tgz}
+    version: 1.1.0
     hasBin: true
 
-  '@unicron/ui@file:../vendor/unicron/unicron-ui-1.1.0-pre.1.tgz':
-    resolution: {integrity: sha512-78KpccwxWrmL2O0gWxl8aSIPcZIVmZWO0XPTSs6C0ug3OhwazlastkukDMh4yP6aDxsOqVri/MLfSUzgmZMf1A==, tarball: file:../vendor/unicron/unicron-ui-1.1.0-pre.1.tgz}
-    version: 1.1.0-pre.1
+  '@unicron/ui@file:../vendor/unicron/unicron-ui-1.1.0.tgz':
+    resolution: {integrity: sha512-E46z21HomjpdJsVKivllCHdnxNC/8JB5OThk5tpFRWhLJBbpCx7nSAM9yDgbBRkkvtnVqy/mjPrctxFXKVZ5iw==, tarball: file:../vendor/unicron/unicron-ui-1.1.0.tgz}
+    version: 1.1.0
     hasBin: true
     peerDependencies:
       react: ^19.0.0
@@ -1681,16 +1681,16 @@ snapshots:
     dependencies:
       csstype: 3.2.3
 
-  '@unicron/tokens@file:../vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz':
+  '@unicron/tokens@file:../vendor/unicron/unicron-tokens-1.1.0.tgz':
     dependencies:
       apca-w3: 0.1.9
 
-  '@unicron/ui@file:../vendor/unicron/unicron-ui-1.1.0-pre.1.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@unicron/ui@file:../vendor/unicron/unicron-ui-1.1.0.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@base-ui/react': 1.9.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@fontsource-variable/geist': 5.3.0
       '@fontsource-variable/geist-mono': 5.3.0
-      '@unicron/tokens': file:../vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz
+      '@unicron/tokens': file:../vendor/unicron/unicron-tokens-1.1.0.tgz
       class-variance-authority: 0.7.1
       clsx: 2.1.1
       cmdk: 1.1.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

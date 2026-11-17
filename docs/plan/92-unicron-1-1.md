@@ -4,7 +4,7 @@ _Slice of the 2026-11 decided changes, on `claude/keen-ritchie-q2hgb2`, built 20
 
 ## For future agent
 
-- **TL;DR:** unicron 1.1 ships no app's theme (decision Unicron 1). Lockdown declares its own 28 theme slots in `apps/desktop/src/styles/lockdown-theme.css`, with exactly the values 1.0 shipped, so nothing looks different (§1). The extension keeps an identical copy for its own build. The vendored tarballs move from 1.0.0-pre.2 to 1.1.0-pre.1 (§2), and unicron 1.1's contrast tool measures Lockdown's theme in the desktop's `pnpm contrast` and in CI (§3).
+- **TL;DR:** unicron 1.1 ships no app's theme (decision Unicron 1). Lockdown declares its own 28 theme slots in `apps/desktop/src/styles/lockdown-theme.css`, with exactly the values 1.0 shipped, so nothing looks different (§1). The extension keeps an identical copy for its own build. The vendored tarballs move from 1.0.0-pre.2 to 1.1.0-pre.1, then to the released 1.1.0 (§2, §2a), and unicron 1.1's contrast tool measures Lockdown's theme in the desktop's `pnpm contrast` and in CI (§3).
 - **Swap line:** Swap to the `@unicron/ui` and `@unicron/tokens` release URLs when Unicron 1.1 is released, and delete `vendor/unicron/`.
 - **Do not:**
   - Change a slot in one copy of the theme only. `extension/test/tokens.spec.ts` fails when `extension/src/popup/lockdown-theme.css` and `apps/desktop/src/styles/lockdown-theme.css` differ.
@@ -28,14 +28,14 @@ The extension builds and is reviewed on its own (its source archive carries `ext
 
 ## 2. The packages (D1043)
 
-unicron 1.1 is not released until Sean merges its pull request and the Version Packages pull request publishes it. Until then the two packages are the integrator's pre-release tarballs, checked in where 1.0's were (doc 62 §1):
+The two packages are tarballs checked in where 1.0's were (doc 62 §1). First the integrator's 1.1.0-pre.1 (sha256 `bcbef057…` ui, `b4f3c846…` tokens); now the released 1.1.0, packed from unicron's `main` at 8068d43 (tags `@unicron/ui@1.1.0` and `@unicron/tokens@1.1.0`), §2a:
 
 ```
-vendor/unicron/unicron-ui-1.1.0-pre.1.tgz       sha256 bcbef0574fbb75d901615719bd05d2129c01afe89b1d1679c769c18de3b73755
-vendor/unicron/unicron-tokens-1.1.0-pre.1.tgz   sha256 b4f3c846da7a523df3ad0cf89adad728eb42ddaad67e97a4cf85e07783fd5b24
+vendor/unicron/unicron-ui-1.1.0.tgz       sha256 3a55d9264a967405ee971ecfd71ea17c8e383018fbd1c0fa548619606dffb49b
+vendor/unicron/unicron-tokens-1.1.0.tgz   sha256 abe5b8154ba9ad5e133a021777626e60607ae1b73bb37626a8e746498b8d7a29
 ```
 
-The 1.0.0-pre.2 tarballs are gone. All four pnpm roots (`apps/desktop`, `apps/web`, `design/capture`, `extension`) name the new files in their `package.json` and in the `@unicron/tokens` override of their `pnpm-workspace.yaml` (ui pins tokens `1.1.0-pre.1` exactly). **Swap to the `@unicron/ui` and `@unicron/tokens` release URLs when Unicron 1.1 is released, and delete `vendor/unicron/`.** The same line is in each `pnpm-workspace.yaml`.
+The 1.0.0-pre.2 and 1.1.0-pre.1 tarballs are gone. All four pnpm roots (`apps/desktop`, `apps/web`, `design/capture`, `extension`) name the new files in their `package.json` and in the `@unicron/tokens` override of their `pnpm-workspace.yaml` (ui pins tokens `1.1.0` exactly). **Swap to the `@unicron/ui` and `@unicron/tokens` release URLs when Unicron 1.1 is released, and delete `vendor/unicron/`.** The same line is in each `pnpm-workspace.yaml`.
 
 **Lockfiles**, the way doc 62 §1 says: `apps/web` and `design/capture` with `pnpm install`; `apps/desktop` and `extension` with dsa held out for the install only (this session cannot fetch `@snds/dsa`) and put back, then `pnpm install --frozen-lockfile --lockfile-only` to prove the lockfile matches. Every lockfile carries pnpm's sha512 integrity for both tarballs.
 
@@ -55,6 +55,20 @@ The 1.0.0-pre.2 tarballs are gone. All four pnpm roots (`apps/desktop`, `apps/we
 | Counts read three digits | through unicron's parts at once; Lockdown's own `count()` follows in doc 93 (the cross-app settlement) |
 | Shared build watch | **not adopted here:** the web vault keeps its own `core/build-watch*`, whose rule is stricter (reload only when nobody is signed in). The swap is optional in the guide ("when you are ready"); left for a later slice |
 
+### 2a. From 1.1.0-pre.1 to 1.1.0
+
+The release adds unicron's motion work (unicron#100) to what pre.1 had; the two packages' dependencies are unchanged, so each lockfile changed only in names, versions and integrity. What it brings, as it touches Lockdown:
+
+| Change in unicron | Here |
+|---|---|
+| Motion recipes for parts Lockdown draws: a press goes 1px into the page (`motion-push`), the line tabs' indicator slides, a checkbox mark fades, a Progress fill scales, toasts leave faster, the phone sheet's drag reads release speed | Nothing to do: they arrive with the parts. Each has a reduced form in unicron, and Lockdown sets no `data-motion`, so the person's setting decides |
+| CodeDisplay's next code fades in with `motion-appear` (200 ms, opacity only), under reduced motion too, where pre.1's fade was off | Kept. Brief §7 asks for no next-code slide under reduced motion; a fade in place does not move. Copy, the clipboard countdown and its clear are unchanged |
+| Opt-in expressive motion (`motion-expressive.css`, `data-motion="expressive"`) | **Not adopted.** Lockdown stays on the mechanical default; nothing in a security app should bounce or pop |
+| `RollingNumber`, `@unicron/ui/motion` drag helpers | Not used yet |
+| `tw-animate-css` deprecated in unicron's parts, still imported | No change: Lockdown's own `animate-in` classes keep working until unicron 2.0 |
+
+Every review picture of the earlier set (252, phone and desktop, stone and graphite, the extension at its natural size) was taken again on 1.1.0 and matched the pre.1 pictures to the pixel. The capture runs under reduced motion, so the pictures show no motion.
+
 ## 3. The contrast check (D1044)
 
 `pnpm contrast` in `apps/desktop` runs unicron's `unicron-contrast` over `src/styles/lockdown-theme.css` with `src/styles/contrast-exceptions.json`, and CI's desktop job runs it after Lint. It measures 826 gated pairs on both grounds; 50 named exceptions are reported (Figma values with no room, flagged for Sean in unicron's hand-off: Unicron 16, 21 and 35), and 116 measures are reported only. The exceptions file started from unicron's playground copy for Lockdown; the tool fails on any listed pair that starts passing, so the list stays true.
@@ -64,6 +78,6 @@ The 1.0.0-pre.2 tarballs are gone. All four pnpm roots (`apps/desktop`, `apps/we
 | ID | Decision | Status |
 |---|---|---|
 | D1000 | **Lockdown declares its own theme**, the 28 slots 1.0 shipped, in `apps/desktop/src/styles/lockdown-theme.css`, with an identical copy in the extension kept equal by a test. Plain version: the app looks exactly as it did, now that the shared kit holds no app's colours. | Built (Sean's ruling on Unicron 1) |
-| D1043 | **Vendored 1.1.0-pre.1 tarballs** replace 1.0.0-pre.2 in all four roots, with the swap line kept. Plain version: Lockdown runs on the 1.1 pre-release until 1.1 is published. | Built |
+| D1043 | **Vendored unicron 1.1 tarballs** replace 1.0.0-pre.2 in all four roots: 1.1.0-pre.1 first, now the released 1.1.0, with the swap line kept. Plain version: Lockdown runs on the released unicron 1.1. | Built |
 | D1044 | **The theme's contrast is a CI gate** (`pnpm contrast`). Plain version: a colour change that makes text too faint fails the build. | Built |
 | D1045 | **The web vault keeps its own build watch** for now (1.1's shared one is optional). Plain version: no change to when the web vault reloads itself. | Proposed |
